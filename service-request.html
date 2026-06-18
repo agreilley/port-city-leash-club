@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Request a Service | Port City Leash Club</title>
+<style>
+
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --navy: #0D1B2A; --navy-mid: #1C2F42;
+    --seafoam: #8FA8A2; --seafoam-light: #C5D5D1;
+    --sand: #E9E1D3; --sand-light: #F4F0EA;
+    --warm-white: #FAFAF8; --text-dark: #1A1A1A;
+    --text-mid: #4A4A4A; --text-light: #7A7A7A;
+    --rust: #C17B6F;
+  }
+  body { font-family: 'DM Sans', sans-serif; background: var(--warm-white); color: var(--text-dark); line-height: 1.6; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: var(--warm-white); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 0 48px; display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .nav-logo { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--navy); line-height: 1.3; }
+  .nav-links { display: flex; align-items: center; gap: 32px; list-style: none; }
+  .nav-links a { font-size: 13px; color: var(--text-mid); text-decoration: none; letter-spacing: 0.04em; }
+  .btn-nav { background: var(--rust); color: white; border: none; border-radius: 4px; padding: 10px 20px; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; }
+
+  /* HERO */
+  .hero { padding: 80px 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; max-width: 1100px; margin: 0 auto; }
+  .hero-eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 20px; }
+  .hero-headline { font-family: 'Cormorant Garamond', serif; font-size: 72px; font-weight: 300; line-height: 1.05; color: var(--navy); margin-bottom: 24px; }
+  .hero-sub { font-size: 16px; color: var(--text-mid); line-height: 1.7; margin-bottom: 36px; max-width: 380px; }
+  .hero-ctas { display: flex; align-items: center; gap: 24px; }
+  .btn-primary { background: var(--rust); color: white; border: none; border-radius: 4px; padding: 14px 28px; font-size: 14px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; }
+  .btn-ghost { font-size: 14px; color: var(--text-mid); background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+  .hero-visual { background: var(--sand); border-radius: 8px; height: 360px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
+  .hero-visual-inner { width: 120px; height: 120px; border: 1px solid rgba(13,27,42,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative; }
+  .hero-dot { width: 6px; height: 6px; background: var(--rust); border-radius: 50%; position: absolute; top: 16px; right: 28px; }
+  .hero-visual-label { font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--navy); opacity: 0.5; font-weight: 500; }
+
+  /* STATS */
+  .stats-bar { background: var(--navy-mid); padding: 36px 48px; display: flex; justify-content: center; gap: 80px; align-items: center; }
+  .stat { text-align: center; display: flex; flex-direction: column; align-items: center; }
+  .stat-number { font-family: 'Cormorant Garamond', serif; font-size: 36px; font-weight: 400; color: white; line-height: 1; }
+  .stat-label { font-size: 10px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam-light); margin-top: 6px; }
+
+  /* SHARED */
+  section { padding: 80px 48px; }
+  .section-inner { max-width: 1100px; margin: 0 auto; }
+  .section-eyebrow { font-size: 13px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 12px; }
+  .section-headline { font-family: 'Cormorant Garamond', serif; font-size: 42px; font-weight: 300; color: var(--navy); line-height: 1.1; margin-bottom: 16px; }
+  .section-sub { font-size: 15px; color: var(--text-mid); max-width: 620px; line-height: 1.7; margin-bottom: 48px; }
+
+  /* MEMBERSHIP */
+  .membership-section { background: var(--sand-light); }
+  .tiers-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 16px; }
+  .tier-card { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 36px 28px; position: relative; display: flex; flex-direction: column; }
+  .tier-card.featured { border-color: var(--navy); border-width: 2px; box-shadow: 0 4px 24px rgba(13,27,42,0.1); }
+  .tier-badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--navy); color: white; font-size: 10px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 12px; border-radius: 20px; white-space: nowrap; }
+  .tier-discount-banner { display: inline-block; background: var(--seafoam-light); color: var(--navy); font-size: 11px; font-weight: 500; letter-spacing: 0.06em; padding: 3px 10px; border-radius: 20px; margin-bottom: 16px; }
+  .tier-name { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 400; color: var(--navy); margin-bottom: 4px; }
+  .tier-walks { font-size: 12px; color: var(--text-light); margin-bottom: 20px; }
+  .tier-price { display: flex; align-items: baseline; gap: 6px; margin-bottom: 24px; }
+  .tier-price-amount { font-family: 'Cormorant Garamond', serif; font-size: 52px; font-weight: 400; color: var(--navy); line-height: 1; }
+  .tier-price-walk { font-size: 16px; color: var(--text-light); }
+  .tier-features { list-style: none; margin-bottom: 28px; flex-grow: 1; }
+  .tier-features li { font-size: 13px; color: var(--text-mid); padding: 6px 0; display: flex; align-items: flex-start; gap: 8px; line-height: 1.4; border-bottom: 1px solid rgba(0,0,0,0.05); }
+  .tier-features li:last-child { border-bottom: none; }
+  .tier-features li::before { content: '·'; color: var(--seafoam); font-size: 18px; line-height: 1; flex-shrink: 0; }
+  .btn-tier { width: 100%; padding: 12px; border-radius: 4px; font-size: 14px; font-family: 'DM Sans', sans-serif; cursor: pointer; font-weight: 500; margin-top: auto; }
+  .btn-tier-outline { background: white; color: var(--navy); border: 1px solid var(--navy); }
+  .btn-tier-solid { background: var(--rust); color: white; border: none; }
+  .tiers-footnote { font-size: 13px; color: var(--text-light); font-style: italic; margin-bottom: 12px; }
+  .tiers-note { text-align: center; font-size: 13px; color: var(--text-light); font-style: italic; }
+  .single-walk-note { font-size: 13px; color: var(--text-light); margin-bottom: 32px; }
+  .single-walk-banner { text-align: center; background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 6px; padding: 12px 20px; font-size: 13px; color: var(--text-mid); margin-top: 20px; margin-bottom: 8px; }
+
+  .steps-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 48px; }
+  .step-inline { padding: 22px; background: white; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06); }
+  .step-inline .step-num { font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 300; color: var(--seafoam-light); line-height: 1; margin-bottom: 10px; }
+  .step-inline .step-text { font-size: 13px; color: var(--text-mid); line-height: 1.7; }
+  /* HOW IT WORKS - sits inside membership section visually */
+  .how-section { background: var(--sand-light); padding-top: 0; }
+  .steps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+  .step { background: white; border-radius: 8px; padding: 36px 32px; border: 1px solid rgba(0,0,0,0.06); }
+  .step-num { font-family: 'Cormorant Garamond', serif; font-size: 48px; font-weight: 300; color: var(--seafoam-light); line-height: 1; margin-bottom: 20px; }
+  .step-title { font-size: 16px; font-weight: 500; color: var(--navy); margin-bottom: 10px; }
+  .step-text { font-size: 14px; color: var(--text-mid); line-height: 1.7; }
+  .how-divider { border: none; border-top: 1px solid rgba(0,0,0,0.08); margin: 0 0 64px 0; }
+
+  /* SERVICES */
+  .services-top { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+  .service-card { border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 32px 28px; background: white; }
+  .service-title { font-size: 17px; font-weight: 500; color: var(--navy); margin-bottom: 10px; }
+  .service-text { font-size: 14px; color: var(--text-mid); line-height: 1.7; margin-bottom: 20px; }
+  .service-price { font-size: 14px; color: var(--seafoam); font-weight: 500; }
+  .petsitting-split { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-top: 1px solid rgba(0,0,0,0.08); margin-top: 8px; padding-top: 20px; }
+  .petsitting-item:first-child { padding-right: 24px; border-right: 1px solid rgba(0,0,0,0.08); }
+  .petsitting-item:last-child { padding-left: 24px; }
+  .petsitting-name { font-size: 15px; font-weight: 500; color: var(--navy); margin-bottom: 6px; }
+  .petsitting-desc { font-size: 13px; color: var(--text-mid); line-height: 1.6; margin-bottom: 10px; }
+  .petsitting-price { font-size: 14px; color: var(--seafoam); font-weight: 500; }
+  .addons-card { border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 28px 32px; background: var(--sand-light); }
+  .addons-label { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-light); margin-bottom: 20px; }
+  .addons-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .addon-name { font-size: 14px; font-weight: 500; color: var(--navy); margin-bottom: 4px; }
+  .addon-price { font-size: 13px; color: var(--seafoam); }
+
+
+  .service-options-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 24px; }
+  .service-option { background: var(--warm-white); border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 22px; display: flex; flex-direction: column; min-height: 210px; transition: box-shadow 0.25s, transform 0.25s, border-color 0.25s; text-decoration: none; color: inherit; }
+  .service-option:hover { box-shadow: 0 8px 28px rgba(0,0,0,0.08); transform: translateY(-2px); border-color: rgba(13,27,42,0.22); }
+  .service-option-meta { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 10px; }
+  .service-option-title { font-size: 17px; font-weight: 500; color: var(--navy); margin-bottom: 8px; }
+  .service-option-desc { font-size: 13px; color: var(--text-mid); line-height: 1.6; margin-bottom: 18px; flex-grow: 1; }
+  .service-option-bottom { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: auto; }
+  .service-option-price { font-family: 'Cormorant Garamond', serif; font-size: 28px; color: var(--navy); line-height: 1; }
+  .service-option-cta { font-size: 13px; color: var(--rust); font-weight: 500; white-space: nowrap; }
+  .membership-callout { background: var(--sand-light); border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 24px 28px; display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; margin-top: 24px; }
+  .membership-callout-title { font-size: 17px; font-weight: 500; color: var(--navy); margin-bottom: 4px; }
+  .membership-callout-text { font-size: 13px; color: var(--text-mid); line-height: 1.6; }
+  a.btn-primary, a.btn-tier, a.btn-nav { display: inline-block; text-align: center; text-decoration: none; }
+
+  /* SERVICE AREA */
+  .map-section { background: var(--sand-light); }
+  .map-container { border-radius: 8px; overflow: hidden; border: 1px solid rgba(0,0,0,0.08); margin-bottom: 32px; height: 340px; background: var(--sand); position: relative; display: flex; align-items: center; justify-content: center; }
+  .map-placeholder { text-align: center; }
+  .map-placeholder-label { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-light); margin-bottom: 12px; }
+  .map-zip-badges { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .map-zip-badge { background: var(--navy); color: white; font-size: 11px; font-weight: 500; padding: 4px 10px; border-radius: 20px; letter-spacing: 0.06em; }
+  .map-zip-badge.primary { background: var(--rust); }
+  .search-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; max-width: 540px; margin-bottom: 16px; }
+  .search-input { padding: 14px 16px; border: 1px solid rgba(0,0,0,0.15); border-radius: 4px; font-size: 14px; font-family: 'DM Sans', sans-serif; color: var(--text-dark); background: white; outline: none; }
+  .search-input::placeholder { color: var(--text-light); }
+  .search-btn { background: var(--navy); color: white; border: none; border-radius: 4px; padding: 14px 24px; font-size: 14px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
+  .search-result-in { background: #EAF4EE; border: 1px solid #B5D9C0; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #2D6A40; max-width: 540px; display: flex; align-items: center; gap: 8px; }
+  .search-result-out { background: var(--sand-light); border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; padding: 12px 16px; font-size: 13px; color: var(--text-mid); max-width: 540px; }
+  .notify-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; max-width: 540px; margin-top: 10px; }
+  /* ANIMATIONS */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .step-inline { opacity: 0; transform: translateY(24px); }
+  .step-inline.visible { opacity: 1; transform: translateY(0); transition: opacity 0.6s ease, transform 0.6s ease; }
+
+
+  /* HOVER STATES */
+  .tier-card { transition: box-shadow 0.25s, transform 0.25s; cursor: pointer; }
+  .tier-card:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.08); transform: translateY(-2px); }
+  .tier-card.selected { box-shadow: 0 12px 40px rgba(13,27,42,0.15); transform: scale(1.03); border-color: var(--rust); border-width: 2px; }
+  .tier-card.selected .tier-price-amount { color: var(--rust); transition: color 0.2s; }
+  .tier-card.selected .tier-price-walk { color: var(--rust); transition: color 0.2s; }
+  .tier-price-amount { transition: color 0.25s; }
+  .tier-price-walk { transition: color 0.25s; }
+  .btn-primary { transition: background 0.2s, transform 0.1s; }
+  .btn-primary:hover { background: #A36358; }
+  .btn-primary:active { transform: scale(0.97); }
+  .btn-nav { transition: background 0.2s, transform 0.1s; }
+  .btn-nav:hover { background: #A36358; }
+  .btn-tier { transition: background 0.2s, color 0.2s, transform 0.1s; }
+  .btn-tier:active { transform: scale(0.97); }
+  .btn-tier-outline:hover { background: var(--navy); color: white; }
+  .btn-tier-solid:hover { background: #A36358; }
+  .btn-ghost { transition: color 0.2s; }
+  .btn-ghost:hover { color: var(--navy); }
+  .search-btn { transition: background 0.2s, transform 0.1s, color 0.2s; }
+  .search-btn:hover { background: var(--rust); }
+  .search-btn:active { transform: scale(0.97); }
+  .carousel-arrow { transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.1s; }
+  .carousel-arrow:active { transform: scale(0.93); }
+  .petsitting-item { border-radius: 6px; padding: 12px; }
+
+  /* CAROUSEL */
+  .carousel-track { position:relative; }
+  .carousel-card { display:none; padding:40px; background:white; border:1px solid rgba(0,0,0,0.06); border-radius:8px; }
+  .carousel-card.active { display:block; }
+  .carousel-dot { width:8px; height:8px; border-radius:50%; background:var(--seafoam-light); cursor:pointer; transition:background 0.2s; }
+  .carousel-dot.active { background:var(--navy); }
+  .carousel-arrow { background:none; border:1px solid rgba(0,0,0,0.12); border-radius:50%; width:36px; height:36px; font-size:16px; cursor:pointer; color:var(--navy); display:flex; align-items:center; justify-content:center; transition:all 0.2s; font-family:inherit; }
+  .carousel-arrow:hover { background:var(--navy); color:white; border-color:var(--navy); }
+  /* WHY US */
+  .why-section { background: var(--warm-white); }
+  .why-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  .why-card { padding: 32px 28px; background: white; border: 1px solid rgba(0,0,0,0.06); border-radius: 8px; }
+  .why-title { font-size: 17px; font-weight: 500; color: var(--navy); margin-bottom: 10px; }
+  .why-text { font-size: 14px; color: var(--text-mid); line-height: 1.7; }
+
+  /* CTA */
+  .cta-section { background: var(--navy); text-align: center; padding: 100px 48px; }
+  .cta-section .section-eyebrow { color: var(--seafoam); }
+  .cta-section .section-headline { color: white; font-size: 56px; max-width: 600px; margin: 0 auto 16px; }
+  .cta-section .section-sub { color: rgba(255,255,255,0.6); text-align: center; margin: 0 auto 40px; }
+
+  footer { background: var(--navy); border-top: 1px solid rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); padding: 48px; display: flex; justify-content: space-between; align-items: center; }
+  .footer-brand { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: white; line-height: 1.5; }
+  .footer-sub { font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+  .footer-links { display: flex; gap: 32px; list-style: none; }
+  .footer-links a { font-size: 13px; color: rgba(255,255,255,0.5); text-decoration: none; }
+
+  .form-hero { background: var(--sand-light); padding: 72px 48px; }
+  .form-shell { max-width: 940px; margin: -40px auto 80px; padding: 0 48px; }
+  .request-card { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 40px; box-shadow: 0 10px 40px rgba(13,27,42,0.08); }
+  .form-section { border-top: 1px solid rgba(0,0,0,0.08); padding-top: 30px; margin-top: 30px; }
+  .form-section:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+  .form-section-title { font-family: 'Cormorant Garamond', serif; font-size: 30px; font-weight: 400; color: var(--navy); margin-bottom: 6px; }
+  .form-section-sub { font-size: 14px; color: var(--text-mid); margin-bottom: 22px; }
+  .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+  .form-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .field { display: flex; flex-direction: column; gap: 7px; }
+  .field.full { grid-column: 1 / -1; }
+  label { font-size: 12px; color: var(--navy); font-weight: 500; letter-spacing: 0.04em; }
+  input, select, textarea { width: 100%; padding: 13px 14px; border: 1px solid rgba(0,0,0,0.15); border-radius: 4px; font-size: 14px; font-family: 'DM Sans', sans-serif; color: var(--text-dark); background: var(--warm-white); outline: none; }
+  textarea { min-height: 110px; resize: vertical; line-height: 1.6; }
+  .checkbox-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .checkbox-pill { border: 1px solid rgba(0,0,0,0.12); border-radius: 6px; padding: 12px 14px; font-size: 13px; color: var(--text-mid); display:flex; gap:10px; align-items:center; background: var(--warm-white); }
+  .checkbox-pill input { width:auto; }
+  .form-actions { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-top:34px; }
+  .microcopy { font-size: 12px; color: var(--text-light); line-height: 1.6; max-width: 440px; }
+  @media (max-width: 800px) {
+    nav { padding: 0 24px; }
+    .nav-links { gap: 16px; }
+    .form-hero { padding: 56px 24px; }
+    .form-shell { padding: 0 24px; }
+    .request-card { padding: 28px; }
+    .form-grid, .form-grid-3, .checkbox-row { grid-template-columns: 1fr; }
+    .form-actions { flex-direction: column; align-items: stretch; }
+  }
+</style>
+</head>
+<body>
+<nav>
+  <a class="nav-logo" href="index.html" style="text-decoration:none;">Port City<br>Leash Club</a>
+  <ul class="nav-links">
+    <li><a href="faq.html">FAQ</a></li>
+    <li><a href="#">Login</a></li>
+    <li><a class="btn-nav" href="membership-request.html">Join the Club</a></li>
+  </ul>
+</nav>
+
+<div class="form-hero">
+  <div class="section-inner">
+    <p class="section-eyebrow">One-Time Services</p>
+    <h1 class="hero-headline" style="font-size:60px;max-width:720px;margin-bottom:18px;">Request care for your dog.</h1>
+    <p class="hero-sub" style="max-width:560px;margin-bottom:0;">Tell us what you need, when you need it, and a little about your dog. We'll review your request and follow up with next steps.</p>
+  </div>
+</div>
+
+<main class="form-shell">
+  <form class="request-card">
+    <div class="form-section">
+      <h2 class="form-section-title">Service Details</h2>
+      <p class="form-section-sub">Select the one-time service you need. Membership requests will live on a separate membership page.</p>
+      <div class="form-grid">
+        <div class="field">
+          <label for="service">Service</label>
+          <select id="service" name="service">
+            <option value="standard-walk">Standard Walk · 30 minutes · $29</option>
+            <option value="extended-walk">Extended Walk · 45 minutes · $40</option>
+            <option value="drop-in-visit">Drop-In Visit · $25</option>
+            <option value="overnight-stay">Overnight Stay · $95</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="start-date">Start Date</label>
+          <input id="start-date" name="start-date" type="date">
+        </div>
+        <div class="field" id="end-date-field">
+          <label for="end-date">End Date</label>
+          <input id="end-date" name="end-date" type="date">
+        </div>
+        <div class="field" id="visits-field">
+          <label for="visits">Visits Per Day</label>
+          <select id="visits" name="visits">
+            <option>1 visit</option>
+            <option>2 visits</option>
+            <option>3 visits</option>
+            <option>4+ visits</option>
+          </select>
+        </div>
+        <div class="field full">
+          <label for="care-notes">Care Notes</label>
+          <textarea id="care-notes" name="care-notes" placeholder="Tell us anything helpful about timing, access, feeding, medications, or your dog's normal routine."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h2 class="form-section-title">Dog Details</h2>
+      <p class="form-section-sub">This helps us make sure the service is a good fit before confirming.</p>
+      <div class="form-grid-3">
+        <div class="field"><label for="dog-name">Dog Name</label><input id="dog-name" name="dog-name" type="text"></div>
+        <div class="field"><label for="breed">Breed</label><input id="breed" name="breed" type="text"></div>
+        <div class="field"><label for="age">Age</label><input id="age" name="age" type="text"></div>
+        <div class="field"><label for="weight">Weight</label><input id="weight" name="weight" type="text"></div>
+        <div class="field"><label for="spayed">Spayed/Neutered?</label><select id="spayed"><option>Select</option><option>Yes</option><option>No</option></select></div>
+        <div class="field"><label for="temperament">Temperament</label><select id="temperament"><option>Select</option><option>Easygoing</option><option>Excitable</option><option>Nervous</option><option>Reactive</option></select></div>
+        <div class="field full"><label>Helpful Context</label>
+          <div class="checkbox-row">
+            <label class="checkbox-pill"><input type="checkbox"> Friendly with people</label>
+            <label class="checkbox-pill"><input type="checkbox"> Friendly with other dogs</label>
+            <label class="checkbox-pill"><input type="checkbox"> Pulls on leash</label>
+            <label class="checkbox-pill"><input type="checkbox"> Takes medication</label>
+          </div>
+        </div>
+        <div class="field full"><label for="behavior-notes">Behavioral or Medical Notes</label><textarea id="behavior-notes" placeholder="Anything we should know before caring for your dog?"></textarea></div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h2 class="form-section-title">Owner Information</h2>
+      <p class="form-section-sub">We'll use this to confirm availability and next steps.</p>
+      <div class="form-grid">
+        <div class="field"><label for="name">Name</label><input id="name" type="text"></div>
+        <div class="field"><label for="email">Email</label><input id="email" type="email"></div>
+        <div class="field"><label for="phone">Phone</label><input id="phone" type="tel"></div>
+        <div class="field"><label for="address">Service Address</label><input id="address" type="text"></div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <p class="microcopy">Submitting this form does not confirm the booking. We'll review your request, confirm availability, and follow up with next steps.</p>
+      <button class="btn-primary" type="button" onclick="alert('Mockup only: this would submit the service request.')">Submit Request</button>
+    </div>
+  </form>
+</main>
+
+<footer>
+  <div>
+    <div class="footer-brand">Port City Leash Club</div>
+    <div class="footer-sub">Wilmington, NC · portcityleashclub.com</div>
+    <div class="footer-sub" style="margin-top:4px;">hello@portcityleashclub.com</div>
+  </div>
+  <ul class="footer-links">
+    <li><a href="index.html">Services</a></li>
+    <li><a href="index.html#membership">Membership</a></li>
+    <li><a href="#">FAQ</a></li>
+    <li><a href="#">Contact</a></li>
+  </ul>
+</footer>
+
+<script>
+  const labels = {
+    'standard-walk': 'Standard Walk · 30 minutes · $29',
+    'extended-walk': 'Extended Walk · 45 minutes · $40',
+    'drop-in-visit': 'Drop-In Visit · $25',
+    'overnight-stay': 'Overnight Stay · $95'
+  };
+  // Set minimum start date to 2 days from today
+  const startInput = document.getElementById('start-date');
+  const endInput = document.getElementById('end-date');
+  const minDate = new Date();
+  minDate.setDate(minDate.getDate() + 2);
+  const minDateStr = minDate.toISOString().split('T')[0];
+  startInput.min = minDateStr;
+  endInput.min = minDateStr;
+
+  // End date must be after start date
+  startInput.addEventListener('change', () => {
+    endInput.min = startInput.value || minDateStr;
+    if (endInput.value && endInput.value < startInput.value) endInput.value = '';
+  });
+
+  const params = new URLSearchParams(window.location.search);
+  const requested = params.get('service');
+  const serviceSelect = document.getElementById('service');
+  if (requested && labels[requested]) serviceSelect.value = requested;
+
+  function updateServiceFields() {
+    const service = serviceSelect.value;
+    const endDate = document.getElementById('end-date-field');
+    const visits = document.getElementById('visits-field');
+    const isWalk = service === 'standard-walk' || service === 'extended-walk';
+    endDate.style.display = isWalk ? 'none' : 'flex';
+    visits.style.display = service === 'drop-in-visit' ? 'flex' : 'none';
+  }
+  serviceSelect.addEventListener('change', updateServiceFields);
+  updateServiceFields();
+</script>
+</body>
+</html>

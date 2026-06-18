@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Join The Leash Club | Port City Leash Club</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --navy: #0D1B2A; --navy-mid: #1C2F42;
+    --seafoam: #8FA8A2; --seafoam-light: #C5D5D1;
+    --sand: #E9E1D3; --sand-light: #F4F0EA;
+    --warm-white: #FAFAF8; --text-dark: #1A1A1A;
+    --text-mid: #4A4A4A; --text-light: #7A7A7A;
+    --rust: #C17B6F; --rust-dark:#A36358;
+  }
+  body { font-family: 'DM Sans', sans-serif; background: var(--warm-white); color: var(--text-dark); line-height: 1.6; }
+  nav { position: sticky; top: 0; z-index: 100; background: var(--warm-white); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 0 48px; display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .nav-logo { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--navy); line-height: 1.3; text-decoration:none; }
+  .nav-links { display: flex; align-items: center; gap: 32px; list-style: none; }
+  .nav-links a { font-size: 13px; color: var(--text-mid); text-decoration: none; letter-spacing: 0.04em; }
+  .btn-nav, .btn-primary { background: var(--rust); color: white !important; border: none; border-radius: 4px; padding: 10px 20px; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; text-decoration:none; display:inline-block; transition: background 0.2s, transform 0.1s; }
+  .btn-primary { padding: 15px 34px; font-size: 15px; }
+  .btn-nav:hover, .btn-primary:hover { background: var(--rust-dark); }
+  .btn-primary:active { transform: scale(.98); }
+
+  .page-hero { background: var(--sand-light); padding: 76px 48px 64px; border-bottom: 1px solid rgba(0,0,0,0.06); }
+  .hero-inner { max-width: 1040px; margin: 0 auto; display:grid; grid-template-columns: 1.15fr .85fr; gap: 48px; align-items:center; }
+  .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 16px; }
+  h1 { font-family: 'Cormorant Garamond', serif; font-size: 64px; font-weight: 300; line-height: 1.04; color: var(--navy); margin-bottom: 20px; }
+  .hero-sub { font-size: 16px; color: var(--text-mid); line-height: 1.8; max-width: 520px; }
+  .hero-note { background:white; border:1px solid rgba(0,0,0,0.08); border-radius:8px; padding:28px; }
+  .hero-note-title { font-family:'Cormorant Garamond',serif; font-size:28px; color:var(--navy); margin-bottom:10px; line-height:1.1; }
+  .hero-note p { font-size:14px; color:var(--text-mid); line-height:1.7; }
+
+  main { padding: 64px 48px 90px; }
+  .form-shell { max-width: 1040px; margin: 0 auto; display:grid; grid-template-columns: 1fr 320px; gap: 32px; align-items:start; }
+  form { display:flex; flex-direction:column; gap: 24px; }
+  .form-section { background:white; border:1px solid rgba(0,0,0,0.08); border-radius:8px; padding:32px; }
+  .section-kicker { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 8px; }
+  h2 { font-family:'Cormorant Garamond',serif; font-weight:300; color:var(--navy); font-size:36px; line-height:1.1; margin-bottom: 10px; }
+  .section-copy { font-size:14px; color:var(--text-mid); line-height:1.7; margin-bottom:24px; max-width: 680px; }
+
+  .membership-grid { display:grid; grid-template-columns: repeat(4,1fr); gap:14px; }
+  .plan-card, .day-chip, .time-card, .slot-card { border:1px solid rgba(0,0,0,0.1); background:#fff; border-radius:8px; padding:18px; cursor:pointer; transition: all .2s; position:relative; }
+  .plan-card:hover, .day-chip:hover, .time-card:hover, .slot-card:hover { transform: translateY(-1px); box-shadow:0 8px 24px rgba(0,0,0,.06); }
+  .plan-card input, .day-chip input, .time-card input, .slot-card input { position:absolute; opacity:0; pointer-events:none; }
+  .plan-card.selected, .day-chip.selected, .time-card.selected, .slot-card.selected { border-color:var(--rust); box-shadow:0 8px 28px rgba(193,123,111,.14); background:#fffaf8; }
+  .plan-name { font-family:'Cormorant Garamond',serif; font-size:25px; color:var(--navy); line-height:1.1; margin-bottom:5px; }
+  .plan-meta { font-size:12px; color:var(--text-light); margin-bottom:14px; }
+  .plan-price { font-size:18px; color:var(--navy); font-weight:500; }
+  .plan-note { font-size:12px; color:var(--text-mid); margin-top:6px; line-height:1.5; }
+
+  .field-grid { display:grid; grid-template-columns: repeat(2,1fr); gap:18px; }
+  .field-grid.three { grid-template-columns: repeat(3,1fr); }
+  .field { display:flex; flex-direction:column; gap:7px; }
+  label.field-label { font-size:13px; color:var(--navy); font-weight:500; }
+  input, select, textarea { width:100%; border:1px solid rgba(0,0,0,.14); background:#fff; border-radius:4px; padding:13px 14px; font-family:'DM Sans',sans-serif; font-size:14px; color:var(--text-dark); outline:none; }
+  input:focus, select:focus, textarea:focus { border-color:var(--seafoam); box-shadow:0 0 0 3px rgba(143,168,162,.16); }
+  textarea { min-height:110px; resize:vertical; }
+  .days-grid { display:grid; grid-template-columns: repeat(5,1fr); gap:10px; margin-bottom:20px; }
+  .day-chip { padding:13px 10px; text-align:center; font-size:13px; font-weight:500; color:var(--navy); }
+  .time-grid { display:grid; grid-template-columns: repeat(3,1fr); gap:12px; }
+  .time-card { padding:16px; }
+  .time-title { font-size:14px; font-weight:500; color:var(--navy); margin-bottom:3px; }
+  .time-sub { font-size:12px; color:var(--text-light); }
+  .policy-note { margin-top:18px; font-size:12px; color:var(--text-light); font-style:italic; }
+
+  .calendar-shell { display:grid; grid-template-columns: .85fr 1.15fr; gap:24px; align-items:start; }
+  .mini-calendar { background:var(--sand-light); border-radius:8px; padding:22px; border:1px solid rgba(0,0,0,0.06); }
+  .calendar-month { font-family:'Cormorant Garamond',serif; font-size:26px; color:var(--navy); margin-bottom:14px; }
+  .calendar-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+  .dow { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-light); text-align:center; padding-bottom:4px; }
+  .date-dot { aspect-ratio:1; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--text-mid); }
+  .date-dot.available { background:white; color:var(--navy); border:1px solid rgba(0,0,0,.08); }
+  .date-dot.active { background:var(--rust); color:white; }
+  .slots { display:flex; flex-direction:column; gap:10px; }
+  .slot-card { padding:14px 16px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+  .slot-date { font-size:14px; color:var(--navy); font-weight:500; }
+  .slot-time { font-size:13px; color:var(--text-mid); }
+  .slot-pill { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--seafoam); font-weight:500; }
+
+  .sidebar { position:sticky; top:92px; display:flex; flex-direction:column; gap:18px; }
+  .summary-card { background:var(--navy); color:white; border-radius:8px; padding:28px; }
+  .summary-kicker { font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--seafoam-light); margin-bottom:8px; }
+  .summary-title { font-family:'Cormorant Garamond',serif; font-size:29px; line-height:1.1; margin-bottom:18px; }
+  .investment { font-family:'Cormorant Garamond',serif; font-size:54px; line-height:1; margin-bottom:8px; }
+  .investment-sub { font-size:12px; color:rgba(255,255,255,.58); line-height:1.5; margin-bottom:22px; }
+  .summary-line { display:flex; justify-content:space-between; gap:16px; border-top:1px solid rgba(255,255,255,.1); padding:12px 0; font-size:13px; color:rgba(255,255,255,.75); }
+  .summary-line strong { color:white; font-weight:500; text-align:right; }
+  .trust-card { background:white; border:1px solid rgba(0,0,0,.08); border-radius:8px; padding:24px; }
+  .trust-list { display:grid; gap:12px; list-style:none; }
+  .trust-list li { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--navy); display:flex; gap:9px; align-items:center; }
+  .trust-list li::before { content:'✓'; color:var(--seafoam); font-weight:500; }
+
+  .next-steps { background:var(--sand-light); border:1px solid rgba(0,0,0,.08); border-radius:8px; padding:24px; margin-bottom:24px; }
+  .next-steps-title { font-family:'Cormorant Garamond',serif; font-size:27px; color:var(--navy); margin-bottom:12px; }
+  .next-steps ol { padding-left: 20px; color:var(--text-mid); font-size:14px; line-height:1.8; }
+  .submit-row { display:flex; align-items:center; justify-content:space-between; gap:18px; }
+  .submit-note { font-size:12px; color:var(--text-light); line-height:1.5; max-width:440px; }
+
+  @media (max-width: 940px) {
+    nav { padding:0 24px; }
+    .hero-inner, .form-shell, .calendar-shell { grid-template-columns:1fr; }
+    .sidebar { position:static; order:-1; }
+    .membership-grid { grid-template-columns: repeat(2,1fr); }
+    h1 { font-size:52px; }
+  }
+  @media (max-width: 640px) {
+    nav { height:auto; padding:18px 20px; align-items:flex-start; gap:16px; }
+    .nav-links { gap:16px; flex-wrap:wrap; justify-content:flex-end; }
+    .page-hero, main { padding-left:20px; padding-right:20px; }
+    .membership-grid, .field-grid, .field-grid.three, .days-grid, .time-grid { grid-template-columns:1fr; }
+    h1 { font-size:44px; }
+    h2 { font-size:32px; }
+    .form-section { padding:24px; }
+    .submit-row { flex-direction:column; align-items:flex-start; }
+  }
+</style>
+</head>
+<body>
+<nav>
+  <a class="nav-logo" href="index.html" style="text-decoration:none;">Port City<br>Leash Club</a>
+  <ul class="nav-links">
+    <li><a href="faq.html">FAQ</a></li>
+    <li><a href="#">Login</a></li>
+    <li><a class="btn-nav" href="membership-request.html">Join the Club</a></li>
+  </ul>
+</nav>
+
+<header class="page-hero">
+  <div class="hero-inner">
+    <div>
+      <p class="eyebrow">The Leash Club</p>
+      <h1>Join The<br>Leash Club</h1>
+      <p class="hero-sub">Set up recurring weekly walks with a consistent schedule and a team you can trust. Tell us about your dog, choose your preferred routine, and request your complimentary meet & greet.</p>
+    </div>
+    <div class="hero-note">
+      <div class="hero-note-title">Every membership begins with a complimentary meet & greet.</div>
+      <p>We'll take time to learn your dog's routine, personality, home access details, and preferences before the first walk.</p>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="form-shell">
+    <form id="membershipForm">
+      <section class="form-section">
+        <p class="section-kicker">Step 01</p>
+        <h2>Choose your membership</h2>
+        <p class="section-copy">Select the recurring walk plan that best fits your weekly routine. Your estimated monthly investment will update as you choose your plan and days.</p>
+        <div class="membership-grid" id="planGrid">
+          <label class="plan-card selected" data-plan="essential" data-rate="26" data-default="2">
+            <input type="radio" name="membership" value="Essential" checked>
+            <div class="plan-name">Essential</div>
+            <div class="plan-meta">1–2 walks / week</div>
+            <div class="plan-price">$26 / walk</div>
+            <div class="plan-note">Best for occasional weekly support.</div>
+          </label>
+          <label class="plan-card" data-plan="standard" data-rate="25" data-default="3">
+            <input type="radio" name="membership" value="Standard">
+            <div class="plan-name">Standard</div>
+            <div class="plan-meta">3–4 walks / week</div>
+            <div class="plan-price">$25 / walk</div>
+            <div class="plan-note">Our most popular recurring care plan.</div>
+          </label>
+          <label class="plan-card" data-plan="daily" data-rate="22" data-default="5">
+            <input type="radio" name="membership" value="Daily">
+            <div class="plan-name">Daily</div>
+            <div class="plan-meta">Every weekday</div>
+            <div class="plan-price">$22 / walk</div>
+            <div class="plan-note">For dogs who need a reliable daily routine.</div>
+          </label>
+          <label class="plan-card" data-plan="unsure" data-rate="0" data-default="0">
+            <input type="radio" name="membership" value="Not sure yet">
+            <div class="plan-name">Not Sure</div>
+            <div class="plan-meta">We'll recommend a fit</div>
+            <div class="plan-price">Let's talk</div>
+            <div class="plan-note">Choose this if you'd like guidance.</div>
+          </label>
+        </div>
+      </section>
+
+      <section class="form-section">
+        <p class="section-kicker">Step 02</p>
+        <h2>Choose your schedule</h2>
+        <p class="section-copy">Select your preferred start date, walking days, and time window. Daily memberships automatically include Monday through Friday.</p>
+        <div class="field-grid">
+          <div class="field">
+            <label class="field-label" for="startDate">Preferred start date</label>
+            <input id="startDate" name="startDate" type="date">
+          </div>
+          <div class="field">
+            <label class="field-label" for="walkLength">Preferred walk length</label>
+            <select id="walkLength" name="walkLength">
+              <option>30 minutes</option>
+              <option>45 minutes</option>
+              <option>Not sure yet</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:22px;">
+          <label class="field-label" style="display:block;margin-bottom:10px;">Preferred days</label>
+          <div class="days-grid" id="daysGrid">
+            <label class="day-chip"><input type="checkbox" name="days" value="Monday">Mon</label>
+            <label class="day-chip"><input type="checkbox" name="days" value="Tuesday">Tue</label>
+            <label class="day-chip"><input type="checkbox" name="days" value="Wednesday">Wed</label>
+            <label class="day-chip"><input type="checkbox" name="days" value="Thursday">Thu</label>
+            <label class="day-chip"><input type="checkbox" name="days" value="Friday">Fri</label>
+          </div>
+        </div>
+        <div>
+          <label class="field-label" style="display:block;margin-bottom:10px;">Preferred time window</label>
+          <div class="time-grid" id="timeGrid">
+            <label class="time-card selected"><input type="radio" name="timeWindow" value="Morning" checked><div class="time-title">Morning</div><div class="time-sub">8:00 AM–11:00 AM</div></label>
+            <label class="time-card"><input type="radio" name="timeWindow" value="Early Afternoon"><div class="time-title">Early Afternoon</div><div class="time-sub">11:00 AM–2:00 PM</div></label>
+            <label class="time-card"><input type="radio" name="timeWindow" value="Late Afternoon"><div class="time-title">Late Afternoon</div><div class="time-sub">2:00 PM–5:00 PM</div></label>
+          </div>
+        </div>
+        <p class="policy-note">Need to make a change? Upcoming walks can be managed through the member portal. Schedule changes must be made at least 48 hours in advance.</p>
+      </section>
+
+      <section class="form-section">
+        <p class="section-kicker">Step 03</p>
+        <h2>Tell us about your dog</h2>
+        <p class="section-copy">This helps us understand your dog's routine, comfort level, and any care details we should know before your meet & greet.</p>
+        <div class="field-grid">
+          <div class="field"><label class="field-label" for="dogName">Dog's name</label><input id="dogName" name="dogName" type="text" placeholder="Example: Scout"></div>
+          <div class="field"><label class="field-label" for="breed">Breed</label><input id="breed" name="breed" type="text" placeholder="Example: Golden Retriever"></div>
+          <div class="field"><label class="field-label" for="age">Age</label><input id="age" name="age" type="text" placeholder="Example: 4 years"></div>
+          <div class="field"><label class="field-label" for="weight">Weight</label><input id="weight" name="weight" type="text" placeholder="Example: 55 lbs"></div>
+          <div class="field"><label class="field-label" for="spayed">Spayed / neutered?</label><select id="spayed" name="spayed"><option>Select one</option><option>Yes</option><option>No</option><option>Not applicable</option></select></div>
+          <div class="field"><label class="field-label" for="leash">Leash behavior</label><select id="leash" name="leash"><option>Select one</option><option>Walks calmly</option><option>Pulls sometimes</option><option>Reactive to dogs</option><option>Reactive to people</option><option>Needs extra support</option></select></div>
+        </div>
+        <div class="field-grid" style="margin-top:18px;">
+          <div class="field"><label class="field-label" for="peopleFriendly">Friendly with people?</label><select id="peopleFriendly" name="peopleFriendly"><option>Select one</option><option>Yes</option><option>Sometimes / needs warm-up</option><option>No / needs special handling</option></select></div>
+          <div class="field"><label class="field-label" for="dogFriendly">Friendly with other dogs?</label><select id="dogFriendly" name="dogFriendly"><option>Select one</option><option>Yes</option><option>Sometimes</option><option>No</option><option>Unknown</option></select></div>
+        </div>
+        <div class="field" style="margin-top:18px;"><label class="field-label" for="careNotes">Medical notes, medications, behavioral notes, or anything else we should know</label><textarea id="careNotes" name="careNotes" placeholder="Tell us anything that would help us care for your dog well."></textarea></div>
+      </section>
+
+      <section class="form-section">
+        <p class="section-kicker">Step 04</p>
+        <h2>Your information</h2>
+        <p class="section-copy">We'll use this to confirm your service area, follow up on your request, and prepare for your meet & greet.</p>
+        <div class="field-grid">
+          <div class="field"><label class="field-label" for="ownerName">Name</label><input id="ownerName" name="ownerName" type="text" placeholder="Your full name"></div>
+          <div class="field"><label class="field-label" for="email">Email</label><input id="email" name="email" type="email" placeholder="you@example.com"></div>
+          <div class="field"><label class="field-label" for="phone">Phone</label><input id="phone" name="phone" type="tel" placeholder="(910) 555-1234"></div>
+          <div class="field"><label class="field-label" for="address">Home address</label><input id="address" name="address" type="text" placeholder="Street address"></div>
+        </div>
+        <div class="field" style="margin-top:18px;"><label class="field-label" for="accessNotes">Apartment, gate, parking, or home access notes</label><textarea id="accessNotes" name="accessNotes" placeholder="Anything we should know about getting to your home?"></textarea></div>
+      </section>
+
+      <section class="form-section">
+        <p class="section-kicker">Step 05</p>
+        <h2>Schedule your complimentary meet & greet</h2>
+        <p class="section-copy">Choose an available time for us to meet you and your dog, review your routine, and confirm next steps before recurring walks begin.</p>
+        <div class="calendar-shell">
+          <div class="mini-calendar">
+            <div class="calendar-month">August 2026</div>
+            <div class="calendar-grid">
+              <div class="dow">S</div><div class="dow">M</div><div class="dow">T</div><div class="dow">W</div><div class="dow">T</div><div class="dow">F</div><div class="dow">S</div>
+              <div></div><div></div><div></div><div></div><div></div><div class="date-dot">1</div><div class="date-dot">2</div>
+              <div class="date-dot">3</div><div class="date-dot available">4</div><div class="date-dot available active">5</div><div class="date-dot">6</div><div class="date-dot available">7</div><div class="date-dot">8</div><div class="date-dot">9</div>
+              <div class="date-dot">10</div><div class="date-dot available">11</div><div class="date-dot available">12</div><div class="date-dot">13</div><div class="date-dot available">14</div><div class="date-dot">15</div><div class="date-dot">16</div>
+              <div class="date-dot">17</div><div class="date-dot available">18</div><div class="date-dot available">19</div><div class="date-dot">20</div><div class="date-dot available">21</div><div class="date-dot">22</div><div class="date-dot">23</div>
+              <div class="date-dot">24</div><div class="date-dot available">25</div><div class="date-dot available">26</div><div class="date-dot">27</div><div class="date-dot available">28</div><div class="date-dot">29</div><div class="date-dot">30</div>
+              <div class="date-dot">31</div>
+            </div>
+          </div>
+          <div class="slots" id="slotsGrid">
+            <label class="slot-card selected"><input type="radio" name="meetGreet" value="Tuesday, August 5 at 4:00 PM" checked><div><div class="slot-date">Tuesday, August 5</div><div class="slot-time">4:00 PM</div></div><div class="slot-pill">Available</div></label>
+            <label class="slot-card"><input type="radio" name="meetGreet" value="Tuesday, August 5 at 5:30 PM"><div><div class="slot-date">Tuesday, August 5</div><div class="slot-time">5:30 PM</div></div><div class="slot-pill">Available</div></label>
+            <label class="slot-card"><input type="radio" name="meetGreet" value="Wednesday, August 6 at 10:00 AM"><div><div class="slot-date">Wednesday, August 6</div><div class="slot-time">10:00 AM</div></div><div class="slot-pill">Available</div></label>
+            <label class="slot-card"><input type="radio" name="meetGreet" value="Thursday, August 7 at 6:00 PM"><div><div class="slot-date">Thursday, August 7</div><div class="slot-time">6:00 PM</div></div><div class="slot-pill">Available</div></label>
+          </div>
+        </div>
+      </section>
+
+      <section class="form-section">
+        <div class="next-steps">
+          <div class="next-steps-title">What happens next</div>
+          <ol>
+            <li>We review your membership request and confirm availability in your neighborhood.</li>
+            <li>We confirm your preferred schedule and membership fit.</li>
+            <li>We meet you and your dog for a complimentary meet & greet.</li>
+            <li>Once approved, your recurring walks begin.</li>
+          </ol>
+        </div>
+        <div class="submit-row">
+          <p class="submit-note">Submitting this request does not create a paid membership yet. We'll confirm details with you before recurring care begins.</p>
+          <button type="submit" class="btn-primary">Request Your Meet & Greet</button>
+        </div>
+      </section>
+    </form>
+
+    <aside class="sidebar">
+      <div class="summary-card">
+        <div class="summary-kicker">Estimated Monthly Investment</div>
+        <div class="summary-title" id="summaryPlan">Essential Membership</div>
+        <div class="investment" id="investmentAmount">$208</div>
+        <div class="investment-sub">Based on a 4-week month. Final monthly billing may vary slightly based on the calendar and approved schedule.</div>
+        <div class="summary-line"><span>Rate</span><strong id="summaryRate">$26 / walk</strong></div>
+        <div class="summary-line"><span>Walks / week</span><strong id="summaryWalks">2</strong></div>
+        <div class="summary-line"><span>Preferred window</span><strong id="summaryWindow">Morning</strong></div>
+      </div>
+      <div class="trust-card">
+        <ul class="trust-list">
+          <li>Background Checked Team</li>
+          <li>Fully Insured</li>
+          <li>Pet First Aid Certified</li>
+          <li>Consistent Walkers</li>
+        </ul>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<script>
+  const planCards = document.querySelectorAll('.plan-card');
+  const dayChips = document.querySelectorAll('.day-chip');
+  const timeCards = document.querySelectorAll('.time-card');
+  const slotCards = document.querySelectorAll('.slot-card');
+  const investmentAmount = document.getElementById('investmentAmount');
+  const summaryPlan = document.getElementById('summaryPlan');
+  const summaryRate = document.getElementById('summaryRate');
+  const summaryWalks = document.getElementById('summaryWalks');
+  const summaryWindow = document.getElementById('summaryWindow');
+
+  function enableDayPicker() {
+    dayChips.forEach(chip => {
+      chip.style.opacity = '1';
+      chip.style.pointerEvents = 'auto';
+    });
+  }
+
+  function disableDayPicker() {
+    dayChips.forEach(chip => {
+      chip.style.opacity = '0.5';
+      chip.style.pointerEvents = 'none';
+    });
+  }
+
+  // Set minimum start date to 2 days from today
+  const startDateInput = document.getElementById('startDate');
+  const minDate = new Date();
+  minDate.setDate(minDate.getDate() + 2);
+  startDateInput.min = minDate.toISOString().split('T')[0];
+
+  function setDays(count) {
+    dayChips.forEach((chip, idx) => {
+      const input = chip.querySelector('input');
+      input.checked = idx < count;
+      chip.classList.toggle('selected', input.checked);
+    });
+  }
+
+  function updateEstimate() {
+    const selectedPlan = document.querySelector('.plan-card.selected');
+    const plan = selectedPlan.dataset.plan;
+    const rate = Number(selectedPlan.dataset.rate);
+    const checkedDays = document.querySelectorAll('input[name="days"]:checked').length;
+    const walks = plan === 'daily' ? 5 : checkedDays;
+    const monthly = rate * walks * 4;
+    const label = selectedPlan.querySelector('.plan-name').textContent;
+    const selectedTime = document.querySelector('input[name="timeWindow"]:checked')?.value || 'Morning';
+
+    summaryPlan.textContent = plan === 'unsure' ? 'Membership Fit Review' : label + ' Membership';
+    summaryRate.textContent = rate ? '$' + rate + ' / walk' : 'TBD';
+    summaryWalks.textContent = walks || 'TBD';
+    summaryWindow.textContent = selectedTime;
+    investmentAmount.textContent = monthly ? '$' + monthly : 'TBD';
+  }
+
+  planCards.forEach(card => {
+    card.addEventListener('click', () => {
+      const prevPlan = getCurrentPlan();
+      planCards.forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      card.querySelector('input').checked = true;
+      const plan = card.dataset.plan;
+
+      if (plan === 'essential') {
+        setDays(2);
+        enableDayPicker();
+      }
+      if (plan === 'standard') {
+        setDays(3);
+        enableDayPicker();
+      }
+      if (plan === 'daily') {
+        setDays(5);
+        disableDayPicker();
+      }
+      if (plan === 'unsure') {
+        setDays(0);
+        enableDayPicker();
+      }
+      updateEstimate();
+    });
+  });
+
+  function showNotification(msg) {
+    let notif = document.getElementById('tierNotif');
+    if (!notif) {
+      notif = document.createElement('div');
+      notif.id = 'tierNotif';
+      notif.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:var(--navy);color:white;padding:13px 24px;border-radius:6px;font-size:13px;font-weight:500;z-index:999;box-shadow:0 8px 24px rgba(0,0,0,0.2);transition:opacity 0.3s;white-space:nowrap;';
+      document.body.appendChild(notif);
+    }
+    notif.textContent = msg;
+    notif.style.opacity = '1';
+    clearTimeout(notif._timeout);
+    notif._timeout = setTimeout(() => notif.style.opacity = '0', 3000);
+  }
+
+  function getCurrentPlan() {
+    return document.querySelector('.plan-card.selected')?.dataset.plan;
+  }
+
+  function selectPlan(planName) {
+    const card = document.querySelector(`.plan-card[data-plan="${planName}"]`);
+    if (!card) return;
+    planCards.forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    card.querySelector('input').checked = true;
+  }
+
+  dayChips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      setTimeout(() => {
+        const input = chip.querySelector('input');
+        chip.classList.toggle('selected', input.checked);
+
+        const selectedCount = document.querySelectorAll('input[name="days"]:checked').length;
+        const currentPlan = getCurrentPlan();
+
+        // Auto-upgrade logic
+        if (selectedCount >= 5 && currentPlan !== 'daily') {
+          selectPlan('daily');
+          setDays(5);
+          showNotification('You\'ve selected 5 days — upgraded to Daily.');
+        } else if (selectedCount >= 3 && selectedCount < 5 && currentPlan === 'essential') {
+          selectPlan('standard');
+          showNotification('You\'ve selected 3 days — upgraded to Standard.');
+        }
+
+        // Auto-downgrade logic
+        if (selectedCount <= 2 && currentPlan === 'standard') {
+          selectPlan('essential');
+          showNotification('Switched back to Essential.');
+        } else if (selectedCount < 5 && currentPlan === 'daily') {
+          selectPlan(selectedCount <= 2 ? 'essential' : 'standard');
+          showNotification('Switched back to ' + (selectedCount <= 2 ? 'Essential' : 'Standard') + '.');
+        }
+
+        updateEstimate();
+      }, 0);
+    });
+  });
+
+  timeCards.forEach(card => {
+    card.addEventListener('click', () => {
+      timeCards.forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      card.querySelector('input').checked = true;
+      updateEstimate();
+    });
+  });
+
+  slotCards.forEach(card => {
+    card.addEventListener('click', () => {
+      slotCards.forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      card.querySelector('input').checked = true;
+    });
+  });
+
+  document.getElementById('membershipForm').addEventListener('submit', (event) => {
+    event.preventDefault();
+    alert('Thanks! Your meet & greet request has been received.');
+  });
+
+  setDays(2);
+  updateEstimate();
+</script>
+</body>
+</html>

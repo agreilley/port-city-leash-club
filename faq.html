@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FAQ | Port City Leash Club</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --navy: #0D1B2A; --navy-mid: #1C2F42;
+    --seafoam: #8FA8A2; --seafoam-light: #C5D5D1;
+    --sand: #E9E1D3; --sand-light: #F4F0EA;
+    --warm-white: #FAFAF8; --text-dark: #1A1A1A;
+    --text-mid: #4A4A4A; --text-light: #7A7A7A;
+    --coral: #C17B6F; --coral-dark: #A36358;
+  }
+  body { font-family: 'DM Sans', sans-serif; background: var(--warm-white); color: var(--text-dark); line-height: 1.6; }
+
+  /* NAV */
+  nav { position: sticky; top: 0; z-index: 100; background: var(--warm-white); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 0 48px; display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .nav-logo { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--navy); line-height: 1.3; text-decoration: none; display: block; }
+  .nav-links { display: flex; align-items: center; gap: 32px; list-style: none; }
+  .nav-links a { font-size: 13px; color: var(--text-mid); text-decoration: none; letter-spacing: 0.04em; transition: color 0.2s; }
+  .nav-links a:hover { color: var(--navy); }
+  .btn-nav { background: var(--coral); color: white; border: none; border-radius: 4px; padding: 10px 20px; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: background 0.2s; }
+  .btn-nav:hover { background: var(--coral-dark); }
+
+  /* PAGE HERO */
+  .page-hero { background: var(--sand-light); padding: 72px 48px 64px; border-bottom: 1px solid rgba(0,0,0,0.06); }
+  .page-hero-inner { max-width: 720px; margin: 0 auto; }
+  .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 14px; }
+  .page-headline { font-family: 'Cormorant Garamond', serif; font-size: 56px; font-weight: 300; color: var(--navy); line-height: 1.05; margin-bottom: 20px; }
+  .page-sub { font-size: 16px; color: var(--text-mid); line-height: 1.75; max-width: 540px; }
+
+  /* MAIN LAYOUT */
+  .faq-layout { max-width: 780px; margin: 0 auto; padding: 72px 48px 96px; }
+
+  /* SIDEBAR NAV */
+  .faq-nav { position: sticky; top: 88px; z-index: 10; }
+  .faq-nav-title { font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-light); margin-bottom: 16px; }
+  .faq-nav a { display: block; font-size: 13px; color: var(--text-mid); text-decoration: none; padding: 8px 0; border-left: 2px solid transparent; padding-left: 14px; margin-left: -14px; transition: all 0.2s; line-height: 1.4; }
+  .faq-nav a:hover { color: var(--navy); border-left-color: var(--seafoam); }
+  .faq-nav a.active { color: var(--navy); border-left-color: var(--coral); font-weight: 500; }
+
+  /* FAQ CONTENT */
+  .faq-content { }
+  .faq-category { margin-bottom: 56px; scroll-margin-top: 100px; }
+  .faq-category:last-child { margin-bottom: 0; }
+  .category-title { font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 300; color: var(--navy); margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid rgba(0,0,0,0.08); position: relative; z-index: 1; }
+
+  /* ACCORDION */
+  .faq-item { border-bottom: 1px solid rgba(0,0,0,0.07); }
+  .faq-question {
+    width: 100%; background: none; border: none; cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 20px 0; text-align: left; gap: 20px;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .faq-q-text { font-size: 15px; font-weight: 500; color: var(--navy); line-height: 1.4; }
+  .faq-icon {
+    width: 24px; height: 24px; border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.12);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: all 0.25s; color: var(--text-light);
+    font-size: 16px; line-height: 1;
+  }
+  .faq-item.open .faq-icon { background: var(--navy); border-color: var(--navy); color: white; transform: rotate(45deg); }
+  .faq-answer {
+    max-height: 0; overflow: hidden;
+    transition: max-height 0.35s cubic-bezier(0.25,0.46,0.45,0.94), padding 0.35s;
+    padding: 0;
+  }
+  .faq-item.open .faq-answer { max-height: 400px; padding-bottom: 20px; }
+  .faq-answer p { font-size: 14px; color: var(--text-mid); line-height: 1.8; margin-bottom: 10px; }
+  .faq-answer p:last-child { margin-bottom: 0; }
+  .faq-answer strong { color: var(--navy); font-weight: 500; }
+
+  /* CTA STRIP */
+  .faq-cta { background: var(--navy); padding: 72px 48px; text-align: center; }
+  .cta-headline { font-family: 'Cormorant Garamond', serif; font-size: 48px; font-weight: 300; color: white; margin-bottom: 14px; line-height: 1.1; }
+  .cta-sub { font-size: 15px; color: rgba(255,255,255,0.6); margin-bottom: 36px; }
+  .btn-cta { background: var(--coral); color: white; border: none; border-radius: 4px; padding: 16px 36px; font-size: 15px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: background 0.2s, transform 0.1s; }
+  .btn-cta:hover { background: var(--coral-dark); }
+  .btn-cta:active { transform: scale(0.98); }
+
+  /* FOOTER */
+  footer { background: var(--navy); border-top: 1px solid rgba(255,255,255,0.06); padding: 48px; display: flex; justify-content: space-between; align-items: center; }
+  .footer-brand { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: white; line-height: 1.5; }
+  .footer-sub { font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+  .footer-links { display: flex; gap: 32px; list-style: none; }
+  .footer-links a { font-size: 13px; color: rgba(255,255,255,0.5); text-decoration: none; transition: color 0.2s; }
+  .footer-links a:hover { color: white; }
+  .footer-copy { font-size: 11px; color: rgba(255,255,255,0.2); margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a class="nav-logo" href="index.html">Port City<br>Leash Club</a>
+  <ul class="nav-links">
+    <li><a href="faq.html">FAQ</a></li>
+    <li><a href="#">Login</a></li>
+    <li><button class="btn-nav" onclick="location.href='membership-request.html'">Join the Club</button></li>
+  </ul>
+</nav>
+
+<!-- PAGE HERO -->
+<div class="page-hero">
+  <div class="page-hero-inner">
+    <p class="eyebrow">Support</p>
+    <h1 class="page-headline">Frequently asked questions</h1>
+    <p class="page-sub">Everything you need to know about Port City Leash Club. Can't find what you're looking for? Email us at hello@portcityleashclub.com.</p>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="faq-layout">
+
+  <!-- FAQ content -->
+  <div class="faq-content">
+
+    <!-- GETTING STARTED -->
+    <div class="faq-category" id="getting-started">
+      <h2 class="category-title">Getting started</h2>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">How do I sign up?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Select your membership tier on the Join the Club page, fill in your details and your dog's profile, and submit your request. We'll reach out within 24 hours to schedule a meet and greet before your first walk.</p>
+          <p>You won't be charged until after the meet and greet and your first walk is confirmed.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">What is a meet and greet?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Before your first walk, we'll schedule a brief in-person visit at your home. This gives your dog a chance to meet their walker in a familiar environment, and gives us a chance to learn your dog's personality, preferences, and any special needs firsthand.</p>
+          <p>Meet and greets are included at no charge and typically take 20-30 minutes.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">When will I be charged?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>You won't be charged when you submit your request. Billing begins after your meet and greet is complete and your first walk is scheduled. From that point, you'll be billed at the start of each month based on walks scheduled for that month.</p>
+          <p>Any add-on walks or services booked mid-month are charged at the time of booking.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">Do you serve my neighborhood?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>We currently serve the 28403 zip code and surrounding Wilmington neighborhoods. Use the address checker on our homepage to confirm your address is within our service area.</p>
+          <p>If you're outside our current area, you can sign up to be notified when we expand — we're growing quickly.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- MEMBERSHIP -->
+    <div class="faq-category" id="membership">
+      <h2 class="category-title">Membership</h2>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">What's the difference between the three tiers?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p><strong>Essential ($26/walk)</strong> is designed for 1-2 walks per week. You set a recurring schedule and book walks as you need them throughout the month.</p>
+          <p><strong>Standard ($25/walk)</strong> is our most popular tier, designed for 3-4 walks per week. Same scheduling flexibility as Essential, with a slightly lower per-walk rate and a welcome gift.</p>
+          <p><strong>Daily ($22/walk)</strong> is every weekday, every week. No booking needed — your walker simply shows up on your standing schedule. Includes priority scheduling, a welcome gift, and 10% off all other services.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">Can I change my membership tier?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Yes. You can upgrade or downgrade your membership tier at any time through the member portal. Changes take effect at the start of your next billing cycle.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">Can I pause my membership?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Yes. You can place your membership on a vacation hold up to twice per year, for a minimum of one week and a maximum of two weeks per hold. No charge during an active hold.</p>
+          <p>Holds must be requested with at least 48 hours notice before the hold begins. You can request a hold through the member portal or by emailing hello@portcityleashclub.com.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">How do I cancel my membership?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>You can cancel anytime through the member portal or by emailing us. Cancellations take effect at the end of the current billing cycle. Any walks already scheduled and within the 48-hour window will still be charged.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">Is there an enrollment fee?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>No. There is no enrollment fee to join the Leash Club. You're only charged for walks scheduled each month.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- SCHEDULING -->
+    <div class="faq-category" id="scheduling">
+      <h2 class="category-title">Scheduling</h2>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">How does scheduling work?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>At signup, you select your preferred days and time frame (morning, early afternoon, or late afternoon). Your schedule auto-populates each month based on these preferences.</p>
+          <p>You can adjust individual dates at any time through the member portal, as long as changes are made at least 48 hours before the scheduled walk.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">What time frames are available?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>We offer three time frames: <strong>Morning</strong>, <strong>Early Afternoon</strong>, and <strong>Late Afternoon</strong>. You select a time frame rather than a specific time. We'll confirm the specific arrival window the evening before your walk.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">Can I reschedule a walk?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Yes. You can move a walk to any available date in the current or following month through the member portal. Changes must be made at least 48 hours before the scheduled walk.</p>
+          <p>Walks cancelled or changed within the 48-hour window will still be charged since your walker has already been assigned.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">What happens if I need to cancel a walk last minute?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Walks cancelled within 48 hours of the scheduled time are still charged. This protects our walkers who have already committed their time to your slot.</p>
+          <p>We understand that emergencies happen. If you have an exceptional circumstance, reach out to us directly and we'll do our best to work with you.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">Are weekend walks available?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Yes. Weekend walks are available as an add-on for all members. You can book a weekend walk through the member portal at the standard per-walk rate for your tier.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- OUR TEAM -->
+    <div class="faq-category" id="our-team">
+      <h2 class="category-title">Our team</h2>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">Who are the walkers?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Our walkers are carefully selected, locally based dog lovers — many from the UNCW community. Every walker on our team is background-checked, pet first aid certified, and personally trained before their first walk.</p>
+          <p>We don't use a large rotating pool of strangers. Our team is small, trusted, and held to a consistent standard of care.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">Will my dog always have the same walker?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>We work hard to keep your dog with a consistent, familiar walker. Your dog's detailed profile is on file and reviewed by every walker before they arrive, so even if there's a change, your dog's preferences and needs are always known.</p>
+          <p>Consistency is one of our core commitments — your dog isn't a booking in a queue.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">Are your walkers insured?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Yes. Port City Leash Club carries full pet care liability insurance covering all walks and services. Every walker operates under this coverage, so you and your dog are always protected.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">What happens if something goes wrong during a walk?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Your walker will contact you immediately. For anything serious, we'll take your dog to the vet and you'll hear from us directly — not after the fact. All incidents are documented and followed up by our team.</p>
+          <p>Our liability insurance covers vet costs resulting from incidents during a walk.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- SERVICES -->
+    <div class="faq-category" id="services">
+      <h2 class="category-title">Services</h2>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">What's included in a standard walk?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Every 30-minute walk includes your walker arriving at the scheduled time, a leashed walk in your neighborhood, photos taken during the walk, and a written summary sent to you when they're done.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">What's the difference between a drop-in visit and an overnight stay?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p><strong>Drop-in visits</strong> are 20-minute check-ins while you're away — feeding, playtime, and a photo update. Most pet owners book 2-3 per day for short trips.</p>
+          <p><strong>Overnight stays</strong> are 12 hours in your home. Your walker arrives in the evening, stays overnight, and provides a morning walk before leaving. Ideal if your dog needs continuous company or you want peace of mind for longer trips.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">Do you offer services for non-members?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Yes. Single walks are available to non-members at $29 per walk. Pet sitting services (drop-ins and overnights) are also available without a membership. You can request a service on our website.</p>
+          <p>Members receive discounts on all services as part of their membership benefits.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">Is there a holiday surcharge?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Yes. A 30% holiday surcharge applies to all services on major holidays including Christmas, Thanksgiving, New Year's, and Easter. This surcharge also applies to our walkers, so they're fairly compensated for working during the holidays.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- BILLING -->
+    <div class="faq-category" id="billing">
+      <h2 class="category-title">Billing</h2>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">How does billing work?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>At the start of each month, you're charged for all walks scheduled that month at your membership per-walk rate. If you add a walk mid-month, you're charged at the time of booking.</p>
+          <p>There are no flat monthly fees — you only pay for the walks you schedule.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">What payment methods do you accept?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>We accept all major credit and debit cards through our secure payment processor (Stripe). Payment details are stored securely and never shared.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">Can I get a refund for a cancelled walk?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Walks cancelled more than 48 hours before the scheduled time are not charged. Walks cancelled within 48 hours are charged in full. We're unable to offer refunds for same-day cancellations since our walkers have already committed their time.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">Will I receive invoices?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Yes. You'll receive an email receipt each time you're charged. A full billing history is also available in your member portal.</p>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<!-- CTA -->
+<div class="faq-cta">
+  <h2 class="cta-headline">Still have questions?</h2>
+  <p class="cta-sub">Reach us at hello@portcityleashclub.com and we'll get back to you within 24 hours.</p>
+  <button class="btn-cta" onclick="location.href='membership-request.html'">Join the Leash Club</button>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div>
+    <div class="footer-brand">Port City Leash Club</div>
+    <div class="footer-sub">Wilmington, NC · portcityleashclub.com</div>
+    <div class="footer-sub">hello@portcityleashclub.com</div>
+    <div class="footer-copy">© 2026 Port City Leash Club. All rights reserved.</div>
+  </div>
+  <ul class="footer-links">
+    <li><a href="faq.html">FAQ</a></li>
+    <li><a href="#">Login</a></li>
+    <li><a href="membership-request.html">Join the Club</a></li>
+  </ul>
+</footer>
+
+<script>
+  // Accordion
+  function toggleFaq(btn) {
+    const item = btn.closest('.faq-item');
+    const isOpen = item.classList.contains('open');
+    document.querySelectorAll('.faq-item.open').forEach(i => i.classList.remove('open'));
+    if (!isOpen) item.classList.add('open');
+  }
+
+  // Sidebar active state on scroll
+  const categories = document.querySelectorAll('.faq-category');
+  const navLinks = document.querySelectorAll('.faq-nav a');
+
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navLinks.forEach(a => a.classList.remove('active'));
+        const active = document.querySelector(`.faq-nav a[href="#${entry.target.id}"]`);
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { threshold: 0.3, rootMargin: '-80px 0px -60% 0px' });
+
+  categories.forEach(c => observer.observe(c));
+</script>
+</body>
+</html>
