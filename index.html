@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Port City Leash Club</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -488,27 +490,8 @@
 
       </div>
 
-      <!-- Right: map -->
-      <div style="border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,0.08);height:380px;background:#e8e0d5;">
-        <svg width="100%" height="100%" viewBox="0 0 600 380" xmlns="http://www.w3.org/2000/svg" style="display:block;">
-          <rect width="600" height="380" fill="#e8e0d5"/>
-          <path d="M0,200 Q60,180 90,230 Q110,270 100,380 L0,380 Z" fill="#b8cfd8" opacity="0.6"/>
-          <line x1="0" y1="130" x2="600" y2="130" stroke="white" stroke-width="2" opacity="0.5"/>
-          <line x1="0" y1="195" x2="600" y2="195" stroke="white" stroke-width="1.5" opacity="0.4"/>
-          <line x1="0" y1="255" x2="600" y2="255" stroke="white" stroke-width="1.5" opacity="0.4"/>
-          <line x1="0" y1="310" x2="600" y2="310" stroke="white" stroke-width="1" opacity="0.3"/>
-          <line x1="130" y1="0" x2="130" y2="380" stroke="white" stroke-width="1.5" opacity="0.4"/>
-          <line x1="240" y1="0" x2="240" y2="380" stroke="white" stroke-width="2" opacity="0.5"/>
-          <line x1="370" y1="0" x2="370" y2="380" stroke="white" stroke-width="1.5" opacity="0.4"/>
-          <line x1="490" y1="0" x2="490" y2="380" stroke="white" stroke-width="1" opacity="0.3"/>
-          <path d="M140,55 Q240,35 370,50 Q460,62 510,90 Q550,115 555,160 Q558,200 530,240 Q495,278 430,295 Q350,312 265,305 Q185,295 150,260 Q120,225 125,165 Q130,95 140,55 Z" fill="#8FA8A2" opacity="0.45"/>
-          <path d="M140,55 Q240,35 370,50 Q460,62 510,90 Q550,115 555,160 Q558,200 530,240 Q495,278 430,295 Q350,312 265,305 Q185,295 150,260 Q120,225 125,165 Q130,95 140,55 Z" fill="none" stroke="#0D1B2A" stroke-width="2" opacity="0.5"/>
-          <circle cx="315" cy="180" r="8" fill="#C17B6F"/>
-          <circle cx="315" cy="180" r="14" fill="#C17B6F" opacity="0.2"/>
-          <rect x="228" y="198" width="174" height="26" rx="4" fill="white" opacity="0.85"/>
-          <text x="315" y="215" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="11" font-weight="500" fill="#0D1B2A" letter-spacing="1" opacity="0.8">WILMINGTON, NC</text>
-        </svg>
-      </div>
+      <!-- Right: Leaflet map -->
+      <div id="map" style="border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,0.08);height:380px;background:#e8e0d5;"></div>
 
     </div>
 
@@ -632,10 +615,119 @@
 <script>
   // Service zip codes
   const SERVICE_ZIPS = ['28403', '28480'];
+  
+  // Initialize Leaflet map
+  const map = L.map('map').setView([34.2257, -77.9447], 12); // Wilmington, NC coordinates
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19
+  }).addTo(map);
+  
+  // Add service areas (circles)
+  const serviceAreas = [
+    { lat: 34.2257, lng: -77.9447, name: '28403 (Primary)', radius: 3000, color: '#C17B6F' },
+    { lat: 34.2080, lng: -77.8010, name: '28480 (Wrightsville Beach)', radius: 2500, color: '#8FA8A2' }
+  ];
+  
+  serviceAreas.forEach(area => {
+    L.circle([area.lat, area.lng], {
+      color: area.color,
+      fillColor: area.color,
+      fillOpacity: 0.2,
+      weight: 2,
+      radius: area.radius
+    }).addTo(map).bindPopup(area.name);
+  });
+  
+  // Add Wilmington center marker
+  L.marker([34.2257, -77.9447], {
+    icon: L.divIcon({
+      className: 'leaflet-div-icon',
+      html: '<div style="background-color: #C17B6F; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3);"></div>',
+      iconSize: [20, 20],
+      iconAnchor: [10, 10]
+    })
+  }).addTo(map).bindPopup('Wilmington, NC');
+
+  // Nominatim autocomplete
+  const addressInput = document.getElementById('address-input');
+  const suggestionsList = document.createElement('ul');
+  suggestionsList.id = 'suggestions';
+  suggestionsList.style.cssText = `
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid rgba(0,0,0,0.1);
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    list-style: none;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+    margin: 0;
+    padding: 0;
+    display: none;
+  `;
+  addressInput.parentElement.style.position = 'relative';
+  addressInput.parentElement.appendChild(suggestionsList);
+
+  let autocompleteTimeout;
+  addressInput.addEventListener('input', (e) => {
+    clearTimeout(autocompleteTimeout);
+    const query = e.target.value.trim();
+    
+    if (query.length < 3) {
+      suggestionsList.style.display = 'none';
+      return;
+    }
+
+    autocompleteTimeout = setTimeout(() => {
+      fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)},Wilmington,NC&format=json&limit=5`)
+        .then(res => res.json())
+        .then(data => {
+          suggestionsList.innerHTML = '';
+          if (data.length > 0) {
+            data.forEach(item => {
+              const li = document.createElement('li');
+              li.style.cssText = `
+                padding: 10px 16px;
+                border-bottom: 1px solid rgba(0,0,0,0.05);
+                cursor: pointer;
+                font-size: 13px;
+              `;
+              li.textContent = item.display_name;
+              li.addEventListener('click', () => {
+                addressInput.value = item.display_name;
+                suggestionsList.style.display = 'none';
+                // Auto-check the address
+                document.getElementById('check-address-btn').click();
+              });
+              li.addEventListener('mouseover', () => {
+                li.style.background = 'rgba(0,0,0,0.05)';
+              });
+              li.addEventListener('mouseout', () => {
+                li.style.background = 'transparent';
+              });
+              suggestionsList.appendChild(li);
+            });
+            suggestionsList.style.display = 'block';
+          }
+        })
+        .catch(err => console.error('Autocomplete error:', err));
+    }, 300);
+  });
+
+  // Close suggestions when clicking elsewhere
+  document.addEventListener('click', (e) => {
+    if (e.target !== addressInput) {
+      suggestionsList.style.display = 'none';
+    }
+  });
 
   // Address search functionality
   const checkBtn = document.getElementById('check-address-btn');
-  const addressInput = document.getElementById('address-input');
   const resultIn = document.getElementById('result-in');
   const resultOut = document.getElementById('result-out');
   const notifyEmail = document.getElementById('notify-email');
@@ -691,7 +783,6 @@
     notifyBtn.style.display = 'none';
     notifyConfirm.style.display = 'block';
     
-    // TODO: Later, send email to backend for storing in waitlist
     console.log('Email captured:', email);
   });
 
