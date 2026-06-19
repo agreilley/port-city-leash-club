@@ -199,8 +199,8 @@
 
   html { scroll-behavior: smooth; }
   .founder-section { background: var(--warm-white); }
-  .founder-layout { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 48px; align-items: center; }
-  .founder-photo { border-radius: 8px; overflow: hidden; height: 640px; background: var(--sand); border:1px solid rgba(0,0,0,0.06); }
+  .founder-layout { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 48px; align-items: start; }
+  .founder-photo { border-radius: 8px; overflow: hidden; height: calc(100% - 48px); min-height: 480px; max-height: 580px; background: var(--sand); border:1px solid rgba(0,0,0,0.06); }
   .founder-copy { background: white; border:1px solid rgba(0,0,0,0.06); border-radius:8px; padding: 44px 42px; }
   .founder-copy p { font-size: 15px; color: var(--text-mid); line-height: 1.8; margin-bottom: 18px; }
   .founder-signature { margin-top: 28px; }
