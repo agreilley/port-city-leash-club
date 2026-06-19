@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Change Membership - The Leash Club</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      background: #f5f3ed;
+      color: #0D1B2A;
+    }
+
+    .upgrade-container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+
+    .upgrade-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .upgrade-header h1 {
+      font-size: 32px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .upgrade-header p {
+      font-size: 16px;
+      color: #888;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    .tiers-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+
+    .tier-card {
+      background: white;
+      border: 2px solid #ddd;
+      border-radius: 12px;
+      padding: 32px 24px;
+      text-align: center;
+      position: relative;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+
+    .tier-card:hover {
+      border-color: #C17B6F;
+      box-shadow: 0 8px 24px rgba(193, 123, 111, 0.1);
+    }
+
+    .tier-card.selected {
+      border-color: #C17B6F;
+      background: #fcf8f5;
+      box-shadow: 0 12px 32px rgba(193, 123, 111, 0.2);
+    }
+
+    .tier-card.current {
+      background: #f0f0f0;
+    }
+
+    .current-badge {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: #8FA8A2;
+      color: white;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .tier-name {
+      font-size: 24px;
+      font-weight: 500;
+      margin-bottom: 12px;
+    }
+
+    .tier-description {
+      font-size: 14px;
+      color: #888;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    .tier-price {
+      font-size: 28px;
+      font-weight: 500;
+      color: #C17B6F;
+      margin-bottom: 4px;
+    }
+
+    .tier-price-period {
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 24px;
+    }
+
+    .tier-features {
+      list-style: none;
+      margin-bottom: 24px;
+      text-align: left;
+    }
+
+    .tier-features li {
+      font-size: 13px;
+      color: #555;
+      padding: 8px 0;
+      border-bottom: 0.5px solid #eee;
+    }
+
+    .tier-features li:last-child {
+      border-bottom: none;
+    }
+
+    .tier-features li::before {
+      content: "✓ ";
+      color: #8FA8A2;
+      font-weight: 500;
+      margin-right: 8px;
+    }
+
+    .tier-button {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tier-card.selected .tier-button,
+    .tier-button-primary {
+      background: #C17B6F;
+      color: white;
+    }
+
+    .tier-button-primary:hover {
+      background: #b06a60;
+    }
+
+    .tier-button-secondary {
+      background: white;
+      color: #888;
+      border: 1px solid #ddd;
+    }
+
+    .tier-button-secondary:hover {
+      border-color: #C17B6F;
+      color: #C17B6F;
+    }
+
+    .tier-button-current {
+      background: #ddd;
+      color: #888;
+      cursor: default;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+
+    button {
+      padding: 12px 28px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .btn-confirm {
+      background: #C17B6F;
+      color: white;
+    }
+
+    .btn-confirm:hover {
+      background: #b06a60;
+    }
+
+    .btn-cancel {
+      background: transparent;
+      color: #888;
+      border: 0.5px solid #ddd;
+    }
+
+    .btn-cancel:hover {
+      background: #f5f3ed;
+    }
+
+    .comparison-section {
+      background: white;
+      padding: 32px;
+      border-radius: 12px;
+      margin-top: 48px;
+    }
+
+    .comparison-section h2 {
+      font-size: 20px;
+      font-weight: 500;
+      margin-bottom: 24px;
+    }
+
+    .comparison-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .comparison-table th {
+      text-align: left;
+      font-size: 12px;
+      font-weight: 500;
+      color: #888;
+      border-bottom: 0.5px solid #ddd;
+      padding: 12px;
+    }
+
+    .comparison-table td {
+      padding: 12px;
+      border-bottom: 0.5px solid #ddd;
+      font-size: 13px;
+    }
+
+    .comparison-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    @media (max-width: 768px) {
+      .tiers-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="upgrade-container">
+    <div class="upgrade-header">
+      <h1>Choose Your Plan</h1>
+      <p>Select the membership that works best for Scout</p>
+    </div>
+
+    <div class="tiers-grid">
+      <!-- Essential Tier -->
+      <div class="tier-card" onclick="selectTier('essential')">
+        <div class="tier-name">Essential</div>
+        <div class="tier-description">Once a week</div>
+        <div class="tier-price">$129</div>
+        <div class="tier-price-period">/month</div>
+        <ul class="tier-features">
+          <li>5 walks per month</li>
+          <li>Flexible scheduling</li>
+          <li>Same walker assignments</li>
+          <li>Mobile app access</li>
+        </ul>
+        <button type="button" class="tier-button tier-button-secondary">Select</button>
+      </div>
+
+      <!-- Standard Tier (Current) -->
+      <div class="tier-card current" id="standardCard">
+        <div class="current-badge">Current Plan</div>
+        <div class="tier-name">Standard</div>
+        <div class="tier-description">Twice a week</div>
+        <div class="tier-price">$249</div>
+        <div class="tier-price-period">/month</div>
+        <ul class="tier-features">
+          <li>10 walks per month</li>
+          <li>Flexible scheduling</li>
+          <li>Same walker assignments</li>
+          <li>Mobile app access</li>
+          <li>10% off add-ons</li>
+        </ul>
+        <button type="button" class="tier-button tier-button-current" disabled>Current Plan</button>
+      </div>
+
+      <!-- Daily Tier -->
+      <div class="tier-card" onclick="selectTier('daily')">
+        <div class="tier-name">Daily</div>
+        <div class="tier-description">Every weekday</div>
+        <div class="tier-price">$429</div>
+        <div class="tier-price-period">/month</div>
+        <ul class="tier-features">
+          <li>~21 walks per month</li>
+          <li>Consistent schedule</li>
+          <li>Same walker assignments</li>
+          <li>Mobile app access</li>
+          <li>10% off add-ons</li>
+        </ul>
+        <button type="button" class="tier-button tier-button-secondary">Upgrade</button>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="action-buttons">
+      <button class="btn-cancel" onclick="window.history.back()">Cancel</button>
+      <button class="btn-confirm" id="confirmButton" style="display: none;">Confirm Change</button>
+    </div>
+
+    <!-- Comparison Table -->
+    <div class="comparison-section">
+      <h2>Detailed Comparison</h2>
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th style="width: 30%;">Feature</th>
+            <th style="width: 23%;">Essential</th>
+            <th style="width: 23%;">Standard</th>
+            <th style="width: 24%;">Daily</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Monthly Walks</strong></td>
+            <td>5</td>
+            <td>10</td>
+            <td>~21</td>
+          </tr>
+          <tr>
+            <td><strong>Price</strong></td>
+            <td>$129/month</td>
+            <td>$249/month</td>
+            <td>$429/month</td>
+          </tr>
+          <tr>
+            <td><strong>Cost per Walk</strong></td>
+            <td>$25.80</td>
+            <td>$24.90</td>
+            <td>$20.43</td>
+          </tr>
+          <tr>
+            <td><strong>Schedule Flexibility</strong></td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>No (fixed Mon-Fri)</td>
+          </tr>
+          <tr>
+            <td><strong>Same Walker</strong></td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <td><strong>Add-on Discount</strong></td>
+            <td>Regular price</td>
+            <td>10% off</td>
+            <td>10% off</td>
+          </tr>
+          <tr>
+            <td><strong>Rollover Credits</strong></td>
+            <td>Up to 4</td>
+            <td>Up to 4</td>
+            <td>Not applicable</td>
+          </tr>
+          <tr>
+            <td><strong>Pause Membership</strong></td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    let selectedTier = null;
+
+    function selectTier(tier) {
+      selectedTier = tier;
+      
+      // Update UI
+      document.querySelectorAll('.tier-card').forEach(card => {
+        card.classList.remove('selected');
+      });
+
+      if (tier === 'essential') {
+        document.querySelectorAll('.tier-card')[0].classList.add('selected');
+      } else if (tier === 'daily') {
+        document.querySelectorAll('.tier-card')[2].classList.add('selected');
+      }
+
+      // Show confirm button
+      document.getElementById('confirmButton').style.display = 'block';
+    }
+
+    document.getElementById('confirmButton').addEventListener('click', function() {
+      if (!selectedTier) return;
+
+      const tierNames = {
+        'essential': 'Essential',
+        'daily': 'Daily'
+      };
+
+      if (selectedTier === 'standard') {
+        alert('You are already on the Standard plan');
+      } else {
+        alert(`Upgrading to ${tierNames[selectedTier]} plan...`);
+        // In real implementation, would submit to backend
+        setTimeout(() => {
+          alert('Plan updated successfully!');
+          window.history.back();
+        }, 1000);
+      }
+    });
+  </script>
+</body>
+</html>
