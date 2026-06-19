@@ -58,6 +58,14 @@
   .day-chip.selected { border-color:var(--rust); background:#fffaf8; }
   .day-chip.disabled { opacity: 0.5; pointer-events: none; }
 
+  .time-grid { display:grid; grid-template-columns: repeat(3,1fr); gap:12px; }
+  .time-card { border:1px solid rgba(0,0,0,0.1); background:#fff; border-radius:8px; padding:16px; cursor:pointer; transition: all .2s; position:relative; text-align:center; }
+  .time-card:hover { box-shadow:0 8px 24px rgba(0,0,0,.06); }
+  .time-card input { position:absolute; opacity:0; pointer-events:none; }
+  .time-card.selected { border-color:var(--rust); background:#fffaf8; box-shadow:0 8px 28px rgba(193,123,111,.14); }
+  .time-title { font-size:13px; font-weight:500; color:var(--navy); margin-bottom:2px; }
+  .time-sub { font-size:11px; color:var(--text-light); }
+
   .sidebar { position:sticky; top:92px; display:flex; flex-direction:column; gap:18px; }
   .summary-card { background:var(--navy); color:white; border-radius:8px; padding:28px; }
   .summary-kicker { font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--seafoam-light); margin-bottom:8px; }
@@ -206,6 +214,27 @@
             <div>Friday</div>
           </label>
         </div>
+
+        <div style="margin-top: 28px;">
+          <p style="font-size: 13px; font-weight: 500; color: var(--navy); margin-bottom: 12px;">Preferred Time Window</p>
+          <div class="time-grid">
+            <label class="time-card selected" onclick="selectTime(this)">
+              <input type="radio" name="timeWindow" value="Early Morning" checked>
+              <div class="time-title">Early Morning</div>
+              <div class="time-sub">7–10am</div>
+            </label>
+            <label class="time-card" onclick="selectTime(this)">
+              <input type="radio" name="timeWindow" value="Early Afternoon">
+              <div class="time-title">Early Afternoon</div>
+              <div class="time-sub">11am–1pm</div>
+            </label>
+            <label class="time-card" onclick="selectTime(this)">
+              <input type="radio" name="timeWindow" value="Late Afternoon">
+              <div class="time-title">Late Afternoon</div>
+              <div class="time-sub">2–5pm</div>
+            </label>
+          </div>
+        </div>
       </div>
 
       <!-- Submit -->
@@ -345,6 +374,11 @@
 
       updateEstimate();
     }, 0);
+  }
+
+  function selectTime(element) {
+    document.querySelectorAll('.time-card').forEach(c => c.classList.remove('selected'));
+    element.closest('.time-card').classList.add('selected');
   }
 
   function submitMembershipChange(e) {
