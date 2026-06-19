@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pause Membership - The Leash Club</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+      background: linear-gradient(135deg, #0D1B2A 0%, #1a2a3a 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .pause-container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      width: 100%;
+      max-width: 450px;
+      padding: 40px;
+    }
+
+    .pause-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .pause-header h1 {
+      font-size: 24px;
+      font-weight: 500;
+      color: #0D1B2A;
+      margin-bottom: 8px;
+    }
+
+    .pause-header p {
+      font-size: 13px;
+      color: #888;
+      line-height: 1.6;
+    }
+
+    .form-group {
+      margin-bottom: 24px;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 12px;
+      font-weight: 500;
+    }
+
+    .duration-options {
+      display: flex;
+      gap: 12px;
+    }
+
+    .duration-card {
+      flex: 1;
+      padding: 16px;
+      border: 1.5px solid #ddd;
+      border-radius: 8px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+    }
+
+    .duration-card:hover {
+      border-color: #8FA8A2;
+      background: #f9f8f5;
+    }
+
+    .duration-card.selected {
+      border-color: #C17B6F;
+      background: #fcf8f5;
+    }
+
+    .duration-card h3 {
+      font-size: 16px;
+      font-weight: 500;
+      margin: 0 0 4px;
+    }
+
+    .duration-card p {
+      font-size: 12px;
+      color: #888;
+      margin: 0;
+    }
+
+    .info-box {
+      background: #f0f5f5;
+      border: 0.5px solid #8FA8A2;
+      border-left: 3px solid #8FA8A2;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+
+    .info-box p {
+      font-size: 13px;
+      color: #555;
+      margin: 0;
+      line-height: 1.5;
+    }
+
+    .date-info {
+      background: #f9f8f5;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+
+    .date-info p {
+      font-size: 12px;
+      color: #888;
+      margin: 0 0 6px;
+    }
+
+    .date-info .date-value {
+      font-size: 14px;
+      font-weight: 500;
+      color: #0D1B2A;
+    }
+
+    .buttons-group {
+      display: flex;
+      gap: 12px;
+    }
+
+    button {
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .btn-cancel {
+      flex: 1;
+      background: transparent;
+      color: #888;
+      border: 0.5px solid #ddd;
+    }
+
+    .btn-cancel:hover {
+      background: #f5f3ed;
+      border-color: #ccc;
+    }
+
+    .btn-confirm {
+      flex: 1;
+      background: #C17B6F;
+      color: white;
+    }
+
+    .btn-confirm:hover {
+      background: #b06a60;
+    }
+
+    .btn-confirm:disabled {
+      background: #ddd;
+      color: #888;
+      cursor: not-allowed;
+    }
+
+    .warning-box {
+      background: #fff3cd;
+      border: 0.5px solid #ffc107;
+      border-left: 3px solid #ffc107;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+
+    .warning-box p {
+      font-size: 12px;
+      color: #856404;
+      margin: 0;
+      line-height: 1.5;
+    }
+
+    .success-message {
+      background: #e8f5e9;
+      color: #2e7d32;
+      padding: 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      border: 0.5px solid #4caf50;
+      display: none;
+    }
+
+    .success-message.show {
+      display: block;
+    }
+
+    .faq-section {
+      margin-top: 24px;
+      padding-top: 24px;
+      border-top: 0.5px solid #eee;
+    }
+
+    .faq-item {
+      margin-bottom: 16px;
+    }
+
+    .faq-item h4 {
+      font-size: 12px;
+      font-weight: 500;
+      color: #0D1B2A;
+      margin-bottom: 4px;
+    }
+
+    .faq-item p {
+      font-size: 12px;
+      color: #888;
+      margin: 0;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="pause-container">
+    <div class="pause-header">
+      <h1>Pause Your Membership</h1>
+      <p>Take a break from The Leash Club without losing your membership</p>
+    </div>
+
+    <!-- Success Message -->
+    <div class="success-message" id="successMessage">
+      Your membership pause has been confirmed. Scout's walks will resume on <span id="resumeDate"></span>.
+    </div>
+
+    <!-- Info Box -->
+    <div class="info-box">
+      <p>You can pause your membership up to 2 times per year for 1-2 weeks at a time. No charge during the pause.</p>
+    </div>
+
+    <!-- Duration Selection -->
+    <div class="form-group">
+      <label>How long do you need?</label>
+      <div class="duration-options">
+        <div class="duration-card" onclick="selectDuration(1, this)">
+          <h3>1 Week</h3>
+          <p>7 days</p>
+        </div>
+        <div class="duration-card" onclick="selectDuration(2, this)">
+          <h3>2 Weeks</h3>
+          <p>14 days</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pause Details -->
+    <div id="pauseDetails" style="display: none;">
+      <div class="date-info">
+        <p>Pause starts</p>
+        <div class="date-value" id="pauseStartDate">Today</div>
+        <p style="margin-top: 8px; margin-bottom: 0;">Walks resume</p>
+        <div class="date-value" id="pauseResumeDate">N/A</div>
+      </div>
+
+      <div class="warning-box">
+        <p>Your next scheduled walk will be cancelled automatically. You'll be refunded the walk credit to your account.</p>
+      </div>
+
+      <div class="form-group">
+        <label>Reason for pause (optional)</label>
+        <select id="pauseReason" style="width: 100%; padding: 10px; border: 0.5px solid #ddd; border-radius: 8px; font-size: 14px;">
+          <option value="">Select a reason...</option>
+          <option value="vacation">Vacation or travel</option>
+          <option value="work">Work or schedule change</option>
+          <option value="health">Pet health or recovery</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+
+      <div class="buttons-group">
+        <button class="btn-cancel" onclick="cancelPause()">Cancel</button>
+        <button class="btn-confirm" id="confirmButton" onclick="confirmPause()">Confirm Pause</button>
+      </div>
+
+      <div class="faq-section">
+        <div class="faq-item">
+          <h4>What happens to my walks?</h4>
+          <p>Your next scheduled walk will be cancelled and you'll receive a walk credit. All other benefits of your membership pause.</p>
+        </div>
+        <div class="faq-item">
+          <h4>How do I resume?</h4>
+          <p>Your membership will automatically resume on the resume date. No action needed from you.</p>
+        </div>
+        <div class="faq-item">
+          <h4>Can I end the pause early?</h4>
+          <p>Yes, contact us anytime and we can resume your membership early. Call or email support.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- No Duration Selected Message -->
+    <div id="noDurationMessage" style="text-align: center; color: #888; font-size: 13px;">
+      Select how long you'd like to pause to continue
+    </div>
+  </div>
+
+  <script>
+    let selectedDuration = null;
+    const today = new Date(2026, 5, 20); // June 20, 2026 (demo date)
+
+    function selectDuration(weeks, element) {
+      selectedDuration = weeks;
+
+      // Update UI
+      document.querySelectorAll('.duration-card').forEach(card => {
+        card.classList.remove('selected');
+      });
+      element.classList.add('selected');
+
+      // Show pause details
+      document.getElementById('pauseDetails').style.display = 'block';
+      document.getElementById('noDurationMessage').style.display = 'none';
+
+      // Calculate dates
+      const pauseStart = new Date(today);
+      const pauseResume = new Date(today);
+      pauseResume.setDate(pauseResume.getDate() + weeks * 7);
+
+      // Format dates
+      const startDateStr = pauseStart.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      const resumeDateStr = pauseResume.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+      document.getElementById('pauseStartDate').textContent = startDateStr;
+      document.getElementById('pauseResumeDate').textContent = resumeDateStr;
+    }
+
+    function confirmPause() {
+      if (!selectedDuration) {
+        alert('Please select a duration');
+        return;
+      }
+
+      const reason = document.getElementById('pauseReason').value;
+      const pauseResume = new Date(today);
+      pauseResume.setDate(pauseResume.getDate() + selectedDuration * 7);
+      const resumeDateStr = pauseResume.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+      // Show success message
+      document.getElementById('resumeDate').textContent = resumeDateStr;
+      document.getElementById('successMessage').classList.add('show');
+
+      // Hide form
+      document.getElementById('pauseDetails').style.display = 'none';
+
+      // Show confirmation
+      setTimeout(() => {
+        alert(`Membership paused for ${selectedDuration} week${selectedDuration > 1 ? 's' : ''}. Walks resume on ${resumeDateStr}.`);
+        window.history.back();
+      }, 2000);
+    }
+
+    function cancelPause() {
+      selectedDuration = null;
+      document.querySelectorAll('.duration-card').forEach(card => {
+        card.classList.remove('selected');
+      });
+      document.getElementById('pauseDetails').style.display = 'none';
+      document.getElementById('noDurationMessage').style.display = 'block';
+      document.getElementById('successMessage').classList.remove('show');
+    }
+  </script>
+</body>
+</html>

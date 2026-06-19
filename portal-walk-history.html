@@ -285,7 +285,7 @@
         </div>
 
         <!-- Walk Cards -->
-        <div class="walk-card">
+        <div class="walk-card" data-month="6" data-year="2026" data-date="2026-06-19">
           <div class="walk-header">
             <div>
               <div class="walk-date">Wednesday, June 19</div>
@@ -317,7 +317,7 @@
           </div>
         </div>
 
-        <div class="walk-card">
+        <div class="walk-card" data-month="6" data-year="2026" data-date="2026-06-17">
           <div class="walk-header">
             <div>
               <div class="walk-date">Monday, June 17</div>
@@ -348,10 +348,10 @@
           </div>
         </div>
 
-        <div class="walk-card">
+        <div class="walk-card" data-month="5" data-year="2026" data-date="2026-05-15">
           <div class="walk-header">
             <div>
-              <div class="walk-date">Saturday, June 15</div>
+              <div class="walk-date">Saturday, May 15</div>
               <div class="walk-time">Late Afternoon • 30 min</div>
             </div>
             <div class="walk-status">Completed</div>
@@ -380,5 +380,80 @@
       </div>
     </div>
   </div>
+
+  <script>
+    // Today's date for "this month" and "last month" calculations
+    const today = new Date(2026, 5, 20); // June 20, 2026 (demo date)
+    const currentMonth = today.getMonth() + 1; // 1-12
+    const currentYear = today.getFullYear();
+    const lastMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+    const lastMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+
+    // Get all filter buttons and walk cards
+    const filterButtons = document.querySelectorAll('.filter-button');
+    const walkCards = document.querySelectorAll('.walk-card');
+
+    // Add event listeners to filter buttons
+    filterButtons.forEach(button => {
+      button.addEventListener('click', function() {
+        // Remove active class from all buttons
+        filterButtons.forEach(btn => btn.classList.remove('active'));
+        // Add active class to clicked button
+        this.classList.add('active');
+
+        // Determine which filter was clicked
+        const filterText = this.textContent.trim();
+        let filterMonth, filterYear;
+
+        if (filterText === 'All walks') {
+          // Show all walks
+          walkCards.forEach(card => card.style.display = 'block');
+        } else if (filterText === 'This month') {
+          // Show only this month's walks
+          filterMonth = currentMonth;
+          filterYear = currentYear;
+          filterWalksByMonth(filterMonth, filterYear);
+        } else if (filterText === 'Last month') {
+          // Show only last month's walks
+          filterMonth = lastMonth;
+          filterYear = lastMonthYear;
+          filterWalksByMonth(filterMonth, filterYear);
+        }
+      });
+    });
+
+    function filterWalksByMonth(month, year) {
+      walkCards.forEach(card => {
+        const cardMonth = parseInt(card.getAttribute('data-month'));
+        const cardYear = parseInt(card.getAttribute('data-year'));
+
+        if (cardMonth === month && cardYear === year) {
+          card.style.display = 'block';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+
+      // Check if any walks are visible
+      const visibleWalks = Array.from(walkCards).filter(card => card.style.display !== 'none');
+      if (visibleWalks.length === 0) {
+        // Show empty state message
+        const contentMax = document.querySelector('.content-max');
+        const existingEmpty = contentMax.querySelector('.empty-state');
+        if (!existingEmpty) {
+          const emptyState = document.createElement('div');
+          emptyState.className = 'empty-state';
+          emptyState.textContent = 'No walks found for this period.';
+          contentMax.appendChild(emptyState);
+        }
+      } else {
+        // Remove empty state if it exists
+        const emptyState = document.querySelector('.empty-state');
+        if (emptyState) {
+          emptyState.remove();
+        }
+      }
+    }
+  </script>
 </body>
 </html>
