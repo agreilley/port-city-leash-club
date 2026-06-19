@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard - The Leash Club</title>
+  <title>Dashboard - Port City Leash Club</title>
   <style>
     * {
       margin: 0;
@@ -33,8 +33,10 @@
     }
 
     .sidebar-logo {
-      font-size: 18px;
-      font-weight: 500;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      line-height: 1.3;
     }
 
     .sidebar-nav {
@@ -80,12 +82,11 @@
 
     .main-content {
       flex: 1;
-      padding: 32px;
+      padding: 40px;
       overflow-y: auto;
-    }
-
-    .content-max {
-      max-width: 900px;
+      max-width: 1100px;
+      margin: 0 auto;
+      width: 100%;
     }
 
     .page-header {
@@ -104,70 +105,329 @@
       margin: 0;
     }
 
-    .metric-cards {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-      margin-bottom: 32px;
-    }
-
-    .metric-card {
-      background: white;
-      padding: 16px;
+    /* Hero Card */
+    .hero-card {
+      background: linear-gradient(135deg, #C17B6F 0%, #8FA8A2 100%);
+      color: white;
+      padding: 40px;
       border-radius: 12px;
-      border: 0.5px solid #ddd;
+      margin-bottom: 32px;
+      box-shadow: 0 4px 12px rgba(13, 27, 42, 0.08);
+      display: grid;
+      grid-template-columns: 1fr 180px;
+      gap: 32px;
+      align-items: center;
     }
 
-    .metric-label {
-      font-size: 12px;
-      color: #888;
-      margin-bottom: 6px;
+    .hero-content h2 {
+      font-size: 32px;
+      font-weight: 500;
+      margin-bottom: 8px;
+      line-height: 1.2;
     }
 
-    .metric-value {
+    .hero-date {
       font-size: 18px;
+      margin-bottom: 20px;
+      opacity: 0.95;
+    }
+
+    .hero-walker {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      font-size: 15px;
+    }
+
+    .walker-avatar {
+      width: 40px;
+      height: 40px;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+    }
+
+    .hero-action {
+      display: inline-block;
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      color: white;
+      padding: 12px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .hero-action:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .hero-walker-detail {
+      text-align: right;
+    }
+
+    .hero-walker-photo {
+      width: 140px;
+      height: 140px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 48px;
+    }
+
+    /* Latest Update Card */
+    .update-card {
+      background: #FAF8F4;
+      border: 1px solid #E5E0D8;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 32px;
+      box-shadow: 0 1px 3px rgba(13, 27, 42, 0.04);
+    }
+
+    .update-header {
+      font-size: 16px;
+      font-weight: 500;
+      margin-bottom: 16px;
+      color: #0D1B2A;
+    }
+
+    .update-content {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    .update-text {
+      font-size: 14px;
+      color: #4A4A4A;
+      line-height: 1.6;
+    }
+
+    .update-text p {
+      margin-bottom: 8px;
+    }
+
+    .update-meta {
+      display: flex;
+      gap: 16px;
+      margin: 16px 0;
+      padding: 12px 0;
+      border-top: 1px solid rgba(0, 0, 0, 0.06);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .meta-item {
+      font-size: 13px;
+      color: #7A7A7A;
+    }
+
+    .meta-value {
       font-weight: 500;
       color: #0D1B2A;
     }
 
-    .metric-detail {
-      font-size: 12px;
-      color: #888;
-      margin-top: 4px;
+    .update-photos {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
     }
 
-    .calendar-section {
+    .photo-placeholder {
+      aspect-ratio: 1;
+      background: rgba(193, 123, 111, 0.1);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+
+    .view-report-btn {
+      background: #C17B6F;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .view-report-btn:hover {
+      background: #A36358;
+    }
+
+    /* Two Column Layout */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 32px;
+    }
+
+    /* Upcoming Walks */
+    .upcoming-section {
+      background: #FAF8F4;
+      border: 1px solid #E5E0D8;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 32px;
+      box-shadow: 0 1px 3px rgba(13, 27, 42, 0.04);
+    }
+
+    .section-title {
+      font-size: 16px;
+      font-weight: 500;
+      margin-bottom: 16px;
+      color: #0D1B2A;
+    }
+
+    .upcoming-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .upcoming-item {
+      padding: 12px;
       background: white;
+      border: 1px solid #E5E0D8;
+      border-radius: 6px;
+      font-size: 14px;
+      color: #0D1B2A;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .upcoming-item .day {
+      font-weight: 500;
+    }
+
+    .upcoming-item .time {
+      font-size: 12px;
+      color: #7A7A7A;
+    }
+
+    .view-calendar-btn {
+      width: 100%;
+      background: white;
+      border: 1px solid #E5E0D8;
+      padding: 10px;
+      border-radius: 6px;
+      margin-top: 12px;
+      cursor: pointer;
+      font-size: 13px;
+      color: #0D1B2A;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .view-calendar-btn:hover {
+      background: #FAF8F4;
+    }
+
+    /* Care Team */
+    .care-team-section {
+      background: #FAF8F4;
+      border: 1px solid #E5E0D8;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 1px 3px rgba(13, 27, 42, 0.04);
+    }
+
+    .team-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .team-member {
+      background: white;
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid #E5E0D8;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .member-avatar {
+      width: 48px;
+      height: 48px;
+      background: rgba(193, 123, 111, 0.15);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      flex-shrink: 0;
+    }
+
+    .member-info {
+      flex: 1;
+    }
+
+    .member-name {
+      font-weight: 500;
+      font-size: 14px;
+      color: #0D1B2A;
+      margin-bottom: 2px;
+    }
+
+    .member-role {
+      font-size: 12px;
+      color: #7A7A7A;
+    }
+
+    .member-badge {
+      font-size: 11px;
+      background: rgba(193, 123, 111, 0.2);
+      color: #C17B6F;
+      padding: 4px 8px;
+      border-radius: 4px;
+      margin-top: 4px;
+      display: inline-block;
+    }
+
+    /* Calendar */
+    .calendar-section {
+      background: #FAF8F4;
       padding: 24px;
       border-radius: 12px;
-      border: 0.5px solid #ddd;
+      border: 1px solid #E5E0D8;
+      box-shadow: 0 1px 3px rgba(13, 27, 42, 0.04);
+      margin-top: 32px;
     }
 
     .calendar-header {
       font-size: 16px;
       font-weight: 500;
       margin-bottom: 20px;
-    }
-
-    .day-headers {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      gap: 8px;
-      margin-bottom: 12px;
-    }
-
-    .day-header {
-      font-size: 12px;
-      color: #888;
-      font-weight: 500;
-      text-align: center;
+      color: #0D1B2A;
     }
 
     .calendar-grid {
       display: grid;
       grid-template-columns: repeat(7, 1fr);
       gap: 8px;
-      margin-bottom: 20px;
+    }
+
+    .day-header {
+      text-align: center;
+      font-size: 12px;
+      font-weight: 500;
+      color: #7A7A7A;
+      padding: 8px 0;
     }
 
     .calendar-day {
@@ -175,182 +435,68 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      border: 1px solid #E5E0D8;
+      border-radius: 6px;
       font-size: 13px;
-      color: #888;
-      border-radius: 8px;
+      background: white;
+      cursor: pointer;
+      transition: all 0.2s;
     }
 
-    .calendar-day.scheduled {
+    .calendar-day:hover {
+      box-shadow: 0 2px 6px rgba(13, 27, 42, 0.06);
+    }
+
+    .calendar-day.has-walk {
       background: #C17B6F;
       color: white;
-      cursor: pointer;
-      border: 2px solid #C17B6F;
-      font-weight: 500;
+      border-color: #C17B6F;
     }
 
-    .calendar-day.completed {
+    .calendar-day.past {
       background: #8FA8A2;
       color: white;
-      opacity: 0.6;
-      border: 2px solid #8FA8A2;
-      font-weight: 500;
+      border-color: #8FA8A2;
     }
 
-    .calendar-day.today {
-      border: 3px solid #0D1B2A;
-    }
-
-    .calendar-legend {
-      margin-top: 20px;
-      padding-top: 16px;
-      border-top: 0.5px solid #ddd;
-      font-size: 12px;
+    .calendar-nav {
       display: flex;
-      gap: 16px;
+      justify-content: space-between;
       align-items: center;
-    }
-
-    .legend-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .legend-color {
-      width: 12px;
-      height: 12px;
-      border-radius: 4px;
-    }
-
-    .modal {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.3);
-      z-index: 100;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .modal.show {
-      display: flex;
-    }
-
-    .modal-content {
-      background: white;
-      border-radius: 12px;
-      border: 0.5px solid #ddd;
-      width: 90%;
-      max-width: 420px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-      z-index: 101;
-    }
-
-    .modal-header {
-      padding: 20px;
-      border-bottom: 0.5px solid #ddd;
-    }
-
-    .modal-header h3 {
-      font-size: 16px;
-      font-weight: 500;
-      color: #0D1B2A;
-      margin: 0 0 4px;
-    }
-
-    .modal-header p {
-      font-size: 13px;
-      color: #888;
-      margin: 0;
-    }
-
-    .modal-body {
-      padding: 20px;
-    }
-
-    .detail-box {
       margin-bottom: 16px;
-      padding: 12px;
-      background: #f9f8f5;
-      border-radius: 8px;
     }
 
-    .detail-label {
-      font-size: 12px;
-      color: #888;
-      margin-bottom: 4px;
-    }
-
-    .detail-value {
-      font-size: 15px;
-      font-weight: 500;
-      color: #0D1B2A;
-      margin: 0;
-    }
-
-    .modal-footer {
-      display: flex;
-      gap: 12px;
-      padding: 16px;
-      border-top: 0.5px solid #ddd;
-      background: #f9f8f5;
-      border-radius: 0 0 12px 12px;
-    }
-
-    .modal-footer button {
-      flex: 1;
-      padding: 10px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 500;
+    .nav-btn {
+      background: white;
+      border: 1px solid #E5E0D8;
+      padding: 8px 12px;
+      border-radius: 6px;
       cursor: pointer;
-      border: none;
+      font-size: 13px;
+      transition: all 0.2s;
     }
 
-    .btn-secondary {
-      background: transparent;
-      color: #888;
-      border: 0.5px solid #ddd;
+    .nav-btn:hover {
+      background: #FAF8F4;
     }
 
-    .btn-primary {
-      background: #C17B6F;
-      color: white;
+    @media (max-width: 1200px) {
+      .dashboard-grid {
+        grid-template-columns: 1fr;
+      }
     }
 
     @media (max-width: 768px) {
-      .portal-container {
-        flex-direction: column;
+      .hero-card {
+        grid-template-columns: 1fr;
       }
 
-      .sidebar {
-        width: 100%;
-        flex-direction: row;
-        justify-content: space-between;
-        padding: 16px;
-        gap: 0;
-      }
-
-      .sidebar-nav {
-        flex-direction: row;
-        gap: 8px;
-        flex: 1;
-      }
-
-      .nav-item {
-        font-size: 12px;
-        padding: 8px;
+      .hero-walker-detail {
+        text-align: left;
       }
 
       .metric-cards {
         grid-template-columns: 1fr;
-      }
-
-      .main-content {
-        padding: 16px;
       }
     }
   </style>
@@ -359,355 +505,181 @@
   <div class="portal-container">
     <!-- Sidebar -->
     <div class="sidebar">
-      <div class="sidebar-logo">The Leash Club</div>
+      <div class="sidebar-logo">Port City Leash Club</div>
       <nav class="sidebar-nav">
         <a href="portal-dashboard.html" class="nav-item active">Dashboard</a>
         <a href="portal-pet-profile.html" class="nav-item">Pet Profile</a>
         <a href="portal-walk-history.html" class="nav-item">Walk History</a>
-        <a href="portal-extras.html" class="nav-item">Extras</a>
+        <a href="portal-extras.html" class="nav-item">Additional Care</a>
+        <a href="portal-messages.html" class="nav-item">Messages</a>
         <a href="portal-account.html" class="nav-item">Account</a>
       </nav>
       <div class="sidebar-pet">
         <div class="pet-name">Scout</div>
-        <div class="pet-info">Golden Retriever • 4 yrs</div>
+        <div class="pet-info">Golden Retriever • 5 years old</div>
       </div>
     </div>
 
     <!-- Main Content -->
     <div class="main-content">
-      <div class="content-max">
-        <div class="page-header">
-          <h1>Welcome back, Sarah</h1>
-          <p>Scout is all set for their walks</p>
-        </div>
+      <div class="page-header">
+        <h1>Welcome back, Sarah</h1>
+        <p>Scout is ready for adventure</p>
+      </div>
 
-        <!-- Walk Schedule Banner -->
-        <div style="background: linear-gradient(135deg, #C17B6F 0%, #8FA8A2 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 32px; display: flex; justify-content: space-between; align-items: center;">
+      <!-- Hero Card - Next Visit -->
+      <div class="hero-card">
+        <div class="hero-content">
+          <h2>Scout's Next Visit</h2>
+          <div class="hero-date">Wednesday, June 24</div>
+          <div class="hero-walker">
+            <div class="walker-avatar">M</div>
+            <div>
+              <div>Marcus</div>
+              <div style="font-size: 12px; opacity: 0.8;">Lead Walker</div>
+            </div>
+          </div>
+          <div style="font-size: 14px; margin-bottom: 12px; opacity: 0.95;">Early Morning (7:00 AM - 10:00 AM)</div>
+          <button class="hero-action">Request Schedule Change</button>
+        </div>
+        <div class="hero-walker-detail">
+          <div class="hero-walker-photo">🧑</div>
+        </div>
+      </div>
+
+      <!-- Latest Walk Update -->
+      <div class="update-card">
+        <div class="update-header">Latest Walk Update</div>
+        <div class="update-content">
           <div>
-            <div style="font-size: 12px; opacity: 0.9; margin-bottom: 4px;">Default Walk Schedule</div>
-            <div style="font-size: 18px; font-weight: 500;">Monday, Wednesday • Early Morning</div>
+            <div class="update-text">
+              <strong>June 19 • Marcus</strong>
+              <p style="margin-top: 8px;">Scout had a great time today! We did our usual route through Forest Hills park. Scout was full of energy and loved seeing the other dogs at the off-leash area.</p>
+            </div>
+            <div class="update-meta">
+              <div class="meta-item"><span class="meta-value">30 min</span> walk</div>
+              <div class="meta-item"><span class="meta-value">3</span> photos</div>
+            </div>
           </div>
-          <a href="portal-account.html" style="background: white; color: #C17B6F; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px; cursor: pointer;">Change Schedule</a>
-        </div>
-
-        <!-- Metric Cards -->
-        <div class="metric-cards">
-          <div class="metric-card">
-            <div class="metric-label">Membership</div>
-            <div class="metric-value">Standard</div>
-            <div class="metric-detail">Twice a week</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-label">Walks Remaining</div>
-            <div class="metric-value" id="walksRemaining">7 of 10</div>
-            <div class="metric-detail">This month</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-label">Next Walk</div>
-            <div class="metric-value" id="nextWalkDay">Tomorrow</div>
-            <div class="metric-detail" id="nextWalkTime">Early Morning</div>
+          <div class="update-photos">
+            <div class="photo-placeholder">📸</div>
+            <div class="photo-placeholder">📸</div>
+            <div class="photo-placeholder">📸</div>
           </div>
         </div>
+        <button class="view-report-btn">View Full Report</button>
+      </div>
 
-        <!-- Calendar -->
-        <div class="calendar-section">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <div class="calendar-header" style="margin: 0;" id="calendarMonthYear">June 2026</div>
-            <div style="display: flex; gap: 8px;">
-              <button onclick="previousMonth()" style="background: #f9f8f5; border: 0.5px solid #ddd; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; color: #888;">← Previous</button>
-              <button onclick="nextMonth()" style="background: #f9f8f5; border: 0.5px solid #ddd; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; color: #888;">Next →</button>
+      <div class="dashboard-grid">
+        <!-- Left Column -->
+        <div>
+          <!-- Upcoming Walks -->
+          <div class="upcoming-section">
+            <div class="section-title">Upcoming Walks</div>
+            <div class="upcoming-list">
+              <div class="upcoming-item">
+                <div>
+                  <div class="day">Wednesday, June 24</div>
+                  <div class="time">Early Morning</div>
+                </div>
+              </div>
+              <div class="upcoming-item">
+                <div>
+                  <div class="day">Monday, June 29</div>
+                  <div class="time">Early Morning</div>
+                </div>
+              </div>
+              <div class="upcoming-item">
+                <div>
+                  <div class="day">Wednesday, July 1</div>
+                  <div class="time">Early Morning</div>
+                </div>
+              </div>
+            </div>
+            <button class="view-calendar-btn">View Full Calendar</button>
+          </div>
+        </div>
+
+        <!-- Right Column -->
+        <div>
+          <!-- Care Team -->
+          <div class="care-team-section">
+            <div class="section-title">Your Care Team</div>
+            <div class="team-list">
+              <div class="team-member">
+                <div class="member-avatar">👨</div>
+                <div class="member-info">
+                  <div class="member-name">Marcus</div>
+                  <div class="member-role">Lead Walker</div>
+                  <div class="member-badge">Scout's Most Frequent Walker</div>
+                </div>
+              </div>
+              <div class="team-member">
+                <div class="member-avatar">👩</div>
+                <div class="member-info">
+                  <div class="member-name">Priya</div>
+                  <div class="member-role">Backup Walker</div>
+                </div>
+              </div>
             </div>
           </div>
+        </div>
+      </div>
 
-          <!-- Day headers -->
-          <div class="day-headers">
-            <div class="day-header">Sun</div>
-            <div class="day-header">Mon</div>
-            <div class="day-header">Tue</div>
-            <div class="day-header">Wed</div>
-            <div class="day-header">Thu</div>
-            <div class="day-header">Fri</div>
-            <div class="day-header">Sat</div>
-          </div>
+      <!-- Calendar -->
+      <div class="calendar-section">
+        <div class="calendar-nav">
+          <button class="nav-btn">← Previous</button>
+          <span style="font-weight: 500;">June 2026</span>
+          <button class="nav-btn">Next →</button>
+        </div>
+        <div class="calendar-grid">
+          <div class="day-header">Sun</div>
+          <div class="day-header">Mon</div>
+          <div class="day-header">Tue</div>
+          <div class="day-header">Wed</div>
+          <div class="day-header">Thu</div>
+          <div class="day-header">Fri</div>
+          <div class="day-header">Sat</div>
 
-          <!-- Calendar grid -->
-          <div class="calendar-grid" id="calendarGrid">
-            <!-- Generated by JavaScript -->
-          </div>
+          <div class="calendar-day past">31</div>
+          <div class="calendar-day has-walk">1</div>
+          <div class="calendar-day">2</div>
+          <div class="calendar-day has-walk">3</div>
+          <div class="calendar-day">4</div>
+          <div class="calendar-day">5</div>
+          <div class="calendar-day">6</div>
 
-          <!-- Legend -->
-          <div class="calendar-legend">
-            <div class="legend-item">
-              <div class="legend-color" style="background: #C17B6F;"></div>
-              <span>Scheduled walks</span>
-            </div>
-            <div class="legend-item">
-              <div class="legend-color" style="background: #8FA8A2;"></div>
-              <span>Completed walks</span>
-            </div>
-            <div class="legend-item" style="margin-left: auto; color: #888;">
-              Click a walk to reschedule
-            </div>
-          </div>
+          <div class="calendar-day">7</div>
+          <div class="calendar-day has-walk">8</div>
+          <div class="calendar-day">9</div>
+          <div class="calendar-day has-walk">10</div>
+          <div class="calendar-day">11</div>
+          <div class="calendar-day">12</div>
+          <div class="calendar-day">13</div>
+
+          <div class="calendar-day">14</div>
+          <div class="calendar-day has-walk">15</div>
+          <div class="calendar-day">16</div>
+          <div class="calendar-day has-walk">17</div>
+          <div class="calendar-day">18</div>
+          <div class="calendar-day">19</div>
+          <div class="calendar-day">20</div>
+
+          <div class="calendar-day">21</div>
+          <div class="calendar-day has-walk">22</div>
+          <div class="calendar-day">23</div>
+          <div class="calendar-day has-walk">24</div>
+          <div class="calendar-day">25</div>
+          <div class="calendar-day">26</div>
+          <div class="calendar-day">27</div>
+
+          <div class="calendar-day">28</div>
+          <div class="calendar-day has-walk">29</div>
+          <div class="calendar-day">30</div>
         </div>
       </div>
     </div>
   </div>
-
-  <!-- Walk Detail Modal -->
-  <div class="modal" id="walkModal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h3 id="modalDate">Thursday, June 20</h3>
-        <p>Scheduled walk details</p>
-      </div>
-      <div class="modal-body">
-        <div class="detail-box">
-          <div class="detail-label">Time window</div>
-          <p class="detail-value" id="modalTime">Early Morning (7:00 AM - 10:00 AM)</p>
-        </div>
-        <div class="detail-box">
-          <div class="detail-label">Duration & type</div>
-          <p class="detail-value" id="modalDuration">30-minute walk</p>
-        </div>
-        <div class="detail-box">
-          <div class="detail-label">Dog</div>
-          <p class="detail-value">Scout</p>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-secondary" onclick="closeWalkModal()">Close</button>
-        <button class="btn-primary" onclick="openRescheduleModal()">Reschedule</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Reschedule Modal -->
-  <div class="modal" id="rescheduleModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 1000; align-items: center; justify-content: center;">
-    <div style="background: white; border-radius: 12px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); width: 90%; max-width: 500px; overflow: hidden;">
-      <div style="padding: 24px; border-bottom: 0.5px solid #eee;">
-        <h3 style="font-size: 18px; font-weight: 500; margin: 0 0 4px;">Reschedule Walk</h3>
-        <p style="font-size: 13px; color: #888; margin: 0;">Scout • <span id="rescheduleWalkDate">Tomorrow</span> at <span id="rescheduleWalkTime">Early Morning</span></p>
-      </div>
-      <div style="padding: 24px;">
-        <div style="margin-bottom: 16px;">
-          <label style="display: block; font-size: 12px; color: #888; margin-bottom: 8px; font-weight: 500;">Select New Date</label>
-          <input type="date" id="newWalkDate" style="width: 100%; padding: 10px; border: 0.5px solid #ddd; border-radius: 8px; font-size: 14px; font-family: inherit;">
-        </div>
-
-        <div style="margin-bottom: 16px;">
-          <label style="display: block; font-size: 12px; color: #888; margin-bottom: 8px; font-weight: 500;">Select New Time Frame</label>
-          <select id="newWalkTimeFrame" style="width: 100%; padding: 10px; border: 0.5px solid #ddd; border-radius: 8px; font-size: 14px; font-family: inherit;">
-            <option value="">Choose a time...</option>
-            <option value="early-morning">Early Morning (7-10am)</option>
-            <option value="early-afternoon">Early Afternoon (11am-1pm)</option>
-            <option value="late-afternoon">Late Afternoon (2-5pm)</option>
-          </select>
-        </div>
-
-        <div style="background: #f9f8f5; padding: 12px; border-radius: 8px; margin-bottom: 16px; border: 0.5px solid #eee;">
-          <div style="font-size: 11px; color: #888; margin-bottom: 4px;">Available Dates</div>
-          <p style="font-size: 13px; color: #0D1B2A; margin: 0;">Monday, Thursday, Wednesday available in your preferred time frame</p>
-        </div>
-      </div>
-      <div style="padding: 16px 24px; border-top: 0.5px solid #eee; display: flex; gap: 12px; justify-content: flex-end;">
-        <button onclick="closeRescheduleModal()" style="background: transparent; color: #888; border: 0.5px solid #ddd; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500;">Cancel</button>
-        <button onclick="confirmReschedule()" style="background: #C17B6F; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500;">Confirm</button>
-      </div>
-    </div>
-  </div>
-    // Calendar state - start with current date (June 20, 2026)
-    let currentDate = new Date(2026, 5, 20); // Month is 0-indexed, so 5 = June
-    const today = new Date(2026, 5, 20);
-
-    function generateCalendar() {
-      const year = currentDate.getFullYear();
-      const month = currentDate.getMonth();
-      
-      // Update header
-      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                         'July', 'August', 'September', 'October', 'November', 'December'];
-      document.getElementById('calendarMonthYear').textContent = `${monthNames[month]} ${year}`;
-      
-      // Get first day of month and number of days
-      const firstDay = new Date(year, month, 1).getDay();
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-      
-      // Generate walk dates (Monday + Wednesday pattern = 10 walks per month)
-      const walkDates = new Set();
-      for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month, day);
-        const dayOfWeek = date.getDay();
-        // 1 = Monday, 3 = Wednesday
-        if (dayOfWeek === 1 || dayOfWeek === 3) {
-          walkDates.add(day);
-        }
-      }
-      
-      // Calculate metrics for current month if we're viewing current month
-      if (year === today.getFullYear() && month === today.getMonth()) {
-        let completedWalks = 0;
-        let totalWalks = 0;
-        let nextWalk = null;
-        
-        for (let day = 1; day <= daysInMonth; day++) {
-          if (walkDates.has(day)) {
-            totalWalks++;
-            const cellDate = new Date(year, month, day);
-            
-            if (cellDate < today) {
-              completedWalks++;
-            } else if (!nextWalk) {
-              nextWalk = cellDate;
-            }
-          }
-        }
-        
-        // Update metric cards
-        const walksRemaining = totalWalks - completedWalks;
-        document.getElementById('walksRemaining').textContent = `${walksRemaining} of ${totalWalks}`;
-        
-        if (nextWalk) {
-          const daysUntilWalk = Math.ceil((nextWalk - today) / (1000 * 60 * 60 * 24));
-          let dayText = 'Today';
-          if (daysUntilWalk === 1) dayText = 'Tomorrow';
-          else if (daysUntilWalk > 1) dayText = `In ${daysUntilWalk} days`;
-          
-          document.getElementById('nextWalkDay').textContent = dayText;
-          document.getElementById('nextWalkTime').textContent = 'Early Morning';
-        }
-      }
-      
-      // Build calendar grid
-      const calendarGrid = document.getElementById('calendarGrid');
-      calendarGrid.innerHTML = '';
-      
-      // Empty cells for days before month starts
-      for (let i = 0; i < firstDay; i++) {
-        calendarGrid.appendChild(document.createElement('div'));
-      }
-      
-      // Days of the month
-      for (let day = 1; day <= daysInMonth; day++) {
-        const dayEl = document.createElement('div');
-        dayEl.className = 'calendar-day';
-        
-        if (walkDates.has(day)) {
-          // This is a walk day
-          const cellDate = new Date(year, month, day);
-          
-          if (cellDate < today) {
-            // Past walk = completed (not clickable, no Walk text)
-            dayEl.classList.add('completed');
-            dayEl.textContent = day;
-          } else {
-            // Future walk = scheduled (clickable, no Walk text)
-            dayEl.classList.add('scheduled');
-            dayEl.textContent = day;
-            dayEl.onclick = () => openWalkModal(
-              formatDateString(cellDate), 
-              'Early Morning (7-10am)', 
-              '30-minute walk'
-            );
-            dayEl.style.cursor = 'pointer';
-          }
-          
-          // Mark today
-          if (cellDate.getTime() === today.getTime()) {
-            dayEl.classList.add('today');
-          }
-        } else {
-          // Not a walk day
-          dayEl.textContent = day;
-          
-          // Mark today even if no walk
-          const cellDate = new Date(year, month, day);
-          if (cellDate.getTime() === today.getTime()) {
-            dayEl.classList.add('today');
-          }
-        }
-        
-        calendarGrid.appendChild(dayEl);
-      }
-    }
-
-    function formatDateString(date) {
-      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const months = ['January', 'February', 'March', 'April', 'May', 'June',
-                     'July', 'August', 'September', 'October', 'November', 'December'];
-      return `${days[date.getDay()]}, ${months[date.getMonth()]} ${date.getDate()}`;
-    }
-
-    function previousMonth() {
-      currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
-      generateCalendar();
-    }
-
-    function nextMonth() {
-      currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
-      generateCalendar();
-    }
-
-    function openWalkModal(date, time, duration) {
-      document.getElementById('modalDate').textContent = date;
-      document.getElementById('modalTime').textContent = time;
-      document.getElementById('modalDuration').textContent = duration;
-      document.getElementById('walkModal').classList.add('show');
-    }
-
-    function closeWalkModal() {
-      document.getElementById('walkModal').classList.remove('show');
-    }
-
-    // Close modal when clicking outside
-    document.getElementById('walkModal').addEventListener('click', function(e) {
-      if (e.target === this) {
-        closeWalkModal();
-      }
-    });
-
-    // Generate initial calendar
-    generateCalendar();
-
-    // Reschedule modal functions
-    function openRescheduleModal() {
-      document.getElementById('rescheduleModal').style.display = 'flex';
-      document.getElementById('newWalkDate').value = '';
-      document.getElementById('newWalkTimeFrame').value = '';
-    }
-
-    function closeRescheduleModal() {
-      document.getElementById('rescheduleModal').style.display = 'none';
-    }
-
-    function confirmReschedule() {
-      const date = document.getElementById('newWalkDate').value;
-      const timeFrame = document.getElementById('newWalkTimeFrame').value;
-
-      if (!date || !timeFrame) {
-        alert('Please select a date and time frame');
-        return;
-      }
-
-      const timeFrameLabels = {
-        'early-morning': 'Early Morning (7-10am)',
-        'early-afternoon': 'Early Afternoon (11am-1pm)',
-        'late-afternoon': 'Late Afternoon (2-5pm)'
-      };
-
-      const walkDate = new Date(date);
-      const dateStr = walkDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-
-      alert(`Walk rescheduled to ${dateStr} at ${timeFrameLabels[timeFrame]}`);
-      closeRescheduleModal();
-    }
-
-    // Close reschedule modal when clicking outside
-    document.getElementById('rescheduleModal').addEventListener('click', function(e) {
-      if (e.target === this) {
-        closeRescheduleModal();
-      }
-    });
-  </script>
 </body>
 </html>

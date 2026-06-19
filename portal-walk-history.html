@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Walk History - The Leash Club</title>
+  <title>Walk History - Port City Leash Club</title>
   <style>
     * {
       margin: 0;
@@ -33,8 +33,10 @@
     }
 
     .sidebar-logo {
-      font-size: 18px;
-      font-weight: 500;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      line-height: 1.3;
     }
 
     .sidebar-nav {
@@ -80,12 +82,9 @@
 
     .main-content {
       flex: 1;
-      padding: 32px;
+      padding: 40px;
       overflow-y: auto;
-    }
-
-    .content-max {
-      max-width: 800px;
+      max-width: 900px;
     }
 
     .page-header {
@@ -95,158 +94,219 @@
     .page-header h1 {
       font-size: 28px;
       font-weight: 500;
-      margin: 0 0 4px;
+      margin-bottom: 4px;
     }
 
     .page-header p {
       font-size: 14px;
       color: #888;
-      margin: 0;
     }
 
-    .filter-bar {
+    /* Filter Buttons */
+    .filter-buttons {
       display: flex;
-      gap: 12px;
-      margin-bottom: 24px;
+      gap: 8px;
+      margin-bottom: 32px;
     }
 
-    .filter-button {
+    .filter-btn {
       padding: 8px 16px;
-      border-radius: 20px;
+      border: 1px solid #E5E0D8;
+      background: white;
+      border-radius: 6px;
       font-size: 13px;
       cursor: pointer;
-      border: 0.5px solid #ddd;
-      background: white;
-      color: #888;
       transition: all 0.2s;
     }
 
-    .filter-button.active {
+    .filter-btn.active {
       background: #C17B6F;
       color: white;
       border-color: #C17B6F;
     }
 
-    .walk-card {
-      background: white;
-      padding: 20px;
+    /* Visit Report Card */
+    .visit-report {
+      background: #FAF8F4;
+      border: 1px solid #E5E0D8;
       border-radius: 12px;
-      border: 0.5px solid #ddd;
-      margin-bottom: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(13, 27, 42, 0.04);
     }
 
-    .walk-header {
+    .report-header {
       display: flex;
-      justify-content: space-between;
-      align-items: start;
-      margin-bottom: 12px;
+      gap: 16px;
+      margin-bottom: 20px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
     }
 
-    .walk-date {
-      font-size: 14px;
-      font-weight: 500;
-      color: #0D1B2A;
-    }
-
-    .walk-time {
-      font-size: 12px;
-      color: #888;
-      margin-top: 2px;
-    }
-
-    .walk-status {
-      background: #8FA8A2;
-      color: white;
-      font-size: 11px;
-      padding: 4px 8px;
-      border-radius: 4px;
-    }
-
-    .walk-details {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-bottom: 12px;
-      padding-bottom: 12px;
-      border-bottom: 0.5px solid #ddd;
-    }
-
-    .detail-item {
-      font-size: 13px;
-    }
-
-    .detail-label {
-      color: #888;
-      margin-bottom: 2px;
-    }
-
-    .detail-value {
-      color: #0D1B2A;
-      font-weight: 500;
-    }
-
-    .walk-notes {
-      margin-top: 12px;
-    }
-
-    .notes-label {
-      font-size: 12px;
-      color: #888;
-      font-weight: 500;
-      margin-bottom: 6px;
-    }
-
-    .notes-text {
-      font-size: 13px;
-      color: #555;
-      line-height: 1.5;
-    }
-
-    .photo-gallery {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      margin-top: 12px;
-    }
-
-    .photo {
-      aspect-ratio: 1;
-      background: linear-gradient(135deg, #C17B6F 0%, #8FA8A2 100%);
+    .walker-avatar {
+      width: 56px;
+      height: 56px;
+      background: rgba(193, 123, 111, 0.15);
       border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 32px;
-      cursor: pointer;
-      transition: transform 0.2s;
+      flex-shrink: 0;
     }
 
-    .photo:hover {
-      transform: scale(1.05);
+    .walker-info {
+      flex: 1;
     }
 
-    .empty-state {
-      text-align: center;
-      padding: 60px 20px;
+    .walker-name {
+      font-weight: 600;
+      font-size: 15px;
+      color: #0D1B2A;
+      margin-bottom: 2px;
     }
 
-    .empty-state p {
+    .walker-role {
+      font-size: 12px;
+      color: #7A7A7A;
+    }
+
+    .walker-badge {
+      font-size: 11px;
+      background: rgba(193, 123, 111, 0.2);
+      color: #C17B6F;
+      padding: 4px 8px;
+      border-radius: 4px;
+      margin-top: 4px;
+      display: inline-block;
+    }
+
+    .report-date {
+      text-align: right;
+      font-size: 13px;
+      color: #7A7A7A;
+    }
+
+    /* Report Content */
+    .report-content {
+      margin-bottom: 20px;
+    }
+
+    .report-text {
       font-size: 14px;
-      color: #888;
-      margin: 0;
+      color: #4A4A4A;
+      line-height: 1.6;
+      margin-bottom: 16px;
+    }
+
+    .report-meta {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      padding: 16px 0;
+      border-top: 1px solid rgba(0, 0, 0, 0.06);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+      margin-bottom: 16px;
+    }
+
+    .meta-item {
+      font-size: 12px;
+      color: #7A7A7A;
+    }
+
+    .meta-value {
+      font-weight: 600;
+      color: #0D1B2A;
+      font-size: 14px;
+    }
+
+    /* Photos */
+    .report-photos {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .photo-item {
+      aspect-ratio: 1;
+      background: rgba(193, 123, 111, 0.15);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .photo-item:hover {
+      box-shadow: 0 4px 12px rgba(13, 27, 42, 0.1);
+    }
+
+    /* Notes */
+    .report-notes {
+      background: white;
+      padding: 12px;
+      border-radius: 6px;
+      border: 1px solid #E5E0D8;
+      font-size: 13px;
+      color: #4A4A4A;
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+
+    .notes-label {
+      font-weight: 500;
+      color: #0D1B2A;
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    /* View Details Button */
+    .view-details-btn {
+      background: white;
+      border: 1px solid #E5E0D8;
+      padding: 10px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      color: #0D1B2A;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .view-details-btn:hover {
+      background: #FAF8F4;
+      box-shadow: 0 2px 6px rgba(13, 27, 42, 0.08);
+    }
+
+    /* Empty State */
+    .empty-state {
+      background: #FAF8F4;
+      border: 1px solid #E5E0D8;
+      border-radius: 12px;
+      padding: 48px 24px;
+      text-align: center;
+      color: #7A7A7A;
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
     }
 
     @media (max-width: 768px) {
-      .sidebar {
-        display: none;
-      }
-
-      .walk-details {
-        grid-template-columns: 1fr;
-      }
-
-      .photo-gallery {
+      .report-meta {
         grid-template-columns: repeat(2, 1fr);
+      }
+
+      .report-photos {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .filter-buttons {
+        flex-wrap: wrap;
       }
     }
   </style>
@@ -255,203 +315,187 @@
   <div class="portal-container">
     <!-- Sidebar -->
     <div class="sidebar">
-      <div class="sidebar-logo">The Leash Club</div>
+      <div class="sidebar-logo">Port City Leash Club</div>
       <nav class="sidebar-nav">
         <a href="portal-dashboard.html" class="nav-item">Dashboard</a>
         <a href="portal-pet-profile.html" class="nav-item">Pet Profile</a>
         <a href="portal-walk-history.html" class="nav-item active">Walk History</a>
-        <a href="portal-extras.html" class="nav-item">Extras</a>
+        <a href="portal-extras.html" class="nav-item">Additional Care</a>
+        <a href="portal-messages.html" class="nav-item">Messages</a>
         <a href="portal-account.html" class="nav-item">Account</a>
       </nav>
       <div class="sidebar-pet">
         <div class="pet-name">Scout</div>
-        <div class="pet-info">Golden Retriever • 4 yrs</div>
+        <div class="pet-info">Golden Retriever • 5 years old</div>
       </div>
     </div>
 
     <!-- Main Content -->
     <div class="main-content">
-      <div class="content-max">
-        <div class="page-header">
-          <h1>Walk History</h1>
-          <p>Scout's past walks and notes</p>
+      <div class="page-header">
+        <h1>Scout's Walk History</h1>
+        <p>Browse all of Scout's completed walks and care updates</p>
+      </div>
+
+      <!-- Filter Buttons -->
+      <div class="filter-buttons">
+        <button class="filter-btn active" onclick="filterWalks('all', this)">All walks</button>
+        <button class="filter-btn" onclick="filterWalks('month', this)">This month</button>
+        <button class="filter-btn" onclick="filterWalks('last-month', this)">Last month</button>
+      </div>
+
+      <!-- Walk Report 1 -->
+      <div class="visit-report" data-month="6" data-year="2026">
+        <div class="report-header">
+          <div class="walker-avatar">👨</div>
+          <div class="walker-info">
+            <div class="walker-name">Marcus</div>
+            <div class="walker-role">Lead Walker</div>
+            <div class="walker-badge">Scout's Most Frequent Walker</div>
+          </div>
+          <div class="report-date">June 19, 2026</div>
         </div>
 
-        <!-- Filter Bar -->
-        <div class="filter-bar">
-          <button class="filter-button active">All walks</button>
-          <button class="filter-button">This month</button>
-          <button class="filter-button">Last month</button>
+        <div class="report-content">
+          <div class="report-text">
+            Scout had an amazing walk today! We did our usual Forest Hills route and Scout was full of energy. He spent time at the off-leash area and made friends with a few new dogs. He was well-behaved and came back when called every time.
+          </div>
+
+          <div class="report-meta">
+            <div class="meta-item"><span class="meta-value">30 min</span> Duration</div>
+            <div class="meta-item"><span class="meta-value">3 photos</span> Uploaded</div>
+            <div class="meta-item"><span class="meta-value">Forest Hills</span> Route</div>
+            <div class="meta-item"><span class="meta-value">✓</span> Potty Break</div>
+          </div>
+
+          <div class="report-photos">
+            <div class="photo-item">📸</div>
+            <div class="photo-item">📸</div>
+            <div class="photo-item">📸</div>
+          </div>
+
+          <div class="report-notes">
+            <div class="notes-label">Walker Notes:</div>
+            Scout is in great shape! He's friendly with all dogs and people. Hydrated well during the walk. Ready for more adventures!
+          </div>
+
+          <button class="view-details-btn">View Full Report</button>
+        </div>
+      </div>
+
+      <!-- Walk Report 2 -->
+      <div class="visit-report" data-month="6" data-year="2026">
+        <div class="report-header">
+          <div class="walker-avatar">👩</div>
+          <div class="walker-info">
+            <div class="walker-name">Priya</div>
+            <div class="walker-role">Backup Walker</div>
+          </div>
+          <div class="report-date">June 17, 2026</div>
         </div>
 
-        <!-- Walk Cards -->
-        <div class="walk-card" data-month="6" data-year="2026" data-date="2026-06-19">
-          <div class="walk-header">
-            <div>
-              <div class="walk-date">Wednesday, June 19</div>
-              <div class="walk-time">Early Morning • 30 min</div>
-            </div>
-            <div class="walk-status">Completed</div>
+        <div class="report-content">
+          <div class="report-text">
+            Scout was excited to see me today! We went for a nice walk through the downtown area and Scout was very responsive to commands. He got water at the park and had a great time exploring new neighborhoods.
           </div>
 
-          <div class="walk-details">
-            <div class="detail-item">
-              <div class="detail-label">Walker</div>
-              <div class="detail-value">Marcus</div>
-            </div>
-            <div class="detail-item">
-              <div class="detail-label">Route</div>
-              <div class="detail-value">Riverwalk</div>
-            </div>
+          <div class="report-meta">
+            <div class="meta-item"><span class="meta-value">30 min</span> Duration</div>
+            <div class="meta-item"><span class="meta-value">2 photos</span> Uploaded</div>
+            <div class="meta-item"><span class="meta-value">Downtown</span> Route</div>
+            <div class="meta-item"><span class="meta-value">✓</span> Potty Break</div>
           </div>
 
-          <div class="walk-notes">
-            <div class="notes-label">Walker notes</div>
-            <div class="notes-text">Scout had great energy today! We did a 30-minute walk around Riverwalk and he loved the other dogs we met. Drank lots of water at the park. Ready for a nap when we got home!</div>
+          <div class="report-photos">
+            <div class="photo-item">📸</div>
+            <div class="photo-item">📸</div>
+            <div style="opacity: 0.3;">📸</div>
           </div>
 
-          <div class="photo-gallery">
-            <div class="photo"></div>
-            <div class="photo"></div>
-            <div class="photo"></div>
+          <div class="report-notes">
+            <div class="notes-label">Walker Notes:</div>
+            Scout was very attentive on the leash. Great recall. Enjoyed the urban scenery and dog watching!
           </div>
+
+          <button class="view-details-btn">View Full Report</button>
+        </div>
+      </div>
+
+      <!-- Walk Report 3 -->
+      <div class="visit-report" data-month="5" data-year="2026">
+        <div class="report-header">
+          <div class="walker-avatar">👨</div>
+          <div class="walker-info">
+            <div class="walker-name">Marcus</div>
+            <div class="walker-role">Lead Walker</div>
+            <div class="walker-badge">Scout's Most Frequent Walker</div>
+          </div>
+          <div class="report-date">May 15, 2026</div>
         </div>
 
-        <div class="walk-card" data-month="6" data-year="2026" data-date="2026-06-17">
-          <div class="walk-header">
-            <div>
-              <div class="walk-date">Monday, June 17</div>
-              <div class="walk-time">Early Morning • 30 min</div>
-            </div>
-            <div class="walk-status">Completed</div>
+        <div class="report-content">
+          <div class="report-text">
+            Beautiful day for a walk! Scout and I did a longer route through Airlie Road. Scout was calm and collected the entire time. He loved sniffing around the neighborhoods and we made great time.
           </div>
 
-          <div class="walk-details">
-            <div class="detail-item">
-              <div class="detail-label">Walker</div>
-              <div class="detail-value">Priya</div>
-            </div>
-            <div class="detail-item">
-              <div class="detail-label">Route</div>
-              <div class="detail-value">Forest Hills Loop</div>
-            </div>
+          <div class="report-meta">
+            <div class="meta-item"><span class="meta-value">45 min</span> Duration</div>
+            <div class="meta-item"><span class="meta-value">4 photos</span> Uploaded</div>
+            <div class="meta-item"><span class="meta-value">Airlie Road</span> Route</div>
+            <div class="meta-item"><span class="meta-value">✓</span> Potty Break</div>
           </div>
 
-          <div class="walk-notes">
-            <div class="notes-label">Walker notes</div>
-            <div class="notes-text">Nice gentle walk today since it was warm out. We took the shaded route through Forest Hills and Scout kept a steady pace. He was interested in some scents along the path but remained calm and focused.</div>
+          <div class="report-photos">
+            <div class="photo-item">📸</div>
+            <div class="photo-item">📸</div>
+            <div class="photo-item">📸</div>
           </div>
 
-          <div class="photo-gallery">
-            <div class="photo"></div>
-            <div class="photo"></div>
-          </div>
-        </div>
-
-        <div class="walk-card" data-month="5" data-year="2026" data-date="2026-05-15">
-          <div class="walk-header">
-            <div>
-              <div class="walk-date">Saturday, May 15</div>
-              <div class="walk-time">Late Afternoon • 30 min</div>
-            </div>
-            <div class="walk-status">Completed</div>
+          <div class="report-notes">
+            <div class="notes-label">Walker Notes:</div>
+            Took the extended walk option. Scout did excellent! No pulling on leash, great energy the whole time.
           </div>
 
-          <div class="walk-details">
-            <div class="detail-item">
-              <div class="detail-label">Walker</div>
-              <div class="detail-value">Marcus</div>
-            </div>
-            <div class="detail-item">
-              <div class="detail-label">Route</div>
-              <div class="detail-value">Downtown</div>
-            </div>
-          </div>
-
-          <div class="walk-notes">
-            <div class="notes-label">Walker notes</div>
-            <div class="notes-text">Scout was a little reactive to a dog we passed on Dock Street, but he settled down quickly after some distance. Overall a good walk with nice weather. We made it around downtown loop without any issues.</div>
-          </div>
-
-          <div class="photo-gallery">
-            <div class="photo"></div>
-          </div>
+          <button class="view-details-btn">View Full Report</button>
         </div>
       </div>
     </div>
   </div>
 
   <script>
-    // Today's date for "this month" and "last month" calculations
-    const today = new Date(2026, 5, 20); // June 20, 2026 (demo date)
-    const currentMonth = today.getMonth() + 1; // 1-12
-    const currentYear = today.getFullYear();
-    const lastMonth = currentMonth === 1 ? 12 : currentMonth - 1;
-    const lastMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+    function filterWalks(period, button) {
+      // Update active button
+      document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+      button.classList.add('active');
 
-    // Get all filter buttons and walk cards
-    const filterButtons = document.querySelectorAll('.filter-button');
-    const walkCards = document.querySelectorAll('.walk-card');
+      // Filter walks
+      const reports = document.querySelectorAll('.visit-report');
+      const now = new Date();
+      const currentMonth = now.getMonth() + 1;
+      const currentYear = now.getFullYear();
 
-    // Add event listeners to filter buttons
-    filterButtons.forEach(button => {
-      button.addEventListener('click', function() {
-        // Remove active class from all buttons
-        filterButtons.forEach(btn => btn.classList.remove('active'));
-        // Add active class to clicked button
-        this.classList.add('active');
+      reports.forEach(report => {
+        let show = false;
+        const month = parseInt(report.dataset.month);
+        const year = parseInt(report.dataset.year);
 
-        // Determine which filter was clicked
-        const filterText = this.textContent.trim();
-        let filterMonth, filterYear;
-
-        if (filterText === 'All walks') {
-          // Show all walks
-          walkCards.forEach(card => card.style.display = 'block');
-        } else if (filterText === 'This month') {
-          // Show only this month's walks
-          filterMonth = currentMonth;
-          filterYear = currentYear;
-          filterWalksByMonth(filterMonth, filterYear);
-        } else if (filterText === 'Last month') {
-          // Show only last month's walks
-          filterMonth = lastMonth;
-          filterYear = lastMonthYear;
-          filterWalksByMonth(filterMonth, filterYear);
+        if (period === 'all') {
+          show = true;
+        } else if (period === 'month') {
+          show = month === currentMonth && year === currentYear;
+        } else if (period === 'last-month') {
+          const lastMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+          const lastMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+          show = month === lastMonth && year === lastMonthYear;
         }
-      });
-    });
 
-    function filterWalksByMonth(month, year) {
-      walkCards.forEach(card => {
-        const cardMonth = parseInt(card.getAttribute('data-month'));
-        const cardYear = parseInt(card.getAttribute('data-year'));
-
-        if (cardMonth === month && cardYear === year) {
-          card.style.display = 'block';
-        } else {
-          card.style.display = 'none';
-        }
+        report.style.display = show ? 'block' : 'none';
       });
 
-      // Check if any walks are visible
-      const visibleWalks = Array.from(walkCards).filter(card => card.style.display !== 'none');
-      if (visibleWalks.length === 0) {
-        // Show empty state message
-        const contentMax = document.querySelector('.content-max');
-        const existingEmpty = contentMax.querySelector('.empty-state');
-        if (!existingEmpty) {
-          const emptyState = document.createElement('div');
-          emptyState.className = 'empty-state';
-          emptyState.textContent = 'No walks found for this period.';
-          contentMax.appendChild(emptyState);
-        }
-      } else {
-        // Remove empty state if it exists
-        const emptyState = document.querySelector('.empty-state');
-        if (emptyState) {
-          emptyState.remove();
-        }
+      // Show empty state if needed
+      const visibleReports = Array.from(reports).filter(r => r.style.display !== 'none').length;
+      if (visibleReports === 0) {
+        // Could add empty state message here
       }
     }
   </script>
