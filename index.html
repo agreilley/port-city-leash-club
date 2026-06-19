@@ -369,6 +369,7 @@
   </div>
 </section>
 
+
 <!-- 4. ONE-TIME SERVICES -->
 <section id="services">
   <div class="section-inner">
@@ -446,64 +447,6 @@
   </div>
 </section>
 
-<!-- 5. SERVICE AREA -->
-<section class="map-section">
-  <div class="section-inner">
-    <p class="section-eyebrow">Where We Walk</p>
-    <h2 class="section-headline">Serving Wilmington's finest neighborhoods</h2>
-    <p class="section-sub">Wondering if we're in your neighborhood? Enter your address to find out.</p>
-
-    <!-- Centered search bar -->
-    <div style="max-width:540px;margin:32px auto;">
-      <div style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:16px;">
-        <input id="address-input" class="search-input" type="text" placeholder="Enter your address">
-        <button id="check-address-btn" class="search-btn">Check my address</button>
-      </div>
-
-      <!-- Result: in service -->
-      <div id="result-in" class="search-result-in" style="margin-bottom:16px;display:none;">
-        ✓ Great news, we serve your neighborhood. <a href="membership-request.html" style="color:var(--navy);font-weight:500;margin-left:4px;">Join the Leash Club</a>
-      </div>
-
-      <!-- Result: out of service -->
-      <div id="result-out" class="search-result-out" style="display:none;">
-        We're not in your neighborhood yet, but sign up to be notified when we expand.
-        <div style="margin-top:12px;display:grid;grid-template-columns:1fr auto;gap:8px;">
-          <input id="notify-email" class="search-input" type="email" placeholder="Your email address">
-          <button id="notify-btn" class="search-btn">Notify me</button>
-        </div>
-        <div id="notify-confirm" style="margin-top:10px;color:#2D6A40;font-size:13px;display:none;">✓ Thanks! We'll notify you when we expand.</div>
-      </div>
-    </div>
-
-    <!-- Full-width map -->
-    <div id="map" style="border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,0.08);height:340px;background:#e8e0d5;"></div>
-
-  </div>
-</section>
-
-<!-- MEET THE FOUNDER -->
-<section class="founder-section">
-  <div class="section-inner">
-    <p class="section-eyebrow" style="margin-bottom:24px;">Meet the Founder</p>
-    <div class="founder-layout">
-      <div class="founder-copy">
-        <p>If you've ever left home wondering whether your dog is truly okay, I built this for you.</p>
-        <p>I've been caring for pets for most of my life. I started my first pet sitting business at 12 years old, worked as a dog walker in college, and have always believed great pet care is about more than feeding schedules and walks. It's about trust.</p>
-        <p>As a dog owner myself, I know how hard it can be to truly relax when you're away from home. Too often, I found myself wondering whether my dogs were in good hands.</p>
-        <p>That's why I created Port City Leash Club.</p>
-        <p>By combining a lifelong love of animals with years of experience building teams and customer-focused businesses, my goal is simple: to create the most trusted pet care experience in Wilmington, built on reliability, communication, and genuine relationships.</p>
-        <div class="founder-signature">
-          <div class="founder-name">Alison Reilley</div>
-          <div class="founder-title">Founder, Port City Leash Club</div>
-        </div>
-      </div>
-      <div class="founder-photo" style="padding:0;">
-        <img src="images/founder.jpeg" alt="Alison Reilley, Founder of Port City Leash Club" style="width:100%;height:100%;object-fit:cover;object-position:center top;border-radius:8px;">
-      </div>
-    </div>
-  </div>
-</section>
 
 <!-- 5. WHY US -->
 <section class="why-section">
@@ -553,6 +496,65 @@
 </section>
 
 
+<!-- MEET THE FOUNDER -->
+<section class="founder-section">
+  <div class="section-inner">
+    <p class="section-eyebrow" style="margin-bottom:24px;">Meet the Founder</p>
+    <div class="founder-layout">
+      <div class="founder-copy">
+        <p>If you've ever left home wondering whether your dog is truly okay, I built this for you.</p>
+        <p>I've been caring for pets for most of my life. I started my first pet sitting business at 12 years old, worked as a dog walker in college, and have always believed great pet care is about more than feeding schedules and walks. It's about trust.</p>
+        <p>As a dog owner myself, I know how hard it can be to truly relax when you're away from home. Too often, I found myself wondering whether my dogs were in good hands.</p>
+        <p>That's why I created Port City Leash Club.</p>
+        <p>By combining a lifelong love of animals with years of experience building teams and customer-focused businesses, my goal is simple: to create the most trusted pet care experience in Wilmington, built on reliability, communication, and genuine relationships.</p>
+        <div class="founder-signature">
+          <div class="founder-name">Alison Reilley</div>
+          <div class="founder-title">Founder, Port City Leash Club</div>
+        </div>
+      </div>
+      <div class="founder-photo" style="padding:0;">
+        <img src="images/founder.jpeg" alt="Alison Reilley, Founder of Port City Leash Club" style="width:100%;height:100%;object-fit:cover;object-position:center top;border-radius:8px;">
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- 5. SERVICE AREA -->
+<section class="map-section">
+  <div class="section-inner">
+    <p class="section-eyebrow">Where We Walk</p>
+    <h2 class="section-headline">Serving Wilmington's finest neighborhoods</h2>
+    <p class="section-sub">Wondering if we're in your neighborhood? Enter your address to find out.</p>
+
+    <!-- Centered search bar -->
+    <div style="max-width:540px;margin:32px auto;">
+      <div style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:16px;">
+        <input id="address-input" class="search-input" type="text" placeholder="Enter your address">
+        <button id="check-address-btn" class="search-btn">Check my address</button>
+      </div>
+
+      <!-- Result: in service -->
+      <div id="result-in" class="search-result-in" style="margin-bottom:16px;display:none;">
+        ✓ Great news, we serve your neighborhood. <a href="membership-request.html" style="color:var(--navy);font-weight:500;margin-left:4px;">Join the Leash Club</a>
+      </div>
+
+      <!-- Result: out of service -->
+      <div id="result-out" class="search-result-out" style="display:none;">
+        We're not in your neighborhood yet, but sign up to be notified when we expand.
+        <div style="margin-top:12px;display:grid;grid-template-columns:1fr auto;gap:8px;">
+          <input id="notify-email" class="search-input" type="email" placeholder="Your email address">
+          <button id="notify-btn" class="search-btn">Notify me</button>
+        </div>
+        <div id="notify-confirm" style="margin-top:10px;color:#2D6A40;font-size:13px;display:none;">✓ Thanks! We'll notify you when we expand.</div>
+      </div>
+    </div>
+
+    <!-- Full-width map -->
+    <div id="map" style="border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,0.08);height:340px;background:#e8e0d5;"></div>
+
+  </div>
+</section>
 
 
 <!-- 6. CTA -->
@@ -566,6 +568,7 @@
     <p style="text-align:center;font-size:13px;color:rgba(255,255,255,0.5);">Have questions? <a href="faq.html" style="color:rgba(255,255,255,0.8);text-decoration:underline;text-underline-offset:3px;">View our FAQ</a></p>
   </div>
 </section>
+
 
 <footer>
   <div>
