@@ -241,6 +241,130 @@
       padding: 12px 28px;
     }
 
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      width: 90%;
+      max-width: 500px;
+      overflow: hidden;
+    }
+
+    .modal-header {
+      padding: 24px;
+      border-bottom: 0.5px solid #eee;
+    }
+
+    .modal-header h3 {
+      font-size: 18px;
+      font-weight: 500;
+      margin: 0 0 4px;
+    }
+
+    .modal-header p {
+      font-size: 13px;
+      color: #888;
+      margin: 0;
+    }
+
+    .modal-body {
+      padding: 24px;
+    }
+
+    .modal-body .form-group {
+      margin-bottom: 16px;
+    }
+
+    .modal-body label {
+      display: block;
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+
+    .modal-body input,
+    .modal-body select {
+      width: 100%;
+      padding: 10px;
+      border: 0.5px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+
+    .modal-body input:focus,
+    .modal-body select:focus {
+      outline: none;
+      border-color: #8FA8A2;
+      box-shadow: 0 0 0 3px rgba(143, 168, 162, 0.1);
+    }
+
+    .detail-box {
+      background: #f9f8f5;
+      padding: 12px;
+      border-radius: 8px;
+      border: 0.5px solid #eee;
+    }
+
+    .detail-label {
+      font-size: 11px;
+      color: #888;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+
+    .detail-value {
+      font-size: 14px;
+      color: #0D1B2A;
+    }
+
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 0.5px solid #eee;
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .modal-footer button {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: #888;
+      border: 0.5px solid #ddd;
+    }
+
+    .btn-secondary:hover {
+      background: #f5f3ed;
+      border-color: #ccc;
+    }
+
     @media (max-width: 768px) {
       .sidebar {
         display: none;
@@ -294,7 +418,7 @@
               <p class="price-label">Price</p>
               <p class="price-value">$95<span class="price-sublabel">per night</span></p>
             </div>
-            <button class="btn-primary">Book Now</button>
+            <button class="btn-primary" onclick="openBookingModal('overnight')">Book Now</button>
           </div>
 
           <!-- Extended Walk -->
@@ -305,7 +429,7 @@
               <p class="price-label">Upcharge</p>
               <p class="price-value">$12<span class="price-sublabel">per walk</span></p>
             </div>
-            <button class="btn-primary">Add to Walk</button>
+            <button class="btn-primary" onclick="openBookingModal('extended-walk')">Add to Walk</button>
           </div>
 
           <!-- Check-In Visit -->
@@ -316,7 +440,7 @@
               <p class="price-label">Price</p>
               <p class="price-value">$25<span class="price-sublabel">per visit</span></p>
             </div>
-            <button class="btn-primary">Book Now</button>
+            <button class="btn-primary" onclick="openBookingModal('checkin')">Book Now</button>
           </div>
 
           <!-- Medication Admin -->
@@ -327,7 +451,7 @@
               <p class="price-label">Price</p>
               <p class="price-value">$8<span class="price-sublabel">per walk</span></p>
             </div>
-            <button class="btn-primary">Add to Walk</button>
+            <button class="btn-primary" onclick="openBookingModal('medication')">Add to Walk</button>
           </div>
         </div>
 
@@ -341,6 +465,189 @@
         </div>
       </div>
     </div>
+  <!-- Booking Modal -->
+  <div class="modal" id="bookingModal">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 id="bookingTitle">Book Service</h3>
+        <p id="bookingDescription">Select your preferred date and time</p>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Select Date</label>
+          <input type="date" id="bookingDate" style="width: 100%; padding: 10px; border: 0.5px solid #ddd; border-radius: 8px; font-size: 14px;">
+        </div>
+
+        <div class="form-group">
+          <label>Select Time Frame</label>
+          <select id="bookingTimeFrame" style="width: 100%; padding: 10px; border: 0.5px solid #ddd; border-radius: 8px; font-size: 14px;">
+            <option value="">Choose a time...</option>
+            <option value="early-morning">Early Morning (7-10am)</option>
+            <option value="early-afternoon">Early Afternoon (11am-1pm)</option>
+            <option value="late-afternoon">Late Afternoon (2-5pm)</option>
+          </select>
+        </div>
+
+        <div id="addToWalkSection" style="display: none; margin-bottom: 16px;">
+          <label>Add to which walk?</label>
+          <select id="walkSelection" style="width: 100%; padding: 10px; border: 0.5px solid #ddd; border-radius: 8px; font-size: 14px;">
+            <option value="">Select a walk...</option>
+          </select>
+          <p style="font-size: 12px; color: #888; margin-top: 8px;">Select an existing walk to add this service to</p>
+        </div>
+
+        <div class="detail-box" style="margin-bottom: 16px;">
+          <div class="detail-label">Service Details</div>
+          <p id="bookingDetails" class="detail-value" style="margin: 0; padding: 0;"></p>
+        </div>
+
+        <div class="detail-box">
+          <div class="detail-label">Estimated Cost</div>
+          <p id="bookingPrice" class="detail-value" style="margin: 0; padding: 0; font-size: 18px;">$0.00</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeBookingModal()">Cancel</button>
+        <button class="btn-primary" onclick="confirmBooking()">Book Now</button>
+      </div>
+    </div>
   </div>
+
+  <script>
+    const bookingServices = {
+      'overnight': {
+        name: 'Overnight Stay',
+        price: 95,
+        description: '12+ hours of care while you\'re away',
+        type: 'standalone'
+      },
+      'extended-walk': {
+        name: 'Extended Walk',
+        price: 12,
+        description: 'Add 15 minutes to any walk (30→45 min)',
+        type: 'add-to-walk'
+      },
+      'checkin': {
+        name: 'Check-In Visit',
+        price: 25,
+        description: '20-minute potty break & playtime',
+        type: 'standalone'
+      },
+      'medication': {
+        name: 'Medication Admin',
+        price: 8,
+        description: 'Add to any walk or visit',
+        type: 'add-to-walk'
+      }
+    };
+
+    let currentService = null;
+
+    function openBookingModal(serviceType) {
+      currentService = serviceType;
+      const service = bookingServices[serviceType];
+
+      // Update modal header
+      document.getElementById('bookingTitle').textContent = `Book ${service.name}`;
+      document.getElementById('bookingDescription').textContent = service.description;
+      document.getElementById('bookingDetails').textContent = service.description;
+      document.getElementById('bookingPrice').textContent = `$${service.price}.00`;
+
+      // Reset form
+      document.getElementById('bookingDate').value = '';
+      document.getElementById('bookingTimeFrame').value = '';
+      document.getElementById('walkSelection').value = '';
+
+      // Show/hide "Add to Walk" section based on service type
+      const addToWalkSection = document.getElementById('addToWalkSection');
+      if (service.type === 'add-to-walk') {
+        addToWalkSection.style.display = 'block';
+        populateWalkSelection();
+      } else {
+        addToWalkSection.style.display = 'none';
+      }
+
+      // Show modal
+      document.getElementById('bookingModal').classList.add('show');
+    }
+
+    function closeBookingModal() {
+      document.getElementById('bookingModal').classList.remove('show');
+      currentService = null;
+    }
+
+    function populateWalkSelection() {
+      // Sample walks for demonstration - in production these would come from the API
+      const walks = [
+        { id: 1, date: '2026-06-23', time: 'Early Afternoon' },
+        { id: 2, date: '2026-06-25', time: 'Early Afternoon' },
+        { id: 3, date: '2026-06-26', time: 'Early Afternoon' }
+      ];
+
+      const select = document.getElementById('walkSelection');
+      select.innerHTML = '<option value="">Select a walk...</option>';
+      
+      walks.forEach(walk => {
+        const walkDate = new Date(walk.date);
+        const dateStr = walkDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        const option = document.createElement('option');
+        option.value = walk.id;
+        option.textContent = `${dateStr} at ${walk.time}`;
+        select.appendChild(option);
+      });
+    }
+
+    function confirmBooking() {
+      const service = bookingServices[currentService];
+      const date = document.getElementById('bookingDate').value;
+      const timeFrame = document.getElementById('bookingTimeFrame').value;
+
+      if (!date || !timeFrame) {
+        alert('Please select a date and time frame');
+        return;
+      }
+
+      if (service.type === 'add-to-walk') {
+        const walkId = document.getElementById('walkSelection').value;
+        if (!walkId) {
+          alert('Please select a walk to add this service to');
+          return;
+        }
+      }
+
+      // Format confirmation message
+      const timeFrameLabels = {
+        'early-morning': 'Early Morning (7-10am)',
+        'early-afternoon': 'Early Afternoon (11am-1pm)',
+        'late-afternoon': 'Late Afternoon (2-5pm)'
+      };
+
+      const bookingDate = new Date(date);
+      const dateStr = bookingDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+      const bookingConfirm = `${service.name}
+Date: ${dateStr}
+Time: ${timeFrameLabels[timeFrame]}
+Price: $${service.price}.00
+
+Booking confirmed!`;
+
+      alert(bookingConfirm);
+      
+      // Close modal
+      closeBookingModal();
+    }
+
+    // Close modal when clicking outside
+    document.getElementById('bookingModal').addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeBookingModal();
+      }
+    });
+
+    // Set minimum date to today
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('bookingDate').setAttribute('min', today);
+  </script>
 </body>
 </html>
