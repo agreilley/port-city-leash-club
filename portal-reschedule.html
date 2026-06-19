@@ -476,15 +476,9 @@
       const firstDay = new Date(year, month, 1).getDay();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-      // Generate walk dates (Monday + Wednesday pattern)
-      const walkDates = new Set();
-      for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month, day);
-        const dayOfWeek = date.getDay();
-        if (dayOfWeek === 1 || dayOfWeek === 3) {
-          walkDates.add(day);
-        }
-      }
+      // Calculate 48-hour buffer (2 days from today)
+      const today = new Date(2026, 5, 20);
+      const minDate = new Date(today.getTime() + (48 * 60 * 60 * 1000)); // Add 48 hours
 
       // Build calendar grid
       const calendarGrid = document.getElementById('calendarGrid');
@@ -504,10 +498,9 @@
         dayEl.textContent = day;
 
         const cellDate = new Date(year, month, day);
-        const today = new Date(2026, 5, 20);
 
-        // Can only reschedule to future walk dates
-        if (walkDates.has(day) && cellDate > today) {
+        // Can reschedule to any future date with 48-hour buffer
+        if (cellDate >= minDate) {
           dayEl.onclick = () => selectDate(day, cellDate, dayEl);
           dayEl.style.cursor = 'pointer';
         } else {
