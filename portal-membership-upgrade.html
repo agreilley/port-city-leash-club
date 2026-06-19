@@ -51,19 +51,12 @@
   .plan-price { font-size:20px; color:var(--navy); font-weight:500; margin-bottom:4px; }
   .plan-per-walk { font-size:12px; color:var(--text-light); }
 
-  .day-grid { display:grid; grid-template-columns: repeat(7,1fr); gap:10px; margin-bottom:20px; }
+  .day-grid { display:grid; grid-template-columns: repeat(5,1fr); gap:10px; margin-bottom:20px; }
   .day-chip { border:1px solid rgba(0,0,0,0.1); background:#fff; border-radius:8px; padding:10px; cursor:pointer; transition: all .2s; position:relative; text-align:center; font-size:13px; font-weight:500; color:var(--navy); }
   .day-chip:hover { box-shadow:0 8px 24px rgba(0,0,0,.06); }
   .day-chip input { position:absolute; opacity:0; pointer-events:none; }
   .day-chip.selected { border-color:var(--rust); background:#fffaf8; }
-
-  .time-grid { display:grid; grid-template-columns: repeat(3,1fr); gap:12px; }
-  .time-card { border:1px solid rgba(0,0,0,0.1); background:#fff; border-radius:8px; padding:16px; cursor:pointer; transition: all .2s; position:relative; text-align:center; }
-  .time-card:hover { box-shadow:0 8px 24px rgba(0,0,0,.06); }
-  .time-card input { position:absolute; opacity:0; pointer-events:none; }
-  .time-card.selected { border-color:var(--rust); background:#fffaf8; box-shadow:0 8px 28px rgba(193,123,111,.14); }
-  .time-title { font-size:13px; font-weight:500; color:var(--navy); margin-bottom:2px; }
-  .time-sub { font-size:11px; color:var(--text-light); }
+  .day-chip.disabled { opacity: 0.5; pointer-events: none; }
 
   .sidebar { position:sticky; top:92px; display:flex; flex-direction:column; gap:18px; }
   .summary-card { background:var(--navy); color:white; border-radius:8px; padding:28px; }
@@ -77,6 +70,42 @@
   .submit-row a, .submit-row button { flex:1; }
   .submit-row button { padding:15px; font-size:15px; }
 
+  .notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: white;
+    border: 1px solid #E5E0D8;
+    border-radius: 12px;
+    padding: 20px 24px;
+    box-shadow: 0 4px 20px rgba(13, 27, 42, 0.15);
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 15px;
+    color: #0D1B2A;
+    max-width: 400px;
+    z-index: 10000;
+    animation: slideIn 0.3s ease-out;
+  }
+
+  .notification.success {
+    border-left: 4px solid #8FA8A2;
+  }
+
+  .notification.error {
+    border-left: 4px solid #C17B6F;
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateX(400px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
   @media (max-width: 900px) {
     .form-shell { grid-template-columns: 1fr; }
     .sidebar { position: static; }
@@ -89,57 +118,6 @@
     .plan-grid { grid-template-columns: 1fr; }
     .day-grid { grid-template-columns: repeat(5,1fr); }
   }
-
-    .notification {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: white;
-      border: 1px solid #E5E0D8;
-      border-radius: 12px;
-      padding: 20px 24px;
-      box-shadow: 0 4px 20px rgba(13, 27, 42, 0.15);
-      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-      font-size: 15px;
-      color: #0D1B2A;
-      max-width: 400px;
-      z-index: 10000;
-      animation: slideIn 0.3s ease-out;
-    }
-
-    .notification.success {
-      border-left: 4px solid #8FA8A2;
-    }
-
-    .notification.error {
-      border-left: 4px solid #C17B6F;
-    }
-
-    @keyframes slideIn {
-      from {
-        opacity: 0;
-        transform: translateX(400px);
-      }
-      to {
-        opacity: 1;
-        transform: translateX(0);
-      }
-    }
-
-    @keyframes slideOut {
-      from {
-        opacity: 1;
-        transform: translateX(0);
-      }
-      to {
-        opacity: 0;
-        transform: translateX(400px);
-      }
-    }
-
-    .notification.dismiss {
-      animation: slideOut 0.3s ease-in forwards;
-    }
 </style>
 </head>
 <body>
@@ -153,10 +131,9 @@
 <div class="page-hero">
   <div class="hero-inner">
     <div>
-      <div class="eyebrow">Scout's Membership</div>
-      <div style="font-size: 12px; opacity: 0.8; margin-bottom: 8px; letter-spacing: 0.05em; text-transform: uppercase; color: #8FA8A2;">The Leash Club</div>
+      <div class="eyebrow">The Leash Club</div>
       <h1>Change Your Plan</h1>
-      <p class="hero-sub">Find a membership that better fits Scout's needs. You can upgrade, downgrade, or stay where you are.</p>
+      <p class="hero-sub">Find a membership that better fits Scout's needs. Your estimated monthly investment will update as you choose your plan and days.</p>
     </div>
   </div>
 </div>
@@ -164,89 +141,49 @@
 <main>
   <div class="form-shell">
     <form onsubmit="submitMembershipChange(event)">
-      <!-- Current Plan Info -->
-      <div class="form-section">
-        <div class="section-kicker">Your Current Plan</div>
-      <div style="font-size: 12px; opacity: 0.8; margin-bottom: 8px; letter-spacing: 0.05em; text-transform: uppercase; color: #8FA8A2;">The Leash Club</div>
-        <h2>Standard Membership</h2>
-        <p class="section-copy">10 walks per month • $249/month</p>
-        <p style="font-size: 13px; color: var(--text-mid); line-height: 1.6;">You're on a great plan! You can upgrade to Daily for unlimited weekday walks, or stay the course. Your choice.</p>
-      </div>
-
       <!-- Plan Selection -->
       <div class="form-section">
         <div class="section-kicker">Step 1 of 2</div>
-      <div style="font-size: 12px; opacity: 0.8; margin-bottom: 8px; letter-spacing: 0.05em; text-transform: uppercase; color: #8FA8A2;">The Leash Club</div>
+        <div style="font-size: 12px; opacity: 0.8; margin-bottom: 8px; letter-spacing: 0.05em; text-transform: uppercase; color: #8FA8A2;">The Leash Club</div>
         <h2>Choose Your Membership</h2>
         <p class="section-copy">Select the recurring walk plan that best fits your weekly routine. Your estimated monthly investment will update as you choose your plan and days.</p>
         
         <div class="plan-grid">
-          <label class="plan-card" onclick="selectPlan('essential', this)">
+          <label class="plan-card" data-plan="essential" data-rate="25.80" data-default="2">
             <input type="radio" name="plan" value="essential" required>
             <div class="plan-name">Essential</div>
             <div class="plan-meta">1–2 walks / week</div>
             <div class="plan-price">$25.80 / walk</div>
-            <div class="plan-per-walk">5 walks/month · $129/month</div>
-            <div style="font-size: 11px; color: var(--text-light); margin-top: 8px;">8% savings vs. single walks</div>
+            <div class="plan-per-walk">Best for occasional weekly support.</div>
           </label>
 
-          <label class="plan-card current" onclick="selectPlan('standard', this)">
+          <label class="plan-card current" data-plan="standard" data-rate="24.90" data-default="3">
             <div class="current-badge">Your Plan</div>
             <input type="radio" name="plan" value="standard" checked required>
             <div class="plan-name">Standard</div>
             <div class="plan-meta">3–4 walks / week</div>
             <div class="plan-price">$24.90 / walk</div>
-            <div class="plan-per-walk">10 walks/month · $249/month</div>
-            <div style="font-size: 11px; color: var(--text-light); margin-top: 8px;">11% savings vs. single walks</div>
+            <div class="plan-per-walk">Our most popular recurring care plan.</div>
           </label>
 
-          <label class="plan-card" onclick="selectPlan('daily', this)">
+          <label class="plan-card" data-plan="daily" data-rate="20.43" data-default="5">
             <input type="radio" name="plan" value="daily" required>
             <div class="plan-name">Daily</div>
             <div class="plan-meta">Every weekday</div>
             <div class="plan-price">~$20.43 / walk</div>
-            <div class="plan-per-walk">~21 walks/month · $429/month</div>
-            <div style="font-size: 11px; color: var(--text-light); margin-top: 8px;">27% savings vs. single walks</div>
+            <div class="plan-per-walk">For dogs who need a reliable daily routine.</div>
           </label>
         </div>
       </div>
 
-      <!-- Daily Scheduling (if selected) -->
-      <div class="form-section" id="dailyScheduleSection" style="display: none;">
+      <!-- Days Selection -->
+      <div class="form-section" id="daysSection">
         <div class="section-kicker">Step 2 of 2</div>
-      <div style="font-size: 12px; opacity: 0.8; margin-bottom: 8px; letter-spacing: 0.05em; text-transform: uppercase; color: #8FA8A2;">The Leash Club</div>
-        <h2>Your Daily Schedule</h2>
-        <p class="section-copy">When would Scout prefer their daily walk?</p>
-        
-        <div class="time-grid">
-          <label class="time-card" onclick="selectTime('early-morning', this)">
-            <input type="radio" name="daily-time" value="early-morning">
-            <div class="time-title">Early Morning</div>
-            <div class="time-sub">7-10am</div>
-          </label>
-
-          <label class="time-card" onclick="selectTime('early-afternoon', this)">
-            <input type="radio" name="daily-time" value="early-afternoon">
-            <div class="time-title">Early Afternoon</div>
-            <div class="time-sub">11am-1pm</div>
-          </label>
-
-          <label class="time-card" onclick="selectTime('late-afternoon', this)">
-            <input type="radio" name="daily-time" value="late-afternoon">
-            <div class="time-title">Late Afternoon</div>
-            <div class="time-sub">2-5pm</div>
-          </label>
-        </div>
-      </div>
-
-      <!-- Other Plans - Preferred Days (if selecting Essential/Standard) -->
-      <div class="form-section" id="preferredDaysSection" style="display: none;">
-        <div class="section-kicker">Step 2 of 2</div>
-      <div style="font-size: 12px; opacity: 0.8; margin-bottom: 8px; letter-spacing: 0.05em; text-transform: uppercase; color: #8FA8A2;">The Leash Club</div>
+        <div style="font-size: 12px; opacity: 0.8; margin-bottom: 8px; letter-spacing: 0.05em; text-transform: uppercase; color: #8FA8A2;">The Leash Club</div>
         <h2>Preferred Walking Days</h2>
         <p class="section-copy">Which days work best for Scout? You can mix and match throughout the month.</p>
         
-        <div class="day-grid" style="grid-template-columns: repeat(5,1fr);">
+        <div class="day-grid">
           <label class="day-chip" onclick="selectDay('monday', this)">
             <input type="checkbox" name="days" value="monday">
             <div>Monday</div>
@@ -283,21 +220,17 @@
     <div class="sidebar">
       <div class="summary-card">
         <div class="summary-kicker">Estimated Monthly Investment</div>
-        <div class="summary-title" id="summaryTitle">Scout's Plan</div>
+        <div class="summary-title" id="summaryPlan">Scout's Plan</div>
         <div class="investment" id="summaryPrice">$249</div>
         <div class="investment-sub">per month</div>
         
         <div class="summary-line">
-          <span>Plan:</span>
-          <strong id="summaryPlan">Standard</strong>
+          <span>Rate</span>
+          <strong id="summaryRate">$24.90 / walk</strong>
         </div>
         <div class="summary-line">
-          <span>Rate:</span>
-          <strong id="summaryCostPerWalk">$24.90 / walk</strong>
-        </div>
-        <div class="summary-line">
-          <span>Walks / week:</span>
-          <strong id="summaryWalksPerWeek">3–4</strong>
+          <span>Walks / week</span>
+          <strong id="summaryWalks">3</strong>
         </div>
       </div>
 
@@ -312,64 +245,140 @@
 </main>
 
 <script>
-  const planDetails = {
-    essential: { name: 'Essential', price: 129, walks: '5/month', perWalk: '$25.80 / walk', perWeek: '1–2' },
-    standard: { name: 'Standard', price: 249, walks: '10/month', perWalk: '$24.90 / walk', perWeek: '3–4' },
-    daily: { name: 'Daily', price: 429, walks: '~21/month', perWalk: '~$20.43 / walk', perWeek: 'Every weekday' }
-  };
+  const planCards = document.querySelectorAll('.plan-card');
+  const dayChips = document.querySelectorAll('.day-chip');
+  const investmentAmount = document.getElementById('summaryPrice');
+  const summaryPlan = document.getElementById('summaryPlan');
+  const summaryRate = document.getElementById('summaryRate');
+  const summaryWalks = document.getElementById('summaryWalks');
 
-  function selectPlan(plan, element) {
-    document.querySelectorAll('.plan-card').forEach(card => card.classList.remove('selected'));
-    element.closest('.plan-card').classList.add('selected');
-    
-    const details = planDetails[plan];
-    document.getElementById('summaryPlan').textContent = details.name;
-    document.getElementById('summaryPrice').textContent = `$${details.price}`;
-    document.getElementById('summaryCostPerWalk').textContent = details.perWalk;
-    document.getElementById('summaryWalksPerWeek').textContent = details.perWeek;
-
-    // Show/hide appropriate schedule section
-    if (plan === 'daily') {
-      document.getElementById('dailyScheduleSection').style.display = 'block';
-      document.getElementById('preferredDaysSection').style.display = 'none';
-    } else {
-      document.getElementById('dailyScheduleSection').style.display = 'none';
-      document.getElementById('preferredDaysSection').style.display = 'block';
-    }
+  function enableDayPicker() {
+    dayChips.forEach(chip => {
+      chip.classList.remove('disabled');
+      chip.style.opacity = '1';
+      chip.style.pointerEvents = 'auto';
+    });
   }
 
-  function selectTime(time, element) {
-    document.querySelectorAll('#dailyScheduleSection .time-card').forEach(card => card.classList.remove('selected'));
-    element.closest('.time-card').classList.add('selected');
+  function disableDayPicker() {
+    dayChips.forEach(chip => {
+      chip.classList.add('disabled');
+      chip.style.opacity = '0.5';
+      chip.style.pointerEvents = 'none';
+    });
   }
+
+  function setDays(count) {
+    dayChips.forEach((chip, idx) => {
+      const input = chip.querySelector('input');
+      input.checked = idx < count;
+      chip.classList.toggle('selected', input.checked);
+    });
+  }
+
+  function updateEstimate() {
+    const selectedPlan = document.querySelector('.plan-card.selected');
+    const plan = selectedPlan.dataset.plan;
+    const rate = Number(selectedPlan.dataset.rate);
+    const checkedDays = document.querySelectorAll('input[name="days"]:checked').length;
+    const walks = plan === 'daily' ? 5 : checkedDays;
+    const monthly = rate * walks * 4;
+    const label = selectedPlan.querySelector('.plan-name').textContent;
+
+    summaryPlan.textContent = label + ' Membership';
+    summaryRate.textContent = '$' + rate + ' / walk';
+    summaryWalks.textContent = walks || '0';
+    investmentAmount.textContent = monthly ? '$' + monthly.toFixed(0) : 'TBD';
+  }
+
+  function selectPlan(planName) {
+    const card = document.querySelector(`.plan-card[data-plan="${planName}"]`);
+    if (!card) return;
+    planCards.forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    card.querySelector('input').checked = true;
+  }
+
+  planCards.forEach(card => {
+    card.addEventListener('click', () => {
+      planCards.forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      card.querySelector('input').checked = true;
+      const plan = card.dataset.plan;
+
+      if (plan === 'essential') {
+        setDays(2);
+        enableDayPicker();
+      }
+      if (plan === 'standard') {
+        setDays(3);
+        enableDayPicker();
+      }
+      if (plan === 'daily') {
+        setDays(5);
+        disableDayPicker();
+      }
+      updateEstimate();
+    });
+  });
 
   function selectDay(day, element) {
-    element.closest('.day-chip').classList.toggle('selected');
+    setTimeout(() => {
+      const input = element.querySelector('input');
+      element.classList.toggle('selected', input.checked);
+
+      const selectedCount = document.querySelectorAll('input[name="days"]:checked').length;
+      const currentPlan = document.querySelector('.plan-card.selected')?.dataset.plan;
+
+      // Auto-upgrade logic
+      if (selectedCount >= 5 && currentPlan !== 'daily') {
+        selectPlan('daily');
+        setDays(5);
+        showNotification('You\'ve selected 5 days — upgraded to Daily.');
+      } else if (selectedCount >= 3 && selectedCount < 5 && currentPlan === 'essential') {
+        selectPlan('standard');
+        showNotification('You\'ve selected 3 days — upgraded to Standard.');
+      }
+
+      // Auto-downgrade logic
+      if (selectedCount <= 2 && currentPlan === 'standard') {
+        selectPlan('essential');
+        showNotification('Switched back to Essential.');
+      } else if (selectedCount < 5 && currentPlan === 'daily') {
+        selectPlan(selectedCount <= 2 ? 'essential' : 'standard');
+        showNotification('Switched back to ' + (selectedCount <= 2 ? 'Essential' : 'Standard') + '.');
+      }
+
+      updateEstimate();
+    }, 0);
   }
 
   function submitMembershipChange(e) {
     e.preventDefault();
     
     const plan = document.querySelector('input[name="plan"]:checked').value;
-    const details = planDetails[plan];
+    const details = document.querySelector(`.plan-card[data-plan="${plan}"]`);
+    const planName = details.querySelector('.plan-name').textContent;
     
-    showNotification(`Membership upgraded to ${details.name}`);
+    showNotification(`Membership upgraded to ${planName}`);
     setTimeout(() => window.history.back(), 1500);
   }
 
-  // Custom notification function
   function showNotification(message, type = 'success') {
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
     notification.textContent = message;
     document.body.appendChild(notification);
 
-    // Auto-dismiss after 3 seconds
     setTimeout(() => {
-      notification.classList.add('dismiss');
+      notification.style.opacity = '0';
       setTimeout(() => notification.remove(), 300);
     }, 3000);
   }
+
+  // Initialize
+  setDays(3);
+  updateEstimate();
 </script>
 </body>
 </html>
