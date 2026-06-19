@@ -371,75 +371,79 @@
 
 
 <!-- 4. ONE-TIME SERVICES -->
-<section id="services" style="background: var(--sand-light);">
+<section id="services" style="background: var(--warm-white);">
   <div class="section-inner">
     <p class="section-eyebrow">One-Time Services</p>
     <h2 class="section-headline">Book care when you need it</h2>
     <p class="section-sub">For walks, visits, and overnight care outside of a recurring Leash Club membership.</p>
 
-    <div style="max-width:720px;margin-top:40px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 64px;margin-top:40px;">
 
-      <!-- Dog Walking -->
-      <div style="font-size:11px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:var(--seafoam);margin-bottom:16px;">Dog Walking</div>
+      <!-- Left: Dog Walking -->
+      <div>
+        <div style="font-size:11px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:var(--seafoam);margin-bottom:16px;">Dog Walking</div>
 
-      <a href="service-request.html?service=standard-walk" style="display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:18px 0;border-top:1px solid rgba(0,0,0,0.08);text-decoration:none;color:inherit;transition:opacity 0.15s;" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
-        <div>
-          <div style="font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px;">Standard Walk</div>
-          <div style="font-size:14px;color:var(--text-mid);line-height:1.6;">A 30-minute individual walk for exercise, enrichment, and a mid-day reset.</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:20px;flex-shrink:0;">
-          <div style="font-size:18px;font-weight:500;color:var(--navy);">$29</div>
-          <div style="font-size:13px;color:var(--rust);white-space:nowrap;">Book &rsaquo;</div>
-        </div>
-      </a>
+        <a href="service-request.html?service=standard-walk" style="display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:18px 0;border-top:1px solid rgba(0,0,0,0.08);text-decoration:none;color:inherit;transition:opacity 0.15s;" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
+          <div>
+            <div style="font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px;">Standard Walk</div>
+            <div style="font-size:14px;color:var(--text-mid);line-height:1.6;">A 30-minute individual walk for exercise, enrichment, and a mid-day reset.</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:20px;flex-shrink:0;">
+            <div style="font-size:18px;font-weight:500;color:var(--navy);">$29</div>
+            <div style="font-size:13px;color:var(--rust);white-space:nowrap;">Book &rsaquo;</div>
+          </div>
+        </a>
 
-      <a href="service-request.html?service=extended-walk" style="display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:18px 0;border-top:1px solid rgba(0,0,0,0.08);text-decoration:none;color:inherit;transition:opacity 0.15s;" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
-        <div>
-          <div style="font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px;">Extended Walk</div>
-          <div style="font-size:14px;color:var(--text-mid);line-height:1.6;">A 45-minute walk for dogs who need more time, movement, and attention.</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:20px;flex-shrink:0;">
-          <div style="font-size:18px;font-weight:500;color:var(--navy);">$40</div>
-          <div style="font-size:13px;color:var(--rust);white-space:nowrap;">Book &rsaquo;</div>
-        </div>
-      </a>
+        <a href="service-request.html?service=extended-walk" style="display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:18px 0;border-top:1px solid rgba(0,0,0,0.08);border-bottom:1px solid rgba(0,0,0,0.08);text-decoration:none;color:inherit;transition:opacity 0.15s;" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
+          <div>
+            <div style="font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px;">Extended Walk</div>
+            <div style="font-size:14px;color:var(--text-mid);line-height:1.6;">A 45-minute walk for dogs who need more time, movement, and attention.</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:20px;flex-shrink:0;">
+            <div style="font-size:18px;font-weight:500;color:var(--navy);">$40</div>
+            <div style="font-size:13px;color:var(--rust);white-space:nowrap;">Book &rsaquo;</div>
+          </div>
+        </a>
+      </div>
 
-      <!-- Pet Sitting -->
-      <div style="font-size:11px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:var(--seafoam);margin-top:40px;margin-bottom:16px;">Pet Sitting</div>
+      <!-- Right: Pet Sitting -->
+      <div>
+        <div style="font-size:11px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:var(--seafoam);margin-bottom:16px;">Pet Sitting</div>
 
-      <a href="service-request.html?service=drop-in-visit" style="display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:18px 0;border-top:1px solid rgba(0,0,0,0.08);text-decoration:none;color:inherit;transition:opacity 0.15s;" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
-        <div>
-          <div style="font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px;">Drop-In Visit</div>
-          <div style="font-size:14px;color:var(--text-mid);line-height:1.6;">Feeding, potty break, play, and a photo update. Ideal for short trips or extra coverage.</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:20px;flex-shrink:0;">
-          <div style="font-size:18px;font-weight:500;color:var(--navy);">$25</div>
-          <div style="font-size:13px;color:var(--rust);white-space:nowrap;">Book &rsaquo;</div>
-        </div>
-      </a>
+        <a href="service-request.html?service=drop-in-visit" style="display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:18px 0;border-top:1px solid rgba(0,0,0,0.08);text-decoration:none;color:inherit;transition:opacity 0.15s;" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
+          <div>
+            <div style="font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px;">Drop-In Visit</div>
+            <div style="font-size:14px;color:var(--text-mid);line-height:1.6;">Feeding, potty break, play, and a photo update. Ideal for short trips or extra coverage.</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:20px;flex-shrink:0;">
+            <div style="font-size:18px;font-weight:500;color:var(--navy);">$25</div>
+            <div style="font-size:13px;color:var(--rust);white-space:nowrap;">Book &rsaquo;</div>
+          </div>
+        </a>
 
-      <a href="service-request.html?service=overnight-stay" style="display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:18px 0;border-top:1px solid rgba(0,0,0,0.08);border-bottom:1px solid rgba(0,0,0,0.08);text-decoration:none;color:inherit;transition:opacity 0.15s;" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
-        <div>
-          <div style="font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px;">Overnight Stay</div>
-          <div style="font-size:14px;color:var(--text-mid);line-height:1.6;">12 hours in your home overnight, including evening care, overnight supervision, and a morning walk.</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:20px;flex-shrink:0;">
-          <div style="font-size:18px;font-weight:500;color:var(--navy);">$95</div>
-          <div style="font-size:13px;color:var(--rust);white-space:nowrap;">Request &rsaquo;</div>
-        </div>
-      </a>
-
-      <!-- Add-ons -->
-      <div style="margin-top:32px;padding:20px 24px;background:rgba(0,0,0,0.03);border-radius:6px;display:flex;gap:40px;flex-wrap:wrap;">
-        <div style="font-size:11px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-light);width:100%;margin-bottom:4px;">Add-ons</div>
-        <div><div style="font-size:14px;color:var(--navy);font-weight:500;">Extra pet</div><div style="font-size:13px;color:var(--text-light);margin-top:2px;">$15</div></div>
-        <div><div style="font-size:14px;color:var(--navy);font-weight:500;">Medication administration</div><div style="font-size:13px;color:var(--text-light);margin-top:2px;">$8</div></div>
-        <div><div style="font-size:14px;color:var(--navy);font-weight:500;">Holiday surcharge</div><div style="font-size:13px;color:var(--text-light);margin-top:2px;">+30% on all services</div></div>
+        <a href="service-request.html?service=overnight-stay" style="display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:18px 0;border-top:1px solid rgba(0,0,0,0.08);border-bottom:1px solid rgba(0,0,0,0.08);text-decoration:none;color:inherit;transition:opacity 0.15s;" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
+          <div>
+            <div style="font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px;">Overnight Stay</div>
+            <div style="font-size:14px;color:var(--text-mid);line-height:1.6;">12 hours in your home overnight, including evening care, overnight supervision, and a morning walk.</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:20px;flex-shrink:0;">
+            <div style="font-size:18px;font-weight:500;color:var(--navy);">$95</div>
+            <div style="font-size:13px;color:var(--rust);white-space:nowrap;">Request &rsaquo;</div>
+          </div>
+        </a>
       </div>
 
     </div>
 
-    <div class="membership-callout" style="max-width:720px;margin-top:32px;">
+    <!-- Add-ons — full width -->
+    <div style="margin-top:32px;padding:20px 24px;background:rgba(0,0,0,0.03);border-radius:6px;display:flex;gap:40px;flex-wrap:wrap;">
+      <div style="font-size:11px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-light);width:100%;margin-bottom:4px;">Add-ons</div>
+      <div><div style="font-size:14px;color:var(--navy);font-weight:500;">Extra pet</div><div style="font-size:13px;color:var(--text-light);margin-top:2px;">$15</div></div>
+      <div><div style="font-size:14px;color:var(--navy);font-weight:500;">Medication administration</div><div style="font-size:13px;color:var(--text-light);margin-top:2px;">$8</div></div>
+      <div><div style="font-size:14px;color:var(--navy);font-weight:500;">Holiday surcharge</div><div style="font-size:13px;color:var(--text-light);margin-top:2px;">+30% on all services</div></div>
+    </div>
+
+    <div class="membership-callout" style="margin-top:32px;">
       <div>
         <div class="membership-callout-title">Looking for recurring weekly walks?</div>
         <div class="membership-callout-text">The Leash Club is our membership path for consistent schedules, discounted walks, and ongoing care.</div>
