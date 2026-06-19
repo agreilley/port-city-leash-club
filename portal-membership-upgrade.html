@@ -244,7 +244,7 @@
         <a href="portal-account.html" style="text-decoration: none;">
           <button type="button" style="background: white; color: var(--text-mid); border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; padding: 15px 34px; font-size: 15px; font-family: 'DM Sans', sans-serif; cursor: pointer;">Back</button>
         </a>
-        <button type="submit" class="btn-primary" id="submitButton" disabled>Confirm Change</button>
+        <button type="submit" class="btn-primary" id="submitButton">Confirm Change</button>
       </div>
     </form>
 
@@ -277,37 +277,13 @@
   const summaryPlan = document.getElementById('summaryPlan');
   const summaryRate = document.getElementById('summaryRate');
   const summaryWalks = document.getElementById('summaryWalks');
-  // Current member state — used to detect changes
-  const CURRENT_PLAN = 'standard';
-  const CURRENT_DAYS = ['monday', 'wednesday', 'friday'];
-  const CURRENT_TIME = 'Early Morning';
-
-  function checkForChanges() {
-    const selectedPlan = document.querySelector('.plan-card.selected')?.dataset.plan;
-    const selectedDays = Array.from(document.querySelectorAll('input[name="days"]:checked')).map(i => i.value).sort();
-    const selectedTime = document.querySelector('input[name="timeWindow"]:checked')?.value;
-
-    const planChanged = selectedPlan !== CURRENT_PLAN;
-    const daysChanged = JSON.stringify(selectedDays) !== JSON.stringify([...CURRENT_DAYS].sort());
-    const timeChanged = selectedTime !== CURRENT_TIME;
-
-    const hasChanged = planChanged || daysChanged || timeChanged;
-    const btn = document.getElementById('submitButton');
-    btn.disabled = !hasChanged;
-  }
-
   function selectTime(time, element) {
     document.querySelectorAll('.time-card').forEach(c => c.classList.remove('selected'));
     element.closest('.time-card').classList.add('selected');
     element.closest('.time-card').querySelector('input').checked = true;
-    checkForChanges();
   }
-    dayChips.forEach(chip => {
-      chip.classList.remove('disabled');
-      chip.style.opacity = '1';
-      chip.style.pointerEvents = 'auto';
-    });
-  }
+
+  function enableDayPicker() {
 
   function disableDayPicker() {
     dayChips.forEach(chip => {
@@ -368,7 +344,6 @@
         disableDayPicker();
       }
       updateEstimate();
-      checkForChanges();
     });
   });
 
@@ -400,7 +375,6 @@
       }
 
       updateEstimate();
-      checkForChanges();
     }, 0);
   }
 
@@ -430,7 +404,6 @@
   // Initialize
   setDays(3);
   updateEstimate();
-  checkForChanges();
 </script>
 </body>
 </html>
