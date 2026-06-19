@@ -6,6 +6,7 @@
 <title>Port City Leash Club</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAHqyt2SMKYU87_bbk0Tr046TIzwBcwIy8&libraries=places"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -684,38 +685,48 @@
     }
 
     autocompleteTimeout = setTimeout(() => {
-      fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)},Wilmington,NC&format=json&limit=5`)
-        .then(res => res.json())
-        .then(data => {
-          suggestionsList.innerHTML = '';
-          if (data.length > 0) {
-            data.forEach(item => {
-              const li = document.createElement('li');
-              li.style.cssText = `
-                padding: 10px 16px;
-                border-bottom: 1px solid rgba(0,0,0,0.05);
-                cursor: pointer;
-                font-size: 13px;
-              `;
-              li.textContent = item.display_name;
-              li.addEventListener('click', () => {
-                addressInput.value = item.display_name;
-                suggestionsList.style.display = 'none';
-                // Auto-check the address
-                document.getElementById('check-address-btn').click();
+      if (typeof google !== 'undefined' && google.maps && google.maps.places) {
+        const service = new google.maps.places.AutocompleteService();
+        service.getPlacePredictions(
+          {
+            input: query,
+            componentRestrictions: { country: 'us' },
+            bounds: new google.maps.LatLngBounds(
+              new google.maps.LatLng(34.15, -77.95),
+              new google.maps.LatLng(34.35, -77.75)
+            )
+          },
+          (predictions, status) => {
+            suggestionsList.innerHTML = '';
+            if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
+              predictions.forEach(item => {
+                const li = document.createElement('li');
+                li.style.cssText = `
+                  padding: 10px 16px;
+                  border-bottom: 1px solid rgba(0,0,0,0.05);
+                  cursor: pointer;
+                  font-size: 13px;
+                `;
+                li.textContent = item.description;
+                li.addEventListener('click', () => {
+                  addressInput.value = item.description;
+                  suggestionsList.style.display = 'none';
+                  // Auto-check the address
+                  document.getElementById('check-address-btn').click();
+                });
+                li.addEventListener('mouseover', () => {
+                  li.style.background = 'rgba(0,0,0,0.05)';
+                });
+                li.addEventListener('mouseout', () => {
+                  li.style.background = 'transparent';
+                });
+                suggestionsList.appendChild(li);
               });
-              li.addEventListener('mouseover', () => {
-                li.style.background = 'rgba(0,0,0,0.05)';
-              });
-              li.addEventListener('mouseout', () => {
-                li.style.background = 'transparent';
-              });
-              suggestionsList.appendChild(li);
-            });
-            suggestionsList.style.display = 'block';
+              suggestionsList.style.display = 'block';
+            }
           }
-        })
-        .catch(err => console.error('Autocomplete error:', err));
+        );
+      }
     }, 300);
   });
 
