@@ -81,6 +81,7 @@
 
     .pet-name {
       margin-bottom: 8px;
+      font-weight: 500;
     }
 
     .pet-info {
@@ -334,16 +335,20 @@
 
           <div class="field-row">
             <div class="field-group">
-              <label class="field-label">Age</label>
-              <div class="field-value"><input type="number" value="5" placeholder="Age"></div>
+              <label class="field-label">Date of Birth</label>
+              <div class="field-value"><input type="date" id="dobInput" value="2021-06-15" placeholder="Select DOB" onchange="calculateAge()"></div>
             </div>
             <div class="field-group">
-              <label class="field-label">Weight</label>
-              <div class="field-value"><input type="text" value="65 lbs" placeholder="Weight"></div>
+              <label class="field-label">Age (Calculated)</label>
+              <div class="field-value" style="display: flex; align-items: center; padding: 10px 12px; background: #FAF8F4; border-radius: 6px; color: #0D1B2A; font-weight: 500;" id="ageDisplay">5 years old</div>
             </div>
           </div>
 
           <div class="field-row">
+            <div class="field-group">
+              <label class="field-label">Weight</label>
+              <div class="field-value"><input type="text" value="65 lbs" placeholder="Weight"></div>
+            </div>
             <div class="field-group">
               <label class="field-label">Gender</label>
               <div class="field-value">
@@ -457,6 +462,59 @@
   </div>
 
   <script>
+    function calculateAge() {
+      const dobInput = document.getElementById('dobInput');
+      const ageDisplay = document.getElementById('ageDisplay');
+      
+      if (!dobInput.value) {
+        ageDisplay.textContent = 'Select DOB';
+        return;
+      }
+      
+      const dob = new Date(dobInput.value);
+      const today = new Date();
+      
+      let years = today.getFullYear() - dob.getFullYear();
+      let months = today.getMonth() - dob.getMonth();
+      
+      // Adjust if birthday hasn't occurred this year
+      if (months < 0) {
+        years--;
+        months += 12;
+      }
+      
+      // Adjust if the exact day hasn't occurred this month
+      if (today.getDate() < dob.getDate()) {
+        months--;
+        if (months < 0) {
+          years--;
+          months += 12;
+        }
+      }
+      
+      // Format the display
+      let ageText = '';
+      if (years > 0) {
+        ageText += years + (years === 1 ? ' year' : ' years');
+        if (months > 0) {
+          ageText += ', ' + months + (months === 1 ? ' month' : ' months');
+        }
+      } else if (months > 0) {
+        ageText = months + (months === 1 ? ' month' : ' months') + ' old';
+      } else {
+        ageText = 'Less than a month old';
+      }
+      
+      if (!ageText.includes('old')) {
+        ageText += ' old';
+      }
+      
+      ageDisplay.textContent = ageText;
+    }
+    
+    // Calculate age on page load
+    document.addEventListener('DOMContentLoaded', calculateAge);
+    
     function handleSaveProfile(e) {
       e.preventDefault();
       alert('Scout\'s profile has been updated!');
