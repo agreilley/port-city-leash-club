@@ -387,6 +387,57 @@
         grid-template-columns: 1fr;
       }
     }
+
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: white;
+      border: 1px solid #E5E0D8;
+      border-radius: 12px;
+      padding: 20px 24px;
+      box-shadow: 0 4px 20px rgba(13, 27, 42, 0.15);
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 15px;
+      color: #0D1B2A;
+      max-width: 400px;
+      z-index: 10000;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    .notification.success {
+      border-left: 4px solid #8FA8A2;
+    }
+
+    .notification.error {
+      border-left: 4px solid #C17B6F;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(400px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    @keyframes slideOut {
+      from {
+        opacity: 1;
+        transform: translateX(0);
+      }
+      to {
+        opacity: 0;
+        transform: translateX(400px);
+      }
+    }
+
+    .notification.dismiss {
+      animation: slideOut 0.3s ease-in forwards;
+    }
   </style>
 </head>
 <body>
@@ -624,14 +675,14 @@
       const timeFrame = document.getElementById('bookingTimeFrame').value;
 
       if (!date || !timeFrame) {
-        alert('Please select a date and time frame');
+        showNotification('Please select a date and time frame', 'error');
         return;
       }
 
       if (service.type === 'add-to-walk') {
         const walkId = document.getElementById('walkSelection').value;
         if (!walkId) {
-          alert('Please select a walk to add this service to');
+          showNotification('Please select a walk to add this service to', 'error');
           return;
         }
       }
@@ -646,17 +697,10 @@
       const bookingDate = new Date(date);
       const dateStr = bookingDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-      const bookingConfirm = `${service.name}
-Date: ${dateStr}
-Time: ${timeFrameLabels[timeFrame]}
-Price: $${service.price}.00
-
-Booking confirmed!`;
-
-      alert(bookingConfirm);
+      showNotification(`${service.name} booked for ${dateStr}`);
       
       // Close modal
-      closeBookingModal();
+      setTimeout(() => closeBookingModal(), 1000);
     }
 
     // Close modal when clicking outside
@@ -669,6 +713,20 @@ Booking confirmed!`;
     // Set minimum date to today
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('bookingDate').setAttribute('min', today);
+
+    // Custom notification function
+    function showNotification(message, type = 'success') {
+      const notification = document.createElement('div');
+      notification.className = `notification ${type}`;
+      notification.textContent = message;
+      document.body.appendChild(notification);
+
+      // Auto-dismiss after 3 seconds
+      setTimeout(() => {
+        notification.classList.add('dismiss');
+        setTimeout(() => notification.remove(), 300);
+      }, 3000);
+    }
   </script>
 </body>
 </html>

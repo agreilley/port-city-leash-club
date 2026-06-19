@@ -364,6 +364,57 @@
         grid-template-columns: 1fr;
       }
     }
+
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: white;
+      border: 1px solid #E5E0D8;
+      border-radius: 12px;
+      padding: 20px 24px;
+      box-shadow: 0 4px 20px rgba(13, 27, 42, 0.15);
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 15px;
+      color: #0D1B2A;
+      max-width: 400px;
+      z-index: 10000;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    .notification.success {
+      border-left: 4px solid #8FA8A2;
+    }
+
+    .notification.error {
+      border-left: 4px solid #C17B6F;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(400px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    @keyframes slideOut {
+      from {
+        opacity: 1;
+        transform: translateX(0);
+      }
+      to {
+        opacity: 0;
+        transform: translateX(400px);
+      }
+    }
+
+    .notification.dismiss {
+      animation: slideOut 0.3s ease-in forwards;
+    }
   </style>
 </head>
 <body>
@@ -573,12 +624,26 @@
 
       const newDateStr = `${dayNames[selectedDate.getDay()]}, ${monthNames[selectedDate.getMonth()]} ${selectedDate.getDate()}`;
 
-      alert(`Walk rescheduled!\n\nNew Date: ${newDateStr}\nNew Time: ${selectedTimeDisplay}\n\nConfirmation email sent.`);
-      goBack();
+      showNotification(`Walk rescheduled to ${newDateStr} at ${selectedTimeDisplay}`);
+      setTimeout(() => goBack(), 1500);
     }
 
     function goBack() {
       window.history.back();
+    }
+
+    // Custom notification function
+    function showNotification(message, type = 'success') {
+      const notification = document.createElement('div');
+      notification.className = `notification ${type}`;
+      notification.textContent = message;
+      document.body.appendChild(notification);
+
+      // Auto-dismiss after 3 seconds
+      setTimeout(() => {
+        notification.classList.add('dismiss');
+        setTimeout(() => notification.remove(), 300);
+      }, 3000);
     }
 
     // Initialize
