@@ -58,6 +58,16 @@
   .day-chip.selected { border-color:var(--rust); background:#fffaf8; }
   .day-chip.disabled { opacity: 0.5; pointer-events: none; }
 
+  .time-grid { display:grid; grid-template-columns: repeat(3,1fr); gap:12px; }
+  .time-card { border:1px solid rgba(0,0,0,0.1); background:#fff; border-radius:8px; padding:16px; cursor:pointer; transition: all .2s; position:relative; text-align:center; }
+  .time-card:hover { box-shadow:0 8px 24px rgba(0,0,0,.06); }
+  .time-card input { position:absolute; opacity:0; pointer-events:none; }
+  .time-card.selected { border-color:var(--rust); background:#fffaf8; box-shadow:0 8px 28px rgba(193,123,111,.14); }
+  .time-title { font-size:13px; font-weight:500; color:var(--navy); margin-bottom:2px; }
+  .time-sub { font-size:11px; color:var(--text-light); }
+
+  .btn-primary:disabled { background: #ccc; cursor: not-allowed; opacity: 0.6; }
+
   .sidebar { position:sticky; top:92px; display:flex; flex-direction:column; gap:18px; }
   .summary-card { background:var(--navy); color:white; border-radius:8px; padding:28px; }
   .summary-kicker { font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--seafoam-light); margin-bottom:8px; }
@@ -206,6 +216,27 @@
             <div>Friday</div>
           </label>
         </div>
+
+        <div style="margin-top: 28px;">
+          <p style="font-size: 13px; font-weight: 500; color: var(--navy); margin-bottom: 12px;">Preferred Time Window</p>
+          <div class="time-grid">
+            <label class="time-card selected" onclick="selectTime('early-morning', this)">
+              <input type="radio" name="timeWindow" value="Early Morning" checked>
+              <div class="time-title">Early Morning</div>
+              <div class="time-sub">7–10am</div>
+            </label>
+            <label class="time-card" onclick="selectTime('early-afternoon', this)">
+              <input type="radio" name="timeWindow" value="Early Afternoon">
+              <div class="time-title">Early Afternoon</div>
+              <div class="time-sub">11am–1pm</div>
+            </label>
+            <label class="time-card" onclick="selectTime('late-afternoon', this)">
+              <input type="radio" name="timeWindow" value="Late Afternoon">
+              <div class="time-title">Late Afternoon</div>
+              <div class="time-sub">2–5pm</div>
+            </label>
+          </div>
+        </div>
       </div>
 
       <!-- Submit -->
@@ -213,7 +244,7 @@
         <a href="portal-account.html" style="text-decoration: none;">
           <button type="button" style="background: white; color: var(--text-mid); border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; padding: 15px 34px; font-size: 15px; font-family: 'DM Sans', sans-serif; cursor: pointer;">Back</button>
         </a>
-        <button type="submit" class="btn-primary" id="submitButton">Confirm Change</button>
+        <button type="submit" class="btn-primary" id="submitButton" disabled>Confirm Change</button>
       </div>
     </form>
 
@@ -246,7 +277,31 @@
   const summaryPlan = document.getElementById('summaryPlan');
   const summaryRate = document.getElementById('summaryRate');
   const summaryWalks = document.getElementById('summaryWalks');
-  function enableDayPicker() {
+  // Current member state — used to detect changes
+  const CURRENT_PLAN = 'standard';
+  const CURRENT_DAYS = ['monday', 'wednesday', 'friday'];
+  const CURRENT_TIME = 'Early Morning';
+
+  function checkForChanges() {
+    const selectedPlan = document.querySelector('.plan-card.selected')?.dataset.plan;
+    const selectedDays = Array.from(document.querySelectorAll('input[name="days"]:checked')).map(i => i.value).sort();
+    const selectedTime = document.querySelector('input[name="timeWindow"]:checked')?.value;
+
+    const planChanged = selectedPlan !== CURRENT_PLAN;
+    const daysChanged = JSON.stringify(selectedDays) !== JSON.stringify([...CURRENT_DAYS].sort());
+    const timeChanged = selectedTime !== CURRENT_TIME;
+
+    const hasChanged = planChanged || daysChanged || timeChanged;
+    const btn = document.getElementById('submitButton');
+    btn.disabled = !hasChanged;
+  }
+
+  function selectTime(time, element) {
+    document.querySelectorAll('.time-card').forEach(c => c.classList.remove('selected'));
+    element.closest('.time-card').classList.add('selected');
+    element.closest('.time-card').querySelector('input').checked = true;
+    checkForChanges();
+  }
     dayChips.forEach(chip => {
       chip.classList.remove('disabled');
       chip.style.opacity = '1';
@@ -313,6 +368,7 @@
         disableDayPicker();
       }
       updateEstimate();
+      checkForChanges();
     });
   });
 
@@ -344,6 +400,7 @@
       }
 
       updateEstimate();
+      checkForChanges();
     }, 0);
   }
 
@@ -373,6 +430,7 @@
   // Initialize
   setDays(3);
   updateEstimate();
+  checkForChanges();
 </script>
 </body>
 </html>
