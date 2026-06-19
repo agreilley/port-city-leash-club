@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Walk History - The Leash Club</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      background: #f5f3ed;
+      color: #0D1B2A;
+    }
+
+    .portal-container {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 220px;
+      background: #0D1B2A;
+      color: white;
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    .sidebar-logo {
+      font-size: 18px;
+      font-weight: 500;
+    }
+
+    .sidebar-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .nav-item {
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      color: #8FA8A2;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .nav-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .nav-item.active {
+      background: #C17B6F;
+      color: white;
+    }
+
+    .sidebar-pet {
+      border-top: 0.5px solid rgba(255, 255, 255, 0.1);
+      padding-top: 16px;
+      color: #8FA8A2;
+      font-size: 13px;
+    }
+
+    .pet-name {
+      margin-bottom: 8px;
+    }
+
+    .pet-info {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .main-content {
+      flex: 1;
+      padding: 32px;
+      overflow-y: auto;
+    }
+
+    .content-max {
+      max-width: 800px;
+    }
+
+    .page-header {
+      margin-bottom: 32px;
+    }
+
+    .page-header h1 {
+      font-size: 28px;
+      font-weight: 500;
+      margin: 0 0 4px;
+    }
+
+    .page-header p {
+      font-size: 14px;
+      color: #888;
+      margin: 0;
+    }
+
+    .filter-bar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .filter-button {
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      cursor: pointer;
+      border: 0.5px solid #ddd;
+      background: white;
+      color: #888;
+      transition: all 0.2s;
+    }
+
+    .filter-button.active {
+      background: #C17B6F;
+      color: white;
+      border-color: #C17B6F;
+    }
+
+    .walk-card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      border: 0.5px solid #ddd;
+      margin-bottom: 16px;
+    }
+
+    .walk-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 12px;
+    }
+
+    .walk-date {
+      font-size: 14px;
+      font-weight: 500;
+      color: #0D1B2A;
+    }
+
+    .walk-time {
+      font-size: 12px;
+      color: #888;
+      margin-top: 2px;
+    }
+
+    .walk-status {
+      background: #8FA8A2;
+      color: white;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+
+    .walk-details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+      padding-bottom: 12px;
+      border-bottom: 0.5px solid #ddd;
+    }
+
+    .detail-item {
+      font-size: 13px;
+    }
+
+    .detail-label {
+      color: #888;
+      margin-bottom: 2px;
+    }
+
+    .detail-value {
+      color: #0D1B2A;
+      font-weight: 500;
+    }
+
+    .walk-notes {
+      margin-top: 12px;
+    }
+
+    .notes-label {
+      font-size: 12px;
+      color: #888;
+      font-weight: 500;
+      margin-bottom: 6px;
+    }
+
+    .notes-text {
+      font-size: 13px;
+      color: #555;
+      line-height: 1.5;
+    }
+
+    .photo-gallery {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .photo {
+      aspect-ratio: 1;
+      background: linear-gradient(135deg, #C17B6F 0%, #8FA8A2 100%);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .photo:hover {
+      transform: scale(1.05);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+    }
+
+    .empty-state p {
+      font-size: 14px;
+      color: #888;
+      margin: 0;
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        display: none;
+      }
+
+      .walk-details {
+        grid-template-columns: 1fr;
+      }
+
+      .photo-gallery {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="portal-container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-logo">The Leash Club</div>
+      <nav class="sidebar-nav">
+        <a href="portal-dashboard.html" class="nav-item">Dashboard</a>
+        <a href="portal-pet-profile.html" class="nav-item">Pet Profile</a>
+        <a href="portal-walk-history.html" class="nav-item active">Walk History</a>
+        <a href="portal-extras.html" class="nav-item">Extras</a>
+        <a href="portal-account.html" class="nav-item">Account</a>
+      </nav>
+      <div class="sidebar-pet">
+        <div class="pet-name">Scout</div>
+        <div class="pet-info">Golden Retriever • 4 yrs</div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <div class="content-max">
+        <div class="page-header">
+          <h1>Walk History</h1>
+          <p>Scout's past walks and notes</p>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+          <button class="filter-button active">All walks</button>
+          <button class="filter-button">This month</button>
+          <button class="filter-button">Last month</button>
+        </div>
+
+        <!-- Walk Cards -->
+        <div class="walk-card">
+          <div class="walk-header">
+            <div>
+              <div class="walk-date">Wednesday, June 19</div>
+              <div class="walk-time">Early Morning • 30 min</div>
+            </div>
+            <div class="walk-status">Completed</div>
+          </div>
+
+          <div class="walk-details">
+            <div class="detail-item">
+              <div class="detail-label">Walker</div>
+              <div class="detail-value">Marcus</div>
+            </div>
+            <div class="detail-item">
+              <div class="detail-label">Route</div>
+              <div class="detail-value">Riverwalk</div>
+            </div>
+          </div>
+
+          <div class="walk-notes">
+            <div class="notes-label">Walker notes</div>
+            <div class="notes-text">Scout had great energy today! We did a 30-minute walk around Riverwalk and he loved the other dogs we met. Drank lots of water at the park. Ready for a nap when we got home!</div>
+          </div>
+
+          <div class="photo-gallery">
+            <div class="photo">📸</div>
+            <div class="photo">📸</div>
+            <div class="photo">📸</div>
+          </div>
+        </div>
+
+        <div class="walk-card">
+          <div class="walk-header">
+            <div>
+              <div class="walk-date">Monday, June 17</div>
+              <div class="walk-time">Early Morning • 30 min</div>
+            </div>
+            <div class="walk-status">Completed</div>
+          </div>
+
+          <div class="walk-details">
+            <div class="detail-item">
+              <div class="detail-label">Walker</div>
+              <div class="detail-value">Priya</div>
+            </div>
+            <div class="detail-item">
+              <div class="detail-label">Route</div>
+              <div class="detail-value">Forest Hills Loop</div>
+            </div>
+          </div>
+
+          <div class="walk-notes">
+            <div class="notes-label">Walker notes</div>
+            <div class="notes-text">Nice gentle walk today since it was warm out. We took the shaded route through Forest Hills and Scout kept a steady pace. He was interested in some scents along the path but remained calm and focused.</div>
+          </div>
+
+          <div class="photo-gallery">
+            <div class="photo">📸</div>
+            <div class="photo">📸</div>
+          </div>
+        </div>
+
+        <div class="walk-card">
+          <div class="walk-header">
+            <div>
+              <div class="walk-date">Saturday, June 15</div>
+              <div class="walk-time">Late Afternoon • 30 min</div>
+            </div>
+            <div class="walk-status">Completed</div>
+          </div>
+
+          <div class="walk-details">
+            <div class="detail-item">
+              <div class="detail-label">Walker</div>
+              <div class="detail-value">Marcus</div>
+            </div>
+            <div class="detail-item">
+              <div class="detail-label">Route</div>
+              <div class="detail-value">Downtown</div>
+            </div>
+          </div>
+
+          <div class="walk-notes">
+            <div class="notes-label">Walker notes</div>
+            <div class="notes-text">Scout was a little reactive to a dog we passed on Dock Street, but he settled down quickly after some distance. Overall a good walk with nice weather. We made it around downtown loop without any issues.</div>
+          </div>
+
+          <div class="photo-gallery">
+            <div class="photo">📸</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - The Leash Club</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      background: #f5f3ed;
+      color: #0D1B2A;
+    }
+
+    .portal-container {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 220px;
+      background: #0D1B2A;
+      color: white;
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    .sidebar-logo {
+      font-size: 18px;
+      font-weight: 500;
+    }
+
+    .sidebar-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .nav-item {
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      color: #8FA8A2;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .nav-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .nav-item.active {
+      background: #C17B6F;
+      color: white;
+    }
+
+    .sidebar-pet {
+      border-top: 0.5px solid rgba(255, 255, 255, 0.1);
+      padding-top: 16px;
+      color: #8FA8A2;
+      font-size: 13px;
+    }
+
+    .pet-name {
+      margin-bottom: 8px;
+    }
+
+    .pet-info {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .main-content {
+      flex: 1;
+      padding: 32px;
+      overflow-y: auto;
+    }
+
+    .content-max {
+      max-width: 900px;
+    }
+
+    .page-header {
+      margin-bottom: 32px;
+    }
+
+    .page-header h1 {
+      font-size: 28px;
+      font-weight: 500;
+      margin: 0 0 4px;
+    }
+
+    .page-header p {
+      font-size: 14px;
+      color: #888;
+      margin: 0;
+    }
+
+    .metric-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+
+    .metric-card {
+      background: white;
+      padding: 16px;
+      border-radius: 12px;
+      border: 0.5px solid #ddd;
+    }
+
+    .metric-label {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 6px;
+    }
+
+    .metric-value {
+      font-size: 18px;
+      font-weight: 500;
+      color: #0D1B2A;
+    }
+
+    .metric-detail {
+      font-size: 12px;
+      color: #888;
+      margin-top: 4px;
+    }
+
+    .calendar-section {
+      background: white;
+      padding: 24px;
+      border-radius: 12px;
+      border: 0.5px solid #ddd;
+    }
+
+    .calendar-header {
+      font-size: 16px;
+      font-weight: 500;
+      margin-bottom: 20px;
+    }
+
+    .day-headers {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .day-header {
+      font-size: 12px;
+      color: #888;
+      font-weight: 500;
+      text-align: center;
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .calendar-day {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      color: #888;
+      border-radius: 8px;
+    }
+
+    .calendar-day.scheduled {
+      background: #C17B6F;
+      color: white;
+      cursor: pointer;
+      border: 2px solid #C17B6F;
+      font-weight: 500;
+    }
+
+    .calendar-day.scheduled::after {
+      content: 'Walk';
+      display: block;
+      font-size: 10px;
+      margin-top: 2px;
+    }
+
+    .calendar-day.completed {
+      background: #8FA8A2;
+      color: white;
+      opacity: 0.6;
+      border: 2px solid #8FA8A2;
+      font-weight: 500;
+    }
+
+    .calendar-day.completed::after {
+      content: 'Walk';
+      display: block;
+      font-size: 10px;
+      margin-top: 2px;
+    }
+
+    .calendar-day.today {
+      border: 3px solid #0D1B2A;
+    }
+
+    .calendar-legend {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 0.5px solid #ddd;
+      font-size: 12px;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 4px;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.3);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      border: 0.5px solid #ddd;
+      width: 90%;
+      max-width: 420px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+      z-index: 101;
+    }
+
+    .modal-header {
+      padding: 20px;
+      border-bottom: 0.5px solid #ddd;
+    }
+
+    .modal-header h3 {
+      font-size: 16px;
+      font-weight: 500;
+      color: #0D1B2A;
+      margin: 0 0 4px;
+    }
+
+    .modal-header p {
+      font-size: 13px;
+      color: #888;
+      margin: 0;
+    }
+
+    .modal-body {
+      padding: 20px;
+    }
+
+    .detail-box {
+      margin-bottom: 16px;
+      padding: 12px;
+      background: #f9f8f5;
+      border-radius: 8px;
+    }
+
+    .detail-label {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 4px;
+    }
+
+    .detail-value {
+      font-size: 15px;
+      font-weight: 500;
+      color: #0D1B2A;
+      margin: 0;
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: 12px;
+      padding: 16px;
+      border-top: 0.5px solid #ddd;
+      background: #f9f8f5;
+      border-radius: 0 0 12px 12px;
+    }
+
+    .modal-footer button {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: #888;
+      border: 0.5px solid #ddd;
+    }
+
+    .btn-primary {
+      background: #C17B6F;
+      color: white;
+    }
+
+    @media (max-width: 768px) {
+      .portal-container {
+        flex-direction: column;
+      }
+
+      .sidebar {
+        width: 100%;
+        flex-direction: row;
+        justify-content: space-between;
+        padding: 16px;
+        gap: 0;
+      }
+
+      .sidebar-nav {
+        flex-direction: row;
+        gap: 8px;
+        flex: 1;
+      }
+
+      .nav-item {
+        font-size: 12px;
+        padding: 8px;
+      }
+
+      .metric-cards {
+        grid-template-columns: 1fr;
+      }
+
+      .main-content {
+        padding: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="portal-container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-logo">The Leash Club</div>
+      <nav class="sidebar-nav">
+        <a href="portal-dashboard.html" class="nav-item active">Dashboard</a>
+        <a href="portal-pet-profile.html" class="nav-item">Pet Profile</a>
+        <a href="portal-walk-history.html" class="nav-item">Walk History</a>
+        <a href="portal-extras.html" class="nav-item">Extras</a>
+        <a href="portal-account.html" class="nav-item">Account</a>
+      </nav>
+      <div class="sidebar-pet">
+        <div class="pet-name">Scout</div>
+        <div class="pet-info">Golden Retriever • 4 yrs</div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <div class="content-max">
+        <div class="page-header">
+          <h1>Welcome back, Sarah</h1>
+          <p>Here's Scout's walk schedule</p>
+        </div>
+
+        <!-- Metric Cards -->
+        <div class="metric-cards">
+          <div class="metric-card">
+            <div class="metric-label">Membership</div>
+            <div class="metric-value">Standard</div>
+            <div class="metric-detail">10 walks/month</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Walks Remaining</div>
+            <div class="metric-value">7 of 10</div>
+            <div class="metric-detail">This month</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Next Walk</div>
+            <div class="metric-value">Tomorrow</div>
+            <div class="metric-detail">10:00 AM</div>
+          </div>
+        </div>
+
+        <!-- Calendar -->
+        <div class="calendar-section">
+          <div class="calendar-header">June 2026</div>
+
+          <!-- Day headers -->
+          <div class="day-headers">
+            <div class="day-header">Sun</div>
+            <div class="day-header">Mon</div>
+            <div class="day-header">Tue</div>
+            <div class="day-header">Wed</div>
+            <div class="day-header">Thu</div>
+            <div class="day-header">Fri</div>
+            <div class="day-header">Sat</div>
+          </div>
+
+          <!-- Calendar grid -->
+          <div class="calendar-grid">
+            <!-- Empty cells for first week -->
+            <div></div><div></div><div></div><div></div><div></div><div></div>
+
+            <!-- Days 1-7 -->
+            <div class="calendar-day">1</div>
+            <div class="calendar-day scheduled" onclick="openWalkModal('June 2', 'Early Morning (7-10am)', '30-minute walk')"></div>
+            <div class="calendar-day scheduled" onclick="openWalkModal('June 3', 'Early Morning (7-10am)', '30-minute walk')"></div>
+            <div class="calendar-day">4</div>
+            <div class="calendar-day scheduled" onclick="openWalkModal('June 5', 'Early Morning (7-10am)', '30-minute walk')"></div>
+            <div class="calendar-day">6</div>
+            <div class="calendar-day scheduled" onclick="openWalkModal('June 7', 'Early Morning (7-10am)', '30-minute walk')"></div>
+
+            <!-- Days 8-14 -->
+            <div class="calendar-day">8</div>
+            <div class="calendar-day">9</div>
+            <div class="calendar-day">10</div>
+            <div class="calendar-day">11</div>
+            <div class="calendar-day">12</div>
+            <div class="calendar-day">13</div>
+            <div class="calendar-day">14</div>
+
+            <!-- Days 15-21 -->
+            <div class="calendar-day completed"></div>
+            <div class="calendar-day">16</div>
+            <div class="calendar-day">17</div>
+            <div class="calendar-day">18</div>
+            <div class="calendar-day">19</div>
+            <div class="calendar-day scheduled today" onclick="openWalkModal('June 20', 'Early Morning (7-10am)', '30-minute walk')"></div>
+            <div class="calendar-day">21</div>
+
+            <!-- Days 22-30 -->
+            <div class="calendar-day">22</div>
+            <div class="calendar-day">23</div>
+            <div class="calendar-day">24</div>
+            <div class="calendar-day">25</div>
+            <div class="calendar-day">26</div>
+            <div class="calendar-day">27</div>
+            <div class="calendar-day">28</div>
+            <div class="calendar-day">29</div>
+            <div class="calendar-day">30</div>
+          </div>
+
+          <!-- Legend -->
+          <div class="calendar-legend">
+            <div class="legend-item">
+              <div class="legend-color" style="background: #C17B6F;"></div>
+              <span>Scheduled walks</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background: #8FA8A2;"></div>
+              <span>Completed walks</span>
+            </div>
+            <div class="legend-item" style="margin-left: auto; color: #888;">
+              💡 Click a walk to reschedule
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Walk Detail Modal -->
+  <div class="modal" id="walkModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalDate">Thursday, June 20</h3>
+        <p>Scheduled walk details</p>
+      </div>
+      <div class="modal-body">
+        <div class="detail-box">
+          <div class="detail-label">Time window</div>
+          <p class="detail-value" id="modalTime">Early Morning (7:00 AM - 10:00 AM)</p>
+        </div>
+        <div class="detail-box">
+          <div class="detail-label">Duration & type</div>
+          <p class="detail-value" id="modalDuration">30-minute walk</p>
+        </div>
+        <div class="detail-box">
+          <div class="detail-label">Dog</div>
+          <p class="detail-value">Scout</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeWalkModal()">Close</button>
+        <button class="btn-primary" onclick="alert('Reschedule flow would open here')">Reschedule</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function openWalkModal(date, time, duration) {
+      document.getElementById('modalDate').textContent = date;
+      document.getElementById('modalTime').textContent = time;
+      document.getElementById('modalDuration').textContent = duration;
+      document.getElementById('walkModal').classList.add('show');
+    }
+
+    function closeWalkModal() {
+      document.getElementById('walkModal').classList.remove('show');
+    }
+
+    // Close modal when clicking outside
+    document.getElementById('walkModal').addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeWalkModal();
+      }
+    });
+  </script>
+</body>
+</html>

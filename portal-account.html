@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account - The Leash Club</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      background: #f5f3ed;
+      color: #0D1B2A;
+    }
+
+    .portal-container {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 220px;
+      background: #0D1B2A;
+      color: white;
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    .sidebar-logo {
+      font-size: 18px;
+      font-weight: 500;
+    }
+
+    .sidebar-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .nav-item {
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      color: #8FA8A2;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .nav-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .nav-item.active {
+      background: #C17B6F;
+      color: white;
+    }
+
+    .sidebar-pet {
+      border-top: 0.5px solid rgba(255, 255, 255, 0.1);
+      padding-top: 16px;
+      color: #8FA8A2;
+      font-size: 13px;
+    }
+
+    .pet-name {
+      margin-bottom: 8px;
+    }
+
+    .pet-info {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .main-content {
+      flex: 1;
+      padding: 32px;
+      overflow-y: auto;
+    }
+
+    .content-max {
+      max-width: 800px;
+    }
+
+    .page-header {
+      margin-bottom: 32px;
+    }
+
+    .page-header h1 {
+      font-size: 28px;
+      font-weight: 500;
+      margin: 0 0 4px;
+    }
+
+    .page-header p {
+      font-size: 14px;
+      color: #888;
+      margin: 0;
+    }
+
+    .section {
+      background: white;
+      padding: 24px;
+      border-radius: 12px;
+      border: 0.5px solid #ddd;
+      margin-bottom: 24px;
+    }
+
+    .section h2 {
+      font-size: 16px;
+      font-weight: 500;
+      color: #0D1B2A;
+      margin: 0 0 16px;
+    }
+
+    .membership-box {
+      padding: 16px;
+      background: #f9f8f5;
+      border-radius: 8px;
+      border: 0.5px solid #ddd;
+      margin-bottom: 16px;
+    }
+
+    .membership-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .membership-info h3 {
+      font-size: 14px;
+      font-weight: 500;
+      color: #0D1B2A;
+      margin: 0 0 4px;
+    }
+
+    .membership-info p {
+      font-size: 13px;
+      color: #888;
+      margin: 0;
+    }
+
+    .membership-renewal {
+      text-align: right;
+    }
+
+    .membership-renewal p:first-child {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 4px;
+    }
+
+    .membership-renewal p:last-child {
+      font-size: 14px;
+      font-weight: 500;
+      color: #0D1B2A;
+      margin: 0;
+    }
+
+    .button-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    button {
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: #C17B6F;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #b06a60;
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: #888;
+      border: 0.5px solid #ddd;
+    }
+
+    .btn-secondary:hover {
+      background: #f5f3ed;
+    }
+
+    .payment-info {
+      margin-bottom: 20px;
+    }
+
+    .payment-method {
+      padding: 12px;
+      background: #f9f8f5;
+      border-radius: 8px;
+      border: 0.5px solid #ddd;
+    }
+
+    .payment-method p {
+      font-size: 13px;
+      margin: 0;
+    }
+
+    .payment-method p:first-child {
+      color: #0D1B2A;
+    }
+
+    .payment-method p:last-child {
+      font-size: 12px;
+      color: #888;
+      margin-top: 4px;
+    }
+
+    .text-link {
+      background: none;
+      color: #888;
+      padding: 8px 0;
+      border: none;
+      text-decoration: underline;
+      font-size: 13px;
+      margin-top: 8px;
+      cursor: pointer;
+    }
+
+    .text-link:hover {
+      color: #0D1B2A;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="tel"] {
+      width: 100%;
+      padding: 10px;
+      border: 0.5px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #8FA8A2;
+      box-shadow: 0 0 0 3px rgba(143, 168, 162, 0.1);
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .form-grid.full {
+      grid-template-columns: 1fr;
+    }
+
+    .danger-zone {
+      background: white;
+      padding: 24px;
+      border-radius: 12px;
+      border: 0.5px solid #ddd;
+    }
+
+    .danger-zone h2 {
+      font-size: 16px;
+      font-weight: 500;
+      color: #0D1B2A;
+      margin: 0 0 12px;
+    }
+
+    .danger-zone p {
+      font-size: 13px;
+      color: #888;
+      margin: 0 0 16px;
+    }
+
+    .btn-danger {
+      background: transparent;
+      color: #C17B6F;
+      border: 0.5px solid #C17B6F;
+      padding: 12px 24px;
+    }
+
+    .btn-danger:hover {
+      background: #fcebeb;
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        display: none;
+      }
+
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .button-group {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="portal-container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-logo">The Leash Club</div>
+      <nav class="sidebar-nav">
+        <a href="portal-dashboard.html" class="nav-item">Dashboard</a>
+        <a href="portal-pet-profile.html" class="nav-item">Pet Profile</a>
+        <a href="portal-walk-history.html" class="nav-item">Walk History</a>
+        <a href="portal-extras.html" class="nav-item">Extras</a>
+        <a href="portal-account.html" class="nav-item active">Account</a>
+      </nav>
+      <div class="sidebar-pet">
+        <div class="pet-name">Scout</div>
+        <div class="pet-info">Golden Retriever • 4 yrs</div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <div class="content-max">
+        <div class="page-header">
+          <h1>Account Settings</h1>
+          <p>Manage your account and membership</p>
+        </div>
+
+        <!-- Membership Section -->
+        <div class="section">
+          <h2>Your Membership</h2>
+          
+          <div class="membership-box">
+            <div class="membership-header">
+              <div class="membership-info">
+                <h3>Standard Membership</h3>
+                <p>10 walks per month • $249/month</p>
+              </div>
+              <div class="membership-renewal">
+                <p>Renewal date</p>
+                <p>July 20, 2026</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="button-group">
+            <button class="btn-primary">Change Membership</button>
+            <button class="btn-secondary">Pause Membership</button>
+          </div>
+        </div>
+
+        <!-- Billing Section -->
+        <div class="section">
+          <h2>Billing</h2>
+          
+          <div class="payment-info">
+            <p style="font-size: 13px; color: #888; margin-bottom: 12px; font-weight: 500;">Payment method</p>
+            <div class="payment-method">
+              <p>Visa ending in 4521</p>
+              <p>Expires 12/27</p>
+            </div>
+            <button class="text-link">Update payment method</button>
+          </div>
+
+          <div class="payment-info">
+            <p style="font-size: 13px; color: #888; margin-bottom: 8px; font-weight: 500;">Billing email</p>
+            <p style="font-size: 13px; color: #0D1B2A; margin-bottom: 8px;">sarah@email.com</p>
+            <button class="text-link">Change email</button>
+          </div>
+        </div>
+
+        <!-- Personal Info Section -->
+        <div class="section">
+          <h2>Personal Information</h2>
+          
+          <div class="form-grid">
+            <div class="form-group">
+              <label>First name</label>
+              <input type="text" value="Sarah">
+            </div>
+            <div class="form-group">
+              <label>Last name</label>
+              <input type="text" value="Johnson">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Phone number</label>
+            <input type="tel" value="(910) 555-0123">
+          </div>
+
+          <button class="btn-primary">Save Changes</button>
+        </div>
+
+        <!-- Password Section -->
+        <div class="section">
+          <h2>Password</h2>
+          
+          <div class="form-group">
+            <label>Current password</label>
+            <input type="password" placeholder="••••••••">
+          </div>
+
+          <div class="form-group">
+            <label>New password</label>
+            <input type="password" placeholder="••••••••">
+          </div>
+
+          <div class="form-group">
+            <label>Confirm new password</label>
+            <input type="password" placeholder="••••••••">
+          </div>
+
+          <button class="btn-primary">Update Password</button>
+        </div>
+
+        <!-- Danger Zone -->
+        <div class="danger-zone">
+          <h2>Danger Zone</h2>
+          <p>Permanently delete your account and all associated data. This action cannot be undone.</p>
+          <button class="btn-danger">Delete Account</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extras - The Leash Club</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      background: #f5f3ed;
+      color: #0D1B2A;
+    }
+
+    .portal-container {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 220px;
+      background: #0D1B2A;
+      color: white;
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    .sidebar-logo {
+      font-size: 18px;
+      font-weight: 500;
+    }
+
+    .sidebar-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .nav-item {
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      color: #8FA8A2;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .nav-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .nav-item.active {
+      background: #C17B6F;
+      color: white;
+    }
+
+    .sidebar-pet {
+      border-top: 0.5px solid rgba(255, 255, 255, 0.1);
+      padding-top: 16px;
+      color: #8FA8A2;
+      font-size: 13px;
+    }
+
+    .pet-name {
+      margin-bottom: 8px;
+    }
+
+    .pet-info {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .main-content {
+      flex: 1;
+      padding: 32px;
+      overflow-y: auto;
+    }
+
+    .content-max {
+      max-width: 900px;
+    }
+
+    .page-header {
+      margin-bottom: 32px;
+    }
+
+    .page-header h1 {
+      font-size: 28px;
+      font-weight: 500;
+      margin: 0 0 4px;
+    }
+
+    .page-header p {
+      font-size: 14px;
+      color: #888;
+      margin: 0;
+    }
+
+    .info-box {
+      background: #f9f8f5;
+      padding: 16px;
+      border-radius: 12px;
+      border: 0.5px solid #ddd;
+      margin-bottom: 24px;
+    }
+
+    .info-box p {
+      font-size: 13px;
+      margin: 0;
+    }
+
+    .info-box p:first-child {
+      color: #0D1B2A;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+
+    .info-box p:last-child {
+      color: #888;
+    }
+
+    .services-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+      margin-bottom: 32px;
+    }
+
+    .service-card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      border: 0.5px solid #ddd;
+    }
+
+    .service-card h3 {
+      font-size: 16px;
+      font-weight: 500;
+      color: #0D1B2A;
+      margin: 0 0 12px;
+    }
+
+    .service-card p {
+      font-size: 13px;
+      color: #888;
+      margin: 0 0 16px;
+    }
+
+    .price-box {
+      margin-bottom: 16px;
+      padding: 12px;
+      background: #f9f8f5;
+      border-radius: 8px;
+    }
+
+    .price-label {
+      font-size: 12px;
+      color: #888;
+      margin: 0 0 4px;
+    }
+
+    .price-value {
+      font-size: 20px;
+      font-weight: 500;
+      color: #0D1B2A;
+      margin: 0;
+    }
+
+    .price-sublabel {
+      font-size: 13px;
+      color: #888;
+      margin-left: 8px;
+      font-weight: 400;
+    }
+
+    .price-daily {
+      font-size: 11px;
+      color: #8FA8A2;
+      margin: 8px 0 0;
+      font-weight: 500;
+    }
+
+    .price-daily .strikethrough {
+      text-decoration: line-through;
+      color: #888;
+      margin-right: 4px;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: #C17B6F;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #b06a60;
+    }
+
+    .cta-section {
+      background: linear-gradient(135deg, #C17B6F 0%, #8FA8A2 100%);
+      color: white;
+      padding: 24px;
+      border-radius: 12px;
+      text-align: center;
+    }
+
+    .cta-section h3 {
+      font-size: 16px;
+      font-weight: 500;
+      margin: 0 0 8px;
+    }
+
+    .cta-section p {
+      font-size: 13px;
+      margin: 0 0 16px;
+      opacity: 0.95;
+    }
+
+    .cta-section button {
+      width: auto;
+      background: white;
+      color: #C17B6F;
+      padding: 12px 28px;
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        display: none;
+      }
+
+      .services-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="portal-container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-logo">The Leash Club</div>
+      <nav class="sidebar-nav">
+        <a href="portal-dashboard.html" class="nav-item">Dashboard</a>
+        <a href="portal-pet-profile.html" class="nav-item">Pet Profile</a>
+        <a href="portal-walk-history.html" class="nav-item">Walk History</a>
+        <a href="portal-extras.html" class="nav-item active">Extras</a>
+        <a href="portal-account.html" class="nav-item">Account</a>
+      </nav>
+      <div class="sidebar-pet">
+        <div class="pet-name">Scout</div>
+        <div class="pet-info">Golden Retriever • 4 yrs</div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <div class="content-max">
+        <div class="page-header">
+          <h1>Add-On Services</h1>
+          <p>Beyond your regular walks</p>
+        </div>
+
+        <!-- Info Box -->
+        <div class="info-box">
+          <p>Your membership: Standard</p>
+          <p>💡 Daily members get 10% off all add-on services. Upgrade to unlock these savings.</p>
+        </div>
+
+        <!-- Services Grid -->
+        <div class="services-grid">
+          <!-- Overnight Stay -->
+          <div class="service-card">
+            <h3>Overnight Stay</h3>
+            <p>12+ hours of care while you're away</p>
+            <div class="price-box">
+              <p class="price-label">Price</p>
+              <p class="price-value">$95<span class="price-sublabel">per night</span></p>
+            </div>
+            <button class="btn-primary">Book Now</button>
+          </div>
+
+          <!-- Extended Walk -->
+          <div class="service-card">
+            <h3>Extended Walk</h3>
+            <p>Add 15 minutes to any walk (30→45 min)</p>
+            <div class="price-box">
+              <p class="price-label">Upcharge</p>
+              <p class="price-value">$12<span class="price-sublabel">per walk</span></p>
+            </div>
+            <button class="btn-primary">Add to Walk</button>
+          </div>
+
+          <!-- Check-In Visit -->
+          <div class="service-card">
+            <h3>Check-In Visit</h3>
+            <p>20-minute potty break & playtime</p>
+            <div class="price-box">
+              <p class="price-label">Price</p>
+              <p class="price-value">$25<span class="price-sublabel">per visit</span></p>
+            </div>
+            <button class="btn-primary">Book Now</button>
+          </div>
+
+          <!-- Medication Admin -->
+          <div class="service-card">
+            <h3>Medication Admin</h3>
+            <p>Add to any walk or visit</p>
+            <div class="price-box">
+              <p class="price-label">Price</p>
+              <p class="price-value">$8<span class="price-sublabel">per walk</span></p>
+            </div>
+            <button class="btn-primary">Add to Walk</button>
+          </div>
+        </div>
+
+        <!-- Upgrade CTA -->
+        <div class="cta-section">
+          <h3>Get 10% off all add-on services</h3>
+          <p>Upgrade to Daily membership and save on every extended walk, overnight stay, and more.</p>
+          <button onclick="alert('Would navigate to membership upgrade flow')">Learn About Daily Membership</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
