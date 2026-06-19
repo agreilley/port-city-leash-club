@@ -246,7 +246,7 @@
         <h2>Preferred Walking Days</h2>
         <p class="section-copy">Which days work best for Scout? You can mix and match throughout the month.</p>
         
-        <div class="day-grid">
+        <div class="day-grid" style="grid-template-columns: repeat(5,1fr);">
           <label class="day-chip" onclick="selectDay('monday', this)">
             <input type="checkbox" name="days" value="monday">
             <div>Monday</div>
@@ -266,14 +266,6 @@
           <label class="day-chip" onclick="selectDay('friday', this)">
             <input type="checkbox" name="days" value="friday">
             <div>Friday</div>
-          </label>
-          <label class="day-chip" onclick="selectDay('saturday', this)">
-            <input type="checkbox" name="days" value="saturday">
-            <div>Saturday</div>
-          </label>
-          <label class="day-chip" onclick="selectDay('sunday', this)">
-            <input type="checkbox" name="days" value="sunday">
-            <div>Sunday</div>
           </label>
         </div>
       </div>
