@@ -220,14 +220,10 @@
     <div class="sidebar">
       <div class="summary-card">
         <div class="summary-kicker">Estimated Monthly Investment</div>
-        <div class="summary-title" id="summaryPlan">Scout's Plan</div>
-        <div class="investment" id="summaryPrice">$249</div>
-        <div class="investment-sub">per month</div>
+        <div class="summary-title" id="summaryPlan">Standard Membership</div>
+        <div class="investment" id="summaryRate">$24.90</div>
+        <div class="investment-sub">per walk · <span id="summaryPrice">~$299</span>/month est.</div>
         
-        <div class="summary-line">
-          <span>Rate</span>
-          <strong id="summaryRate">$24.90 / walk</strong>
-        </div>
         <div class="summary-line">
           <span>Walks / week</span>
           <strong id="summaryWalks">3</strong>
@@ -251,7 +247,6 @@
   const summaryPlan = document.getElementById('summaryPlan');
   const summaryRate = document.getElementById('summaryRate');
   const summaryWalks = document.getElementById('summaryWalks');
-
   function enableDayPicker() {
     dayChips.forEach(chip => {
       chip.classList.remove('disabled');
@@ -286,9 +281,9 @@
     const label = selectedPlan.querySelector('.plan-name').textContent;
 
     summaryPlan.textContent = label + ' Membership';
-    summaryRate.textContent = '$' + rate + ' / walk';
+    summaryRate.textContent = '$' + rate;
     summaryWalks.textContent = walks || '0';
-    investmentAmount.textContent = monthly ? '$' + monthly.toFixed(0) : 'TBD';
+    investmentAmount.textContent = monthly ? '~$' + monthly.toFixed(0) : 'TBD';
   }
 
   function selectPlan(planName) {
