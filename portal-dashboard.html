@@ -392,7 +392,16 @@
       <div class="content-max">
         <div class="page-header">
           <h1>Welcome back, Sarah</h1>
-          <p>Here's Scout's walk schedule • Monday, Wednesday • Early Morning</p>
+          <p>Scout is all set for their walks</p>
+        </div>
+
+        <!-- Walk Schedule Banner -->
+        <div style="background: linear-gradient(135deg, #C17B6F 0%, #8FA8A2 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 32px; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-size: 12px; opacity: 0.9; margin-bottom: 4px;">Default Walk Schedule</div>
+            <div style="font-size: 18px; font-weight: 500;">📅 Monday, Wednesday • Early Morning</div>
+          </div>
+          <a href="portal-account.html" style="background: white; color: #C17B6F; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px; cursor: pointer;">Change Schedule</a>
         </div>
 
         <!-- Metric Cards -->
@@ -404,13 +413,13 @@
           </div>
           <div class="metric-card">
             <div class="metric-label">Walks Remaining</div>
-            <div class="metric-value">7 of 10</div>
+            <div class="metric-value" id="walksRemaining">7 of 10</div>
             <div class="metric-detail">This month</div>
           </div>
           <div class="metric-card">
             <div class="metric-label">Next Walk</div>
-            <div class="metric-value">Tomorrow</div>
-            <div class="metric-detail">10:00 AM</div>
+            <div class="metric-value" id="nextWalkDay">Tomorrow</div>
+            <div class="metric-detail" id="nextWalkTime">10:00 AM</div>
           </div>
         </div>
 
@@ -516,6 +525,40 @@
         }
       }
       
+      // Calculate metrics for current month if we're viewing current month
+      if (year === today.getFullYear() && month === today.getMonth()) {
+        let completedWalks = 0;
+        let totalWalks = 0;
+        let nextWalk = null;
+        
+        for (let day = 1; day <= daysInMonth; day++) {
+          if (walkDates.has(day)) {
+            totalWalks++;
+            const cellDate = new Date(year, month, day);
+            
+            if (cellDate < today) {
+              completedWalks++;
+            } else if (!nextWalk) {
+              nextWalk = cellDate;
+            }
+          }
+        }
+        
+        // Update metric cards
+        const walksRemaining = totalWalks - completedWalks;
+        document.getElementById('walksRemaining').textContent = `${walksRemaining} of ${totalWalks}`;
+        
+        if (nextWalk) {
+          const daysUntilWalk = Math.ceil((nextWalk - today) / (1000 * 60 * 60 * 24));
+          let dayText = 'Today';
+          if (daysUntilWalk === 1) dayText = 'Tomorrow';
+          else if (daysUntilWalk > 1) dayText = `In ${daysUntilWalk} days`;
+          
+          document.getElementById('nextWalkDay').textContent = dayText;
+          document.getElementById('nextWalkTime').textContent = '10:00 AM';
+        }
+      }
+      
       // Build calendar grid
       const calendarGrid = document.getElementById('calendarGrid');
       calendarGrid.innerHTML = '';
@@ -544,7 +587,7 @@
             dayEl.innerHTML = day + '<span style="display: block; font-size: 10px; margin-top: 2px;">Walk</span>';
             dayEl.onclick = () => openWalkModal(
               formatDateString(cellDate), 
-              'Early Afternoon (11am-1pm)', 
+              'Early Morning (7-10am)', 
               '30-minute walk'
             );
             dayEl.style.cursor = 'pointer';
