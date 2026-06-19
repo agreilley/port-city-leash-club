@@ -698,7 +698,7 @@
                   addressInput.value = item.description;
                   suggestionsList.style.display = 'none';
                   
-                  // Zoom map to selected address
+                  // Zoom map to selected address and extract zip code
                   if (map && item.place_id) {
                     const placesService = new google.maps.places.PlacesService(map);
                     placesService.getDetails({ placeId: item.place_id }, (place, status) => {
@@ -712,6 +712,29 @@
                           map: map,
                           title: item.description
                         });
+                        
+                        // Extract zip code from address components
+                        let zipCode = null;
+                        if (place.address_components) {
+                          place.address_components.forEach(component => {
+                            if (component.types.includes('postal_code')) {
+                              zipCode = component.long_name;
+                            }
+                          });
+                        }
+                        
+                        // Check if in service area
+                        const isInServiceArea = zipCode && SERVICE_ZIPS.includes(zipCode);
+                        const resultIn = document.getElementById('result-in');
+                        const resultOut = document.getElementById('result-out');
+                        
+                        if (isInServiceArea) {
+                          resultIn.style.display = 'block';
+                          resultOut.style.display = 'none';
+                        } else {
+                          resultIn.style.display = 'none';
+                          resultOut.style.display = 'block';
+                        }
                       }
                     });
                   }
