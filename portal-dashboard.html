@@ -409,7 +409,7 @@
           <div class="metric-card">
             <div class="metric-label">Membership</div>
             <div class="metric-value">Standard</div>
-            <div class="metric-detail">10 walks/month</div>
+            <div class="metric-detail">Twice a week</div>
           </div>
           <div class="metric-card">
             <div class="metric-label">Walks Remaining</div>
@@ -419,7 +419,7 @@
           <div class="metric-card">
             <div class="metric-label">Next Walk</div>
             <div class="metric-value" id="nextWalkDay">Tomorrow</div>
-            <div class="metric-detail" id="nextWalkTime">10:00 AM</div>
+            <div class="metric-detail" id="nextWalkTime">Early Morning</div>
           </div>
         </div>
 
@@ -555,7 +555,7 @@
           else if (daysUntilWalk > 1) dayText = `In ${daysUntilWalk} days`;
           
           document.getElementById('nextWalkDay').textContent = dayText;
-          document.getElementById('nextWalkTime').textContent = '10:00 AM';
+          document.getElementById('nextWalkTime').textContent = 'Early Morning';
         }
       }
       
