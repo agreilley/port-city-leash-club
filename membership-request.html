@@ -187,10 +187,12 @@
         <h2>Choose your schedule</h2>
         <p class="section-copy">Select your preferred start date, walking days, and time window. Daily memberships automatically include Monday through Friday.</p>
         <div class="field-grid">
-          <div class="field">
-            <label class="field-label" for="startDate">Preferred start date</label>
-            <input id="startDate" name="startDate" type="date">
-          </div>
+        <div class="field">
+          <!-- Calendly inline widget begin -->
+          <div class="calendly-inline-widget" data-url="https://calendly.com/alison-reilley/30min" style="min-width:320px;height:600px;"></div>
+          <script type="text/javascript" src="https://assets.calendly.com/assets/external/widget.js" async></script>
+          <!-- Calendly inline widget end -->
+        </div>
           <div class="field">
             <label class="field-label" for="walkLength">Preferred walk length</label>
             <select id="walkLength" name="walkLength">
