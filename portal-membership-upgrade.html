@@ -1,427 +1,313 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Change Membership - The Leash Club</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Change Membership | Port City Leash Club</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --navy: #0D1B2A; --navy-mid: #1C2F42;
+    --seafoam: #8FA8A2; --seafoam-light: #C5D5D1;
+    --sand: #E9E1D3; --sand-light: #F4F0EA;
+    --warm-white: #FAFAF8; --text-dark: #1A1A1A;
+    --text-mid: #4A4A4A; --text-light: #7A7A7A;
+    --rust: #C17B6F; --rust-dark:#A36358;
+  }
+  body { font-family: 'DM Sans', sans-serif; background: var(--warm-white); color: var(--text-dark); line-height: 1.6; }
+  nav { position: sticky; top: 0; z-index: 100; background: var(--warm-white); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 0 48px; display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .nav-logo { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--navy); line-height: 1.3; text-decoration:none; }
+  .nav-links { display: flex; align-items: center; gap: 32px; list-style: none; }
+  .nav-links a { font-size: 13px; color: var(--text-mid); text-decoration: none; letter-spacing: 0.04em; }
+  .btn-nav, .btn-primary { background: var(--rust); color: white !important; border: none; border-radius: 4px; padding: 10px 20px; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; text-decoration:none; display:inline-block; transition: background 0.2s, transform 0.1s; }
+  .btn-primary { padding: 15px 34px; font-size: 15px; }
+  .btn-nav:hover, .btn-primary:hover { background: var(--rust-dark); }
+  .btn-primary:active { transform: scale(.98); }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-      background: #f5f3ed;
-      color: #0D1B2A;
-    }
+  .page-hero { background: var(--sand-light); padding: 76px 48px 64px; border-bottom: 1px solid rgba(0,0,0,0.06); }
+  .hero-inner { max-width: 1040px; margin: 0 auto; }
+  .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 16px; }
+  h1 { font-family: 'Cormorant Garamond', serif; font-size: 56px; font-weight: 300; line-height: 1.04; color: var(--navy); margin-bottom: 20px; }
+  .hero-sub { font-size: 16px; color: var(--text-mid); line-height: 1.8; max-width: 520px; }
 
-    .upgrade-container {
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 40px 20px;
-    }
+  main { padding: 64px 48px 90px; }
+  .form-shell { max-width: 1040px; margin: 0 auto; display:grid; grid-template-columns: 1fr 320px; gap: 32px; align-items:start; }
+  form { display:flex; flex-direction:column; gap: 24px; }
+  .form-section { background:white; border:1px solid rgba(0,0,0,0.08); border-radius:8px; padding:32px; }
+  .section-kicker { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 8px; }
+  h2 { font-family:'Cormorant Garamond',serif; font-weight:300; color:var(--navy); font-size:36px; line-height:1.1; margin-bottom: 10px; }
+  .section-copy { font-size:14px; color:var(--text-mid); line-height:1.7; margin-bottom:24px; max-width: 680px; }
 
-    .upgrade-header {
-      text-align: center;
-      margin-bottom: 48px;
-    }
+  .plan-grid { display:grid; grid-template-columns: repeat(3,1fr); gap:16px; }
+  .plan-card { border:1px solid rgba(0,0,0,0.1); background:#fff; border-radius:8px; padding:24px; cursor:pointer; transition: all .2s; position:relative; text-align:center; }
+  .plan-card:hover { transform: translateY(-1px); box-shadow:0 8px 24px rgba(0,0,0,.06); }
+  .plan-card input { position:absolute; opacity:0; pointer-events:none; }
+  .plan-card.selected { border-color:var(--rust); box-shadow:0 8px 28px rgba(193,123,111,.14); background:#fffaf8; }
+  .plan-card.current { background: #f0f0f0; }
+  .current-badge { font-size: 10px; background: var(--seafoam); color: white; padding: 4px 12px; border-radius: 20px; display: inline-block; margin-bottom: 12px; }
+  .plan-name { font-family:'Cormorant Garamond',serif; font-size:24px; color:var(--navy); line-height:1.1; margin-bottom:6px; font-weight: 500; }
+  .plan-meta { font-size:12px; color:var(--text-light); margin-bottom:12px; }
+  .plan-price { font-size:20px; color:var(--navy); font-weight:500; margin-bottom:4px; }
+  .plan-per-walk { font-size:12px; color:var(--text-light); }
 
-    .upgrade-header h1 {
-      font-size: 32px;
-      font-weight: 500;
-      margin-bottom: 8px;
-    }
+  .day-grid { display:grid; grid-template-columns: repeat(7,1fr); gap:10px; margin-bottom:20px; }
+  .day-chip { border:1px solid rgba(0,0,0,0.1); background:#fff; border-radius:8px; padding:10px; cursor:pointer; transition: all .2s; position:relative; text-align:center; font-size:13px; font-weight:500; color:var(--navy); }
+  .day-chip:hover { box-shadow:0 8px 24px rgba(0,0,0,.06); }
+  .day-chip input { position:absolute; opacity:0; pointer-events:none; }
+  .day-chip.selected { border-color:var(--rust); background:#fffaf8; }
 
-    .upgrade-header p {
-      font-size: 16px;
-      color: #888;
-      max-width: 500px;
-      margin: 0 auto;
-    }
+  .time-grid { display:grid; grid-template-columns: repeat(3,1fr); gap:12px; }
+  .time-card { border:1px solid rgba(0,0,0,0.1); background:#fff; border-radius:8px; padding:16px; cursor:pointer; transition: all .2s; position:relative; text-align:center; }
+  .time-card:hover { box-shadow:0 8px 24px rgba(0,0,0,.06); }
+  .time-card input { position:absolute; opacity:0; pointer-events:none; }
+  .time-card.selected { border-color:var(--rust); background:#fffaf8; box-shadow:0 8px 28px rgba(193,123,111,.14); }
+  .time-title { font-size:13px; font-weight:500; color:var(--navy); margin-bottom:2px; }
+  .time-sub { font-size:11px; color:var(--text-light); }
 
-    .tiers-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 24px;
-      margin-bottom: 32px;
-    }
+  .sidebar { position:sticky; top:92px; display:flex; flex-direction:column; gap:18px; }
+  .summary-card { background:var(--navy); color:white; border-radius:8px; padding:28px; }
+  .summary-kicker { font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--seafoam-light); margin-bottom:8px; }
+  .summary-title { font-family:'Cormorant Garamond',serif; font-size:24px; line-height:1.1; margin-bottom:18px; }
+  .investment { font-family:'Cormorant Garamond',serif; font-size:40px; line-height:1; margin-bottom:8px; }
+  .investment-sub { font-size:12px; color:rgba(255,255,255,.58); line-height:1.5; margin-bottom:16px; }
+  .summary-line { display:flex; justify-content:space-between; gap:16px; border-top:1px solid rgba(255,255,255,.1); padding:12px 0; font-size:13px; color:rgba(255,255,255,.75); }
+  .summary-line strong { color:white; font-weight:500; text-align:right; }
+  .submit-row { display:flex; align-items:center; gap:18px; margin-top:32px; }
+  .submit-row a, .submit-row button { flex:1; }
+  .submit-row button { padding:15px; font-size:15px; }
 
-    .tier-card {
-      background: white;
-      border: 2px solid #ddd;
-      border-radius: 12px;
-      padding: 32px 24px;
-      text-align: center;
-      position: relative;
-      transition: all 0.2s;
-      cursor: pointer;
-    }
-
-    .tier-card:hover {
-      border-color: #C17B6F;
-      box-shadow: 0 8px 24px rgba(193, 123, 111, 0.1);
-    }
-
-    .tier-card.selected {
-      border-color: #C17B6F;
-      background: #fcf8f5;
-      box-shadow: 0 12px 32px rgba(193, 123, 111, 0.2);
-    }
-
-    .tier-card.current {
-      background: #f0f0f0;
-    }
-
-    .current-badge {
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      background: #8FA8A2;
-      color: white;
-      padding: 4px 12px;
-      border-radius: 20px;
-      font-size: 11px;
-      font-weight: 500;
-    }
-
-    .tier-name {
-      font-size: 24px;
-      font-weight: 500;
-      margin-bottom: 12px;
-    }
-
-    .tier-description {
-      font-size: 14px;
-      color: #888;
-      margin-bottom: 20px;
-      line-height: 1.5;
-    }
-
-    .tier-price {
-      font-size: 28px;
-      font-weight: 500;
-      color: #C17B6F;
-      margin-bottom: 4px;
-    }
-
-    .tier-price-period {
-      font-size: 13px;
-      color: #888;
-      margin-bottom: 24px;
-    }
-
-    .tier-features {
-      list-style: none;
-      margin-bottom: 24px;
-      text-align: left;
-    }
-
-    .tier-features li {
-      font-size: 13px;
-      color: #555;
-      padding: 8px 0;
-      border-bottom: 0.5px solid #eee;
-    }
-
-    .tier-features li:last-child {
-      border-bottom: none;
-    }
-
-    .tier-features li::before {
-      content: "✓ ";
-      color: #8FA8A2;
-      font-weight: 500;
-      margin-right: 8px;
-    }
-
-    .tier-button {
-      width: 100%;
-      padding: 12px;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .tier-card.selected .tier-button,
-    .tier-button-primary {
-      background: #C17B6F;
-      color: white;
-    }
-
-    .tier-button-primary:hover {
-      background: #b06a60;
-    }
-
-    .tier-button-secondary {
-      background: white;
-      color: #888;
-      border: 1px solid #ddd;
-    }
-
-    .tier-button-secondary:hover {
-      border-color: #C17B6F;
-      color: #C17B6F;
-    }
-
-    .tier-button-current {
-      background: #ddd;
-      color: #888;
-      cursor: default;
-    }
-
-    .action-buttons {
-      display: flex;
-      gap: 12px;
-      justify-content: center;
-    }
-
-    button {
-      padding: 12px 28px;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      border: none;
-      transition: all 0.2s;
-    }
-
-    .btn-confirm {
-      background: #C17B6F;
-      color: white;
-    }
-
-    .btn-confirm:hover {
-      background: #b06a60;
-    }
-
-    .btn-cancel {
-      background: transparent;
-      color: #888;
-      border: 0.5px solid #ddd;
-    }
-
-    .btn-cancel:hover {
-      background: #f5f3ed;
-    }
-
-    .comparison-section {
-      background: white;
-      padding: 32px;
-      border-radius: 12px;
-      margin-top: 48px;
-    }
-
-    .comparison-section h2 {
-      font-size: 20px;
-      font-weight: 500;
-      margin-bottom: 24px;
-    }
-
-    .comparison-table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    .comparison-table th {
-      text-align: left;
-      font-size: 12px;
-      font-weight: 500;
-      color: #888;
-      border-bottom: 0.5px solid #ddd;
-      padding: 12px;
-    }
-
-    .comparison-table td {
-      padding: 12px;
-      border-bottom: 0.5px solid #ddd;
-      font-size: 13px;
-    }
-
-    .comparison-table tr:last-child td {
-      border-bottom: none;
-    }
-
-    @media (max-width: 768px) {
-      .tiers-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-  </style>
+  @media (max-width: 900px) {
+    .form-shell { grid-template-columns: 1fr; }
+    .sidebar { position: static; }
+  }
+  @media (max-width: 768px) {
+    nav { padding: 0 24px; }
+    main { padding: 48px 24px; }
+    .page-hero { padding: 48px 24px 40px; }
+    h1 { font-size: 36px; }
+    .plan-grid { grid-template-columns: 1fr; }
+    .day-grid { grid-template-columns: repeat(5,1fr); }
+  }
+</style>
 </head>
 <body>
-  <div class="upgrade-container">
-    <div class="upgrade-header">
-      <h1>Choose Your Plan</h1>
-      <p>Select the membership that works best for Scout</p>
-    </div>
+<nav>
+  <a href="index.html" class="nav-logo">Port City Leash Club</a>
+  <ul class="nav-links">
+    <li><a href="portal-dashboard.html" class="btn-nav">Member Portal</a></li>
+  </ul>
+</nav>
 
-    <div class="tiers-grid">
-      <!-- Essential Tier -->
-      <div class="tier-card" onclick="selectTier('essential')">
-        <div class="tier-name">Essential</div>
-        <div class="tier-description">Once a week</div>
-        <div class="tier-price">$129</div>
-        <div class="tier-price-period">/month</div>
-        <ul class="tier-features">
-          <li>5 walks per month</li>
-          <li>Flexible scheduling</li>
-          <li>Same walker assignments</li>
-          <li>Mobile app access</li>
-        </ul>
-        <button type="button" class="tier-button tier-button-secondary">Select</button>
-      </div>
-
-      <!-- Standard Tier (Current) -->
-      <div class="tier-card current" id="standardCard">
-        <div class="current-badge">Current Plan</div>
-        <div class="tier-name">Standard</div>
-        <div class="tier-description">Twice a week</div>
-        <div class="tier-price">$249</div>
-        <div class="tier-price-period">/month</div>
-        <ul class="tier-features">
-          <li>10 walks per month</li>
-          <li>Flexible scheduling</li>
-          <li>Same walker assignments</li>
-          <li>Mobile app access</li>
-          <li>10% off add-ons</li>
-        </ul>
-        <button type="button" class="tier-button tier-button-current" disabled>Current Plan</button>
-      </div>
-
-      <!-- Daily Tier -->
-      <div class="tier-card" onclick="selectTier('daily')">
-        <div class="tier-name">Daily</div>
-        <div class="tier-description">Every weekday</div>
-        <div class="tier-price">$429</div>
-        <div class="tier-price-period">/month</div>
-        <ul class="tier-features">
-          <li>~21 walks per month</li>
-          <li>Consistent schedule</li>
-          <li>Same walker assignments</li>
-          <li>Mobile app access</li>
-          <li>10% off add-ons</li>
-        </ul>
-        <button type="button" class="tier-button tier-button-secondary">Upgrade</button>
-      </div>
-    </div>
-
-    <!-- Action Buttons -->
-    <div class="action-buttons">
-      <button class="btn-cancel" onclick="window.history.back()">Cancel</button>
-      <button class="btn-confirm" id="confirmButton" style="display: none;">Confirm Change</button>
-    </div>
-
-    <!-- Comparison Table -->
-    <div class="comparison-section">
-      <h2>Detailed Comparison</h2>
-      <table class="comparison-table">
-        <thead>
-          <tr>
-            <th style="width: 30%;">Feature</th>
-            <th style="width: 23%;">Essential</th>
-            <th style="width: 23%;">Standard</th>
-            <th style="width: 24%;">Daily</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><strong>Monthly Walks</strong></td>
-            <td>5</td>
-            <td>10</td>
-            <td>~21</td>
-          </tr>
-          <tr>
-            <td><strong>Price</strong></td>
-            <td>$129/month</td>
-            <td>$249/month</td>
-            <td>$429/month</td>
-          </tr>
-          <tr>
-            <td><strong>Cost per Walk</strong></td>
-            <td>$25.80</td>
-            <td>$24.90</td>
-            <td>$20.43</td>
-          </tr>
-          <tr>
-            <td><strong>Schedule Flexibility</strong></td>
-            <td>Yes</td>
-            <td>Yes</td>
-            <td>No (fixed Mon-Fri)</td>
-          </tr>
-          <tr>
-            <td><strong>Same Walker</strong></td>
-            <td>Yes</td>
-            <td>Yes</td>
-            <td>Yes</td>
-          </tr>
-          <tr>
-            <td><strong>Add-on Discount</strong></td>
-            <td>Regular price</td>
-            <td>10% off</td>
-            <td>10% off</td>
-          </tr>
-          <tr>
-            <td><strong>Rollover Credits</strong></td>
-            <td>Up to 4</td>
-            <td>Up to 4</td>
-            <td>Not applicable</td>
-          </tr>
-          <tr>
-            <td><strong>Pause Membership</strong></td>
-            <td>Yes</td>
-            <td>Yes</td>
-            <td>Yes</td>
-          </tr>
-        </tbody>
-      </table>
+<div class="page-hero">
+  <div class="hero-inner">
+    <div>
+      <div class="eyebrow">Scout's Membership</div>
+      <h1>Change Your Plan</h1>
+      <p class="hero-sub">Find a membership that better fits Scout's needs. You can upgrade, downgrade, or stay where you are.</p>
     </div>
   </div>
+</div>
 
-  <script>
-    let selectedTier = null;
+<main>
+  <div class="form-shell">
+    <form onsubmit="submitMembershipChange(event)">
+      <!-- Current Plan Info -->
+      <div class="form-section">
+        <div class="section-kicker">Your Current Plan</div>
+        <h2>Standard Membership</h2>
+        <p class="section-copy">10 walks per month • $249/month</p>
+        <p style="font-size: 13px; color: var(--text-mid); line-height: 1.6;">You're on a great plan! You can upgrade to Daily for unlimited weekday walks, or stay the course. Your choice.</p>
+      </div>
 
-    function selectTier(tier) {
-      selectedTier = tier;
-      
-      // Update UI
-      document.querySelectorAll('.tier-card').forEach(card => {
-        card.classList.remove('selected');
-      });
+      <!-- Plan Selection -->
+      <div class="form-section">
+        <div class="section-kicker">Step 1 of 2</div>
+        <h2>Choose Your Plan</h2>
+        <p class="section-copy">All plans include a consistent walker, flexible scheduling (except Daily), and 48-hour cancellation.</p>
+        
+        <div class="plan-grid">
+          <label class="plan-card" onclick="selectPlan('essential', this)">
+            <input type="radio" name="plan" value="essential" required>
+            <div class="plan-name">Essential</div>
+            <div class="plan-meta">Once a week</div>
+            <div class="plan-price">$129</div>
+            <div class="plan-per-walk">/month · $25.80/walk</div>
+            <div style="font-size: 11px; color: var(--text-light); margin-top: 8px;">8% savings vs. single walks</div>
+          </label>
 
-      if (tier === 'essential') {
-        document.querySelectorAll('.tier-card')[0].classList.add('selected');
-      } else if (tier === 'daily') {
-        document.querySelectorAll('.tier-card')[2].classList.add('selected');
-      }
+          <label class="plan-card current" onclick="selectPlan('standard', this)">
+            <div class="current-badge">Your Plan</div>
+            <input type="radio" name="plan" value="standard" checked required>
+            <div class="plan-name">Standard</div>
+            <div class="plan-meta">Twice a week</div>
+            <div class="plan-price">$249</div>
+            <div class="plan-per-walk">/month · $24.90/walk</div>
+            <div style="font-size: 11px; color: var(--text-light); margin-top: 8px;">11% savings vs. single walks</div>
+          </label>
 
-      // Show confirm button
-      document.getElementById('confirmButton').style.display = 'block';
+          <label class="plan-card" onclick="selectPlan('daily', this)">
+            <input type="radio" name="plan" value="daily" required>
+            <div class="plan-name">Daily</div>
+            <div class="plan-meta">Every weekday</div>
+            <div class="plan-price">$429</div>
+            <div class="plan-per-walk">/month · ~$20.43/walk</div>
+            <div style="font-size: 11px; color: var(--text-light); margin-top: 8px;">27% savings vs. single walks</div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Daily Scheduling (if selected) -->
+      <div class="form-section" id="dailyScheduleSection" style="display: none;">
+        <div class="section-kicker">Step 2 of 2</div>
+        <h2>Your Daily Schedule</h2>
+        <p class="section-copy">When would Scout prefer their daily walk?</p>
+        
+        <div class="time-grid">
+          <label class="time-card" onclick="selectTime('early-morning', this)">
+            <input type="radio" name="daily-time" value="early-morning">
+            <div class="time-title">Early Morning</div>
+            <div class="time-sub">7-10am</div>
+          </label>
+
+          <label class="time-card" onclick="selectTime('early-afternoon', this)">
+            <input type="radio" name="daily-time" value="early-afternoon">
+            <div class="time-title">Early Afternoon</div>
+            <div class="time-sub">11am-1pm</div>
+          </label>
+
+          <label class="time-card" onclick="selectTime('late-afternoon', this)">
+            <input type="radio" name="daily-time" value="late-afternoon">
+            <div class="time-title">Late Afternoon</div>
+            <div class="time-sub">2-5pm</div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Other Plans - Preferred Days (if selecting Essential/Standard) -->
+      <div class="form-section" id="preferredDaysSection" style="display: none;">
+        <div class="section-kicker">Step 2 of 2</div>
+        <h2>Preferred Walking Days</h2>
+        <p class="section-copy">Which days work best for Scout? You can mix and match throughout the month.</p>
+        
+        <div class="day-grid">
+          <label class="day-chip" onclick="selectDay('monday', this)">
+            <input type="checkbox" name="days" value="monday">
+            <div>Monday</div>
+          </label>
+          <label class="day-chip" onclick="selectDay('tuesday', this)">
+            <input type="checkbox" name="days" value="tuesday">
+            <div>Tuesday</div>
+          </label>
+          <label class="day-chip" onclick="selectDay('wednesday', this)">
+            <input type="checkbox" name="days" value="wednesday">
+            <div>Wednesday</div>
+          </label>
+          <label class="day-chip" onclick="selectDay('thursday', this)">
+            <input type="checkbox" name="days" value="thursday">
+            <div>Thursday</div>
+          </label>
+          <label class="day-chip" onclick="selectDay('friday', this)">
+            <input type="checkbox" name="days" value="friday">
+            <div>Friday</div>
+          </label>
+          <label class="day-chip" onclick="selectDay('saturday', this)">
+            <input type="checkbox" name="days" value="saturday">
+            <div>Saturday</div>
+          </label>
+          <label class="day-chip" onclick="selectDay('sunday', this)">
+            <input type="checkbox" name="days" value="sunday">
+            <div>Sunday</div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <div class="submit-row">
+        <a href="portal-account.html" style="text-decoration: none;">
+          <button type="button" style="background: white; color: var(--text-mid); border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; padding: 15px 34px; font-size: 15px; font-family: 'DM Sans', sans-serif; cursor: pointer;">Back</button>
+        </a>
+        <button type="submit" class="btn-primary" id="submitButton">Confirm Change</button>
+      </div>
+    </form>
+
+    <!-- Sidebar Summary -->
+    <div class="sidebar">
+      <div class="summary-card">
+        <div class="summary-kicker">Change Summary</div>
+        <div class="summary-title">Scout's New Plan</div>
+        <div class="investment" id="summaryPrice">$249</div>
+        <div class="investment-sub">per month</div>
+        
+        <div class="summary-line">
+          <span>Plan:</span>
+          <strong id="summaryPlan">Standard</strong>
+        </div>
+        <div class="summary-line">
+          <span>Walks:</span>
+          <strong id="summaryWalks">10/month</strong>
+        </div>
+        <div class="summary-line">
+          <span>Cost/Walk:</span>
+          <strong id="summaryCostPerWalk">$24.90</strong>
+        </div>
+      </div>
+
+      <div style="background: #f9f8f5; border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 24px;">
+        <div style="font-size: 12px; color: var(--text-mid); line-height: 1.6;">
+          <strong>Changes take effect:</strong>
+          <p style="margin: 8px 0 0;">On your next billing date. You'll have credit for any walks you've already used this month.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const planDetails = {
+    essential: { name: 'Essential', price: 129, walks: '5/month', perWalk: '$25.80' },
+    standard: { name: 'Standard', price: 249, walks: '10/month', perWalk: '$24.90' },
+    daily: { name: 'Daily', price: 429, walks: '~21/month', perWalk: '~$20.43' }
+  };
+
+  function selectPlan(plan, element) {
+    document.querySelectorAll('.plan-card').forEach(card => card.classList.remove('selected'));
+    element.closest('.plan-card').classList.add('selected');
+    
+    const details = planDetails[plan];
+    document.getElementById('summaryPlan').textContent = details.name;
+    document.getElementById('summaryPrice').textContent = `$${details.price}`;
+    document.getElementById('summaryWalks').textContent = details.walks;
+    document.getElementById('summaryCostPerWalk').textContent = details.perWalk;
+
+    // Show/hide appropriate schedule section
+    if (plan === 'daily') {
+      document.getElementById('dailyScheduleSection').style.display = 'block';
+      document.getElementById('preferredDaysSection').style.display = 'none';
+    } else {
+      document.getElementById('dailyScheduleSection').style.display = 'none';
+      document.getElementById('preferredDaysSection').style.display = 'block';
     }
+  }
 
-    document.getElementById('confirmButton').addEventListener('click', function() {
-      if (!selectedTier) return;
+  function selectTime(time, element) {
+    document.querySelectorAll('#dailyScheduleSection .time-card').forEach(card => card.classList.remove('selected'));
+    element.closest('.time-card').classList.add('selected');
+  }
 
-      const tierNames = {
-        'essential': 'Essential',
-        'daily': 'Daily'
-      };
+  function selectDay(day, element) {
+    element.closest('.day-chip').classList.toggle('selected');
+  }
 
-      if (selectedTier === 'standard') {
-        alert('You are already on the Standard plan');
-      } else {
-        alert(`Upgrading to ${tierNames[selectedTier]} plan...`);
-        // In real implementation, would submit to backend
-        setTimeout(() => {
-          alert('Plan updated successfully!');
-          window.history.back();
-        }, 1000);
-      }
-    });
-  </script>
+  function submitMembershipChange(e) {
+    e.preventDefault();
+    
+    const plan = document.querySelector('input[name="plan"]:checked').value;
+    const details = planDetails[plan];
+    
+    alert(`Membership changed to ${details.name}!\n\n${details.price}/month\n${details.walks}\n\nChanges take effect on your next billing date.`);
+    window.history.back();
+  }
+</script>
 </body>
 </html>
