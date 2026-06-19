@@ -477,7 +477,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" onclick="closeWalkModal()">Close</button>
-        <button class="btn-primary" onclick="alert('Reschedule flow would open here')">Reschedule</button>
+        <button class="btn-primary" onclick="navigateToReschedule()">Reschedule</button>
       </div>
     </div>
   </div>
@@ -619,7 +619,17 @@
       document.getElementById('modalDate').textContent = date;
       document.getElementById('modalTime').textContent = time;
       document.getElementById('modalDuration').textContent = duration;
+      
+      // Store walk details in session storage for reschedule page
+      sessionStorage.setItem('walkDate', date);
+      sessionStorage.setItem('walkTime', time);
+      sessionStorage.setItem('walkDuration', duration);
+      
       document.getElementById('walkModal').classList.add('show');
+    }
+
+    function navigateToReschedule() {
+      window.location.href = 'portal-reschedule.html';
     }
 
     function closeWalkModal() {

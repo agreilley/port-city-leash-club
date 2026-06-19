@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reschedule Walk - Port City Leash Club</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f5f3ed;
+      color: #0D1B2A;
+    }
+
+    .portal-container {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 220px;
+      background: #0D1B2A;
+      color: white;
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    .sidebar-logo {
+      font-size: 18px;
+      font-weight: 500;
+      font-family: 'Cormorant Garamond', serif;
+    }
+
+    .sidebar-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .nav-item {
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      color: #8FA8A2;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .nav-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .nav-item.active {
+      background: #C17B6F;
+      color: white;
+    }
+
+    .sidebar-pet {
+      border-top: 0.5px solid rgba(255, 255, 255, 0.1);
+      padding-top: 16px;
+      color: #8FA8A2;
+      font-size: 13px;
+    }
+
+    .pet-name {
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+
+    .pet-info {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .main-content {
+      flex: 1;
+      padding: 32px;
+      overflow-y: auto;
+    }
+
+    .content-max {
+      max-width: 600px;
+    }
+
+    .page-header {
+      margin-bottom: 32px;
+    }
+
+    .page-header h1 {
+      font-size: 28px;
+      font-weight: 500;
+      font-family: 'Cormorant Garamond', serif;
+      margin: 0 0 8px;
+    }
+
+    .page-header p {
+      font-size: 14px;
+      color: #7A7A7A;
+    }
+
+    /* Current Walk Details */
+    .current-walk {
+      background: #FAF8F4;
+      border: 1px solid #E5E0D8;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 32px;
+      box-shadow: 0 1px 3px rgba(13, 27, 42, 0.04);
+    }
+
+    .current-walk-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #7A7A7A;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 16px;
+    }
+
+    .walk-detail-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+      font-size: 14px;
+    }
+
+    .walk-detail-row:last-child {
+      border-bottom: none;
+    }
+
+    .detail-label {
+      color: #7A7A7A;
+    }
+
+    .detail-value {
+      font-weight: 500;
+      color: #0D1B2A;
+    }
+
+    /* Form Section */
+    .form-section {
+      margin-bottom: 32px;
+    }
+
+    .form-title {
+      font-size: 16px;
+      font-weight: 600;
+      font-family: 'Cormorant Garamond', serif;
+      margin-bottom: 16px;
+      color: #0D1B2A;
+    }
+
+    /* Calendar */
+    .calendar-wrapper {
+      background: #FAF8F4;
+      border: 1px solid #E5E0D8;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+
+    .calendar-nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .calendar-month {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .calendar-btn {
+      background: white;
+      border: 0.5px solid #ddd;
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      color: #888;
+      transition: all 0.2s;
+    }
+
+    .calendar-btn:hover {
+      background: #f9f8f5;
+    }
+
+    .day-headers {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .day-header {
+      font-size: 12px;
+      color: #888;
+      font-weight: 500;
+      text-align: center;
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+    }
+
+    .calendar-day {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      color: #888;
+      border-radius: 8px;
+      background: white;
+      border: 0.5px solid #E5E0D8;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .calendar-day:hover {
+      border-color: #C17B6F;
+      box-shadow: 0 2px 6px rgba(193, 123, 111, 0.1);
+    }
+
+    .calendar-day.selected {
+      background: #C17B6F;
+      color: white;
+      border-color: #C17B6F;
+      font-weight: 500;
+    }
+
+    .calendar-day.other-month {
+      color: #ccc;
+      cursor: default;
+    }
+
+    .calendar-day.other-month:hover {
+      border-color: #E5E0D8;
+      box-shadow: none;
+    }
+
+    /* Time Slot Selection */
+    .time-slots {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .time-slot {
+      background: white;
+      border: 1px solid #E5E0D8;
+      border-radius: 8px;
+      padding: 16px 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .time-slot:hover {
+      border-color: #C17B6F;
+      box-shadow: 0 2px 6px rgba(193, 123, 111, 0.1);
+    }
+
+    .time-slot.selected {
+      background: #C17B6F;
+      color: white;
+      border-color: #C17B6F;
+    }
+
+    .slot-time {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .slot-range {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    /* Action Buttons */
+    .action-buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 32px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: #C17B6F;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #A36358;
+    }
+
+    .btn-primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: #FAF8F4;
+      color: #0D1B2A;
+      border: 1px solid #E5E0D8;
+    }
+
+    .btn-secondary:hover {
+      background: #F0EDE5;
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 180px;
+        padding: 16px;
+      }
+
+      .main-content {
+        padding: 16px;
+      }
+
+      .page-header h1 {
+        font-size: 24px;
+      }
+
+      .time-slots {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="portal-container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-logo">Port City Leash Club</div>
+      <nav class="sidebar-nav">
+        <a href="portal-dashboard.html" class="nav-item">Dashboard</a>
+        <a href="portal-pet-profile.html" class="nav-item">Pet Profile</a>
+        <a href="portal-walk-history.html" class="nav-item">Walk History</a>
+        <a href="portal-extras.html" class="nav-item">Additional Care</a>
+        <a href="portal-account.html" class="nav-item">Account</a>
+      </nav>
+      <div class="sidebar-pet">
+        <div class="pet-name">Scout</div>
+        <div class="pet-info">Golden Retriever • 4 yrs</div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <div class="content-max">
+        <div class="page-header">
+          <h1>Reschedule Walk</h1>
+          <p>Choose a new date and time for Scout's walk</p>
+        </div>
+
+        <!-- Current Walk Details -->
+        <div class="current-walk">
+          <div class="current-walk-title">Current Schedule</div>
+          <div class="walk-detail-row">
+            <span class="detail-label">Date</span>
+            <span class="detail-value" id="currentDate">Thursday, June 20</span>
+          </div>
+          <div class="walk-detail-row">
+            <span class="detail-label">Time</span>
+            <span class="detail-value" id="currentTime">Early Morning (7:00 AM - 10:00 AM)</span>
+          </div>
+          <div class="walk-detail-row">
+            <span class="detail-label">Walker</span>
+            <span class="detail-value" id="currentWalker">Marcus</span>
+          </div>
+          <div class="walk-detail-row">
+            <span class="detail-label">Duration</span>
+            <span class="detail-value">30-minute walk</span>
+          </div>
+        </div>
+
+        <!-- New Date Selection -->
+        <div class="form-section">
+          <div class="form-title">Select New Date</div>
+          <div class="calendar-wrapper">
+            <div class="calendar-nav">
+              <div class="calendar-month" id="calendarMonth">June 2026</div>
+              <div style="display: flex; gap: 8px;">
+                <button class="calendar-btn" onclick="previousMonth()">← Previous</button>
+                <button class="calendar-btn" onclick="nextMonth()">Next →</button>
+              </div>
+            </div>
+
+            <div class="day-headers">
+              <div class="day-header">Sun</div>
+              <div class="day-header">Mon</div>
+              <div class="day-header">Tue</div>
+              <div class="day-header">Wed</div>
+              <div class="day-header">Thu</div>
+              <div class="day-header">Fri</div>
+              <div class="day-header">Sat</div>
+            </div>
+
+            <div class="calendar-grid" id="calendarGrid">
+              <!-- Generated by JavaScript -->
+            </div>
+          </div>
+        </div>
+
+        <!-- New Time Selection -->
+        <div class="form-section">
+          <div class="form-title">Select New Time</div>
+          <div class="time-slots" id="timeSlots">
+            <div class="time-slot" onclick="selectTimeSlot(this, 'Early Morning', '7:00 AM - 10:00 AM')">
+              <div class="slot-time">Early Morning</div>
+              <div class="slot-range">7:00 AM - 10:00 AM</div>
+            </div>
+            <div class="time-slot" onclick="selectTimeSlot(this, 'Late Morning', '10:00 AM - 12:00 PM')">
+              <div class="slot-time">Late Morning</div>
+              <div class="slot-range">10:00 AM - 12:00 PM</div>
+            </div>
+            <div class="time-slot" onclick="selectTimeSlot(this, 'Afternoon', '2:00 PM - 5:00 PM')">
+              <div class="slot-time">Afternoon</div>
+              <div class="slot-range">2:00 PM - 5:00 PM</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+          <button class="btn btn-secondary" onclick="goBack()">Cancel</button>
+          <button class="btn btn-primary" id="confirmBtn" disabled onclick="confirmReschedule()">Confirm Reschedule</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentDate = new Date(2026, 5, 20); // June 20, 2026
+    let selectedDate = null;
+    let selectedTime = null;
+    let selectedTimeDisplay = null;
+
+    function generateCalendar() {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+
+      // Update header
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                         'July', 'August', 'September', 'October', 'November', 'December'];
+      document.getElementById('calendarMonth').textContent = `${monthNames[month]} ${year}`;
+
+      // Get first day of month and number of days
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      // Generate walk dates (Monday + Wednesday pattern)
+      const walkDates = new Set();
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(year, month, day);
+        const dayOfWeek = date.getDay();
+        if (dayOfWeek === 1 || dayOfWeek === 3) {
+          walkDates.add(day);
+        }
+      }
+
+      // Build calendar grid
+      const calendarGrid = document.getElementById('calendarGrid');
+      calendarGrid.innerHTML = '';
+
+      // Empty cells for days before month starts
+      for (let i = 0; i < firstDay; i++) {
+        const emptyCell = document.createElement('div');
+        emptyCell.className = 'calendar-day other-month';
+        calendarGrid.appendChild(emptyCell);
+      }
+
+      // Days of the month
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dayEl = document.createElement('div');
+        dayEl.className = 'calendar-day';
+        dayEl.textContent = day;
+
+        const cellDate = new Date(year, month, day);
+        const today = new Date(2026, 5, 20);
+
+        // Can only reschedule to future walk dates
+        if (walkDates.has(day) && cellDate > today) {
+          dayEl.onclick = () => selectDate(day, cellDate, dayEl);
+          dayEl.style.cursor = 'pointer';
+        } else {
+          dayEl.style.opacity = '0.5';
+          dayEl.style.cursor = 'default';
+        }
+
+        calendarGrid.appendChild(dayEl);
+      }
+    }
+
+    function selectDate(day, date, element) {
+      // Remove previous selection
+      document.querySelectorAll('.calendar-day.selected').forEach(el => {
+        el.classList.remove('selected');
+      });
+
+      // Select new date
+      element.classList.add('selected');
+      selectedDate = date;
+      updateConfirmButton();
+    }
+
+    function selectTimeSlot(element, time, timeRange) {
+      // Remove previous selection
+      document.querySelectorAll('.time-slot.selected').forEach(el => {
+        el.classList.remove('selected');
+      });
+
+      // Select new time
+      element.classList.add('selected');
+      selectedTime = time;
+      selectedTimeDisplay = timeRange;
+      updateConfirmButton();
+    }
+
+    function updateConfirmButton() {
+      const btn = document.getElementById('confirmBtn');
+      btn.disabled = !(selectedDate && selectedTime);
+    }
+
+    function previousMonth() {
+      currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
+      generateCalendar();
+    }
+
+    function nextMonth() {
+      currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+      generateCalendar();
+    }
+
+    function confirmReschedule() {
+      if (!selectedDate || !selectedTime) return;
+
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                         'July', 'August', 'September', 'October', 'November', 'December'];
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+      const newDateStr = `${dayNames[selectedDate.getDay()]}, ${monthNames[selectedDate.getMonth()]} ${selectedDate.getDate()}`;
+
+      alert(`Walk rescheduled!\n\nNew Date: ${newDateStr}\nNew Time: ${selectedTimeDisplay}\n\nConfirmation email sent.`);
+      goBack();
+    }
+
+    function goBack() {
+      window.history.back();
+    }
+
+    // Initialize
+    function initPage() {
+      // Load walk details from sessionStorage
+      const walkDate = sessionStorage.getItem('walkDate') || 'Thursday, June 20';
+      const walkTime = sessionStorage.getItem('walkTime') || 'Early Morning (7:00 AM - 10:00 AM)';
+      const walkDuration = sessionStorage.getItem('walkDuration') || '30-minute walk';
+      
+      document.getElementById('currentDate').textContent = walkDate;
+      document.getElementById('currentTime').textContent = walkTime;
+      
+      generateCalendar();
+    }
+
+    initPage();
+  </script>
+</body>
+</html>
