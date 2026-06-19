@@ -4,8 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Port City Leash Club</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAbBk5q33zuoqtLTOpoZ5X6UIRJrSHZ4ug&libraries=places"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
@@ -617,38 +615,31 @@
   // Service zip codes
   const SERVICE_ZIPS = ['28403', '28480'];
   
-  // Initialize Leaflet map
-  const map = L.map('map').setView([34.2257, -77.9447], 12); // Wilmington, NC coordinates
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors',
-    maxZoom: 19
-  }).addTo(map);
+  // Initialize Google Map
+  let map;
+  function initMap() {
+    map = new google.maps.Map(document.getElementById('map'), {
+      zoom: 12,
+      center: { lat: 34.2257, lng: -77.9447 }, // Wilmington, NC
+      mapTypeControl: false,
+      fullscreenControl: false,
+      streetViewControl: false
+    });
+    
+    // Add a marker for Wilmington center
+    new google.maps.Marker({
+      position: { lat: 34.2257, lng: -77.9447 },
+      map: map,
+      title: 'Wilmington, NC'
+    });
+  }
   
-  // Add service areas (circles)
-  const serviceAreas = [
-    { lat: 34.2257, lng: -77.9447, name: '28403 (Primary)', radius: 3000, color: '#C17B6F' },
-    { lat: 34.2080, lng: -77.8010, name: '28480 (Wrightsville Beach)', radius: 2500, color: '#8FA8A2' }
-  ];
-  
-  serviceAreas.forEach(area => {
-    L.circle([area.lat, area.lng], {
-      color: area.color,
-      fillColor: area.color,
-      fillOpacity: 0.2,
-      weight: 2,
-      radius: area.radius
-    }).addTo(map).bindPopup(area.name);
-  });
-  
-  // Add Wilmington center marker
-  L.marker([34.2257, -77.9447], {
-    icon: L.divIcon({
-      className: 'leaflet-div-icon',
-      html: '<div style="background-color: #C17B6F; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3);"></div>',
-      iconSize: [20, 20],
-      iconAnchor: [10, 10]
-    })
-  }).addTo(map).bindPopup('Wilmington, NC');
+  // Initialize map when page loads
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initMap);
+  } else {
+    initMap();
+  }
 
   // Nominatim autocomplete
   const addressInput = document.getElementById('address-input');
@@ -711,6 +702,25 @@
                 li.addEventListener('click', () => {
                   addressInput.value = item.description;
                   suggestionsList.style.display = 'none';
+                  
+                  // Zoom map to selected address
+                  if (map && item.place_id) {
+                    const placesService = new google.maps.places.PlacesService(map);
+                    placesService.getDetails({ placeId: item.place_id }, (place, status) => {
+                      if (status === google.maps.places.PlacesServiceStatus.OK && place.geometry) {
+                        map.setCenter(place.geometry.location);
+                        map.setZoom(15);
+                        
+                        // Add marker at this location
+                        new google.maps.Marker({
+                          position: place.geometry.location,
+                          map: map,
+                          title: item.description
+                        });
+                      }
+                    });
+                  }
+                  
                   // Auto-check the address
                   document.getElementById('check-address-btn').click();
                 });
