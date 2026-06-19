@@ -1,0 +1,84 @@
+/* PORT CITY LEASH CLUB — STANDARDIZED PORTAL SIDEBAR */
+/* Include this in all portal pages for consistency */
+
+.portal-container {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 220px;
+  background: #0D1B2A;
+  color: white;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.sidebar-logo {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 18px;
+  font-weight: 500;
+  color: white;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.nav-item {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  color: #8FA8A2;
+  text-decoration: none;
+  transition: all 0.2s;
+  display: block;
+}
+
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.nav-item.active {
+  background: #C17B6F;
+  color: white;
+}
+
+.sidebar-pet {
+  border-top: 0.5px solid rgba(255, 255, 255, 0.1);
+  padding-top: 16px;
+  color: #8FA8A2;
+  font-size: 13px;
+}
+
+.pet-name {
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.pet-info {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    width: 180px;
+    padding: 16px;
+    gap: 24px;
+  }
+
+  .sidebar-logo {
+    font-size: 16px;
+  }
+
+  .nav-item {
+    font-size: 13px;
+    padding: 8px 10px;
+  }
+}
