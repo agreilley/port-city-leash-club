@@ -535,16 +535,11 @@
           const cellDate = new Date(year, month, day);
           
           if (cellDate < today) {
-            // Past walk = completed
+            // Past walk = completed (not clickable, no Walk text)
             dayEl.classList.add('completed');
-            dayEl.innerHTML = day + '<span style="display: block; font-size: 10px; margin-top: 2px;">Walk</span>';
-            dayEl.onclick = () => openWalkModal(
-              formatDateString(cellDate), 
-              'Early Afternoon (11am-1pm)', 
-              '30-minute walk'
-            );
+            dayEl.textContent = day;
           } else {
-            // Future walk = scheduled
+            // Future walk = scheduled (clickable, shows Walk text)
             dayEl.classList.add('scheduled');
             dayEl.innerHTML = day + '<span style="display: block; font-size: 10px; margin-top: 2px;">Walk</span>';
             dayEl.onclick = () => openWalkModal(
@@ -552,6 +547,7 @@
               'Early Afternoon (11am-1pm)', 
               '30-minute walk'
             );
+            dayEl.style.cursor = 'pointer';
           }
           
           // Mark today
