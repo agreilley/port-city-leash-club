@@ -311,6 +311,153 @@
       background: #F9F7F3;
     }
 
+    /* Calendar Legend */
+    .calendar-legend {
+      display: flex;
+      gap: 24px;
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(0, 0, 0, 0.06);
+      font-size: 13px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #7A7A7A;
+    }
+
+    .legend-color {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      border: 1px solid;
+    }
+
+    .legend-item.completed .legend-color {
+      background: #8FA8A2;
+      border-color: #8FA8A2;
+    }
+
+    .legend-item.scheduled .legend-color {
+      background: #C17B6F;
+      border-color: #C17B6F;
+    }
+
+    /* Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.4);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      padding: 32px;
+      max-width: 400px;
+      width: 90%;
+      box-shadow: 0 10px 40px rgba(13, 27, 42, 0.15);
+      position: relative;
+    }
+
+    .modal-header {
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #E5E0D8;
+    }
+
+    .modal-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: #0D1B2A;
+      margin-bottom: 4px;
+    }
+
+    .modal-date {
+      font-size: 13px;
+      color: #7A7A7A;
+    }
+
+    .walk-details {
+      margin-bottom: 24px;
+    }
+
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+      font-size: 13px;
+    }
+
+    .detail-label {
+      color: #7A7A7A;
+    }
+
+    .detail-value {
+      font-weight: 500;
+      color: #0D1B2A;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    .modal-btn {
+      flex: 1;
+      padding: 11px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .modal-btn-primary {
+      background: #C17B6F;
+      color: white;
+    }
+
+    .modal-btn-primary:hover {
+      background: #A36358;
+    }
+
+    .modal-btn-secondary {
+      background: #FAF8F4;
+      color: #0D1B2A;
+      border: 1px solid #E5E0D8;
+    }
+
+    .modal-btn-secondary:hover {
+      background: #F0EDE5;
+    }
+
+    .close-modal {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: none;
+      font-size: 24px;
+      color: #7A7A7A;
+      cursor: pointer;
+    }
+
     /* Sidebar - Care Team */
     .sidebar-card {
       background: #FAF8F4;
@@ -505,6 +652,18 @@
                 <div class="calendar-day has-walk">29</div>
                 <div class="calendar-day">30</div>
               </div>
+
+              <!-- Legend -->
+              <div class="calendar-legend">
+                <div class="legend-item scheduled">
+                  <div class="legend-color"></div>
+                  <span>Scheduled walk</span>
+                </div>
+                <div class="legend-item completed">
+                  <div class="legend-color"></div>
+                  <span>Completed walk</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -528,5 +687,88 @@
       </div>
     </div>
   </div>
+
+  <!-- Walk Details Modal -->
+  <div class="modal" id="walkModal">
+    <div class="modal-content">
+      <button class="close-modal" onclick="closeWalkModal()">✕</button>
+      <div class="modal-header">
+        <div class="modal-title" id="modalWalkDate">Wednesday, June 24</div>
+        <div class="modal-date" id="modalWalkStatus">Scheduled</div>
+      </div>
+      <div class="walk-details">
+        <div class="detail-row">
+          <span class="detail-label">Time</span>
+          <span class="detail-value" id="modalWalkTime">7:00 AM – 10:00 AM</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Walker</span>
+          <span class="detail-value" id="modalWalkerName">Marcus</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Duration</span>
+          <span class="detail-value" id="modalWalkDuration">30 minutes</span>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn modal-btn-primary" onclick="rescheduleWalk()">Reschedule</button>
+        <button class="modal-btn modal-btn-secondary" onclick="closeWalkModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Walk data for different dates
+    const walksData = {
+      '1': { date: 'June 1', time: '7:00 AM – 10:00 AM', walker: 'Marcus', duration: '30 minutes', status: 'Scheduled' },
+      '3': { date: 'June 3', time: '11:00 AM – 1:00 PM', walker: 'Priya', duration: '30 minutes', status: 'Scheduled' },
+      '8': { date: 'June 8', time: '7:00 AM – 10:00 AM', walker: 'Marcus', duration: '30 minutes', status: 'Scheduled' },
+      '10': { date: 'June 10', time: '11:00 AM – 1:00 PM', walker: 'Priya', duration: '30 minutes', status: 'Scheduled' },
+      '15': { date: 'June 15', time: '7:00 AM – 10:00 AM', walker: 'Marcus', duration: '30 minutes', status: 'Scheduled' },
+      '17': { date: 'June 17', time: '11:00 AM – 1:00 PM', walker: 'Priya', duration: '30 minutes', status: 'Completed' },
+      '19': { date: 'June 19', time: '7:00 AM – 10:00 AM', walker: 'Marcus', duration: '30 minutes', status: 'Completed' },
+      '22': { date: 'June 22', time: '7:00 AM – 10:00 AM', walker: 'Marcus', duration: '30 minutes', status: 'Scheduled' },
+      '24': { date: 'June 24', time: '7:00 AM – 10:00 AM', walker: 'Marcus', duration: '30 minutes', status: 'Scheduled' },
+      '29': { date: 'June 29', time: '7:00 AM – 10:00 AM', walker: 'Marcus', duration: '30 minutes', status: 'Scheduled' }
+    };
+
+    function openWalkModal(day) {
+      const walkData = walksData[day];
+      if (!walkData) return;
+
+      document.getElementById('modalWalkDate').textContent = walkData.date;
+      document.getElementById('modalWalkStatus').textContent = walkData.status;
+      document.getElementById('modalWalkTime').textContent = walkData.time;
+      document.getElementById('modalWalkerName').textContent = walkData.walker;
+      document.getElementById('modalWalkDuration').textContent = walkData.duration;
+
+      document.getElementById('walkModal').classList.add('show');
+    }
+
+    function closeWalkModal() {
+      document.getElementById('walkModal').classList.remove('show');
+    }
+
+    function rescheduleWalk() {
+      alert('Reschedule functionality would navigate to reschedule form');
+      closeWalkModal();
+    }
+
+    // Close modal when clicking outside
+    document.getElementById('walkModal').addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeWalkModal();
+      }
+    });
+
+    // Add click handlers to calendar days with walks
+    document.querySelectorAll('.calendar-day.has-walk, .calendar-day.past').forEach(day => {
+      const dayNumber = day.textContent.trim();
+      if (walksData[dayNumber]) {
+        day.style.cursor = 'pointer';
+        day.addEventListener('click', () => openWalkModal(dayNumber));
+      }
+    });
+  </script>
 </body>
 </html>
