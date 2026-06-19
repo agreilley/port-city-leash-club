@@ -344,6 +344,59 @@
         </div>
       </div>
 
+      <!-- Default Walk Schedule -->
+      <div class="section-card">
+        <h2 class="section-title">Default Walk Schedule</h2>
+        <p style="font-size: 13px; color: #7A7A7A; margin-bottom: 20px;">Changes take effect starting the first of next month</p>
+
+        <div class="field-group" style="margin-bottom: 20px;">
+          <label class="field-label">Preferred Days</label>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 12px; margin-top: 8px;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px;">
+              <input type="checkbox" checked> Monday
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px;">
+              <input type="checkbox"> Tuesday
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px;">
+              <input type="checkbox" checked> Wednesday
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px;">
+              <input type="checkbox"> Thursday
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px;">
+              <input type="checkbox"> Friday
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px;">
+              <input type="checkbox"> Saturday
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px;">
+              <input type="checkbox"> Sunday
+            </label>
+          </div>
+        </div>
+
+        <div class="field-group" style="margin-bottom: 20px;">
+          <label class="field-label">Preferred Time Slot</label>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 8px;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px;">
+              <input type="radio" name="timeSlot" value="early-morning" checked> Early Morning (7-10am)
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px;">
+              <input type="radio" name="timeSlot" value="late-morning"> Late Morning (10am-12pm)
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px;">
+              <input type="radio" name="timeSlot" value="afternoon"> Afternoon (2-5pm)
+            </label>
+          </div>
+        </div>
+
+        <div class="section-actions">
+          <button class="btn btn-primary">Save Schedule Changes</button>
+          <button class="btn btn-secondary">Cancel</button>
+        </div>
+      </div>
+
       <!-- Billing & Payment -->
       <div class="section-card">
         <h2 class="section-title">Billing & Payment</h2>
