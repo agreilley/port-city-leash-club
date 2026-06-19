@@ -187,11 +187,18 @@
         <h2>Choose your schedule</h2>
         <p class="section-copy">Select your preferred start date, walking days, and time window. Daily memberships automatically include Monday through Friday.</p>
         <div class="field-grid">
-        <div class="field">
-          <!-- Calendly inline widget begin -->
-          <div class="calendly-inline-widget" data-url="https://calendly.com/alison-reilley/30min" style="min-width:320px;height:600px;"></div>
-          <script type="text/javascript" src="https://assets.calendly.com/assets/external/widget.js" async></script>
-          <!-- Calendly inline widget end -->
+        <div class="field-grid">
+          <div class="field">
+            <label class="field-label" for="startDate">Preferred start date for walks</label>
+            <input id="startDate" name="startDate" type="date">
+          </div>
+          <div class="field">
+            <label class="field-label" for="walkLength">Preferred walk length</label>
+            <select id="walkLength" name="walkLength">
+              <option>30 minutes</option>
+              <option>Not sure yet</option>
+            </select>
+          </div>
         </div>
           <div class="field">
             <label class="field-label" for="walkLength">Preferred walk length</label>
@@ -251,26 +258,10 @@
         <p class="section-kicker">Step 05</p>
         <h2>Schedule your complimentary meet & greet</h2>
         <p class="section-copy">Choose an available time for us to meet you and your dog, review your routine, and confirm next steps before recurring walks begin.</p>
-        <div class="calendar-shell">
-          <div class="mini-calendar">
-            <div class="calendar-month">August 2026</div>
-            <div class="calendar-grid">
-              <div class="dow">S</div><div class="dow">M</div><div class="dow">T</div><div class="dow">W</div><div class="dow">T</div><div class="dow">F</div><div class="dow">S</div>
-              <div></div><div></div><div></div><div></div><div></div><div class="date-dot">1</div><div class="date-dot">2</div>
-              <div class="date-dot">3</div><div class="date-dot available">4</div><div class="date-dot available active">5</div><div class="date-dot">6</div><div class="date-dot available">7</div><div class="date-dot">8</div><div class="date-dot">9</div>
-              <div class="date-dot">10</div><div class="date-dot available">11</div><div class="date-dot available">12</div><div class="date-dot">13</div><div class="date-dot available">14</div><div class="date-dot">15</div><div class="date-dot">16</div>
-              <div class="date-dot">17</div><div class="date-dot available">18</div><div class="date-dot available">19</div><div class="date-dot">20</div><div class="date-dot available">21</div><div class="date-dot">22</div><div class="date-dot">23</div>
-              <div class="date-dot">24</div><div class="date-dot available">25</div><div class="date-dot available">26</div><div class="date-dot">27</div><div class="date-dot available">28</div><div class="date-dot">29</div><div class="date-dot">30</div>
-              <div class="date-dot">31</div>
-            </div>
-          </div>
-          <div class="slots" id="slotsGrid">
-            <label class="slot-card selected"><input type="radio" name="meetGreet" value="Tuesday, August 5 at 4:00 PM" checked><div><div class="slot-date">Tuesday, August 5</div><div class="slot-time">4:00 PM</div></div><div class="slot-pill">Available</div></label>
-            <label class="slot-card"><input type="radio" name="meetGreet" value="Tuesday, August 5 at 5:30 PM"><div><div class="slot-date">Tuesday, August 5</div><div class="slot-time">5:30 PM</div></div><div class="slot-pill">Available</div></label>
-            <label class="slot-card"><input type="radio" name="meetGreet" value="Wednesday, August 6 at 10:00 AM"><div><div class="slot-date">Wednesday, August 6</div><div class="slot-time">10:00 AM</div></div><div class="slot-pill">Available</div></label>
-            <label class="slot-card"><input type="radio" name="meetGreet" value="Thursday, August 7 at 6:00 PM"><div><div class="slot-date">Thursday, August 7</div><div class="slot-time">6:00 PM</div></div><div class="slot-pill">Available</div></label>
-          </div>
-        </div>
+        <!-- Calendly inline widget begin -->
+        <div class="calendly-inline-widget" data-url="https://calendly.com/alison-reilley/30min" style="min-width:320px;height:700px;"></div>
+        <script type="text/javascript" src="https://assets.calendly.com/assets/external/widget.js" async></script>
+        <!-- Calendly inline widget end -->
       </section>
 
       <section class="form-section">
