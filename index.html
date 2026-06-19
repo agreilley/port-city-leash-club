@@ -453,36 +453,30 @@
     <h2 class="section-headline">Serving Wilmington's finest neighborhoods</h2>
     <p class="section-sub">Wondering if we're in your neighborhood? Enter your address to find out.</p>
 
-    <!-- Map + Search side by side -->
-    <div style="display:grid;grid-template-columns:1fr 1.6fr;gap:32px;align-items:start;">
+    <!-- Full-width map -->
+    <div id="map" style="border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,0.08);height:420px;background:#e8e0d5;margin-bottom:28px;"></div>
 
-      <!-- Left: search panel -->
-      <div>
-        <div style="margin-bottom:16px;">
-          <input id="address-input" class="search-input" type="text" placeholder="Enter your address" style="width:100%;margin-bottom:12px;">
-          <button id="check-address-btn" class="search-btn" style="width:100%;">Check my address</button>
-        </div>
-
-        <!-- Result: in service (shown after click) -->
-        <div id="result-in" class="search-result-in" style="margin-bottom:16px;display:none;">
-          ✓ Great news, we serve your neighborhood. <a href="membership-request.html" style="color:var(--navy);font-weight:500;margin-left:4px;">Join the Leash Club</a>
-        </div>
-
-        <!-- Result: out of service (shown after click) -->
-        <div id="result-out" class="search-result-out" style="display:none;">
-          We're not in your neighborhood yet, but sign up to be notified when we expand.
-          <div style="margin-top:12px;display:grid;grid-template-columns:1fr auto;gap:8px;">
-            <input id="notify-email" class="search-input" type="email" placeholder="Your email address">
-            <button id="notify-btn" class="search-btn">Notify me</button>
-          </div>
-          <div id="notify-confirm" style="margin-top:10px;color:#2D6A40;font-size:13px;display:none;">✓ Thanks! We'll notify you when we expand.</div>
-        </div>
-
+    <!-- Centered search bar -->
+    <div style="max-width:540px;margin:0 auto;text-align:center;">
+      <div style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:16px;">
+        <input id="address-input" class="search-input" type="text" placeholder="Enter your address">
+        <button id="check-address-btn" class="search-btn">Check my address</button>
       </div>
 
-      <!-- Right: Leaflet map -->
-      <div id="map" style="border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,0.08);height:380px;background:#e8e0d5;"></div>
+      <!-- Result: in service -->
+      <div id="result-in" class="search-result-in" style="margin-bottom:16px;display:none;">
+        ✓ Great news, we serve your neighborhood. <a href="membership-request.html" style="color:var(--navy);font-weight:500;margin-left:4px;">Join the Leash Club</a>
+      </div>
 
+      <!-- Result: out of service -->
+      <div id="result-out" class="search-result-out" style="display:none;">
+        We're not in your neighborhood yet, but sign up to be notified when we expand.
+        <div style="margin-top:12px;display:grid;grid-template-columns:1fr auto;gap:8px;">
+          <input id="notify-email" class="search-input" type="email" placeholder="Your email address">
+          <button id="notify-btn" class="search-btn">Notify me</button>
+        </div>
+        <div id="notify-confirm" style="margin-top:10px;color:#2D6A40;font-size:13px;display:none;">✓ Thanks! We'll notify you when we expand.</div>
+      </div>
     </div>
 
   </div>
