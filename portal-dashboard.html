@@ -477,12 +477,45 @@
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" onclick="closeWalkModal()">Close</button>
-        <button class="btn-primary" onclick="alert('Reschedule flow would open here')">Reschedule</button>
+        <button class="btn-primary" onclick="openRescheduleModal()">Reschedule</button>
       </div>
     </div>
   </div>
 
-  <script>
+  <!-- Reschedule Modal -->
+  <div class="modal" id="rescheduleModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 12px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); width: 90%; max-width: 500px; overflow: hidden;">
+      <div style="padding: 24px; border-bottom: 0.5px solid #eee;">
+        <h3 style="font-size: 18px; font-weight: 500; margin: 0 0 4px;">Reschedule Walk</h3>
+        <p style="font-size: 13px; color: #888; margin: 0;">Scout • <span id="rescheduleWalkDate">Tomorrow</span> at <span id="rescheduleWalkTime">Early Morning</span></p>
+      </div>
+      <div style="padding: 24px;">
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-size: 12px; color: #888; margin-bottom: 8px; font-weight: 500;">Select New Date</label>
+          <input type="date" id="newWalkDate" style="width: 100%; padding: 10px; border: 0.5px solid #ddd; border-radius: 8px; font-size: 14px; font-family: inherit;">
+        </div>
+
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-size: 12px; color: #888; margin-bottom: 8px; font-weight: 500;">Select New Time Frame</label>
+          <select id="newWalkTimeFrame" style="width: 100%; padding: 10px; border: 0.5px solid #ddd; border-radius: 8px; font-size: 14px; font-family: inherit;">
+            <option value="">Choose a time...</option>
+            <option value="early-morning">Early Morning (7-10am)</option>
+            <option value="early-afternoon">Early Afternoon (11am-1pm)</option>
+            <option value="late-afternoon">Late Afternoon (2-5pm)</option>
+          </select>
+        </div>
+
+        <div style="background: #f9f8f5; padding: 12px; border-radius: 8px; margin-bottom: 16px; border: 0.5px solid #eee;">
+          <div style="font-size: 11px; color: #888; margin-bottom: 4px;">Available Dates</div>
+          <p style="font-size: 13px; color: #0D1B2A; margin: 0;">Monday, Thursday, Wednesday available in your preferred time frame</p>
+        </div>
+      </div>
+      <div style="padding: 16px 24px; border-top: 0.5px solid #eee; display: flex; gap: 12px; justify-content: flex-end;">
+        <button onclick="closeRescheduleModal()" style="background: transparent; color: #888; border: 0.5px solid #ddd; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500;">Cancel</button>
+        <button onclick="confirmReschedule()" style="background: #C17B6F; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500;">Confirm</button>
+      </div>
+    </div>
+  </div>
     // Calendar state - start with current date (June 20, 2026)
     let currentDate = new Date(2026, 5, 20); // Month is 0-indexed, so 5 = June
     const today = new Date(2026, 5, 20);
@@ -635,6 +668,46 @@
 
     // Generate initial calendar
     generateCalendar();
+
+    // Reschedule modal functions
+    function openRescheduleModal() {
+      document.getElementById('rescheduleModal').style.display = 'flex';
+      document.getElementById('newWalkDate').value = '';
+      document.getElementById('newWalkTimeFrame').value = '';
+    }
+
+    function closeRescheduleModal() {
+      document.getElementById('rescheduleModal').style.display = 'none';
+    }
+
+    function confirmReschedule() {
+      const date = document.getElementById('newWalkDate').value;
+      const timeFrame = document.getElementById('newWalkTimeFrame').value;
+
+      if (!date || !timeFrame) {
+        alert('Please select a date and time frame');
+        return;
+      }
+
+      const timeFrameLabels = {
+        'early-morning': 'Early Morning (7-10am)',
+        'early-afternoon': 'Early Afternoon (11am-1pm)',
+        'late-afternoon': 'Late Afternoon (2-5pm)'
+      };
+
+      const walkDate = new Date(date);
+      const dateStr = walkDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+      alert(`Walk rescheduled to ${dateStr} at ${timeFrameLabels[timeFrame]}`);
+      closeRescheduleModal();
+    }
+
+    // Close reschedule modal when clicking outside
+    document.getElementById('rescheduleModal').addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeRescheduleModal();
+      }
+    });
   </script>
 </body>
 </html>

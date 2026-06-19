@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Book Add-On Services | Port City Leash Club</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --navy: #0D1B2A; --navy-mid: #1C2F42;
+    --seafoam: #8FA8A2; --seafoam-light: #C5D5D1;
+    --sand: #E9E1D3; --sand-light: #F4F0EA;
+    --warm-white: #FAFAF8; --text-dark: #1A1A1A;
+    --text-mid: #4A4A4A; --text-light: #7A7A7A;
+    --rust: #C17B6F; --rust-dark:#A36358;
+  }
+  body { font-family: 'DM Sans', sans-serif; background: var(--warm-white); color: var(--text-dark); line-height: 1.6; }
+  nav { position: sticky; top: 0; z-index: 100; background: var(--warm-white); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 0 48px; display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .nav-logo { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--navy); line-height: 1.3; text-decoration:none; }
+  .nav-links { display: flex; align-items: center; gap: 32px; list-style: none; }
+  .nav-links a { font-size: 13px; color: var(--text-mid); text-decoration: none; letter-spacing: 0.04em; }
+  .btn-nav, .btn-primary { background: var(--rust); color: white !important; border: none; border-radius: 4px; padding: 10px 20px; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; text-decoration:none; display:inline-block; transition: background 0.2s, transform 0.1s; }
+  .btn-primary { padding: 15px 34px; font-size: 15px; }
+  .btn-nav:hover, .btn-primary:hover { background: var(--rust-dark); }
+  .btn-primary:active { transform: scale(.98); }
+
+  .page-hero { background: var(--sand-light); padding: 76px 48px 64px; border-bottom: 1px solid rgba(0,0,0,0.06); }
+  .hero-inner { max-width: 1040px; margin: 0 auto; }
+  .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 16px; }
+  h1 { font-family: 'Cormorant Garamond', serif; font-size: 56px; font-weight: 300; line-height: 1.04; color: var(--navy); margin-bottom: 20px; }
+  .hero-sub { font-size: 16px; color: var(--text-mid); line-height: 1.8; max-width: 520px; }
+
+  main { padding: 64px 48px 90px; }
+  .form-shell { max-width: 1040px; margin: 0 auto; display:grid; grid-template-columns: 1fr 320px; gap: 32px; align-items:start; }
+  form { display:flex; flex-direction:column; gap: 24px; }
+  .form-section { background:white; border:1px solid rgba(0,0,0,0.08); border-radius:8px; padding:32px; }
+  .section-kicker { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 8px; }
+  h2 { font-family:'Cormorant Garamond',serif; font-weight:300; color:var(--navy); font-size:36px; line-height:1.1; margin-bottom: 10px; }
+  .section-copy { font-size:14px; color:var(--text-mid); line-height:1.7; margin-bottom:24px; max-width: 680px; }
+
+  .service-grid { display:grid; grid-template-columns: repeat(2,1fr); gap:16px; }
+  .service-card, .duration-card, .date-card { border:1px solid rgba(0,0,0,0.1); background:#fff; border-radius:8px; padding:20px; cursor:pointer; transition: all .2s; position:relative; }
+  .service-card:hover, .duration-card:hover, .date-card:hover { transform: translateY(-1px); box-shadow:0 8px 24px rgba(0,0,0,.06); }
+  .service-card input, .duration-card input, .date-card input { position:absolute; opacity:0; pointer-events:none; }
+  .service-card.selected, .duration-card.selected, .date-card.selected { border-color:var(--rust); box-shadow:0 8px 28px rgba(193,123,111,.14); background:#fffaf8; }
+  .service-name { font-family:'Cormorant Garamond',serif; font-size:22px; color:var(--navy); line-height:1.1; margin-bottom:5px; }
+  .service-desc { font-size:13px; color:var(--text-mid); margin-bottom:12px; line-height:1.5; }
+  .service-price { font-size:16px; color:var(--navy); font-weight:500; }
+
+  .duration-grid { display:grid; grid-template-columns: repeat(2,1fr); gap:16px; }
+  .duration-name { font-size:14px; font-weight:500; color:var(--navy); margin-bottom:3px; }
+  .duration-sub { font-size:12px; color:var(--text-light); }
+
+  .date-grid { display:grid; grid-template-columns: repeat(7,1fr); gap:8px; margin-bottom:20px; }
+  .day-label { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-light); text-align:center; padding:8px 0; }
+  .date-card { padding:12px; text-align:center; font-size:13px; font-weight:500; }
+
+  .time-grid { display:grid; grid-template-columns: repeat(3,1fr); gap:12px; }
+  .time-card { border:1px solid rgba(0,0,0,0.1); background:#fff; border-radius:8px; padding:16px; cursor:pointer; transition: all .2s; position:relative; text-align:center; }
+  .time-card:hover { transform: translateY(-1px); box-shadow:0 8px 24px rgba(0,0,0,.06); }
+  .time-card input { position:absolute; opacity:0; pointer-events:none; }
+  .time-card.selected { border-color:var(--rust); box-shadow:0 8px 28px rgba(193,123,111,.14); background:#fffaf8; }
+  .time-title { font-size:13px; font-weight:500; color:var(--navy); margin-bottom:2px; }
+  .time-sub { font-size:11px; color:var(--text-light); }
+
+  .field-grid { display:grid; grid-template-columns: repeat(2,1fr); gap:18px; }
+  .field { display:flex; flex-direction:column; gap:7px; }
+  label.field-label { font-size:13px; color:var(--navy); font-weight:500; }
+  input, select, textarea { width:100%; border:1px solid rgba(0,0,0,.14); background:#fff; border-radius:4px; padding:13px 14px; font-family:'DM Sans',sans-serif; font-size:14px; color:var(--text-dark); outline:none; }
+  input:focus, select:focus, textarea:focus { border-color:var(--seafoam); box-shadow:0 0 0 3px rgba(143,168,162,.16); }
+  textarea { min-height:110px; resize:vertical; }
+
+  .sidebar { position:sticky; top:92px; display:flex; flex-direction:column; gap:18px; }
+  .summary-card { background:var(--navy); color:white; border-radius:8px; padding:28px; }
+  .summary-kicker { font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--seafoam-light); margin-bottom:8px; }
+  .summary-title { font-family:'Cormorant Garamond',serif; font-size:24px; line-height:1.1; margin-bottom:18px; }
+  .investment { font-family:'Cormorant Garamond',serif; font-size:40px; line-height:1; margin-bottom:8px; }
+  .investment-sub { font-size:12px; color:rgba(255,255,255,.58); line-height:1.5; margin-bottom:16px; }
+  .summary-line { display:flex; justify-content:space-between; gap:16px; border-top:1px solid rgba(255,255,255,.1); padding:12px 0; font-size:13px; color:rgba(255,255,255,.75); }
+  .summary-line strong { color:white; font-weight:500; text-align:right; }
+  .submit-row { display:flex; align-items:center; gap:18px; margin-top:32px; }
+  .submit-row button { flex:1; padding:15px; font-size:15px; }
+
+  @media (max-width: 900px) {
+    .form-shell { grid-template-columns: 1fr; }
+    .sidebar { position: static; }
+  }
+  @media (max-width: 768px) {
+    nav { padding: 0 24px; }
+    main { padding: 48px 24px; }
+    .page-hero { padding: 48px 24px 40px; }
+    h1 { font-size: 36px; }
+    .service-grid, .duration-grid, .field-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<nav>
+  <a href="index.html" class="nav-logo">Port City Leash Club</a>
+  <ul class="nav-links">
+    <li><a href="index.html">Home</a></li>
+    <li><a href="portal-dashboard.html" class="btn-nav">Member Portal</a></li>
+  </ul>
+</nav>
+
+<div class="page-hero">
+  <div class="hero-inner">
+    <div>
+      <div class="eyebrow">Add-On Services for Scout</div>
+      <h1>Beyond Regular Walks</h1>
+      <p class="hero-sub">Book overnight stays, extended walks, check-in visits, and medication administration whenever you need them.</p>
+    </div>
+  </div>
+</div>
+
+<main>
+  <div class="form-shell">
+    <form onsubmit="submitExtrasRequest(event)">
+      <!-- Service Selection -->
+      <div class="form-section">
+        <div class="section-kicker">Step 1 of 4</div>
+        <h2>Select Service</h2>
+        <p class="section-copy">What would Scout benefit from?</p>
+        
+        <div class="service-grid">
+          <label class="service-card" onclick="selectService('overnight', this)">
+            <input type="radio" name="service" value="overnight" required>
+            <div class="service-name">Overnight Stay</div>
+            <div class="service-desc">12+ hours of care while you're away</div>
+            <div class="service-price">$95/night</div>
+          </label>
+
+          <label class="service-card" onclick="selectService('checkin', this)">
+            <input type="radio" name="service" value="checkin" required>
+            <div class="service-name">Check-In Visit</div>
+            <div class="service-desc">20-min potty break & playtime</div>
+            <div class="service-price">$25/visit</div>
+          </label>
+
+          <label class="service-card" onclick="selectService('extended', this)">
+            <input type="radio" name="service" value="extended" required>
+            <div class="service-name">Extended Walk</div>
+            <div class="service-desc">Add 15 min to any walk (30→45 min)</div>
+            <div class="service-price">$12/walk</div>
+          </label>
+
+          <label class="service-card" onclick="selectService('medication', this)">
+            <input type="radio" name="service" value="medication" required>
+            <div class="service-name">Medication Admin</div>
+            <div class="service-desc">Add to any walk or visit</div>
+            <div class="service-price">$8/walk</div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Duration Selection (for overnight/checkin) -->
+      <div class="form-section" id="durationSection" style="display: none;">
+        <div class="section-kicker">Step 2 of 4</div>
+        <h2>How Long?</h2>
+        <p class="section-copy">Select how many nights or visits you need</p>
+        
+        <div class="duration-grid" id="durationOptions">
+          <!-- Will be populated by JS -->
+        </div>
+      </div>
+
+      <!-- Date Selection -->
+      <div class="form-section">
+        <div class="section-kicker" id="dateStepLabel">Step 2 of 4</div>
+        <h2>Select Date</h2>
+        <p class="section-copy">When would Scout need this service?</p>
+        
+        <div class="date-grid">
+          <div class="day-label">Sun</div>
+          <div class="day-label">Mon</div>
+          <div class="day-label">Tue</div>
+          <div class="day-label">Wed</div>
+          <div class="day-label">Thu</div>
+          <div class="day-label">Fri</div>
+          <div class="day-label">Sat</div>
+          
+          <!-- Dates will be generated by JS -->
+          <label class="date-card" onclick="selectDate('2026-06-23', this)">
+            <input type="radio" name="date" value="2026-06-23" required>
+            <div>23</div>
+          </label>
+          <label class="date-card" onclick="selectDate('2026-06-24', this)">
+            <input type="radio" name="date" value="2026-06-24" required>
+            <div>24</div>
+          </label>
+          <label class="date-card" onclick="selectDate('2026-06-25', this)">
+            <input type="radio" name="date" value="2026-06-25" required>
+            <div>25</div>
+          </label>
+          <label class="date-card" onclick="selectDate('2026-06-26', this)">
+            <input type="radio" name="date" value="2026-06-26" required>
+            <div>26</div>
+          </label>
+          <label class="date-card" onclick="selectDate('2026-06-27', this)">
+            <input type="radio" name="date" value="2026-06-27" required>
+            <div>27</div>
+          </label>
+          <label class="date-card" onclick="selectDate('2026-06-28', this)">
+            <input type="radio" name="date" value="2026-06-28" required>
+            <div>28</div>
+          </label>
+          <label class="date-card" onclick="selectDate('2026-06-29', this)">
+            <input type="radio" name="date" value="2026-06-29" required>
+            <div>29</div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Time Selection -->
+      <div class="form-section" id="timeSection">
+        <div class="section-kicker" id="timeStepLabel">Step 3 of 4</div>
+        <h2>Select Time</h2>
+        <p class="section-copy">What time works best for Scout?</p>
+        
+        <div class="time-grid">
+          <label class="time-card" onclick="selectTime('early-morning', this)">
+            <input type="radio" name="time" value="early-morning" required>
+            <div class="time-title">Early Morning</div>
+            <div class="time-sub">7-10am</div>
+          </label>
+
+          <label class="time-card" onclick="selectTime('early-afternoon', this)">
+            <input type="radio" name="time" value="early-afternoon" required>
+            <div class="time-title">Early Afternoon</div>
+            <div class="time-sub">11am-1pm</div>
+          </label>
+
+          <label class="time-card" onclick="selectTime('late-afternoon', this)">
+            <input type="radio" name="time" value="late-afternoon" required>
+            <div class="time-title">Late Afternoon</div>
+            <div class="time-sub">2-5pm</div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Additional Notes -->
+      <div class="form-section">
+        <div class="section-kicker" id="notesStepLabel">Step 4 of 4</div>
+        <h2>Anything Else?</h2>
+        <p class="section-copy">Any special instructions or notes for our team</p>
+        
+        <div class="field">
+          <textarea name="notes" placeholder="E.g., Scout is anxious about thunder, prefers morning walks..." style="width: 100%;"></textarea>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <div class="submit-row">
+        <a href="portal-dashboard.html" style="text-decoration: none;">
+          <button type="button" style="background: white; color: var(--text-mid); border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; padding: 15px 34px; font-size: 15px; font-family: 'DM Sans', sans-serif; cursor: pointer;">Back to Portal</button>
+        </a>
+        <button type="submit" class="btn-primary">Request Service</button>
+      </div>
+    </form>
+
+    <!-- Sidebar Summary -->
+    <div class="sidebar">
+      <div class="summary-card">
+        <div class="summary-kicker">Order Summary</div>
+        <div class="summary-title">Scout's Service Request</div>
+        <div class="investment" id="summaryPrice">$0</div>
+        <div class="investment-sub">Pending confirmation</div>
+        
+        <div class="summary-line">
+          <span>Service:</span>
+          <strong id="summaryService">Not selected</strong>
+        </div>
+        <div class="summary-line">
+          <span>Date:</span>
+          <strong id="summaryDate">Not selected</strong>
+        </div>
+        <div class="summary-line">
+          <span>Time:</span>
+          <strong id="summaryTime">Not selected</strong>
+        </div>
+      </div>
+
+      <div style="background: #f9f8f5; border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 24px;">
+        <div style="font-size: 12px; color: var(--text-mid); line-height: 1.6;">
+          <strong>How it works:</strong>
+          <p style="margin: 8px 0 0;">Submit your request and we'll confirm the booking within 24 hours. Payment is collected on your existing membership method.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const serviceDetails = {
+    overnight: { name: 'Overnight Stay', price: 95, duration: true },
+    checkin: { name: 'Check-In Visit', price: 25, duration: true },
+    extended: { name: 'Extended Walk', price: 12, duration: false },
+    medication: { name: 'Medication Admin', price: 8, duration: false }
+  };
+
+  function selectService(service, element) {
+    document.querySelectorAll('.service-card').forEach(card => card.classList.remove('selected'));
+    element.closest('.service-card').classList.add('selected');
+    
+    const details = serviceDetails[service];
+    document.getElementById('summaryService').textContent = details.name;
+    document.getElementById('summaryPrice').textContent = `$${details.price}`;
+    
+    // Show/hide duration section
+    if (details.duration) {
+      document.getElementById('durationSection').style.display = 'block';
+      populateDurationOptions(service);
+      document.getElementById('dateStepLabel').textContent = 'Step 3 of 4';
+      document.getElementById('timeStepLabel').textContent = 'Step 4 of 4';
+      document.getElementById('notesStepLabel').textContent = 'Step 5 of 5';
+    } else {
+      document.getElementById('durationSection').style.display = 'none';
+      document.getElementById('dateStepLabel').textContent = 'Step 2 of 4';
+      document.getElementById('timeStepLabel').textContent = 'Step 3 of 4';
+      document.getElementById('notesStepLabel').textContent = 'Step 4 of 4';
+    }
+  }
+
+  function populateDurationOptions(service) {
+    const options = service === 'overnight' ? 
+      [{ text: '1 Night', value: 1 }, { text: '2 Nights', value: 2 }, { text: '3 Nights', value: 3 }] :
+      [{ text: '1 Visit', value: 1 }, { text: '3 Visits', value: 3 }, { text: '5 Visits', value: 5 }];
+    
+    const container = document.getElementById('durationOptions');
+    container.innerHTML = options.map(opt => `
+      <label class="duration-card" onclick="selectDuration(${opt.value}, this)">
+        <input type="radio" name="duration" value="${opt.value}">
+        <div class="duration-name">${opt.text}</div>
+        <div class="duration-sub">$${serviceDetails[service].price * opt.value} total</div>
+      </label>
+    `).join('');
+  }
+
+  function selectDuration(duration, element) {
+    document.querySelectorAll('.duration-card').forEach(card => card.classList.remove('selected'));
+    element.classList.add('selected');
+  }
+
+  function selectDate(date, element) {
+    document.querySelectorAll('.date-card').forEach(card => card.classList.remove('selected'));
+    element.closest('.date-card').classList.add('selected');
+    
+    const dateObj = new Date(date);
+    const dateStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    document.getElementById('summaryDate').textContent = dateStr;
+  }
+
+  function selectTime(time, element) {
+    document.querySelectorAll('.time-card').forEach(card => card.classList.remove('selected'));
+    element.closest('.time-card').classList.add('selected');
+    
+    const timeLabels = {
+      'early-morning': '7-10am',
+      'early-afternoon': '11am-1pm',
+      'late-afternoon': '2-5pm'
+    };
+    document.getElementById('summaryTime').textContent = timeLabels[time];
+  }
+
+  function submitExtrasRequest(e) {
+    e.preventDefault();
+    
+    const service = document.querySelector('input[name="service"]:checked').value;
+    const date = document.querySelector('input[name="date"]:checked').value;
+    const time = document.querySelector('input[name="time"]:checked').value;
+    const notes = document.querySelector('textarea[name="notes"]').value;
+    
+    alert(`Service request submitted!\n\nService: ${serviceDetails[service].name}\nDate: ${date}\nTime: ${time}\n\nWe'll confirm within 24 hours.`);
+    
+    // In real app, would submit to backend
+  }
+</script>
+</body>
+</html>
