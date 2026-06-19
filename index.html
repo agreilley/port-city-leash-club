@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Port City Leash Club</title>
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAbBk5q33zuoqtLTOpoZ5X6UIRJrSHZ4ug&libraries=places"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAbBk5q33zuoqtLTOpoZ5X6UIRJrSHZ4ug&libraries=places&callback=initMap" async defer></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -615,8 +615,7 @@
   // Service zip codes
   const SERVICE_ZIPS = ['28403', '28480'];
   
-  // Initialize Google Map
-  let map;
+  // Initialize Google Map (called by API callback)
   function initMap() {
     map = new google.maps.Map(document.getElementById('map'), {
       zoom: 12,
@@ -634,12 +633,8 @@
     });
   }
   
-  // Initialize map when page loads
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initMap);
-  } else {
-    initMap();
-  }
+  // Map variable (will be initialized by callback)
+  let map;
 
   // Nominatim autocomplete
   const addressInput = document.getElementById('address-input');
