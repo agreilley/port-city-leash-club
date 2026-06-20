@@ -234,6 +234,20 @@
   const requested = params.get('service');
   if (requested && PRICES[requested]) document.getElementById('serviceSelect').value = requested;
 
+  // Grey out dates within 48 hours
+  const startInput = document.getElementById('startDate');
+  const endInput   = document.getElementById('endDate');
+  const minDate    = new Date();
+  minDate.setDate(minDate.getDate() + 2);
+  const minDateStr = minDate.toISOString().split('T')[0];
+  startInput.min = minDateStr;
+  endInput.min   = minDateStr;
+  startInput.addEventListener('change', () => {
+    endInput.min = startInput.value || minDateStr;
+    if (endInput.value && endInput.value <= startInput.value) endInput.value = '';
+    updateSummary();
+  });
+
   updateServiceFields();
 </script>
 </body>
