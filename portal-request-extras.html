@@ -259,6 +259,14 @@
     setTimeout(() => { n.style.opacity = '0'; setTimeout(() => n.remove(), 300); }, 3000);
   }
 
+  // Pre-select service from URL param
+  const params = new URLSearchParams(window.location.search);
+  const requested = params.get('service');
+  if (requested) {
+    const sel = document.getElementById('serviceSelect');
+    if (sel) sel.value = requested;
+  }
+
   updateServiceFields();
 </script>
 </body>
