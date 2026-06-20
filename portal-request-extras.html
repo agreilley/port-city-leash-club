@@ -13,11 +13,13 @@
     --text-dark: #1A1A1A; --text-mid: #4A4A4A; --text-light: #7A7A7A;
     --rust: #C17B6F; --rust-dark: #A36358;
   }
-  body { font-family: 'DM Sans', sans-serif; background: var(--sand-light); color: var(--text-dark); display: flex; min-height: 100vh; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; background: #f5f3ed; color: #0D1B2A; }
+  .portal-container { display: flex; min-height: 100vh; }
 
-  /* SIDEBAR - matches dashboard */
+  /* SIDEBAR - exact match to dashboard */
   .sidebar { width: 220px; background: #0D1B2A; color: white; padding: 24px 16px; display: flex; flex-direction: column; gap: 32px; position: fixed; top: 0; left: 0; bottom: 0; }
-  .sidebar-logo { font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 500; color: white; letter-spacing: 0.12em; text-transform: uppercase; }
+  .sidebar-logo { font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: white; cursor: pointer; transition: opacity 0.2s; }
+  .sidebar-logo:hover { opacity: 0.8; }
   .sidebar-nav { display: flex; flex-direction: column; gap: 12px; }
   .nav-item { padding: 10px 12px; border-radius: 8px; font-size: 14px; cursor: pointer; color: #8FA8A2; text-decoration: none; transition: all 0.2s; display: block; white-space: nowrap; line-height: 1.4; }
   .nav-item:hover { background: rgba(255,255,255,0.1); }
@@ -27,7 +29,7 @@
   .pet-info { font-size: 12px; opacity: 0.8; }
 
   /* MAIN */
-  .main-content { margin-left: 220px; flex: 1; padding: 48px; }
+  .main-content { flex: 1; margin-left: 220px; padding: 48px; overflow-y: auto; }
   .page-header { margin-bottom: 32px; }
   .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 8px; }
   .page-header h1 { font-family: 'Cormorant Garamond', serif; font-size: 40px; font-weight: 300; color: var(--navy); line-height: 1.1; margin-bottom: 8px; }
@@ -71,6 +73,7 @@
 </style>
 </head>
 <body>
+<div class="portal-container">
 
 <!-- Sidebar -->
 <div class="sidebar">
@@ -178,6 +181,8 @@
     </div>
   </div>
 </div>
+
+</div><!-- end portal-container -->
 
 <script>
   const PRICES = {
