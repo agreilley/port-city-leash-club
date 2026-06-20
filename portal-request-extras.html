@@ -107,128 +107,51 @@
       <!-- Service Selection -->
       <div class="form-section">
         <div class="section-kicker">Step 1</div>
-      <div style="font-size: 12px; opacity: 0.8; margin-bottom: 8px; letter-spacing: 0.05em; text-transform: uppercase; color: #8FA8A2;">The Leash Club</div>
-        <h2>Select Services</h2>
-        <p class="section-copy">What does Scout need? You can choose multiple services.</p>
-        
-        <div class="service-grid">
-          <label class="service-checkbox" id="overnightLabel">
-            <input type="checkbox" name="services" value="overnight" onchange="toggleServiceDetails('overnight')">
-            <div class="service-info">
-              <div class="service-name">Overnight Stay</div>
-              <div class="service-desc">12+ hours of care while you're away</div>
-              <div class="service-price">$115/night</div>
-            </div>
-          </label>
+        <div style="font-size: 12px; opacity: 0.8; margin-bottom: 8px; letter-spacing: 0.05em; text-transform: uppercase; color: #8FA8A2;">The Leash Club</div>
+        <h2>Service Details</h2>
+        <p class="section-copy">Select the service you need and your dates. We'll confirm availability within 24 hours.</p>
 
-          <label class="service-checkbox" id="checkinLabel">
-            <input type="checkbox" name="services" value="checkin" onchange="toggleServiceDetails('checkin')">
-            <div class="service-info">
-              <div class="service-name">Check-In Visit</div>
-              <div class="service-desc">20-min potty break & playtime</div>
-              <div class="service-price">$25/visit</div>
-            </div>
-          </label>
-
-          <label class="service-checkbox" id="extendedLabel">
-            <input type="checkbox" name="services" value="extended" onchange="toggleServiceDetails('extended')">
-            <div class="service-info">
-              <div class="service-name">Extended Walk</div>
-              <div class="service-desc">Add 15 min to any walk (30→45 min)</div>
-              <div class="service-price">$12/walk</div>
-            </div>
-          </label>
-
-          <label class="service-checkbox" id="medicationLabel">
-            <input type="checkbox" name="services" value="medication" onchange="toggleServiceDetails('medication')">
-            <div class="service-info">
-              <div class="service-name">Medication Admin</div>
-              <div class="service-desc">Daily medication administration</div>
-              <div class="service-price">$8/day</div>
-            </div>
-          </label>
-        </div>
-      </div>
-
-      <!-- Overnight Stay Details -->
-      <div class="service-details" id="overnight-details">
-        <h3>Overnight Stays</h3>
-        <div class="field-group full">
+        <div class="field-group" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:0;">
           <div class="field">
-            <label>How many nights?</label>
-            <input type="number" name="overnight-nights" min="1" value="1" onchange="updateSummary()">
-          </div>
-        </div>
-        <div class="field-group full">
-          <div class="field">
-            <label>First night (start date)</label>
-            <input type="date" name="overnight-date" onchange="updateSummary()">
-          </div>
-        </div>
-      </div>
-
-      <!-- Check-In Visit Details -->
-      <div class="service-details" id="checkin-details">
-        <h3>Check-In Visits</h3>
-        <div class="field-group full">
-          <div class="field">
-            <label>How many visits?</label>
-            <input type="number" name="checkin-visits" min="1" value="1" onchange="updateSummary()">
-          </div>
-        </div>
-        <div class="field-group full">
-          <div class="field">
-            <label>First visit (start date)</label>
-            <input type="date" name="checkin-date" onchange="updateSummary()">
-          </div>
-        </div>
-      </div>
-
-      <!-- Extended Walk Details -->
-      <div class="service-details" id="extended-details">
-        <h3>Extended Walks</h3>
-        <div class="field-group full">
-          <div class="field">
-            <label>How many extended walks?</label>
-            <input type="number" name="extended-count" min="1" value="1" onchange="updateSummary()">
-          </div>
-        </div>
-        <div class="field-group">
-          <div class="field">
-            <label>Preferred date</label>
-            <input type="date" name="extended-date" onchange="updateSummary()">
-          </div>
-          <div class="field">
-            <label>Preferred time</label>
-            <select name="extended-time" onchange="updateSummary()">
-              <option value="">Choose time...</option>
-              <option value="early-morning">Early Morning (7-10am)</option>
-              <option value="early-afternoon">Early Afternoon (11am-1pm)</option>
-              <option value="late-afternoon">Late Afternoon (2-5pm)</option>
+            <label>Service</label>
+            <select id="serviceSelect" name="service" onchange="updateServiceFields()">
+              <option value="overnight">Overnight Stay · $115/night</option>
+              <option value="checkin">Check-In Visit · $25/visit</option>
+              <option value="extended">Extended Walk · $40</option>
+              <option value="medication">Medication Administration · $8/day</option>
             </select>
           </div>
-        </div>
-      </div>
-
-      <!-- Medication Admin Details -->
-      <div class="service-details" id="medication-details">
-        <h3>Medication Administration</h3>
-        <div class="field-group full">
           <div class="field">
-            <label>How many days?</label>
-            <input type="number" name="medication-days" min="1" value="1" onchange="updateSummary()">
+            <label>Start Date</label>
+            <input type="date" id="startDate" name="start-date" onchange="updateSummary()">
           </div>
-        </div>
-        <div class="field-group full">
-          <div class="field">
-            <label>Start date</label>
-            <input type="date" name="medication-date" onchange="updateSummary()">
+          <div class="field" id="endDateField">
+            <label>End Date</label>
+            <input type="date" id="endDate" name="end-date" onchange="updateSummary()">
           </div>
-        </div>
-        <div class="field-group full">
-          <div class="field">
-            <label>Medication name & dosage (optional)</label>
+          <div class="field" id="visitsField" style="display:none;">
+            <label>Visits Per Day</label>
+            <select name="visits-per-day" onchange="updateSummary()">
+              <option>1 visit</option>
+              <option>2 visits</option>
+              <option>3 visits</option>
+              <option>4+ visits</option>
+            </select>
+          </div>
+          <div class="field" id="medicationField" style="display:none;">
+            <label>Medication name & dosage</label>
             <input type="text" name="medication-details" placeholder="e.g., Amoxicillin 250mg, twice daily">
+          </div>
+          <div class="field full" id="addonsField" style="display:none;">
+            <label>Add-ons</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <label style="display:flex;align-items:center;gap:10px;border:1px solid rgba(0,0,0,0.12);border-radius:6px;padding:12px 14px;font-size:13px;font-weight:400;color:var(--text-mid);cursor:pointer;background:white;">
+                <input type="checkbox" id="addonExtraPet" onchange="updateSummary()" style="width:auto;"> Extra pet <span style="color:var(--text-light);margin-left:4px;">+$15/night</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;border:1px solid rgba(0,0,0,0.12);border-radius:6px;padding:12px 14px;font-size:13px;font-weight:400;color:var(--text-mid);cursor:pointer;background:white;">
+                <input type="checkbox" id="addonMedication" onchange="updateSummary()" style="width:auto;"> Medication admin <span style="color:var(--text-light);margin-left:4px;">+$8/night</span>
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -274,127 +197,70 @@
 </main>
 
 <script>
-  const serviceDetails = {
-    overnight: { name: 'Overnight Stay', pricePerUnit: 115 },
-    checkin: { name: 'Check-In Visit', pricePerUnit: 25 },
-    extended: { name: 'Extended Walk', pricePerUnit: 12 },
-    medication: { name: 'Medication Admin', pricePerUnit: 8 }
+  const PRICES = {
+    overnight:  { name: 'Overnight Stay',          price: 115, unit: 'night' },
+    checkin:    { name: 'Check-In Visit',           price: 25,  unit: 'visit' },
+    extended:   { name: 'Extended Walk',            price: 40,  unit: 'walk'  },
+    medication: { name: 'Medication Administration',price: 8,   unit: 'day'   }
   };
 
-  function toggleServiceDetails(service) {
-    const checkbox = document.querySelector(`input[value="${service}"]`);
-    const detailsDiv = document.getElementById(`${service}-details`);
-    const label = document.getElementById(`${service}Label`);
+  function getDaysBetween(start, end) {
+    if (!start || !end) return 0;
+    const ms = new Date(end) - new Date(start);
+    return Math.max(0, Math.round(ms / 86400000));
+  }
 
-    if (checkbox.checked) {
-      detailsDiv.classList.add('show');
-      label.classList.add('checked');
-    } else {
-      detailsDiv.classList.remove('show');
-      label.classList.remove('checked');
-      // Clear values
-      const inputs = detailsDiv.querySelectorAll('input, select');
-      inputs.forEach(input => {
-        if (input.type === 'number') input.value = 1;
-        else input.value = '';
-      });
-    }
-    
+  function updateServiceFields() {
+    const service = document.getElementById('serviceSelect').value;
+    const isPetSitting = service === 'overnight' || service === 'checkin';
+    const hasEndDate   = service === 'overnight' || service === 'checkin' || service === 'medication';
+
+    document.getElementById('endDateField').style.display   = hasEndDate ? 'flex' : 'none';
+    document.getElementById('visitsField').style.display    = service === 'checkin' ? 'flex' : 'none';
+    document.getElementById('medicationField').style.display= service === 'medication' ? 'flex' : 'none';
+    document.getElementById('addonsField').style.display    = isPetSitting ? 'flex' : 'none';
+
     updateSummary();
   }
 
   function updateSummary() {
-    const selectedServices = document.querySelectorAll('input[name="services"]:checked');
-    let totalPrice = 0;
-    let summaryHTML = '';
+    const service  = document.getElementById('serviceSelect').value;
+    const info     = PRICES[service];
+    const start    = document.getElementById('startDate').value;
+    const end      = document.getElementById('endDate').value;
+    const days     = getDaysBetween(start, end) || 1;
 
-    selectedServices.forEach(checkbox => {
-      const service = checkbox.value;
-      const details = serviceDetails[service];
-      let quantity = 1;
-      let price = 0;
+    const isWalk   = service === 'extended';
+    const qty      = isWalk ? 1 : days;
+    const baseTotal = info.price * qty;
 
-      if (service === 'overnight') {
-        quantity = parseInt(document.querySelector('input[name="overnight-nights"]').value) || 1;
-        price = quantity * details.pricePerUnit;
-        summaryHTML += `<div class="summary-line"><span>${quantity} night${quantity > 1 ? 's' : ''} stay</span><strong>$${price}</strong></div>`;
-      } else if (service === 'checkin') {
-        quantity = parseInt(document.querySelector('input[name="checkin-visits"]').value) || 1;
-        price = quantity * details.pricePerUnit;
-        summaryHTML += `<div class="summary-line"><span>${quantity} check-in visit${quantity > 1 ? 's' : ''}</span><strong>$${price}</strong></div>`;
-      } else if (service === 'extended') {
-        quantity = parseInt(document.querySelector('input[name="extended-count"]').value) || 1;
-        price = quantity * details.pricePerUnit;
-        summaryHTML += `<div class="summary-line"><span>${quantity} extended walk${quantity > 1 ? 's' : ''}</span><strong>$${price}</strong></div>`;
-      } else if (service === 'medication') {
-        quantity = parseInt(document.querySelector('input[name="medication-days"]').value) || 1;
-        price = quantity * details.pricePerUnit;
-        summaryHTML += `<div class="summary-line"><span>${quantity} day${quantity > 1 ? 's' : ''} medication admin</span><strong>$${price}</strong></div>`;
-      }
+    const extraPet = document.getElementById('addonExtraPet')?.checked ? 15 * qty : 0;
+    const meds     = document.getElementById('addonMedication')?.checked ? 8 * qty : 0;
+    const grandTotal = baseTotal + extraPet + meds;
 
-      totalPrice += price;
-    });
+    let lines = `<div class="summary-line"><span>${info.name}${qty > 1 ? ` × ${qty}` : ''}</span><strong>$${baseTotal}</strong></div>`;
+    if (extraPet) lines += `<div class="summary-line"><span>Extra pet${qty > 1 ? ` × ${qty}` : ''}</span><strong>$${extraPet}</strong></div>`;
+    if (meds)     lines += `<div class="summary-line"><span>Medication admin${qty > 1 ? ` × ${qty}` : ''}</span><strong>$${meds}</strong></div>`;
 
-    document.getElementById('summaryPrice').textContent = `$${totalPrice}`;
-    document.getElementById('summaryDetails').innerHTML = summaryHTML || '<p style="font-size: 12px; color: rgba(255,255,255,0.6); margin: 0;">Select services to see summary</p>';
+    document.getElementById('summaryPrice').textContent = `$${grandTotal}`;
+    document.getElementById('summaryDetails').innerHTML = lines;
   }
 
   function submitExtrasRequest(e) {
     e.preventDefault();
-    
-    const selectedServices = document.querySelectorAll('input[name="services"]:checked');
-    if (selectedServices.length === 0) {
-      alert('Please select at least one service');
-      return;
-    }
-
-    let summary = 'Service Request Submitted!\n\n';
-    let totalPrice = 0;
-
-    selectedServices.forEach(checkbox => {
-      const service = checkbox.value;
-      const details = serviceDetails[service];
-      
-      if (service === 'overnight') {
-        const nights = document.querySelector('input[name="overnight-nights"]').value;
-        const date = document.querySelector('input[name="overnight-date"]').value;
-        const price = nights * details.pricePerUnit;
-        summary += `${nights} night(s) overnight stay starting ${date}: $${price}\n`;
-        totalPrice += price;
-      } else if (service === 'checkin') {
-        const visits = document.querySelector('input[name="checkin-visits"]').value;
-        const date = document.querySelector('input[name="checkin-date"]').value;
-        const price = visits * details.pricePerUnit;
-        summary += `${visits} check-in visit(s) starting ${date}: $${price}\n`;
-        totalPrice += price;
-      } else if (service === 'extended') {
-        const count = document.querySelector('input[name="extended-count"]').value;
-        const date = document.querySelector('input[name="extended-date"]').value;
-        const time = document.querySelector('select[name="extended-time"]').value;
-        const price = count * details.pricePerUnit;
-        summary += `${count} extended walk(s) on ${date} at ${time}: $${price}\n`;
-        totalPrice += price;
-      } else if (service === 'medication') {
-        const days = document.querySelector('input[name="medication-days"]').value;
-        const date = document.querySelector('input[name="medication-date"]').value;
-        const price = days * details.pricePerUnit;
-        summary += `${days} day(s) medication admin starting ${date}: $${price}\n`;
-        totalPrice += price;
-      }
-    });
-
-    summary += `\nTotal: $${totalPrice}\n\nWe'll confirm within 24 hours.`;
-    alert(summary);
-    
-    // Reset form
-    document.querySelectorAll('input[name="services"]').forEach(cb => {
-      cb.checked = false;
-      toggleServiceDetails(cb.value);
-    });
+    showNotification('Request submitted! We\'ll confirm within 24 hours.');
+    setTimeout(() => window.history.back(), 1500);
   }
 
-  // Initialize summary on page load
-  updateSummary();
+  function showNotification(message, type = 'success') {
+    const n = document.createElement('div');
+    n.className = `notification ${type}`;
+    n.textContent = message;
+    document.body.appendChild(n);
+    setTimeout(() => { n.style.opacity = '0'; setTimeout(() => n.remove(), 300); }, 3000);
+  }
+
+  updateServiceFields();
 </script>
 </body>
 </html>
