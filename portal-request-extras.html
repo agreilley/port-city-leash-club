@@ -109,7 +109,7 @@
         <p class="section-copy">Select the service you need and your dates.</p>
 
         <div class="field-group" style="grid-template-columns: 1fr 1fr;">
-          <div class="field">
+          <div class="field" id="serviceField" style="grid-column: 1 / -1;">
             <label>Service</label>
             <select id="serviceSelect" name="service" onchange="updateServiceFields()">
               <option value="overnight">Overnight Stay · $115/night</option>
@@ -194,9 +194,12 @@
 
   function updateServiceFields() {
     const service = document.getElementById('serviceSelect').value;
+    const isCheckin = service === 'checkin';
+    document.getElementById('visitsField').style.display   = isCheckin ? 'flex' : 'none';
     document.getElementById('endDateField').style.display  = 'flex';
-    document.getElementById('visitsField').style.display   = service === 'checkin' ? 'flex' : 'none';
     document.getElementById('addonsField').style.display   = 'flex';
+    // Service spans full width for overnight, half width for check-in (leaves room for visits)
+    document.getElementById('serviceField').style.gridColumn = isCheckin ? '1' : '1 / -1';
     updateSummary();
   }
 
