@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Extend a Walk | Port City Leash Club</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --navy: #0D1B2A; --seafoam: #8FA8A2; --seafoam-light: #C5D5D1;
+    --sand: #E9E1D3; --sand-light: #F4F0EA; --warm-white: #FAFAF8;
+    --text-dark: #1A1A1A; --text-mid: #4A4A4A; --text-light: #7A7A7A;
+    --rust: #C17B6F; --rust-dark: #A36358;
+  }
+  body { font-family: 'DM Sans', sans-serif; background: var(--sand-light); color: var(--text-dark); display: flex; min-height: 100vh; }
+
+  /* SIDEBAR */
+  .sidebar { width: 240px; min-height: 100vh; background: var(--navy); display: flex; flex-direction: column; padding: 0; flex-shrink: 0; position: fixed; top: 0; left: 0; bottom: 0; }
+  .sidebar-logo { padding: 28px 24px 20px; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500; color: white; letter-spacing: 0.01em; border-bottom: 1px solid rgba(255,255,255,0.08); line-height: 1.4; }
+  .sidebar-logo:hover { opacity: 0.85; }
+  .sidebar-nav { padding: 20px 0; flex: 1; }
+  .nav-item { display: block; white-space: nowrap; line-height: 1.4; padding: 10px 24px; font-size: 13px; color: rgba(255,255,255,0.65); text-decoration: none; transition: all 0.15s; letter-spacing: 0.01em; }
+  .nav-item:hover { color: white; background: rgba(255,255,255,0.06); }
+  .nav-item.active { color: var(--rust); background: rgba(193,123,111,0.1); }
+  .sidebar-footer { padding: 20px 24px; border-top: 1px solid rgba(255,255,255,0.08); }
+  .sidebar-user { font-size: 12px; color: rgba(255,255,255,0.5); line-height: 1.5; }
+  .sidebar-user strong { color: rgba(255,255,255,0.85); font-weight: 500; display: block; }
+
+  /* MAIN */
+  .main-content { margin-left: 240px; flex: 1; padding: 48px; max-width: 900px; }
+  .page-header { margin-bottom: 32px; }
+  .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 8px; }
+  .page-header h1 { font-family: 'Cormorant Garamond', serif; font-size: 40px; font-weight: 300; color: var(--navy); line-height: 1.1; margin-bottom: 8px; }
+  .page-header p { font-size: 14px; color: var(--text-mid); line-height: 1.7; }
+
+  /* UPCHARGE BANNER */
+  .upcharge-banner { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+  .upcharge-banner-text { font-size: 14px; color: var(--text-mid); }
+  .upcharge-banner-text strong { color: var(--navy); }
+  .upcharge-badge { background: var(--sand-light); border: 1px solid rgba(0,0,0,0.08); border-radius: 20px; padding: 4px 14px; font-size: 13px; font-weight: 500; color: var(--navy); }
+
+  /* ORDER SUMMARY */
+  .layout { display: grid; grid-template-columns: 1fr 280px; gap: 24px; align-items: start; }
+  .summary-card { position: sticky; top: 24px; background: var(--navy); color: white; border-radius: 10px; padding: 24px; }
+  .summary-kicker { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--seafoam-light); margin-bottom: 6px; }
+  .summary-title { font-family: 'Cormorant Garamond', serif; font-size: 22px; margin-bottom: 16px; }
+  .summary-total { font-family: 'Cormorant Garamond', serif; font-size: 40px; line-height: 1; margin-bottom: 4px; }
+  .summary-sub { font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 16px; }
+  .summary-line { display: flex; justify-content: space-between; border-top: 1px solid rgba(255,255,255,0.1); padding: 10px 0; font-size: 13px; color: rgba(255,255,255,0.7); }
+  .summary-line strong { color: white; font-weight: 500; }
+  .summary-empty { font-size: 13px; color: rgba(255,255,255,0.4); font-style: italic; }
+  .btn-confirm { width: 100%; margin-top: 20px; background: var(--rust); color: white; border: none; border-radius: 6px; padding: 13px; font-size: 14px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: background 0.2s; }
+  .btn-confirm:hover { background: var(--rust-dark); }
+  .btn-confirm:disabled { background: rgba(255,255,255,0.15); cursor: not-allowed; }
+
+  /* WALK LIST */
+  .walks-card { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; overflow: hidden; }
+  .walks-month { font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-light); padding: 16px 24px 10px; background: var(--sand-light); border-bottom: 1px solid rgba(0,0,0,0.06); }
+  .walk-row { display: flex; align-items: center; gap: 16px; padding: 16px 24px; border-bottom: 1px solid rgba(0,0,0,0.06); transition: background 0.15s; cursor: pointer; }
+  .walk-row:last-child { border-bottom: none; }
+  .walk-row:hover { background: #fafaf8; }
+  .walk-row.selected { background: #fffaf8; border-left: 3px solid var(--rust); padding-left: 21px; }
+  .walk-checkbox { width: 18px; height: 18px; border: 1.5px solid rgba(0,0,0,0.2); border-radius: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+  .walk-row.selected .walk-checkbox { background: var(--rust); border-color: var(--rust); }
+  .walk-checkbox-tick { color: white; font-size: 11px; display: none; }
+  .walk-row.selected .walk-checkbox-tick { display: block; }
+  .walk-date { width: 48px; text-align: center; flex-shrink: 0; }
+  .walk-date-day { font-size: 20px; font-weight: 500; color: var(--navy); line-height: 1; }
+  .walk-date-weekday { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-light); margin-top: 2px; }
+  .walk-divider { width: 1px; height: 36px; background: rgba(0,0,0,0.08); flex-shrink: 0; }
+  .walk-info { flex: 1; }
+  .walk-time { font-size: 13px; font-weight: 500; color: var(--navy); margin-bottom: 2px; }
+  .walk-walker { font-size: 12px; color: var(--text-light); }
+  .walk-current-length { font-size: 12px; color: var(--text-mid); background: var(--sand-light); border-radius: 20px; padding: 3px 10px; flex-shrink: 0; }
+  .walk-extended-badge { font-size: 12px; color: var(--rust); background: rgba(193,123,111,0.08); border: 1px solid rgba(193,123,111,0.2); border-radius: 20px; padding: 3px 10px; flex-shrink: 0; display: none; }
+  .walk-row.selected .walk-current-length { display: none; }
+  .walk-row.selected .walk-extended-badge { display: block; }
+  .walk-price { font-size: 14px; font-weight: 500; color: var(--text-mid); flex-shrink: 0; width: 40px; text-align: right; }
+  .walk-row.selected .walk-price { color: var(--rust); }
+
+  .notification { position: fixed; top: 20px; right: 20px; background: white; border: 1px solid #E5E0D8; border-left: 4px solid #8FA8A2; border-radius: 12px; padding: 20px 24px; box-shadow: 0 4px 20px rgba(13,27,42,0.15); font-size: 15px; color: #0D1B2A; max-width: 400px; z-index: 10000; animation: slideIn 0.3s ease-out; }
+  @keyframes slideIn { from { opacity:0; transform:translateX(400px); } to { opacity:1; transform:translateX(0); } }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <a href="portal-dashboard.html" class="sidebar-logo" style="text-decoration:none;">Port City Leash Club</a>
+  <nav class="sidebar-nav">
+    <a href="portal-dashboard.html" class="nav-item">Dashboard</a>
+    <a href="portal-pet-profile.html" class="nav-item">Pet Profile</a>
+    <a href="portal-walk-history.html" class="nav-item">Walk History</a>
+    <a href="portal-extras.html" class="nav-item active">Additional Care</a>
+    <a href="portal-account.html" class="nav-item">Account</a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="sidebar-user">
+      <strong>Sarah M.</strong>
+      Standard Member · Scout
+    </div>
+  </div>
+</div>
+
+<!-- Main Content -->
+<div class="main-content">
+  <div class="page-header">
+    <div class="eyebrow">The Leash Club</div>
+    <h1>Extend a Walk</h1>
+    <p>Select upcoming walks you'd like to upgrade to 45 minutes. Scout gets more time — you get more peace of mind.</p>
+  </div>
+
+  <div class="upcharge-banner">
+    <div class="upcharge-banner-text">Adding 15 minutes to a 30-minute walk. <strong>$12 upcharge per walk.</strong></div>
+    <div class="upcharge-badge">30 min → 45 min</div>
+  </div>
+
+  <div class="layout">
+
+    <!-- Walk List -->
+    <div>
+      <div class="walks-card">
+        <div class="walks-month">June 2026</div>
+
+        <div class="walk-row" onclick="toggleWalk(this)" data-date="Mon Jun 23">
+          <div class="walk-checkbox"><span class="walk-checkbox-tick">✓</span></div>
+          <div class="walk-date"><div class="walk-date-day">23</div><div class="walk-date-weekday">Mon</div></div>
+          <div class="walk-divider"></div>
+          <div class="walk-info">
+            <div class="walk-time">Early Morning · 8:15am</div>
+            <div class="walk-walker">With Marcus</div>
+          </div>
+          <div class="walk-current-length">30 min</div>
+          <div class="walk-extended-badge">45 min ✓</div>
+          <div class="walk-price">$12</div>
+        </div>
+
+        <div class="walk-row" onclick="toggleWalk(this)" data-date="Wed Jun 25">
+          <div class="walk-checkbox"><span class="walk-checkbox-tick">✓</span></div>
+          <div class="walk-date"><div class="walk-date-day">25</div><div class="walk-date-weekday">Wed</div></div>
+          <div class="walk-divider"></div>
+          <div class="walk-info">
+            <div class="walk-time">Early Morning · 8:15am</div>
+            <div class="walk-walker">With Marcus</div>
+          </div>
+          <div class="walk-current-length">30 min</div>
+          <div class="walk-extended-badge">45 min ✓</div>
+          <div class="walk-price">$12</div>
+        </div>
+
+        <div class="walk-row" onclick="toggleWalk(this)" data-date="Fri Jun 27">
+          <div class="walk-checkbox"><span class="walk-checkbox-tick">✓</span></div>
+          <div class="walk-date"><div class="walk-date-day">27</div><div class="walk-date-weekday">Fri</div></div>
+          <div class="walk-divider"></div>
+          <div class="walk-info">
+            <div class="walk-time">Early Morning · 8:15am</div>
+            <div class="walk-walker">With Marcus</div>
+          </div>
+          <div class="walk-current-length">30 min</div>
+          <div class="walk-extended-badge">45 min ✓</div>
+          <div class="walk-price">$12</div>
+        </div>
+
+        <div class="walks-month">July 2026</div>
+
+        <div class="walk-row" onclick="toggleWalk(this)" data-date="Mon Jun 30">
+          <div class="walk-checkbox"><span class="walk-checkbox-tick">✓</span></div>
+          <div class="walk-date"><div class="walk-date-day">30</div><div class="walk-date-weekday">Mon</div></div>
+          <div class="walk-divider"></div>
+          <div class="walk-info">
+            <div class="walk-time">Early Morning · 8:15am</div>
+            <div class="walk-walker">With Marcus</div>
+          </div>
+          <div class="walk-current-length">30 min</div>
+          <div class="walk-extended-badge">45 min ✓</div>
+          <div class="walk-price">$12</div>
+        </div>
+
+        <div class="walk-row" onclick="toggleWalk(this)" data-date="Wed Jul 2">
+          <div class="walk-checkbox"><span class="walk-checkbox-tick">✓</span></div>
+          <div class="walk-date"><div class="walk-date-day">2</div><div class="walk-date-weekday">Wed</div></div>
+          <div class="walk-divider"></div>
+          <div class="walk-info">
+            <div class="walk-time">Early Morning · 8:15am</div>
+            <div class="walk-walker">With Marcus</div>
+          </div>
+          <div class="walk-current-length">30 min</div>
+          <div class="walk-extended-badge">45 min ✓</div>
+          <div class="walk-price">$12</div>
+        </div>
+
+        <div class="walk-row" onclick="toggleWalk(this)" data-date="Fri Jul 4">
+          <div class="walk-checkbox"><span class="walk-checkbox-tick">✓</span></div>
+          <div class="walk-date"><div class="walk-date-day">4</div><div class="walk-date-weekday">Fri</div></div>
+          <div class="walk-divider"></div>
+          <div class="walk-info">
+            <div class="walk-time">Early Morning · 8:15am</div>
+            <div class="walk-walker">With Marcus</div>
+          </div>
+          <div class="walk-current-length">30 min</div>
+          <div class="walk-extended-badge">45 min ✓</div>
+          <div class="walk-price">$12</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Summary -->
+    <div class="summary-card">
+      <div class="summary-kicker">Order Summary</div>
+      <div class="summary-title">Scout's Extended Walks</div>
+      <div class="summary-total" id="summaryTotal">$0</div>
+      <div class="summary-sub">Estimated total</div>
+      <div id="summaryLines">
+        <div class="summary-empty">Select walks above to see your total.</div>
+      </div>
+      <button class="btn-confirm" id="confirmBtn" disabled onclick="confirmExtensions()">Confirm Extensions</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const selected = new Set();
+  const PRICE = 12;
+
+  function toggleWalk(row) {
+    const date = row.dataset.date;
+    if (selected.has(date)) {
+      selected.delete(date);
+      row.classList.remove('selected');
+    } else {
+      selected.add(date);
+      row.classList.add('selected');
+    }
+    updateSummary();
+  }
+
+  function updateSummary() {
+    const count = selected.size;
+    const total = count * PRICE;
+    document.getElementById('summaryTotal').textContent = `$${total}`;
+
+    const btn = document.getElementById('confirmBtn');
+    btn.disabled = count === 0;
+
+    if (count === 0) {
+      document.getElementById('summaryLines').innerHTML = '<div class="summary-empty">Select walks above to see your total.</div>';
+      return;
+    }
+
+    const dates = Array.from(selected).sort();
+    let lines = dates.map(d =>
+      `<div class="summary-line"><span>${d}</span><strong>$${PRICE}</strong></div>`
+    ).join('');
+    lines += `<div class="summary-line" style="border-top:1px solid rgba(255,255,255,0.2);margin-top:4px;padding-top:14px;"><span>${count} walk${count > 1 ? 's' : ''} extended</span><strong>$${total}</strong></div>`;
+    document.getElementById('summaryLines').innerHTML = lines;
+  }
+
+  function confirmExtensions() {
+    const n = document.createElement('div');
+    n.className = 'notification';
+    n.textContent = `${selected.size} walk${selected.size > 1 ? 's' : ''} extended to 45 minutes. We'll confirm shortly.`;
+    document.body.appendChild(n);
+    setTimeout(() => { n.style.opacity = '0'; setTimeout(() => { n.remove(); window.location.href = 'portal-extras.html'; }, 300); }, 2500);
+  }
+</script>
+</body>
+</html>
