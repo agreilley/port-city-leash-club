@@ -108,7 +108,7 @@
         <h2>Service Details</h2>
         <p class="section-copy">Select the service you need and your dates.</p>
 
-        <div class="field-group">
+        <div class="field-group" style="grid-template-columns: 1fr 1fr 1fr;">
           <div class="field">
             <label>Service</label>
             <select id="serviceSelect" name="service" onchange="updateServiceFields()">
@@ -120,10 +120,6 @@
             <label>Start Date</label>
             <input type="date" id="startDate" name="start-date" onchange="updateSummary()">
           </div>
-          <div class="field" id="endDateField">
-            <label>End Date</label>
-            <input type="date" id="endDate" name="end-date" onchange="updateSummary()">
-          </div>
           <div class="field" id="visitsField" style="display:none;">
             <label>Visits Per Day</label>
             <select name="visits-per-day" onchange="updateSummary()">
@@ -132,6 +128,10 @@
               <option>3 visits</option>
               <option>4+ visits</option>
             </select>
+          </div>
+          <div class="field" id="endDateField">
+            <label>End Date</label>
+            <input type="date" id="endDate" name="end-date" onchange="updateSummary()">
           </div>
           <div class="field full" id="addonsField" style="display:none;">
             <label>Add-ons</label>
