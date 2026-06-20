@@ -198,7 +198,7 @@
   .footer-links a { font-size: 13px; color: rgba(255,255,255,0.5); text-decoration: none; }
 
   .form-hero { background: var(--sand-light); padding: 72px 48px; }
-  .form-shell { max-width: 940px; margin: -40px auto 80px; padding: 0 48px; }
+  .form-shell { max-width: 1100px; margin: -40px auto 80px; padding: 0 48px; display: grid; grid-template-columns: 1fr 320px; gap: 28px; align-items: start; }
   .request-card { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 40px; box-shadow: 0 10px 40px rgba(13,27,42,0.08); }
   .form-section { border-top: 1px solid rgba(0,0,0,0.08); padding-top: 30px; margin-top: 30px; }
   .form-section:first-child { border-top: none; padding-top: 0; margin-top: 0; }
@@ -216,7 +216,22 @@
   .checkbox-pill input { width:auto; }
   .form-actions { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-top:34px; }
   .microcopy { font-size: 12px; color: var(--text-light); line-height: 1.6; max-width: 440px; }
-  @media (max-width: 800px) {
+  .order-sidebar { position: sticky; top: 88px; display: flex; flex-direction: column; gap: 16px; }
+  .order-card { background: var(--navy); color: white; border-radius: 10px; padding: 28px; }
+  .order-kicker { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--seafoam-light); margin-bottom: 8px; }
+  .order-title { font-family: 'Cormorant Garamond', serif; font-size: 24px; line-height: 1.1; margin-bottom: 20px; }
+  .order-total { font-family: 'Cormorant Garamond', serif; font-size: 44px; line-height: 1; margin-bottom: 4px; }
+  .order-total-label { font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 20px; }
+  .order-line { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid rgba(255,255,255,0.1); padding: 10px 0; font-size: 13px; color: rgba(255,255,255,0.7); }
+  .order-line strong { color: white; font-weight: 500; }
+  .order-empty { font-size: 13px; color: rgba(255,255,255,0.4); font-style: italic; }
+  .order-note { background: var(--sand-light); border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 20px; }
+  .order-note p { font-size: 13px; color: var(--text-mid); line-height: 1.7; }
+  .order-note strong { color: var(--navy); }
+  @media (max-width: 900px) {
+    .form-shell { grid-template-columns: 1fr; }
+    .order-sidebar { position: static; }
+  }
     nav { padding: 0 24px; }
     .nav-links { gap: 16px; }
     .form-hero { padding: 56px 24px; }
@@ -246,7 +261,7 @@
 </div>
 
 <main class="form-shell">
-  <form class="request-card">
+  <form class="request-card" id="serviceForm">
     <div class="form-section">
       <h2 class="form-section-title">Service Details</h2>
       <p class="form-section-sub">Select the one-time service you need. Membership requests will live on a separate membership page.</p>
@@ -329,6 +344,23 @@
       <button class="btn-primary" type="button" onclick="alert('Mockup only: this would submit the service request.')">Submit Request</button>
     </div>
   </form>
+
+  <!-- Order Summary Sidebar -->
+  <div class="order-sidebar">
+    <div class="order-card">
+      <div class="order-kicker">Order Summary</div>
+      <div class="order-title">Your Request</div>
+      <div class="order-total" id="orderTotal">$0</div>
+      <div class="order-total-label">Estimated total</div>
+      <div id="orderLines">
+        <div class="order-empty">Select a service and dates to see your estimate.</div>
+      </div>
+    </div>
+    <div class="order-note">
+      <p><strong>How it works:</strong> Submit your request and we'll confirm availability within 24 hours. Payment is collected at confirmation — not now.</p>
+    </div>
+  </div>
+
 </main>
 
 <footer>
@@ -346,47 +378,92 @@
 </footer>
 
 <script>
-  const labels = {
-    'standard-walk': 'Standard Walk · 30 minutes · $29',
-    'extended-walk': 'Extended Walk · 45 minutes · $40',
-    'drop-in-visit': 'Drop-In Visit · $25',
-    'overnight-stay': 'Overnight Stay · $115'
+  const PRICES = {
+    'standard-walk':  { name: 'Standard Walk',  price: 29,  unit: 'walk' },
+    'extended-walk':  { name: 'Extended Walk',  price: 40,  unit: 'walk' },
+    'drop-in-visit':  { name: 'Drop-In Visit',  price: 25,  unit: 'night' },
+    'overnight-stay': { name: 'Overnight Stay', price: 115, unit: 'night' }
   };
-  // Set minimum start date to 2 days from today
+
   const startInput = document.getElementById('start-date');
-  const endInput = document.getElementById('end-date');
-  const minDate = new Date();
+  const endInput   = document.getElementById('end-date');
+  const minDate    = new Date();
   minDate.setDate(minDate.getDate() + 2);
   const minDateStr = minDate.toISOString().split('T')[0];
   startInput.min = minDateStr;
-  endInput.min = minDateStr;
+  endInput.min   = minDateStr;
 
-  // End date must be after start date
   startInput.addEventListener('change', () => {
     endInput.min = startInput.value || minDateStr;
     if (endInput.value && endInput.value < startInput.value) endInput.value = '';
+    updateSummary();
   });
+  endInput.addEventListener('change', updateSummary);
 
   const params = new URLSearchParams(window.location.search);
   const requested = params.get('service');
   const serviceSelect = document.getElementById('service');
-  if (requested && labels[requested]) serviceSelect.value = requested;
+  if (requested && PRICES[requested]) serviceSelect.value = requested;
+
+  function getDaysBetween(start, end) {
+    if (!start || !end) return 0;
+    const ms = new Date(end) - new Date(start);
+    return Math.max(0, Math.round(ms / 86400000));
+  }
 
   function updateServiceFields() {
     const service = serviceSelect.value;
-    const endDate = document.getElementById('end-date-field');
-    const visits = document.getElementById('visits-field');
-    const addons = document.getElementById('addons-field');
-    const isWalk = service === 'standard-walk' || service === 'extended-walk';
+    const isWalk      = service === 'standard-walk' || service === 'extended-walk';
     const isPetSitting = service === 'drop-in-visit' || service === 'overnight-stay';
-    endDate.style.display = isWalk ? 'none' : 'flex';
-    visits.style.display = service === 'drop-in-visit' ? 'flex' : 'none';
-    addons.style.display = isPetSitting ? 'flex' : 'none';
+    document.getElementById('end-date-field').style.display  = isWalk ? 'none' : 'flex';
+    document.getElementById('visits-field').style.display    = service === 'drop-in-visit' ? 'flex' : 'none';
+    document.getElementById('addons-field').style.display    = isPetSitting ? 'flex' : 'none';
+    updateSummary();
   }
 
-  function updateAddons() {} // placeholder for future price summary logic
+  function updateSummary() {
+    const service  = serviceSelect.value;
+    const info     = PRICES[service];
+    if (!info) return;
+
+    const isWalk   = service === 'standard-walk' || service === 'extended-walk';
+    const start    = startInput.value;
+    const end      = endInput.value;
+    const days     = isWalk ? 1 : getDaysBetween(start, end);
+    const extraPet = document.getElementById('addon-extra-pet')?.checked ? 15 : 0;
+    const meds     = document.getElementById('addon-medication')?.checked ? 8 : 0;
+
+    const serviceTotal = info.price * (isWalk ? 1 : days);
+    const addonTotal   = (extraPet + meds) * (isWalk ? 1 : Math.max(days, 1));
+    const grandTotal   = serviceTotal + addonTotal;
+
+    // Build lines
+    let lines = '';
+    const unitLabel = isWalk ? '1 walk' : (days > 0 ? `${days} night${days !== 1 ? 's' : ''}` : '—');
+
+    lines += `<div class="order-line"><span>${info.name}</span><strong>$${serviceTotal || info.price}</strong></div>`;
+    if (!isWalk && days > 0) {
+      lines += `<div class="order-line"><span style="font-size:11px;opacity:.6;">${days} × $${info.price}/night</span><strong></strong></div>`;
+    }
+    if (extraPet) {
+      lines += `<div class="order-line"><span>Extra pet${!isWalk && days > 1 ? ` × ${days}` : ''}</span><strong>$${extraPet * (isWalk ? 1 : Math.max(days,1))}</strong></div>`;
+    }
+    if (meds) {
+      lines += `<div class="order-line"><span>Medication admin${!isWalk && days > 1 ? ` × ${days}` : ''}</span><strong>$${meds * (isWalk ? 1 : Math.max(days,1))}</strong></div>`;
+    }
+
+    const totalEl = document.getElementById('orderTotal');
+    const linesEl = document.getElementById('orderLines');
+    totalEl.textContent = grandTotal > 0 ? `$${grandTotal}` : '$0';
+    linesEl.innerHTML   = lines || '<div class="order-empty">Select a service and dates to see your estimate.</div>';
+  }
+
+  function updateAddons() { updateSummary(); }
 
   serviceSelect.addEventListener('change', updateServiceFields);
+  document.getElementById('addon-extra-pet')?.addEventListener('change', updateSummary);
+  document.getElementById('addon-medication')?.addEventListener('change', updateSummary);
+
   updateServiceFields();
 </script>
 </body>
