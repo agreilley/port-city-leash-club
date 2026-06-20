@@ -379,34 +379,7 @@
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 64px;margin-top:40px;">
 
-      <!-- Left: Dog Walking -->
-      <div>
-        <div style="font-size:11px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:var(--seafoam);margin-bottom:16px;">Dog Walking</div>
-
-        <a href="service-request.html?service=standard-walk" style="display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:18px 0;border-top:1px solid rgba(0,0,0,0.08);text-decoration:none;color:inherit;transition:opacity 0.15s;" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
-          <div>
-            <div style="font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px;">Standard Walk</div>
-            <div style="font-size:14px;color:var(--text-mid);line-height:1.6;">A 30-minute individual walk for exercise, enrichment, and a mid-day reset.</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:20px;flex-shrink:0;">
-            <div style="font-size:18px;font-weight:500;color:var(--navy);">$29</div>
-            <div style="font-size:13px;color:var(--rust);white-space:nowrap;">Book &rsaquo;</div>
-          </div>
-        </a>
-
-        <a href="service-request.html?service=extended-walk" style="display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:18px 0;border-top:1px solid rgba(0,0,0,0.08);border-bottom:1px solid rgba(0,0,0,0.08);text-decoration:none;color:inherit;transition:opacity 0.15s;" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
-          <div>
-            <div style="font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px;">Extended Walk</div>
-            <div style="font-size:14px;color:var(--text-mid);line-height:1.6;">A 45-minute walk for dogs who need more time, movement, and attention.</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:20px;flex-shrink:0;">
-            <div style="font-size:18px;font-weight:500;color:var(--navy);">$40</div>
-            <div style="font-size:13px;color:var(--rust);white-space:nowrap;">Book &rsaquo;</div>
-          </div>
-        </a>
-      </div>
-
-      <!-- Right: Pet Sitting -->
+      <!-- Left: Pet Sitting -->
       <div>
         <div style="font-size:11px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:var(--seafoam);margin-bottom:16px;">Pet Sitting</div>
 
@@ -432,12 +405,40 @@
           </div>
         </a>
 
-        <!-- Add-ons under Pet Sitting -->
-        <div style="margin-top:16px;padding:10px 16px;background:rgba(0,0,0,0.03);border-radius:6px;display:flex;gap:32px;flex-wrap:wrap;align-items:center;">
-          <div style="font-size:11px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-light);width:100%;margin-bottom:0;">Add-ons</div>
-          <div><div style="font-size:14px;color:var(--navy);font-weight:500;">Extra pet <span style="color:var(--text-light);font-weight:400;">· $15</span></div></div>
-          <div><div style="font-size:14px;color:var(--navy);font-weight:500;">Medication administration <span style="color:var(--text-light);font-weight:400;">· $8</span></div></div>
+        <!-- Add-ons inline -->
+        <div style="margin-top:12px;padding:8px 14px;background:rgba(0,0,0,0.03);border-radius:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="font-size:11px;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-light);margin-right:8px;">Add-ons</span>
+          <span style="font-size:13px;color:var(--navy);">Extra pet · $15</span>
+          <span style="color:var(--text-light);font-size:13px;">·</span>
+          <span style="font-size:13px;color:var(--navy);">Medication administration · $8</span>
         </div>
+      </div>
+
+      <!-- Right: Dog Walking -->
+      <div>
+        <div style="font-size:11px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:var(--seafoam);margin-bottom:16px;">Dog Walking</div>
+
+        <a href="service-request.html?service=standard-walk" style="display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:18px 0;border-top:1px solid rgba(0,0,0,0.08);text-decoration:none;color:inherit;transition:opacity 0.15s;" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
+          <div>
+            <div style="font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px;">Standard Walk</div>
+            <div style="font-size:14px;color:var(--text-mid);line-height:1.6;">A 30-minute individual walk for exercise, enrichment, and a mid-day reset.</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:20px;flex-shrink:0;">
+            <div style="font-size:18px;font-weight:500;color:var(--navy);">$29</div>
+            <div style="font-size:13px;color:var(--rust);white-space:nowrap;">Book &rsaquo;</div>
+          </div>
+        </a>
+
+        <a href="service-request.html?service=extended-walk" style="display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:18px 0;border-top:1px solid rgba(0,0,0,0.08);border-bottom:1px solid rgba(0,0,0,0.08);text-decoration:none;color:inherit;transition:opacity 0.15s;" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
+          <div>
+            <div style="font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px;">Extended Walk</div>
+            <div style="font-size:14px;color:var(--text-mid);line-height:1.6;">A 45-minute walk for dogs who need more time, movement, and attention.</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:20px;flex-shrink:0;">
+            <div style="font-size:18px;font-weight:500;color:var(--navy);">$40</div>
+            <div style="font-size:13px;color:var(--rust);white-space:nowrap;">Book &rsaquo;</div>
+          </div>
+        </a>
       </div>
 
     </div>

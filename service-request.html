@@ -277,6 +277,13 @@
             <option>4+ visits</option>
           </select>
         </div>
+        <div class="field full" id="addons-field" style="display:none;">
+          <label>Add-ons</label>
+          <div class="checkbox-row">
+            <label class="checkbox-pill"><input type="checkbox" name="addon-extra-pet" id="addon-extra-pet" onchange="updateAddons()"> Extra pet <span style="color:var(--text-light);margin-left:4px;">+$15</span></label>
+            <label class="checkbox-pill"><input type="checkbox" name="addon-medication" id="addon-medication" onchange="updateAddons()"> Medication administration <span style="color:var(--text-light);margin-left:4px;">+$8</span></label>
+          </div>
+        </div>
         <div class="field full">
           <label for="care-notes">Care Notes</label>
           <textarea id="care-notes" name="care-notes" placeholder="Tell us anything helpful about timing, access, feeding, medications, or your dog's normal routine."></textarea>
@@ -369,10 +376,16 @@
     const service = serviceSelect.value;
     const endDate = document.getElementById('end-date-field');
     const visits = document.getElementById('visits-field');
+    const addons = document.getElementById('addons-field');
     const isWalk = service === 'standard-walk' || service === 'extended-walk';
+    const isPetSitting = service === 'drop-in-visit' || service === 'overnight-stay';
     endDate.style.display = isWalk ? 'none' : 'flex';
     visits.style.display = service === 'drop-in-visit' ? 'flex' : 'none';
+    addons.style.display = isPetSitting ? 'flex' : 'none';
   }
+
+  function updateAddons() {} // placeholder for future price summary logic
+
   serviceSelect.addEventListener('change', updateServiceFields);
   updateServiceFields();
 </script>
