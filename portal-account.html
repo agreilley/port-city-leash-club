@@ -333,22 +333,15 @@
       <!-- Membership Snapshot -->
       <div class="section-card">
         <h2 class="section-title">Your Membership</h2>
-
         <div class="membership-card">
           <div class="membership-header">
             <div>
-              <div class="membership-plan">Standard Membership</div>
-              <div style="font-size: 13px; color: #7A7A7A; margin-top: 4px;">3–4 walks / week • Flexible scheduling</div>
+              <div class="membership-plan" id="memberPlanName"></div>
+              <div style="font-size: 13px; color: #7A7A7A; margin-top: 4px;" id="memberPlanMeta"></div>
             </div>
-            <div class="membership-price">$25 / walk</div>
+            <div class="membership-price" id="memberPlanPrice"></div>
           </div>
-
-          <div class="benefit-list">
-            <div class="benefit-item">Walk photos & notes</div>
-            <div class="benefit-item">Adjust dates anytime</div>
-            <div class="benefit-item">Welcome gift</div>
-          </div>
-
+          <div class="benefit-list" id="memberBenefitList"></div>
           <button class="change-membership-btn" onclick="window.location.href='portal-membership-upgrade.html'">Change Your Plan</button>
         </div>
       </div>
@@ -529,5 +522,54 @@
       </div>
     </div>
   </div>
+<script>
+  // ─── PLAN DATA ───────────────────────────────────────────────────────────────
+  // When the backend is ready, replace CURRENT_USER_PLAN with the value from
+  // the authenticated session (e.g. fetched from Firebase/API).
+  // Valid values: 'essential' | 'standard' | 'daily'
+  const CURRENT_USER_PLAN = 'standard';
+
+  const PLANS = {
+    essential: {
+      name: 'Essential Membership',
+      meta: '1–2 walks / week • Flexible scheduling',
+      price: '$26 / walk',
+      benefits: [
+        'Walk photos & notes',
+        'Adjust dates anytime',
+      ]
+    },
+    standard: {
+      name: 'Standard Membership',
+      meta: '3–4 walks / week • Flexible scheduling',
+      price: '$25 / walk',
+      benefits: [
+        'Walk photos & notes',
+        'Adjust dates anytime',
+        'Welcome gift',
+      ]
+    },
+    daily: {
+      name: 'Daily Membership',
+      meta: 'Every weekday • Standing schedule',
+      price: '$22 / walk',
+      benefits: [
+        'Walk photos & notes',
+        'Adjust dates anytime',
+        'Welcome gift',
+        '10% off all other services',
+        'Priority scheduling',
+      ]
+    }
+  };
+
+  // ─── RENDER ──────────────────────────────────────────────────────────────────
+  const plan = PLANS[CURRENT_USER_PLAN] || PLANS.standard;
+  document.getElementById('memberPlanName').textContent  = plan.name;
+  document.getElementById('memberPlanMeta').textContent  = plan.meta;
+  document.getElementById('memberPlanPrice').textContent = plan.price;
+  document.getElementById('memberBenefitList').innerHTML =
+    plan.benefits.map(b => `<div class="benefit-item">${b}</div>`).join('');
+</script>
 </body>
 </html>
