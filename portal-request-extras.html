@@ -302,18 +302,27 @@
     const info    = PRICES[service];
     const start   = document.getElementById('startDate').value;
     const end     = document.getElementById('endDate').value;
-    const qty     = getDaysBetween(start, end) || 1;
+    const days    = getDaysBetween(start, end) || 1;
+    const visitsEl = document.getElementById('visitsField')?.querySelector('select');
+    const visitsPerDay = service === 'checkin' ? parseInt(visitsEl?.value || '1') : 1;
+    const qty     = service === 'checkin' ? days * visitsPerDay : days;
     const base    = info.price * qty;
-    const extraPet = document.getElementById('addonExtraPet')?.checked ? 15 * qty : 0;
-    const meds     = document.getElementById('addonMedication')?.checked ? 8 * qty : 0;
+    const extraPet = document.getElementById('addonExtraPet')?.checked ? 15 * days : 0;
+    const meds     = document.getElementById('addonMedication')?.checked ? 8 * days : 0;
     const total    = base + extraPet + meds;
 
-    let lines = `<div class="summary-line"><span>${info.name}${qty > 1 ? ' × ' + qty : ''}</span><strong>$${base}</strong></div>`;
-    if (extraPet) lines += `<div class="summary-line"><span>Extra pet${qty > 1 ? ' × ' + qty : ''}</span><strong>$${extraPet}</strong></div>`;
-    if (meds)     lines += `<div class="summary-line"><span>Medication admin${qty > 1 ? ' × ' + qty : ''}</span><strong>$${meds}</strong></div>`;
+    const qtyLabel = service === 'checkin'
+      ? `${days} day${days > 1 ? 's' : ''} × ${visitsPerDay} visit${visitsPerDay > 1 ? 's' : ''}`
+      : (days > 1 ? ` × ${days}` : '');
 
-    document.getElementById('summaryPrice').textContent = '$' + total;
-    document.getElementById('summaryDetails').innerHTML = lines;
+    let lines = `<div class="summary-line"><span>${info.name}${qtyLabel ? ' · ' + qtyLabel : ''}</span><strong>$${base}</strong></div>`;
+    if (extraPet) lines += `<div class="summary-line"><span>Extra pet</span><strong>$${extraPet}</strong></div>`;
+    if (meds)     lines += `<div class="summary-line"><span>Medication admin</span><strong>$${meds}</strong></div>`;
+
+    const priceEl = document.getElementById('summaryPrice');
+    const detailEl = document.getElementById('summaryDetails');
+    if (priceEl) priceEl.textContent = '$' + total;
+    if (detailEl) detailEl.innerHTML = lines;
   }
 
   async function submitExtrasRequest(e) {
@@ -346,7 +355,6 @@
       alert('Something went wrong. Please contact us directly.');
       btn.textContent = 'Request Services'; btn.disabled = false;
     }
-  }, 300); }, 2500);
   }
 
   // Pre-select service from URL param
