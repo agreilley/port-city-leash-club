@@ -8,6 +8,7 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow-x: hidden; max-width: 100%; }
   :root {
     --navy: #0D1B2A; --navy-mid: #1C2F42;
     --seafoam: #8FA8A2; --seafoam-light: #C5D5D1;
@@ -283,6 +284,17 @@
     h2 { font-size: 36px; }
     .membership-callout { flex-direction: column; gap: 16px; padding: 24px; }
     .membership-callout a { width: 100%; text-align: center; }
+    * { max-width: 100%; }
+    .trust-signals { overflow-x: auto; }
+    .hero { padding: 40px 20px; }
+    section { padding: 48px 20px; overflow: hidden; }
+    .tier-cards, .tiers { max-width: 100%; }
+    .services-top, .petsitting-split { max-width: 100%; }
+    .map-section iframe { width: 100% !important; }
+    .membership-callout { max-width: 100%; }
+    .cta-section { padding: 48px 20px; }
+    .how-it-works-grid { grid-template-columns: 1fr; }
+    .why-grid { grid-template-columns: 1fr; }
   }
 
   @media (max-width: 480px) {

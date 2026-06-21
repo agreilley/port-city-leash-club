@@ -7,6 +7,7 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow-x: hidden; max-width: 100%; }
   :root {
     --navy: #0D1B2A; --navy-mid: #1C2F42;
     --seafoam: #8FA8A2; --seafoam-light: #C5D5D1;
@@ -128,6 +129,11 @@
     .form-card { padding: 24px 20px; }
     .form-grid { grid-template-columns: 1fr; }
     .checkbox-grid { grid-template-columns: 1fr; }
+    * { max-width: 100%; }
+    .page-hero, main { padding-left: 20px !important; padding-right: 20px !important; }
+    .form-shell { margin: 0 !important; }
+    .form-card { max-width: 100%; }
+    .checkbox-grid { grid-template-columns: 1fr 1fr; }
   }
 </style>
 </head>

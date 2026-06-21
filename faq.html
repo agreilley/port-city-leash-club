@@ -7,6 +7,7 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow-x: hidden; max-width: 100%; }
   :root {
     --navy: #0D1B2A; --navy-mid: #1C2F42;
     --seafoam: #8FA8A2; --seafoam-light: #C5D5D1;
@@ -115,6 +116,10 @@
     h1 { font-size: 40px; }
     .faq-section { padding: 0 20px; margin-bottom: 32px; }
     .faq-section-title { font-size: 13px; }
+    * { max-width: 100%; }
+    .faq-content { padding: 0 20px; }
+    .faq-item { max-width: 100%; }
+    .faq-answer { word-break: break-word; }
   }
 </style>
 </head>
