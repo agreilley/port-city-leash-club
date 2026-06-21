@@ -369,7 +369,7 @@
     const nav = document.getElementById("navLinks");
     if (window.innerWidth <= 768) {
       burger.style.display = "flex";
-      if (!nav.classList.contains("open")) nav.style.display = "none";
+      nav.style.display = "";  // Let CSS handle via .open class
     } else {
       burger.style.display = "none";
       nav.style.display = "";
