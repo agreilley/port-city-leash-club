@@ -261,6 +261,17 @@
     .steps-grid { grid-template-columns: 1fr !important; gap: 20px; }
     .addons-grid { grid-template-columns: 1fr 1fr !important; }
     .service-options-grid { grid-template-columns: 1fr !important; }
+
+    /* One-Time Services: stack columns, simplify price rows */
+    div[style*="grid-template-columns:1fr 1fr;gap:0 64px"] { display: block !important; }
+    div[style*="grid-template-columns:1fr 1fr;gap:0 64px"] > div:last-child { margin-top: 32px; border-top: 1px solid rgba(0,0,0,0.08); padding-top: 32px; }
+    a[style*="display:flex;justify-content:space-between"] { flex-wrap: wrap !important; gap: 8px !important; }
+    a[style*="display:flex;justify-content:space-between"] > div:last-child { flex-direction: row !important; gap: 12px !important; }
+
+    /* Why section: hide photo, show cards full width */
+    div[style*="grid-template-columns:1fr 1fr;gap:40px;align-items:stretch"] { display: block !important; }
+    div[style*="border-radius:8px;overflow:hidden;height:640px"] { display: none !important; }
+    div[style*="display:flex;flex-direction:column;gap:18px;justify-content:center"] { margin-top: 0 !important; }
     .tier-card { padding: 28px 24px; }
 
     /* Services */
