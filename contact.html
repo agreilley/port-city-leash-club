@@ -171,40 +171,29 @@
     e.preventDefault();
     const btn = e.target.querySelector('.btn-submit');
     btn.textContent = 'Sending...'; btn.disabled = true;
-    try {
-      const data = {
-        type: 'contact',
-        name: document.querySelector('input[name=name]')?.value || '',
-        email: document.querySelector('input[name=email]')?.value || '',
-        topic: document.querySelector('select[name=topic]')?.value || '',
-        message: document.querySelector('textarea[name=message]')?.value || '',
-        read: false,
-        createdAt: window._serverTimestamp ? window._serverTimestamp() : new Date()
-      };
-      if (window._addDoc) await window._addDoc(window._collection(window._db, 'submissions'), data);
-    } catch(err) { console.error(err); }
+    // Show confirmation immediately
     const n = document.createElement('div');
     n.className = 'notification';
     n.textContent = "Message sent! We'll be in touch within 24 hours.";
     document.body.appendChild(n);
     setTimeout(() => { n.style.transition = 'opacity 0.3s'; n.style.opacity = '0'; setTimeout(() => n.remove(), 300); }, 4000);
+    // Submit to Firestore in background
+    try {
+      if (window._addDoc && window._collection && window._db) {
+        const data = {
+          type: 'contact',
+          name: document.querySelector('input[name=name]')?.value || '',
+          email: document.querySelector('input[name=email]')?.value || '',
+          topic: document.querySelector('select[name=topic]')?.value || '',
+          message: document.querySelector('textarea[name=message]')?.value || '',
+          read: false,
+          createdAt: window._serverTimestamp ? window._serverTimestamp() : new Date()
+        };
+        await window._addDoc(window._collection(window._db, 'submissions'), data);
+      }
+    } catch(err) { console.error(err); }
     e.target.reset();
     btn.textContent = 'Send Message'; btn.disabled = false;
-  };
-      await window._addDoc(window._collection(window._db, 'submissions'), data);
-      const n = document.createElement('div');
-      n.className = 'notification';
-      n.textContent = "Message sent! We\'ll be in touch within 24 hours.";
-      document.body.appendChild(n);
-      setTimeout(() => { n.style.opacity = '0'; setTimeout(() => n.remove(), 300); }, 4000);
-      e.target.reset();
-    } catch(err) {
-      console.error(err);
-      alert('Something went wrong. Please email hello@portcityleashclub.com');
-    }
-    btn.textContent = 'Send Message'; btn.disabled = false;
-  }, 4000);
-    e.target.reset();
   }
 </script>
 <script type="module">
