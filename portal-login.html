@@ -171,7 +171,12 @@
     .error-message.show {
       display: block;
     }
-  </style>
+  
+  @media (max-width: 768px) {
+    html, body { overflow-x: hidden; }
+    .login-card { margin: 20px; padding: 32px 24px; }
+  }
+</style>
 </head>
 <body>
   <div class="login-container">
