@@ -224,7 +224,7 @@
             <label>End Date</label>
             <input type="date" id="endDate" name="end-date" onchange="updateSummary()">
           </div>
-          <div class="field full" id="addonsField" style="display:none;">
+          <div class="field full" id="addonsField">
             <label>Add-ons</label>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
               <label style="display:flex;align-items:center;gap:10px;border:1px solid rgba(0,0,0,0.12);border-radius:6px;padding:12px 14px;font-size:13px;font-weight:400;color:var(--text-mid);cursor:pointer;background:white;">
@@ -368,7 +368,12 @@
     updateSummary();
   });
 
-  updateServiceFields();
+  // Run after DOM is fully ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', updateServiceFields);
+  } else {
+    updateServiceFields();
+  }
 </script>
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
