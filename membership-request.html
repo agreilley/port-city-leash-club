@@ -123,16 +123,47 @@
   .footer-links { display: flex; gap: 32px; list-style: none; }
   .footer-links a { font-size: 13px; color: rgba(255,255,255,0.5); text-decoration: none; }
   .footer-links a:hover { color: white; }
+
+  @media (max-width: 768px) {
+    nav { padding: 0 20px; height: 56px; }
+    .nav-links { display: none; flex-direction: column; position: fixed; top: 56px; left: 0; right: 0; background: var(--warm-white); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 16px 20px 24px; gap: 0; z-index: 99; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    .nav-links.open { display: flex; }
+    .nav-links li { padding: 12px 0; border-bottom: 1px solid rgba(0,0,0,0.06); }
+    .nav-links li:last-child { border-bottom: none; padding-top: 16px; }
+    .nav-links a:not(.btn-nav) { font-size: 15px; }
+    .btn-nav { display: block; text-align: center; padding: 12px; width: 100%; }
+    .hamburger { display: flex; flex-direction: column; gap: 5px; cursor: pointer; padding: 8px; }
+    .hamburger span { display: block; width: 22px; height: 2px; background: var(--navy); border-radius: 2px; transition: all 0.2s; }
+    .hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+    .hamburger.open span:nth-child(2) { opacity: 0; }
+    .hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+    footer { flex-direction: column; gap: 28px; padding: 40px 20px; align-items: flex-start; }
+    .footer-links { flex-wrap: wrap; gap: 16px; }
+  }
+  @media (max-width: 768px) {
+    .page-hero { padding: 48px 20px; }
+    .hero-inner { grid-template-columns: 1fr; }
+    h1 { font-size: 48px; }
+    .form-shell { grid-template-columns: 1fr; padding: 0 20px; }
+    .order-sidebar { position: static; }
+    .form-section { padding: 24px 20px; }
+    .membership-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .days-grid { grid-template-columns: repeat(3, 1fr); }
+    #meetGreetCalendar { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
 <nav>
   <a class="nav-logo" href="index.html" style="text-decoration:none;">Port City<br>Leash Club</a>
-  <ul class="nav-links">
+  <ul class="nav-links" id="navLinks">
     <li><a href="faq.html">FAQ</a></li>
     <li><a href="portal-login.html">Login</a></li>
     <li><a class="btn-nav" href="membership-request.html">Join The Leash Club</a></li>
   </ul>
+  <div class="hamburger" id="hamburger" onclick="toggleNav()" style="display:none;">
+    <span></span><span></span><span></span>
+  </div>
 </nav>
 
 <header class="page-hero">
@@ -689,6 +720,32 @@
   window._addDoc = addDoc;
   window._collection = collection;
   window._serverTimestamp = serverTimestamp;
+</script>
+<script>
+  function toggleNav() {
+    const nav = document.getElementById("navLinks");
+    const burger = document.getElementById("hamburger");
+    nav.classList.toggle("open");
+    burger.classList.toggle("open");
+  }
+  function checkNav() {
+    const burger = document.getElementById("hamburger");
+    const nav = document.getElementById("navLinks");
+    if (window.innerWidth <= 768) {
+      burger.style.display = "flex";
+      if (!nav.classList.contains("open")) nav.style.display = "none";
+    } else {
+      burger.style.display = "none";
+      nav.style.display = "";
+      nav.classList.remove("open");
+    }
+  }
+  window.addEventListener("resize", checkNav);
+  checkNav();
+  document.querySelectorAll(".nav-links a").forEach(a => a.addEventListener("click", () => {
+    document.getElementById("navLinks").classList.remove("open");
+    document.getElementById("hamburger").classList.remove("open");
+  }));
 </script>
 </body>
 </html>
