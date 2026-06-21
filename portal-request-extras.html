@@ -139,6 +139,7 @@
 
     /* Forms */
     .form-grid { grid-template-columns: 1fr !important; }
+    .field-group { grid-template-columns: 1fr !important; }
     .form-field { grid-column: 1 !important; }
     .form-shell { grid-template-columns: 1fr !important; }
     .order-sidebar { position: static !important; }
@@ -290,8 +291,9 @@
     document.getElementById('visitsField').style.display   = isCheckin ? 'flex' : 'none';
     document.getElementById('endDateField').style.display  = 'flex';
     document.getElementById('addonsField').style.display   = 'flex';
-    // Service spans full width for overnight, half width for check-in (leaves room for visits)
-    document.getElementById('serviceField').style.gridColumn = isCheckin ? '1' : '1 / -1';
+    // Service spans full width for overnight, half width for check-in
+    const sf = document.getElementById('serviceField');
+    if (sf) sf.style.gridColumn = isCheckin ? '1' : '1 / -1';
     updateSummary();
   }
 
