@@ -808,10 +808,246 @@ document.querySelectorAll('.modal-overlay').forEach(m => m.addEventListener('cli
 // ── AVAILABILITY MANAGEMENT ───────────────────────────────────────────────────
 let avYear = new Date().getFullYear();
 let avMonth = new Date().getMonth();
-let avData = {}; // { "2026-08-15": ["9:00am","10:00am"], ... }
+let avData = {};       // Firestore: { "2026-08-15": { slots: [...], bookings: [...] } }
+let avBookings = {};   // { "2026-08-15": ["5:00pm", "6:30pm"] } — booked slots from submissions
 let avSelectedDate = null;
 
-const DEFAULT_SLOTS = ['8:00am','8:30am','9:00am','9:30am','10:00am','10:30am','11:00am','11:30am','1:00pm','1:30pm','2:00pm','2:30pm','3:00pm','3:30pm','4:00pm','4:30pm'];
+// Recurring weekly schedule (30-min increments)
+const WEEKLY_SCHEDULE = {
+  0: ['1:00pm','1:30pm','2:00pm','2:30pm','3:00pm','3:30pm'],                             // Sun 1–4pm
+  1: ['5:00pm','5:30pm','6:00pm','6:30pm','7:00pm','7:30pm'],                             // Mon 5–8pm
+  2: ['5:00pm','5:30pm','6:00pm','6:30pm','7:00pm','7:30pm'],                             // Tue
+  3: ['5:00pm','5:30pm','6:00pm','6:30pm','7:00pm','7:30pm'],                             // Wed
+  4: ['5:00pm','5:30pm','6:00pm','6:30pm','7:00pm','7:30pm'],                             // Thu
+  5: ['5:00pm','5:30pm','6:00pm','6:30pm','7:00pm','7:30pm'],                             // Fri
+  6: ['10:00am','10:30am','11:00am','11:30am','12:00pm','12:30pm','1:00pm','1:30pm','2:00pm','2:30pm'], // Sat 10–3pm
+};
+
+// Parse "5:30pm" → minutes from midnight
+function slotToMins(slot) {
+  const [time, ampm] = slot.split(/(am|pm)/i);
+  let [h, m] = time.split(':').map(Number);
+  if (!m) m = 0;
+  if (ampm.toLowerCase() === 'pm' && h !== 12) h += 12;
+  if (ampm.toLowerCase() === 'am' && h === 12) h = 0;
+  return h * 60 + m;
+}
+
+// Get slots for a date, removing booked ones + 30-min buffer before and after
+function getAvailableSlots(dateStr) {
+  const date = new Date(dateStr + 'T00:00:00');
+  const dow = date.getDay();
+  const base = WEEKLY_SCHEDULE[dow] || [];
+  // Override: if admin has manually set slots for this date, use those instead
+  const override = avData[dateStr];
+  const allSlots = override ? override.slots || [] : base;
+  const booked = (avData[dateStr]?.bookings || []).concat(avBookings[dateStr] || []);
+  if (!booked.length) return allSlots;
+
+  const bookedMins = booked.map(slotToMins);
+  return allSlots.filter(slot => {
+    const m = slotToMins(slot);
+    return !bookedMins.some(bm => Math.abs(m - bm) < 60); // 30-min slot + 30-min buffer = 60 min window
+  });
+}
+
+function initAvailability() {
+  renderAvCalendar();
+  renderAvUpcoming();
+  // Subscribe to availability overrides + bookings
+  onSnapshot(collection(db, 'meet_greet_availability'), snap => {
+    avData = {};
+    snap.forEach(d => { avData[d.id] = d.data(); });
+    renderAvCalendar();
+    renderAvUpcoming();
+    if (avSelectedDate) avSelectDate(avSelectedDate);
+  });
+  // Watch submissions for meet & greet bookings
+  onSnapshot(collection(db, 'submissions'), snap => {
+    avBookings = {};
+    snap.forEach(d => {
+      const data = d.data();
+      if (data.meetGreetDateTime) {
+        const [dateStr, ...rest] = data.meetGreetDateTime.split(' ');
+        const slot = rest.join(' ');
+        if (!avBookings[dateStr]) avBookings[dateStr] = [];
+        avBookings[dateStr].push(slot);
+      }
+    });
+    renderAvCalendar();
+    renderAvUpcoming();
+    if (avSelectedDate) avSelectDate(avSelectedDate);
+  });
+}
+
+function renderAvCalendar() {
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('avMonthTitle').textContent = `${months[avMonth]} ${avYear}`;
+  const container = document.getElementById('avCalDays');
+  const firstDay = new Date(avYear, avMonth, 1).getDay();
+  const daysInMonth = new Date(avYear, avMonth + 1, 0).getDate();
+  const daysInPrev = new Date(avYear, avMonth, 0).getDate();
+  const today = new Date(); today.setHours(0,0,0,0);
+  let html = '';
+
+  for (let i = firstDay - 1; i >= 0; i--) {
+    html += `<div style="padding:10px;text-align:center;font-size:13px;color:rgba(0,0,0,0.2);background:rgba(0,0,0,0.02);">${daysInPrev - i}</div>`;
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${avYear}-${String(avMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dateObj = new Date(avYear, avMonth, d);
+    const isPast = dateObj < today;
+    const dow = dateObj.getDay();
+    const hasBase = (WEEKLY_SCHEDULE[dow] || []).length > 0;
+    const available = getAvailableSlots(dateStr);
+    const booked = (avData[dateStr]?.bookings || []).concat(avBookings[dateStr] || []);
+    const isSelected = avSelectedDate === dateStr;
+    const isOverride = !!avData[dateStr]?.slots;
+
+    let bg = 'white', color = 'rgba(0,0,0,0.35)', cursor = 'pointer';
+    if (isPast) { bg = 'rgba(0,0,0,0.02)'; color = 'rgba(0,0,0,0.18)'; cursor = 'default'; }
+    else if (isSelected) { bg = 'var(--navy)'; color = 'white'; }
+    else if (booked.length && !available.length) { bg = '#FEE2E2'; color = '#991B1B'; } // fully booked
+    else if (booked.length) { bg = '#FEF3C7'; color = '#92400E'; } // partially booked
+    else if (hasBase || available.length) { bg = '#EBF5EF'; color = '#1A5C30'; } // open
+
+    const indicator = !isPast && booked.length ? `<div style="font-size:9px;margin-top:1px;">${booked.length}📅</div>` :
+                      !isPast && available.length ? `<div style="font-size:9px;margin-top:1px;">${available.length}✓</div>` : '';
+    html += `<div onclick="${!isPast ? `avSelectDate('${dateStr}')` : ''}" style="padding:8px 4px;text-align:center;font-size:13px;font-weight:${available.length||booked.length?'500':'400'};background:${bg};color:${color};cursor:${cursor};border-bottom:1px solid rgba(0,0,0,0.04);transition:background 0.15s;">${d}${indicator}</div>`;
+  }
+  const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+  for (let i = 1; i <= totalCells - firstDay - daysInMonth; i++) {
+    html += `<div style="padding:10px;text-align:center;font-size:13px;color:rgba(0,0,0,0.2);background:rgba(0,0,0,0.02);">${i}</div>`;
+  }
+  container.innerHTML = html;
+}
+
+function avSelectDate(dateStr) {
+  avSelectedDate = dateStr;
+  renderAvCalendar();
+  const date = new Date(dateStr + 'T00:00:00');
+  const dow = date.getDay();
+  const label = date.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'});
+  const baseSlots = WEEKLY_SCHEDULE[dow] || [];
+  const override = avData[dateStr]?.slots;
+  const allSlots = override || baseSlots;
+  const booked = (avData[dateStr]?.bookings || []).concat(avBookings[dateStr] || []);
+  const available = getAvailableSlots(dateStr);
+  const editor = document.getElementById('avSlotEditor');
+
+  const legend = `
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;font-size:11px;">
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#EBF5EF;border:1px solid #2D6A40;border-radius:2px;display:inline-block;"></span> Available</span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#FEE2E2;border:1px solid #991B1B;border-radius:2px;display:inline-block;"></span> Booked</span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:var(--sand);border:1px solid rgba(0,0,0,0.15);border-radius:2px;display:inline-block;"></span> Buffered out</span>
+    </div>`;
+
+  const slotHTML = allSlots.map(slot => {
+    const isBooked = booked.includes(slot);
+    const isAvailable = available.includes(slot);
+    const isBuffered = !isBooked && !isAvailable;
+    let bg = isBooked ? '#FEE2E2' : isBuffered ? 'var(--sand)' : 'white';
+    let border = isBooked ? '#991B1B' : isBuffered ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.1)';
+    let label2 = isBooked ? ' 📅 Booked' : isBuffered ? ' ⏱ Buffer' : '';
+    return `<div style="padding:8px 12px;margin-bottom:6px;background:${bg};border:1px solid ${border};border-radius:5px;font-size:13px;display:flex;justify-content:space-between;align-items:center;">
+      <span>${slot}</span>
+      <span style="font-size:11px;color:${isBooked?'#991B1B':'rgba(0,0,0,0.35)'};">${label2}</span>
+    </div>`;
+  }).join('');
+
+  const noSlots = !baseSlots.length && !override ? `<div style="font-size:13px;color:var(--text-light);padding:8px 0;">No recurring schedule for ${date.toLocaleDateString('en-US',{weekday:'long'})}s. Add a custom override below.</div>` : '';
+
+  editor.innerHTML = `
+    <div class="table-header">
+      <div class="table-title">${label}</div>
+      ${override ? '<span style="font-size:11px;color:var(--rust);font-weight:500;">Custom override</span>' : ''}
+    </div>
+    <div style="padding:16px 20px;">
+      ${legend}
+      ${noSlots}
+      ${slotHTML}
+      <div style="margin-top:16px;border-top:1px solid rgba(0,0,0,0.07);padding-top:14px;">
+        <div style="font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);margin-bottom:8px;">${override ? 'Edit custom slots' : 'Override this day'}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;">
+          ${[...new Set([...baseSlots, '5:00pm','5:30pm','6:00pm','6:30pm','7:00pm','7:30pm','8:00am','8:30am','9:00am','9:30am','10:00am','10:30am','11:00am','11:30am','12:00pm','12:30pm','1:00pm','1:30pm','2:00pm','2:30pm','3:00pm','3:30pm','4:00pm','4:30pm'])].map(slot => `
+            <label style="display:flex;align-items:center;gap:7px;padding:7px 9px;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;font-size:12px;background:white;">
+              <input type="checkbox" class="av-override-cb" value="${slot}" ${(override||baseSlots).includes(slot)?'checked':''} style="accent-color:var(--seafoam);">
+              ${slot}
+            </label>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-primary" onclick="avSaveSlots('${dateStr}')" style="flex:1;">Save Override</button>
+          ${override ? `<button class="btn-secondary" onclick="avClearOverride('${dateStr}')">Reset to Default</button>` : ''}
+        </div>
+        <div id="avSaveMsg" style="font-size:12px;color:var(--green);margin-top:8px;display:none;">✓ Saved</div>
+      </div>
+    </div>`;
+}
+
+window.avSaveSlots = async (dateStr) => {
+  const checked = Array.from(document.querySelectorAll('.av-override-cb:checked')).map(c => c.value);
+  const existing = avData[dateStr] || {};
+  await setDoc(doc(db, 'meet_greet_availability', dateStr), { ...existing, slots: checked });
+  const msg = document.getElementById('avSaveMsg');
+  if (msg) { msg.style.display = 'block'; setTimeout(() => msg.style.display = 'none', 2000); }
+};
+
+window.avClearOverride = async (dateStr) => {
+  const existing = avData[dateStr] || {};
+  const { slots, ...rest } = existing;
+  if (Object.keys(rest).length) {
+    await setDoc(doc(db, 'meet_greet_availability', dateStr), rest);
+  } else {
+    await deleteDoc(doc(db, 'meet_greet_availability', dateStr));
+  }
+};
+
+function renderAvUpcoming() {
+  const container = document.getElementById('avUpcomingList');
+  const today = new Date(); today.setHours(0,0,0,0);
+  const upcoming = [];
+  // Show next 30 days with schedule
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(today); d.setDate(today.getDate() + i);
+    const dateStr = d.toISOString().split('T')[0];
+    const available = getAvailableSlots(dateStr);
+    const booked = (avData[dateStr]?.bookings || []).concat(avBookings[dateStr] || []);
+    if (available.length || booked.length) upcoming.push({ dateStr, available: available.length, booked: booked.length });
+  }
+  if (!upcoming.length) { container.innerHTML = '<div style="padding:16px 20px;font-size:13px;color:var(--text-light);">No upcoming availability in the next 30 days.</div>'; return; }
+  container.innerHTML = upcoming.slice(0, 10).map(({ dateStr, available, booked }) => {
+    const date = new Date(dateStr + 'T00:00:00');
+    const label = date.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:1px solid rgba(0,0,0,0.05);font-size:13px;cursor:pointer;" onclick="avSelectDate('${dateStr}')">
+      <span style="font-weight:500;color:var(--navy);">${label}</span>
+      <div style="display:flex;gap:6px;align-items:center;">
+        ${booked ? `<span style="color:#991B1B;background:#FEE2E2;border-radius:10px;padding:2px 8px;font-size:11px;">${booked} booked</span>` : ''}
+        <span style="color:var(--green);background:var(--green-light);border-radius:10px;padding:2px 10px;font-size:11px;font-weight:500;">${available} open</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+window.avPrevMonth = () => { avMonth--; if (avMonth < 0) { avMonth = 11; avYear--; } renderAvCalendar(); };
+window.avNextMonth = () => { avMonth++; if (avMonth > 11) { avMonth = 0; avYear++; } renderAvCalendar(); };
+window.avSelectDate = avSelectDate;
+
+// Init availability when switching to that view
+const _origSwitchView = window.switchView;
+window.switchView = (view) => {
+  _origSwitchView(view);
+  if (view === 'availability') {
+    if (!window._avInit) {
+      window._avInit = true;
+      initAvailability();
+    } else {
+      renderAvCalendar();
+      renderAvUpcoming();
+    }
+  }
+};
+
+
 
 function initAvailability() {
   renderAvCalendar(); // Render immediately with empty data
