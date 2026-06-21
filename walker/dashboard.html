@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Walks | Port City Leash Club</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --navy: #0D1B2A; --seafoam: #8FA8A2; --sand: #F4F0EA; --warm-white: #FAFAF8;
+    --rust: #C17B6F; --rust-dark: #A36358;
+    --text-dark: #1A1A1A; --text-mid: #4A4A4A; --text-light: #7A7A7A;
+    --green: #2D6A40; --green-light: #EBF5EF;
+    --sidebar-w: 220px;
+  }
+  body { font-family: 'DM Sans', sans-serif; background: var(--sand); color: var(--text-dark); display: flex; min-height: 100vh; }
+
+  /* SIDEBAR */
+  .sidebar { width: var(--sidebar-w); background: var(--navy); position: fixed; top: 0; left: 0; bottom: 0; display: flex; flex-direction: column; padding: 24px 16px; z-index: 100; }
+  .sidebar-brand { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.5); padding: 0 12px; margin-bottom: 16px; }
+  .walker-greeting { padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.06); margin-bottom: 16px; }
+  .walker-greeting-name { font-size: 14px; font-weight: 500; color: white; margin-bottom: 2px; }
+  .walker-greeting-sub { font-size: 12px; color: rgba(255,255,255,0.45); }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 6px; font-size: 13px; color: rgba(255,255,255,0.65); cursor: pointer; transition: all 0.15s; text-decoration: none; }
+  .nav-item:hover { background: rgba(255,255,255,0.08); color: white; }
+  .nav-item.active { background: var(--rust); color: white; }
+  .sidebar-footer { margin-top: auto; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); }
+  .btn-signout { width: 100%; background: transparent; border: 1px solid rgba(255,255,255,0.15); color: rgba(255,255,255,0.5); border-radius: 4px; padding: 8px; font-size: 12px; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.15s; }
+  .btn-signout:hover { border-color: rgba(255,255,255,0.4); color: white; }
+
+  /* MAIN */
+  .main { margin-left: var(--sidebar-w); flex: 1; }
+  .topbar { background: white; border-bottom: 1px solid rgba(0,0,0,0.07); padding: 0 32px; height: 60px; display: flex; align-items: center; position: sticky; top: 0; z-index: 50; }
+  .topbar-title { font-family: 'Cormorant Garamond', serif; font-size: 22px; font-weight: 300; color: var(--navy); }
+  .content { padding: 32px; }
+
+  /* VIEWS */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* STATS */
+  .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 28px; }
+  .stat-card { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 20px; }
+  .stat-label { font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-light); margin-bottom: 8px; }
+  .stat-value { font-family: 'Cormorant Garamond', serif; font-size: 36px; font-weight: 300; color: var(--navy); line-height: 1; }
+  .stat-sub { font-size: 12px; color: var(--text-light); margin-top: 4px; }
+
+  /* WALK LIST */
+  .section-title { font-family: 'Cormorant Garamond', serif; font-size: 24px; font-weight: 300; color: var(--navy); margin-bottom: 16px; }
+  .walk-card { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 20px 24px; margin-bottom: 12px; display: flex; align-items: center; gap: 20px; cursor: pointer; transition: box-shadow 0.15s; }
+  .walk-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+  .walk-date-block { text-align: center; min-width: 48px; }
+  .walk-date-day { font-size: 26px; font-weight: 500; color: var(--navy); line-height: 1; }
+  .walk-date-month { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-light); margin-top: 2px; }
+  .walk-divider { width: 1px; height: 40px; background: rgba(0,0,0,0.08); }
+  .walk-info { flex: 1; }
+  .walk-dog { font-size: 15px; font-weight: 500; color: var(--navy); margin-bottom: 2px; }
+  .walk-meta { font-size: 13px; color: var(--text-mid); }
+  .walk-slot { font-size: 12px; color: var(--text-light); margin-top: 2px; }
+  .walk-status { padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 500; }
+  .walk-status.scheduled { background: var(--green-light); color: var(--green); }
+  .walk-status.completed { background: var(--sand); color: var(--text-light); }
+  .walk-status.today { background: rgba(193,123,111,0.12); color: var(--rust); }
+  .empty-state { text-align: center; padding: 60px; color: var(--text-light); }
+  .empty-state-title { font-size: 16px; font-weight: 500; color: var(--text-mid); margin-bottom: 8px; }
+
+  /* CALENDAR */
+  .calendar-header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+  .calendar-nav button { background: white; border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; padding: 6px 14px; font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; }
+  .calendar-month { font-family: 'Cormorant Garamond', serif; font-size: 24px; font-weight: 300; color: var(--navy); }
+  .calendar-grid { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; overflow: hidden; }
+  .calendar-weekdays { display: grid; grid-template-columns: repeat(7,1fr); background: var(--sand); border-bottom: 1px solid rgba(0,0,0,0.07); }
+  .calendar-weekday { padding: 10px; font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-light); text-align: center; }
+  .calendar-days { display: grid; grid-template-columns: repeat(7,1fr); }
+  .calendar-day { min-height: 90px; border-right: 1px solid rgba(0,0,0,0.05); border-bottom: 1px solid rgba(0,0,0,0.05); padding: 8px; }
+  .calendar-day:nth-child(7n) { border-right: none; }
+  .calendar-day.other-month { background: rgba(0,0,0,0.02); }
+  .day-num { font-size: 13px; font-weight: 500; color: var(--text-mid); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; }
+  .calendar-day.today .day-num { background: var(--rust); color: white; border-radius: 50%; }
+  .my-walk-chip { background: var(--green-light); color: var(--green); border-radius: 4px; padding: 2px 6px; font-size: 11px; font-weight: 500; margin-bottom: 2px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .my-walk-chip.morning { background: #EBF5EF; color: #1A5C30; }
+  .my-walk-chip.early-afternoon { background: #EEF2FF; color: #3730A3; }
+  .my-walk-chip.late-afternoon { background: #FEF3C7; color: #92400E; }
+
+  /* MODAL */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; display: none; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: white; border-radius: 10px; width: 100%; max-width: 500px; padding: 32px; position: relative; }
+  .modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-light); }
+  .modal-title { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 300; color: var(--navy); margin-bottom: 20px; }
+  .detail-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid rgba(0,0,0,0.06); font-size: 14px; }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-label { color: var(--text-light); font-size: 12px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }
+  .detail-value { color: var(--navy); font-weight: 500; text-align: right; }
+  .btn-complete { width: 100%; background: var(--green); color: white; border: none; border-radius: 4px; padding: 13px; font-size: 15px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; margin-top: 20px; transition: background 0.2s; }
+  .btn-complete:hover { background: #235533; }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="sidebar-brand">Port City Leash Club</div>
+  <div class="walker-greeting">
+    <div class="walker-greeting-name" id="walkerName">Loading...</div>
+    <div class="walker-greeting-sub">Walker</div>
+  </div>
+  <a class="nav-item active" data-view="upcoming" onclick="switchView('upcoming')">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8h12M8 2v12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    Upcoming Walks
+  </a>
+  <a class="nav-item" data-view="calendar" onclick="switchView('calendar')">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="2.5" width="14" height="12.5" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M1 6.5h14M5 1v3M11 1v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    Calendar
+  </a>
+  <a class="nav-item" data-view="history" onclick="switchView('history')">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3.5l2.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    Walk History
+  </a>
+  <div class="sidebar-footer">
+    <button class="btn-signout" onclick="signOut()">Sign out</button>
+  </div>
+</nav>
+
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title" id="topbarTitle">Upcoming Walks</div>
+  </div>
+  <div class="content">
+
+    <!-- UPCOMING VIEW -->
+    <div class="view active" id="view-upcoming">
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-label">This Week</div><div class="stat-value" id="stat-week">–</div><div class="stat-sub">Walks scheduled</div></div>
+        <div class="stat-card"><div class="stat-label">This Month</div><div class="stat-value" id="stat-month">–</div><div class="stat-sub">Total walks</div></div>
+        <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value" id="stat-completed">–</div><div class="stat-sub">All time</div></div>
+      </div>
+      <div class="section-title">Next Up</div>
+      <div id="upcomingList"><div style="text-align:center;padding:40px;color:var(--text-light);">Loading...</div></div>
+    </div>
+
+    <!-- CALENDAR VIEW -->
+    <div class="view" id="view-calendar">
+      <div class="calendar-header">
+        <div class="calendar-nav">
+          <button onclick="prevMonth()">←</button>
+        </div>
+        <div class="calendar-month" id="calendarMonth"></div>
+        <div class="calendar-nav">
+          <button onclick="nextMonth()">→</button>
+        </div>
+      </div>
+      <div class="calendar-grid">
+        <div class="calendar-weekdays">
+          <div class="calendar-weekday">Sun</div><div class="calendar-weekday">Mon</div><div class="calendar-weekday">Tue</div>
+          <div class="calendar-weekday">Wed</div><div class="calendar-weekday">Thu</div><div class="calendar-weekday">Fri</div><div class="calendar-weekday">Sat</div>
+        </div>
+        <div class="calendar-days" id="calendarDays"></div>
+      </div>
+    </div>
+
+    <!-- HISTORY VIEW -->
+    <div class="view" id="view-history">
+      <div class="section-title">Walk History</div>
+      <div id="historyList"><div style="text-align:center;padding:40px;color:var(--text-light);">Loading...</div></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- WALK DETAIL MODAL -->
+<div class="modal-overlay" id="walkModal">
+  <div class="modal">
+    <button class="modal-close" onclick="document.getElementById('walkModal').classList.remove('open')">×</button>
+    <div class="modal-title" id="walkModalTitle">Walk Details</div>
+    <div id="walkModalContent"></div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getAuth, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getFirestore, collection, query, where, onSnapshot, doc, updateDoc, getDocs, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+// ─── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "PASTE_API_KEY",
+  authDomain: "PASTE_AUTH_DOMAIN",
+  projectId: "PASTE_PROJECT_ID",
+  storageBucket: "PASTE_STORAGE_BUCKET",
+  messagingSenderId: "PASTE_MESSAGING_SENDER_ID",
+  appId: "PASTE_APP_ID"
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+let walkerDoc = null;
+let myWalks = [];
+let allMembers = [];
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth();
+
+// ── AUTH GUARD ────────────────────────────────────────────────────────────────
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href = 'index.html'; return; }
+  const q = query(collection(db, 'walkers'), where('uid', '==', user.uid));
+  const snap = await getDocs(q);
+  if (snap.empty) { window.location.href = 'index.html'; return; }
+  walkerDoc = { id: snap.docs[0].id, ...snap.docs[0].data() };
+  document.getElementById('walkerName').textContent = walkerDoc.name;
+  loadData();
+});
+
+window.signOut = () => fbSignOut(auth).then(() => window.location.href = 'index.html');
+
+// ── DATA ──────────────────────────────────────────────────────────────────────
+function loadData() {
+  // Subscribe to this walker's walks only
+  const walksQ = query(collection(db, 'walks'), where('walkerId', '==', walkerDoc.id));
+  onSnapshot(walksQ, snap => {
+    myWalks = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => {
+      const da = a.date?.toDate?.() || new Date(a.date);
+      const db_ = b.date?.toDate?.() || new Date(b.date);
+      return da - db_;
+    });
+    renderStats();
+    renderUpcoming();
+    renderCalendar();
+    renderHistory();
+  });
+
+  // Load members for dog/owner info
+  onSnapshot(collection(db, 'members'), snap => {
+    allMembers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderUpcoming();
+    renderCalendar();
+    renderHistory();
+  });
+}
+
+// ── STATS ─────────────────────────────────────────────────────────────────────
+function renderStats() {
+  const now = new Date();
+  const weekEnd = new Date(now); weekEnd.setDate(weekEnd.getDate() + 7);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const thisWeek = myWalks.filter(w => { const d = w.date?.toDate?.() || new Date(w.date); return d >= now && d <= weekEnd; });
+  const thisMonth = myWalks.filter(w => { const d = w.date?.toDate?.() || new Date(w.date); return d >= monthStart && d <= monthEnd; });
+  const completed = myWalks.filter(w => w.status === 'completed');
+  document.getElementById('stat-week').textContent = thisWeek.length;
+  document.getElementById('stat-month').textContent = thisMonth.length;
+  document.getElementById('stat-completed').textContent = completed.length;
+}
+
+// ── UPCOMING ──────────────────────────────────────────────────────────────────
+function renderUpcoming() {
+  const container = document.getElementById('upcomingList');
+  const now = new Date();
+  const upcoming = myWalks.filter(w => {
+    const d = w.date?.toDate?.() || new Date(w.date);
+    return d >= new Date(now.setHours(0,0,0,0)) && w.status !== 'completed';
+  }).slice(0, 15);
+
+  if (!upcoming.length) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-state-title">No upcoming walks</div><div>Check back soon — walks will appear here when assigned.</div></div>';
+    return;
+  }
+
+  const today = new Date();
+  container.innerHTML = upcoming.map(w => {
+    const member = allMembers.find(m => m.id === w.memberId);
+    const date = w.date?.toDate?.() || new Date(w.date);
+    const isToday = date.toDateString() === today.toDateString();
+    const slotLabel = { morning: 'Morning · 8–11am', 'early-afternoon': 'Early Afternoon · 11am–2pm', 'late-afternoon': 'Late Afternoon · 2–5pm' }[w.timeSlot] || w.timeSlot;
+    const statusClass = isToday ? 'today' : 'scheduled';
+    const statusLabel = isToday ? 'Today' : 'Scheduled';
+    return `<div class="walk-card" onclick="openWalkDetail('${w.id}')">
+      <div class="walk-date-block">
+        <div class="walk-date-day">${date.getDate()}</div>
+        <div class="walk-date-month">${date.toLocaleString('en-US',{month:'short'})}</div>
+      </div>
+      <div class="walk-divider"></div>
+      <div class="walk-info">
+        <div class="walk-dog">${member?.dogName || '–'}</div>
+        <div class="walk-meta">${member?.name || '–'} · ${member?.address || ''}</div>
+        <div class="walk-slot">${slotLabel}</div>
+      </div>
+      <span class="walk-status ${statusClass}">${statusLabel}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── CALENDAR ──────────────────────────────────────────────────────────────────
+window.prevMonth = () => { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } renderCalendar(); };
+window.nextMonth = () => { calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; } renderCalendar(); };
+
+function renderCalendar() {
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('calendarMonth').textContent = `${months[calMonth]} ${calYear}`;
+  const container = document.getElementById('calendarDays');
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const daysInPrev = new Date(calYear, calMonth, 0).getDate();
+  const today = new Date();
+  let html = '';
+
+  for (let i = firstDay - 1; i >= 0; i--) html += `<div class="calendar-day other-month"><div class="day-num">${daysInPrev - i}</div></div>`;
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const isToday = d === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
+    const dayWalks = myWalks.filter(w => {
+      const wd = w.date?.toDate?.() || new Date(w.date);
+      return wd.getFullYear() === calYear && wd.getMonth() === calMonth && wd.getDate() === d;
+    });
+    const chips = dayWalks.map(w => {
+      const member = allMembers.find(m => m.id === w.memberId);
+      return `<div class="my-walk-chip ${w.timeSlot}" onclick="openWalkDetail('${w.id}')">${member?.dogName || '?'}</div>`;
+    }).join('');
+    html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}</div>`;
+  }
+
+  const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+  for (let i = 1; i <= totalCells - firstDay - daysInMonth; i++) html += `<div class="calendar-day other-month"><div class="day-num">${i}</div></div>`;
+  container.innerHTML = html;
+}
+
+// ── HISTORY ───────────────────────────────────────────────────────────────────
+function renderHistory() {
+  const container = document.getElementById('historyList');
+  const past = myWalks.filter(w => {
+    const d = w.date?.toDate?.() || new Date(w.date);
+    return d < new Date();
+  }).reverse();
+
+  if (!past.length) { container.innerHTML = '<div class="empty-state"><div class="empty-state-title">No walk history yet</div></div>'; return; }
+
+  container.innerHTML = past.map(w => {
+    const member = allMembers.find(m => m.id === w.memberId);
+    const date = w.date?.toDate?.() || new Date(w.date);
+    const slotLabel = { morning: 'Morning', 'early-afternoon': 'Early Afternoon', 'late-afternoon': 'Late Afternoon' }[w.timeSlot] || w.timeSlot;
+    return `<div class="walk-card" onclick="openWalkDetail('${w.id}')">
+      <div class="walk-date-block">
+        <div class="walk-date-day">${date.getDate()}</div>
+        <div class="walk-date-month">${date.toLocaleString('en-US',{month:'short'})}</div>
+      </div>
+      <div class="walk-divider"></div>
+      <div class="walk-info">
+        <div class="walk-dog">${member?.dogName || '–'}</div>
+        <div class="walk-meta">${member?.name || '–'}</div>
+        <div class="walk-slot">${slotLabel}</div>
+      </div>
+      <span class="walk-status completed">${w.status === 'completed' ? 'Completed' : 'Past'}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── WALK DETAIL MODAL ─────────────────────────────────────────────────────────
+window.openWalkDetail = (walkId) => {
+  const walk = myWalks.find(w => w.id === walkId);
+  if (!walk) return;
+  const member = allMembers.find(m => m.id === walk.memberId);
+  const date = walk.date?.toDate?.() || new Date(walk.date);
+  const slotLabel = { morning: 'Morning (8–11am)', 'early-afternoon': 'Early Afternoon (11am–2pm)', 'late-afternoon': 'Late Afternoon (2–5pm)' }[walk.timeSlot] || walk.timeSlot;
+  const isPast = date < new Date();
+  const isCompleted = walk.status === 'completed';
+
+  document.getElementById('walkModalTitle').textContent = `${member?.dogName || 'Walk'} · ${date.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}`;
+  document.getElementById('walkModalContent').innerHTML = `
+    <div class="detail-row"><span class="detail-label">Dog</span><span class="detail-value">${member?.dogName || '–'} (${member?.dogBreed || '–'})</span></div>
+    <div class="detail-row"><span class="detail-label">Owner</span><span class="detail-value">${member?.name || '–'}</span></div>
+    <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${member?.address || '–'}</span></div>
+    <div class="detail-row"><span class="detail-label">Access Notes</span><span class="detail-value">${member?.accessNotes || 'None'}</span></div>
+    <div class="detail-row"><span class="detail-label">Time Slot</span><span class="detail-value">${slotLabel}</span></div>
+    <div class="detail-row"><span class="detail-label">Dog Notes</span><span class="detail-value">${member?.dogNotes || 'None'}</span></div>
+    <div class="detail-row"><span class="detail-label">Walk Notes</span><span class="detail-value">${walk.notes || 'None'}</span></div>
+    <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted ? '✓ Completed' : isPast ? 'Past' : 'Scheduled'}</span></div>
+    ${!isCompleted && isPast ? `<button class="btn-complete" onclick="markComplete('${walkId}')">Mark as Completed</button>` : ''}
+  `;
+  document.getElementById('walkModal').classList.add('open');
+};
+
+window.markComplete = async (walkId) => {
+  await updateDoc(doc(db, 'walks', walkId), { status: 'completed', completedAt: serverTimestamp() });
+  document.getElementById('walkModal').classList.remove('open');
+};
+
+// ── NAVIGATION ────────────────────────────────────────────────────────────────
+const titles = { upcoming: 'Upcoming Walks', calendar: 'Calendar', history: 'Walk History' };
+window.switchView = (view) => {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(`view-${view}`).classList.add('active');
+  document.querySelector(`[data-view="${view}"]`).classList.add('active');
+  document.getElementById('topbarTitle').textContent = titles[view];
+};
+
+document.getElementById('walkModal').addEventListener('click', e => { if (e.target.id === 'walkModal') e.target.classList.remove('open'); });
+</script>
+</body>
+</html>

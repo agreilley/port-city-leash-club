@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Login | Port City Leash Club</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --navy: #0D1B2A; --seafoam: #8FA8A2; --sand: #F4F0EA;
+    --rust: #C17B6F; --rust-dark: #A36358;
+    --text-mid: #4A4A4A; --text-light: #7A7A7A;
+  }
+  body { font-family: 'DM Sans', sans-serif; background: var(--sand); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .login-card { background: white; border-radius: 12px; padding: 48px; width: 100%; max-width: 400px; box-shadow: 0 8px 40px rgba(13,27,42,0.12); }
+  .login-brand { font-family: 'Cormorant Garamond', serif; font-size: 13px; font-weight: 400; letter-spacing: 0.12em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 8px; }
+  .login-title { font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 300; color: var(--navy); margin-bottom: 8px; }
+  .login-sub { font-size: 13px; color: var(--text-light); margin-bottom: 32px; }
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+  label { font-size: 12px; font-weight: 500; color: var(--navy); letter-spacing: 0.02em; }
+  input { border: 1px solid rgba(0,0,0,0.14); border-radius: 4px; padding: 11px 13px; font-size: 14px; font-family: 'DM Sans', sans-serif; color: var(--navy); width: 100%; transition: border-color 0.15s; }
+  input:focus { outline: none; border-color: var(--seafoam); box-shadow: 0 0 0 3px rgba(143,168,162,0.16); }
+  .btn-login { width: 100%; background: var(--navy); color: white; border: none; border-radius: 4px; padding: 13px; font-size: 15px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; margin-top: 8px; transition: background 0.2s; }
+  .btn-login:hover { background: #1C2F42; }
+  .error { background: #FFF0EE; border: 1px solid #F5C6C0; border-radius: 4px; padding: 10px 14px; font-size: 13px; color: #8B2E22; margin-bottom: 16px; display: none; }
+  .loading { opacity: 0.6; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="login-card">
+  <div class="login-brand">Port City Leash Club</div>
+  <div class="login-title">Admin Dashboard</div>
+  <div class="login-sub">Sign in to manage walks, members, and your team.</div>
+  <div class="error" id="errorMsg"></div>
+  <div class="field">
+    <label>Email</label>
+    <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
+  </div>
+  <div class="field">
+    <label>Password</label>
+    <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+  </div>
+  <button class="btn-login" id="loginBtn" onclick="handleLogin()">Sign in</button>
+</div>
+
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+  import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+  import { getFirestore, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+  // ─── PASTE YOUR FIREBASE CONFIG HERE ───────────────────────────────────────
+  const firebaseConfig = {
+    apiKey: "PASTE_API_KEY",
+    authDomain: "PASTE_AUTH_DOMAIN",
+    projectId: "PASTE_PROJECT_ID",
+    storageBucket: "PASTE_STORAGE_BUCKET",
+    messagingSenderId: "PASTE_MESSAGING_SENDER_ID",
+    appId: "PASTE_APP_ID"
+  };
+  // ───────────────────────────────────────────────────────────────────────────
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  // Redirect if already logged in as admin
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      const snap = await getDoc(doc(db, 'admins', user.uid));
+      if (snap.exists()) window.location.href = 'dashboard.html';
+    }
+  });
+
+  window.handleLogin = async function() {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const btn = document.getElementById('loginBtn');
+    const err = document.getElementById('errorMsg');
+
+    err.style.display = 'none';
+    btn.classList.add('loading');
+    btn.textContent = 'Signing in...';
+
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      const snap = await getDoc(doc(db, 'admins', cred.user.uid));
+      if (!snap.exists()) {
+        await auth.signOut();
+        throw new Error('You do not have admin access.');
+      }
+      window.location.href = 'dashboard.html';
+    } catch (e) {
+      err.textContent = e.code === 'auth/invalid-credential' ? 'Incorrect email or password.' : e.message;
+      err.style.display = 'block';
+      btn.classList.remove('loading');
+      btn.textContent = 'Sign in';
+    }
+  };
+
+  // Enter key submits
+  document.addEventListener('keydown', e => { if (e.key === 'Enter') window.handleLogin(); });
+</script>
+</body>
+</html>
