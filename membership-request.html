@@ -449,9 +449,38 @@
     });
   });
 
-  document.getElementById('membershipForm').addEventListener('submit', (event) => {
+  document.getElementById('membershipForm').addEventListener('submit', async (event) => {
     event.preventDefault();
-    alert('Thanks! Your meet & greet request has been received.');
+    const form = event.target;
+    const btn = form.querySelector('[type=submit]');
+    btn.textContent = 'Sending...'; btn.disabled = true;
+    try {
+      const data = {
+        type: 'membership_request',
+        plan: document.querySelector('input[name=membership]:checked')?.value || '',
+        ownerName: document.getElementById('ownerName')?.value || '',
+        email: document.getElementById('email')?.value || '',
+        phone: document.getElementById('phone')?.value || '',
+        address: document.getElementById('address')?.value || '',
+        accessNotes: document.getElementById('accessNotes')?.value || '',
+        dogName: document.getElementById('dogName')?.value || '',
+        breed: document.getElementById('breed')?.value || '',
+        age: document.getElementById('age')?.value || '',
+        weight: document.getElementById('weight')?.value || '',
+        startDate: document.getElementById('startDate')?.value || '',
+        timeWindow: document.querySelector('input[name=timeWindow]:checked')?.value || '',
+        days: Array.from(document.querySelectorAll('input[name=days]:checked')).map(c=>c.value).join(', '),
+        read: false,
+        createdAt: window._serverTimestamp()
+      };
+      await window._addDoc(window._collection(window._db, 'submissions'), data);
+      showNotification('Request submitted! We\'ll be in touch within 24 hours.');
+      form.reset();
+    } catch(e) {
+      console.error(e);
+      showNotification('Something went wrong. Please email hello@portcityleashclub.com');
+    }
+    btn.textContent = 'Request Your Meet & Greet'; btn.disabled = false;
   });
 
   setDays(2);
@@ -471,5 +500,23 @@
     <li><a href="contact.html">Contact</a></li>
   </ul>
 </footer>
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+  import { getFirestore, collection, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+  const firebaseConfig = {
+    apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
+    authDomain: "port-city-leash-club-827ab.firebaseapp.com",
+    projectId: "port-city-leash-club-827ab",
+    storageBucket: "port-city-leash-club-827ab.firebasestorage.app",
+    messagingSenderId: "649385306352",
+    appId: "1:649385306352:web:8e8a6fcbe8a7eff29dfa35"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  window._db = db;
+  window._addDoc = addDoc;
+  window._collection = collection;
+  window._serverTimestamp = serverTimestamp;
+</script>
 </body>
 </html>

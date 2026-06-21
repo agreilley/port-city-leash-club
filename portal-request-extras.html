@@ -225,13 +225,37 @@
     document.getElementById('summaryDetails').innerHTML = lines;
   }
 
-  function submitExtrasRequest(e) {
+  async function submitExtrasRequest(e) {
     e.preventDefault();
-    const n = document.createElement('div');
-    n.className = 'notification';
-    n.textContent = "Request submitted! We'll confirm within 24 hours.";
-    document.body.appendChild(n);
-    setTimeout(() => { n.style.opacity = '0'; setTimeout(() => { n.remove(); window.location.href = 'portal-extras.html'; }, 300); }, 2500);
+    const btn = e.target.querySelector('.btn-submit');
+    btn.textContent = 'Submitting...'; btn.disabled = true;
+    try {
+      const data = {
+        type: 'service_request',
+        memberId: 'demo-sarah',
+        memberName: 'Sarah M.',
+        dogName: 'Scout',
+        service: document.getElementById('serviceSelect')?.value || '',
+        startDate: document.getElementById('startDate')?.value || '',
+        endDate: document.getElementById('endDate')?.value || '',
+        notes: document.querySelector('textarea[name=notes]')?.value || '',
+        addonExtraPet: document.getElementById('addonExtraPet')?.checked || false,
+        addonMedication: document.getElementById('addonMedication')?.checked || false,
+        read: false,
+        createdAt: window._serverTimestamp()
+      };
+      await window._addDoc(window._collection(window._db, 'submissions'), data);
+      const n = document.createElement('div');
+      n.className = 'notification';
+      n.textContent = "Request submitted! We'll confirm within 24 hours.";
+      document.body.appendChild(n);
+      setTimeout(() => { n.style.opacity = '0'; setTimeout(() => { n.remove(); window.location.href = 'portal-extras.html'; }, 300); }, 2500);
+    } catch(err) {
+      console.error(err);
+      alert('Something went wrong. Please contact us directly.');
+      btn.textContent = 'Request Services'; btn.disabled = false;
+    }
+  }, 300); }, 2500);
   }
 
   // Pre-select service from URL param
@@ -254,6 +278,24 @@
   });
 
   updateServiceFields();
+</script>
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+  import { getFirestore, collection, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+  const firebaseConfig = {
+    apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
+    authDomain: "port-city-leash-club-827ab.firebaseapp.com",
+    projectId: "port-city-leash-club-827ab",
+    storageBucket: "port-city-leash-club-827ab.firebasestorage.app",
+    messagingSenderId: "649385306352",
+    appId: "1:649385306352:web:8e8a6fcbe8a7eff29dfa35"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  window._db = db;
+  window._addDoc = addDoc;
+  window._collection = collection;
+  window._serverTimestamp = serverTimestamp;
 </script>
 </body>
 </html>
