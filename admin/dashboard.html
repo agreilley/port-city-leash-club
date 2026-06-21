@@ -814,6 +814,8 @@ let avSelectedDate = null;
 const DEFAULT_SLOTS = ['8:00am','8:30am','9:00am','9:30am','10:00am','10:30am','11:00am','11:30am','1:00pm','1:30pm','2:00pm','2:30pm','3:00pm','3:30pm','4:00pm','4:30pm'];
 
 function initAvailability() {
+  renderAvCalendar(); // Render immediately with empty data
+  renderAvUpcoming();
   // Subscribe to availability collection
   onSnapshot(collection(db, 'meet_greet_availability'), snap => {
     avData = {};
@@ -924,7 +926,15 @@ window.avSelectDate = avSelectDate;
 const _origSwitchView = window.switchView;
 window.switchView = (view) => {
   _origSwitchView(view);
-  if (view === 'availability' && Object.keys(avData).length === 0) initAvailability();
+  if (view === 'availability') {
+    if (Object.keys(avData).length === 0 && !window._avInit) {
+      window._avInit = true;
+      initAvailability();
+    } else {
+      renderAvCalendar();
+      renderAvUpcoming();
+    }
+  }
 };
 
 
