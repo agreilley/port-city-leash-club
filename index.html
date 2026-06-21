@@ -284,8 +284,9 @@
 
     /* Founder */
     .founder-layout { grid-template-columns: 1fr; }
-    .founder-photo { height: 300px; }
-    .founder-copy { padding: 28px 20px; }
+    .founder-photo { height: 300px; order: -1; }
+    .founder-copy { padding: 28px 20px; order: 1; }
+    .founder-layout { display: flex; flex-direction: column; }
 
     /* Map */
     .map-section { padding: 48px 20px; }
