@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Seed Demo Data | PCLC Admin</title>
+<style>
+  body { font-family: monospace; background: #0D1B2A; color: #8FA8A2; padding: 32px; line-height: 1.8; }
+  h1 { color: white; font-size: 18px; margin-bottom: 8px; }
+  .sub { color: rgba(255,255,255,0.4); font-size: 13px; margin-bottom: 24px; }
+  .log { font-size: 13px; margin-bottom: 4px; }
+  .ok { color: #2D9E5E; }
+  .err { color: #C17B6F; }
+  button { background: #C17B6F; color: white; border: none; border-radius: 4px; padding: 12px 24px; font-size: 14px; font-family: monospace; cursor: pointer; margin-bottom: 24px; }
+  button:hover { background: #A36358; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #done { display: none; margin-top: 16px; background: rgba(45,158,94,0.15); border: 1px solid #2D9E5E; border-radius: 6px; padding: 16px; color: #2D9E5E; font-size: 14px; }
+</style>
+</head>
+<body>
+<h1>Port City Leash Club — Demo Data Seeder</h1>
+<div class="sub">Run this once to populate Firestore with demo walkers, members, walks, and inbox submissions.</div>
+<button id="seedBtn" onclick="runSeed()">Seed Demo Data</button>
+<div id="logs"></div>
+<div id="done">✓ Done! All demo data seeded. You can now <a href="/admin/dashboard.html" style="color:#2D9E5E;">open the admin dashboard</a>.</div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getAuth, signInWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getFirestore, setDoc, doc, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
+  authDomain: "port-city-leash-club-827ab.firebaseapp.com",
+  projectId: "port-city-leash-club-827ab",
+  storageBucket: "port-city-leash-club-827ab.firebasestorage.app",
+  messagingSenderId: "649385306352",
+  appId: "1:649385306352:web:8e8a6fcbe8a7eff29dfa35"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+function log(msg, ok = true) {
+  const div = document.createElement('div');
+  div.className = `log ${ok ? 'ok' : 'err'}`;
+  div.textContent = (ok ? '✓ ' : '✗ ') + msg;
+  document.getElementById('logs').appendChild(div);
+}
+
+function daysFromNow(n, h = 9) {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  d.setHours(h, 0, 0, 0);
+  return Timestamp.fromDate(d);
+}
+
+window.runSeed = async function() {
+  const btn = document.getElementById('seedBtn');
+  btn.disabled = true;
+  btn.textContent = 'Seeding...';
+
+  // Sign in as admin first (needed to write to Firestore)
+  const email = prompt('Enter your admin email:');
+  const password = prompt('Enter your admin password:');
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+    log('Signed in as admin');
+  } catch(e) {
+    log('Sign in failed: ' + e.message, false);
+    btn.disabled = false; return;
+  }
+
+  const writes = [
+    // ── WALKERS ──────────────────────────────────────────────────────────
+    ['walkers/walker_marcus', {
+      name: 'Marcus Johnson', email: 'marcus@example.com', phone: '(910) 555-0101',
+      status: 'active', zones: ['Midtown', 'Forest Hills'], weeklyTarget: 20,
+      availability: { mon: ['morning','early-afternoon'], tue: ['morning','early-afternoon','late-afternoon'], wed: ['morning','early-afternoon'], thu: ['morning','early-afternoon','late-afternoon'], fri: ['morning','early-afternoon'] }
+    }],
+    ['walkers/walker_priya', {
+      name: 'Priya Sharma', email: 'priya@example.com', phone: '(910) 555-0102',
+      status: 'active', zones: ['Downtown', 'Midtown'], weeklyTarget: 15,
+      availability: { mon: ['late-afternoon'], tue: ['early-afternoon','late-afternoon'], wed: ['early-afternoon','late-afternoon'], thu: ['late-afternoon'], fri: ['early-afternoon','late-afternoon'] }
+    }],
+    ['walkers/walker_sam', {
+      name: 'Sam Rivera', email: 'sam@example.com', phone: '(910) 555-0103',
+      status: 'active', zones: ['Wrightsville Beach', 'Landfall'], weeklyTarget: 18,
+      availability: { mon: ['morning','early-afternoon','late-afternoon'], tue: ['morning'], wed: ['morning','early-afternoon','late-afternoon'], thu: ['morning'], fri: ['morning','early-afternoon','late-afternoon'] }
+    }],
+
+    // ── MEMBERS ──────────────────────────────────────────────────────────
+    ['members/member_sarah', {
+      name: 'Sarah Mitchell', email: 'sarah@example.com', phone: '(910) 555-0201',
+      address: '1423 Forest Hills Dr, Wilmington NC', accessNotes: 'Key under mat. Gate code: 4421',
+      zone: 'Forest Hills', tier: 'Standard', dogName: 'Scout', dogBreed: 'Golden Retriever',
+      dogAge: '5', dogNotes: 'Friendly, loves other dogs. Pulls on leash. Prefers morning walks.',
+      assignedWalkerId: 'walker_marcus', walksThisMonth: 7, status: 'active'
+    }],
+    ['members/member_james', {
+      name: 'James & Claire Okafor', email: 'james@example.com', phone: '(910) 555-0202',
+      address: '88 Oleander Dr, Wilmington NC', accessNotes: 'Keypad entry. Code: 7732. Park in driveway.',
+      zone: 'Midtown', tier: 'Daily', dogName: 'Biscuit', dogBreed: 'French Bulldog',
+      dogAge: '3', dogNotes: 'Can overheat quickly. Short walks in summer heat. No dog parks.',
+      assignedWalkerId: 'walker_marcus', walksThisMonth: 14, status: 'active'
+    }],
+    ['members/member_diana', {
+      name: 'Diana Chen', email: 'diana@example.com', phone: '(910) 555-0203',
+      address: '312 Market St Apt 4B, Wilmington NC', accessNotes: 'Building fob code: 9910. Apt 4B.',
+      zone: 'Downtown', tier: 'Essential', dogName: 'Mochi', dogBreed: 'Shiba Inu',
+      dogAge: '2', dogNotes: 'Skittish with strangers at first. Give her 2 min to warm up. Dislikes bikes.',
+      assignedWalkerId: 'walker_priya', walksThisMonth: 4, status: 'active'
+    }],
+    ['members/member_tom', {
+      name: 'Tom Harrington', email: 'tom@example.com', phone: '(910) 555-0204',
+      address: '55 Wrightsville Ave, Wilmington NC', accessNotes: 'Key with Alison. Blue door, second from corner.',
+      zone: 'Wrightsville Beach', tier: 'Standard', dogName: 'Duke', dogBreed: 'Labrador Mix',
+      dogAge: '7', dogNotes: 'Senior dog. Slow pace. Loves the water. Arthritis in back legs — no stairs.',
+      assignedWalkerId: 'walker_sam', walksThisMonth: 6, status: 'active'
+    }],
+    ['members/member_rachel', {
+      name: 'Rachel Torres', email: 'rachel@example.com', phone: '(910) 555-0205',
+      address: '209 S 4th St, Wilmington NC', accessNotes: 'Lockbox on porch. Code: 2281',
+      zone: 'Downtown', tier: 'Standard', dogName: 'Pippa', dogBreed: 'Cavalier King Charles',
+      dogAge: '4', dogNotes: 'Very social, loves everyone. Pulls toward other dogs. Good on recall.',
+      assignedWalkerId: 'walker_priya', walksThisMonth: 8, status: 'active'
+    }],
+
+    // ── WALKS ─────────────────────────────────────────────────────────────
+    ['walks/walk_001', { memberId: 'member_sarah', walkerId: 'walker_marcus', date: daysFromNow(-5, 8), timeSlot: 'morning', status: 'completed', notes: 'Great energy! Scout found a tennis ball at the park.' }],
+    ['walks/walk_002', { memberId: 'member_james', walkerId: 'walker_marcus', date: daysFromNow(-4, 8), timeSlot: 'morning', status: 'completed', notes: 'Short route due to heat. Biscuit did great.' }],
+    ['walks/walk_003', { memberId: 'member_diana', walkerId: 'walker_priya', date: daysFromNow(-3, 12), timeSlot: 'early-afternoon', status: 'completed', notes: 'Mochi warmed up quickly. Good walk.' }],
+    ['walks/walk_004', { memberId: 'member_tom', walkerId: 'walker_sam', date: daysFromNow(-3, 9), timeSlot: 'morning', status: 'completed', notes: 'Slow and steady. Duke loved the waterfront.' }],
+    ['walks/walk_005', { memberId: 'member_rachel', walkerId: 'walker_priya', date: daysFromNow(-2, 15), timeSlot: 'late-afternoon', status: 'completed', notes: 'Pippa was full of energy. Made a new friend at the park.' }],
+    ['walks/walk_006', { memberId: 'member_sarah', walkerId: 'walker_marcus', date: daysFromNow(-1, 8), timeSlot: 'morning', status: 'completed', notes: 'Scout extra excited today. Added a few blocks.' }],
+    ['walks/walk_007', { memberId: 'member_james', walkerId: 'walker_marcus', date: daysFromNow(0, 8), timeSlot: 'morning', status: 'scheduled', notes: '' }],
+    ['walks/walk_008', { memberId: 'member_rachel', walkerId: 'walker_priya', date: daysFromNow(0, 15), timeSlot: 'late-afternoon', status: 'scheduled', notes: '' }],
+    ['walks/walk_009', { memberId: 'member_sarah', walkerId: 'walker_marcus', date: daysFromNow(1, 8), timeSlot: 'morning', status: 'scheduled', notes: '' }],
+    ['walks/walk_010', { memberId: 'member_tom', walkerId: 'walker_sam', date: daysFromNow(1, 9), timeSlot: 'morning', status: 'scheduled', notes: '' }],
+    ['walks/walk_011', { memberId: 'member_diana', walkerId: 'walker_priya', date: daysFromNow(2, 12), timeSlot: 'early-afternoon', status: 'scheduled', notes: '' }],
+    ['walks/walk_012', { memberId: 'member_james', walkerId: 'walker_marcus', date: daysFromNow(2, 8), timeSlot: 'morning', status: 'scheduled', notes: '' }],
+    ['walks/walk_013', { memberId: 'member_rachel', walkerId: 'walker_priya', date: daysFromNow(3, 15), timeSlot: 'late-afternoon', status: 'scheduled', notes: '' }],
+    ['walks/walk_014', { memberId: 'member_sarah', walkerId: 'walker_marcus', date: daysFromNow(3, 8), timeSlot: 'morning', status: 'scheduled', notes: '' }],
+    ['walks/walk_015', { memberId: 'member_tom', walkerId: 'walker_sam', date: daysFromNow(4, 9), timeSlot: 'morning', status: 'scheduled', notes: '' }],
+    ['walks/walk_016', { memberId: 'member_diana', walkerId: null, date: daysFromNow(5, 12), timeSlot: 'early-afternoon', status: 'scheduled', notes: '' }],
+    ['walks/walk_017', { memberId: 'member_rachel', walkerId: 'walker_priya', date: daysFromNow(5, 15), timeSlot: 'late-afternoon', status: 'scheduled', notes: '' }],
+    ['walks/walk_018', { memberId: 'member_james', walkerId: 'walker_marcus', date: daysFromNow(6, 8), timeSlot: 'morning', status: 'scheduled', notes: '' }],
+    ['walks/walk_019', { memberId: 'member_sarah', walkerId: 'walker_marcus', date: daysFromNow(7, 8), timeSlot: 'morning', status: 'scheduled', notes: '' }],
+    ['walks/walk_020', { memberId: 'member_tom', walkerId: 'walker_sam', date: daysFromNow(8, 9), timeSlot: 'morning', status: 'scheduled', notes: '' }],
+
+    // ── INBOX ─────────────────────────────────────────────────────────────
+    ['submissions/sub_001', {
+      type: 'membership_request', ownerName: 'Kelly Nguyen', email: 'kelly@example.com',
+      phone: '(910) 555-0301', address: '14 Airlie Rd, Wilmington NC', plan: 'standard',
+      dogName: 'Waffles', breed: 'Doodle Mix', age: '1',
+      days: 'Monday, Wednesday, Friday', timeWindow: 'morning', read: false
+    }],
+    ['submissions/sub_002', {
+      type: 'application', name: 'Jordan Beck', email: 'jordan@example.com',
+      phone: '(910) 555-0401', neighborhood: 'Midtown',
+      dogExperience: 'Grew up with dogs. Volunteered at NHSPCA for 2 years.',
+      slots: 'morning, early-afternoon', walksPerWeek: '10-20 walks/week',
+      transportation: 'Yes', read: false
+    }],
+    ['submissions/sub_003', {
+      type: 'contact', name: 'Mike Flores', email: 'mike@example.com',
+      topic: 'Membership question',
+      message: 'Hi, I live in the Landfall area. Do you service that neighborhood? I have a 4-year-old lab and am interested in the Daily tier.',
+      read: true
+    }],
+  ];
+
+  let ok = 0, fail = 0;
+  for (const [path, data] of writes) {
+    const [col, id] = path.split('/');
+    try {
+      await setDoc(doc(db, col, id), data);
+      log(path); ok++;
+    } catch(e) {
+      log(`${path}: ${e.message}`, false); fail++;
+    }
+  }
+
+  log(`\nComplete: ${ok} written, ${fail} failed`, ok > 0);
+  document.getElementById('done').style.display = 'block';
+  btn.textContent = 'Done!';
+};
+</script>
+</body>
+</html>
