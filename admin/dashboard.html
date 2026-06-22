@@ -398,7 +398,48 @@
 </div>
 
 <!-- INBOX DETAIL MODAL -->
-<div class="modal-overlay" id="addWalkerModal">
+<div class="modal-overlay" id="addMemberModal">
+  <div class="modal-box" style="width:520px;max-height:90vh;overflow-y:auto;">
+    <button class="modal-close" onclick="closeModal('addMemberModal')">×</button>
+    <div class="modal-title">Add Member</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <div class="form-field"><label>Owner name</label><input type="text" id="am-name" placeholder="Sarah Mitchell"></div>
+      <div class="form-field"><label>Email</label><input type="email" id="am-email" placeholder="sarah@example.com"></div>
+      <div class="form-field"><label>Phone</label><input type="tel" id="am-phone" placeholder="(910) 555-0100"></div>
+      <div class="form-field"><label>Membership tier</label>
+        <select id="am-tier">
+          <option value="Essential">Essential — $129/mo</option>
+          <option value="Standard" selected>Standard — $249/mo</option>
+          <option value="Daily">Daily — $429/mo</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-field" style="margin-bottom:12px;"><label>Address</label><input type="text" id="am-address" placeholder="123 Forest Hills Dr, Wilmington NC"></div>
+    <div class="form-field" style="margin-bottom:12px;"><label>Access notes</label><input type="text" id="am-access" placeholder="Key under mat, gate code 1234"></div>
+    <div class="form-field" style="margin-bottom:12px;"><label>Zone / Neighborhood</label><input type="text" id="am-zone" placeholder="Forest Hills"></div>
+    <hr class="modal-divider">
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:12px;">Dog Info</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <div class="form-field"><label>Dog's name</label><input type="text" id="am-dogname" placeholder="Scout"></div>
+      <div class="form-field"><label>Breed</label><input type="text" id="am-breed" placeholder="Golden Retriever"></div>
+      <div class="form-field"><label>Age</label><input type="text" id="am-age" placeholder="3"></div>
+      <div class="form-field"><label>Assigned walker</label>
+        <select id="am-walker">
+          <option value="">Unassigned</option>
+          ${(window.allWalkers||[]).map(w => `<option value="${w.id}">${w.name}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="form-field" style="margin-bottom:20px;"><label>Dog notes</label><textarea id="am-dognotes" placeholder="Temperament, special needs, commands, vet info..." style="height:80px;resize:vertical;"></textarea></div>
+    <div id="am-error" style="color:var(--rust);font-size:13px;margin-bottom:12px;display:none;"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-primary" style="flex:1;" onclick="saveMember()">Add Member</button>
+      <button class="btn-secondary" onclick="closeModal('addMemberModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+
   <div class="modal-box" style="width:460px;">
     <button class="modal-close" onclick="closeModal('addWalkerModal')">×</button>
     <div class="modal-title">Add Walker</div>
@@ -910,7 +951,47 @@ function populateWalkerSelect() {
   const sel = document.getElementById('wm-walker');
   sel.innerHTML = '<option value="">Unassigned</option>' + allWalkers.map(w => `<option value="${w.id}">${w.name}</option>`).join('');
 }
-window.openAddMemberModal = () => {};
+window.saveMember = async () => {
+  const name    = document.getElementById('am-name').value.trim();
+  const email   = document.getElementById('am-email').value.trim();
+  const phone   = document.getElementById('am-phone').value.trim();
+  const tier    = document.getElementById('am-tier').value;
+  const address = document.getElementById('am-address').value.trim();
+  const access  = document.getElementById('am-access').value.trim();
+  const zone    = document.getElementById('am-zone').value.trim();
+  const dogName = document.getElementById('am-dogname').value.trim();
+  const breed   = document.getElementById('am-breed').value.trim();
+  const age     = document.getElementById('am-age').value.trim();
+  const walker  = document.getElementById('am-walker').value;
+  const dogNotes= document.getElementById('am-dognotes').value.trim();
+  const errEl   = document.getElementById('am-error');
+  errEl.style.display = 'none';
+
+  if (!name || !email) { errEl.textContent = 'Owner name and email are required.'; errEl.style.display = 'block'; return; }
+
+  const btn = document.querySelector('#addMemberModal .btn-primary');
+  btn.textContent = 'Saving...'; btn.disabled = true;
+
+  try {
+    await addDoc(collection(db, 'members'), {
+      name, email, phone, tier, address,
+      accessNotes: access, zone,
+      dogName, dogBreed: breed, dogAge: age,
+      dogNotes, assignedWalkerId: walker,
+      walksThisMonth: 0, status: 'active',
+      createdAt: serverTimestamp()
+    });
+    closeModal('addMemberModal');
+    // Clear form
+    ['am-name','am-email','am-phone','am-address','am-access','am-zone','am-dogname','am-breed','am-age','am-dognotes'].forEach(id => document.getElementById(id).value = '');
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+  btn.textContent = 'Add Member'; btn.disabled = false;
+};
+
+
 window.openAddWalkerModal = () => document.getElementById('addWalkerModal').classList.add('open');
 window.openMemberDetail = (id) => {};
 window.openWalkerDetail = (id) => {};
