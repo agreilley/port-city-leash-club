@@ -36,7 +36,7 @@
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
   import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-  import { getFirestore, collection, query, where, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+  import { getFirestore, collection, query, where, getDocs, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
   // ─── PASTE YOUR FIREBASE CONFIG HERE ───────────────────────────────────────
   const firebaseConfig = {
@@ -55,6 +55,8 @@
 
   onAuthStateChanged(auth, async (user) => {
     if (user) {
+      const uidDoc = await getDoc(doc(db, 'walkers', user.uid));
+      if (uidDoc.exists()) { window.location.href = 'dashboard.html'; return; }
       const q = query(collection(db, 'walkers'), where('uid', '==', user.uid));
       const snap = await getDocs(q);
       if (!snap.empty) window.location.href = 'dashboard.html';
@@ -70,9 +72,12 @@
     btn.textContent = 'Signing in...';
     try {
       const cred = await signInWithEmailAndPassword(auth, email, password);
-      const q = query(collection(db, 'walkers'), where('uid', '==', cred.user.uid));
-      const snap = await getDocs(q);
-      if (snap.empty) { await auth.signOut(); throw new Error('No walker account found for this email.'); }
+      const uidDoc = await getDoc(doc(db, 'walkers', cred.user.uid));
+      if (!uidDoc.exists()) {
+        const q = query(collection(db, 'walkers'), where('uid', '==', cred.user.uid));
+        const snap = await getDocs(q);
+        if (snap.empty) { await auth.signOut(); throw new Error('No walker account found for this email.'); }
+      }
       window.location.href = 'dashboard.html';
     } catch (e) {
       err.textContent = e.code === 'auth/invalid-credential' ? 'Incorrect email or password.' : e.message;

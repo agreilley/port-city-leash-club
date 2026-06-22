@@ -206,12 +206,27 @@ let calMonth = new Date().getMonth();
 // ── AUTH GUARD ────────────────────────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.href = 'index.html'; return; }
-  const q = query(collection(db, 'walkers'), where('uid', '==', user.uid));
-  const snap = await getDocs(q);
-  if (snap.empty) { window.location.href = 'index.html'; return; }
-  walkerDoc = { id: snap.docs[0].id, ...snap.docs[0].data() };
-  document.getElementById('walkerName').textContent = walkerDoc.name;
-  loadData();
+  try {
+    // First try: doc at uid (new walkers have this)
+    const uidDoc = await getDoc(doc(db, 'walkers', user.uid));
+    if (uidDoc.exists()) {
+      const data = uidDoc.data();
+      // Use the walkerId field if set, otherwise use the uid as the doc id
+      const realId = data.walkerId || uidDoc.id;
+      walkerDoc = { id: realId, ...data };
+    } else {
+      // Fallback: query by uid field (older walker docs)
+      const q = query(collection(db, 'walkers'), where('uid', '==', user.uid));
+      const snap = await getDocs(q);
+      if (snap.empty) { window.location.href = 'index.html'; return; }
+      walkerDoc = { id: snap.docs[0].id, ...snap.docs[0].data() };
+    }
+    document.getElementById('walkerName').textContent = walkerDoc.name;
+    loadData();
+  } catch(e) {
+    console.error('Auth error:', e);
+    window.location.href = 'index.html';
+  }
 });
 
 window.signOut = () => fbSignOut(auth).then(() => window.location.href = 'index.html');

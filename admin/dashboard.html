@@ -890,12 +890,16 @@ window.createWalkerAccount = async () => {
     const name = `${first} ${last}`;
     const walkerId = `walker_${first.toLowerCase()}_${last.toLowerCase()}`.replace(/\s+/g, '_');
 
-    // Save walker document with uid field
-    await setDoc(doc(db, 'walkers', walkerId), {
-      name, email, phone, uid,
+    const walkerData = {
+      name, email, phone, uid, walkerId,
       zones, status: 'active', weeklyTarget: 20,
       availability: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] }
-    });
+    };
+
+    // Save at human-readable ID (used by walks collection as walkerId)
+    await setDoc(doc(db, 'walkers', walkerId), walkerData);
+    // Also save at uid so Firestore rules can find it via exists(/walkers/$(uid))
+    await setDoc(doc(db, 'walkers', uid), walkerData);
 
     // Show success
     document.getElementById('addWalkerContent').innerHTML = `
