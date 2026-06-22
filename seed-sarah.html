@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head><title>Seed Sarah Walks</title></head>
+<body style="font-family:monospace;background:#0D1B2A;color:#8FA8A2;padding:32px;">
+<h2 style="color:white;">Seeding walks for walker_sarah_test...</h2>
+<div id="log"></div>
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getAuth, signInWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getFirestore, setDoc, doc, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+const app = initializeApp({
+  apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
+  authDomain: "port-city-leash-club-827ab.firebaseapp.com",
+  projectId: "port-city-leash-club-827ab",
+  storageBucket: "port-city-leash-club-827ab.firebasestorage.app",
+  messagingSenderId: "649385306352",
+  appId: "1:649385306352:web:8e8a6fcbe8a7eff29dfa35"
+});
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+function log(msg, ok=true) {
+  const d = document.createElement('div');
+  d.textContent = (ok?'✓ ':'✗ ') + msg;
+  d.style.color = ok ? '#2D9E5E' : '#C17B6F';
+  document.getElementById('log').appendChild(d);
+}
+
+function daysFromNow(n, h=9) {
+  const d = new Date(); d.setDate(d.getDate()+n); d.setHours(h,0,0,0);
+  return Timestamp.fromDate(d);
+}
+
+const email = prompt('Your admin email:');
+const pass = prompt('Your admin password:');
+await signInWithEmailAndPassword(auth, email, pass);
+log('Signed in');
+
+const walks = [
+  // Completed
+  ['walk_s001', { memberId:'member_sarah', walkerId:'walker_sarah_test', date:daysFromNow(-6,8), timeSlot:'morning', status:'completed', notes:'Scout was full of energy today. Great walk around Forest Hills.' }],
+  ['walk_s002', { memberId:'member_diana', walkerId:'walker_sarah_test', date:daysFromNow(-5,12), timeSlot:'early-afternoon', status:'completed', notes:'Mochi warmed up well. Avoided the bike path per instructions.' }],
+  ['walk_s003', { memberId:'member_rachel', walkerId:'walker_sarah_test', date:daysFromNow(-3,15), timeSlot:'late-afternoon', status:'completed', notes:'Pippa made a new friend! Very social walk today.' }],
+  ['walk_s004', { memberId:'member_sarah', walkerId:'walker_sarah_test', date:daysFromNow(-1,8), timeSlot:'morning', status:'completed', notes:'Scout found a stick and refused to let it go the whole walk.' }],
+  // Today
+  ['walk_s005', { memberId:'member_diana', walkerId:'walker_sarah_test', date:daysFromNow(0,12), timeSlot:'early-afternoon', status:'scheduled', notes:'' }],
+  // Upcoming
+  ['walk_s006', { memberId:'member_rachel', walkerId:'walker_sarah_test', date:daysFromNow(1,15), timeSlot:'late-afternoon', status:'scheduled', notes:'' }],
+  ['walk_s007', { memberId:'member_sarah', walkerId:'walker_sarah_test', date:daysFromNow(2,8), timeSlot:'morning', status:'scheduled', notes:'' }],
+  ['walk_s008', { memberId:'member_diana', walkerId:'walker_sarah_test', date:daysFromNow(3,12), timeSlot:'early-afternoon', status:'scheduled', notes:'' }],
+  ['walk_s009', { memberId:'member_rachel', walkerId:'walker_sarah_test', date:daysFromNow(5,15), timeSlot:'late-afternoon', status:'scheduled', notes:'' }],
+  ['walk_s010', { memberId:'member_sarah', walkerId:'walker_sarah_test', date:daysFromNow(7,8), timeSlot:'morning', status:'scheduled', notes:'' }],
+];
+
+for (const [id, data] of walks) {
+  try {
+    await setDoc(doc(db, 'walks', id), data);
+    log(id);
+  } catch(e) { log(id + ': ' + e.message, false); }
+}
+
+document.querySelector('h2').textContent = '✓ Done! All walks seeded for Sarah Test.';
+document.querySelector('h2').style.color = '#2D9E5E';
+</script>
+</body>
+</html>
