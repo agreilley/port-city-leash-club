@@ -476,8 +476,8 @@
         <a href="portal-account.html" class="nav-item">Account</a>
       </nav>
       <div class="sidebar-pet">
-        <div class="pet-name">Scout</div>
-        <div class="pet-info">Golden Retriever • 5 years old</div>
+        <div class="pet-name" id="sidebarDogName">–</div>
+        <div class="pet-info" id="sidebarDogInfo">–</div>
       </div>
         <a href="index.html" style="display:block;padding:16px 24px 20px;font-size:11px;color:rgba(255,255,255,0.35);text-decoration:none;letter-spacing:0.04em;border-top:1px solid rgba(255,255,255,0.08);margin-top:auto;">Port City Leash Club</a>
     </div>
@@ -486,14 +486,14 @@
     <div class="main-content">
       <div class="content-max">
         <div class="page-header">
-          <h1>Welcome back, Sarah</h1>
+          <h1 id="welcomeHeader">Welcome back</h1>
         </div>
 
         <!-- Walk Schedule Banner -->
         <div style="background: linear-gradient(135deg, #C17B6F 0%, #8FA8A2 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 32px; display: flex; justify-content: space-between; align-items: center;">
           <div>
-            <div style="font-size: 12px; opacity: 0.9; margin-bottom: 4px;">Scout's Walk Routine</div>
-            <div style="font-size: 18px; font-weight: 500;">Monday, Wednesday • Early Morning</div>
+            <div style="font-size: 12px; opacity: 0.9; margin-bottom: 4px;" id="bannerLabel">Walk Routine</div>
+            <div style="font-size: 18px; font-weight: 500;" id="bannerSchedule">–</div>
           </div>
           <a href="portal-account.html#walk-schedule" style="background: white; color: #C17B6F; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px; cursor: pointer;">Change Schedule</a>
         </div>
@@ -502,18 +502,18 @@
         <div class="metric-cards">
           <div class="metric-card">
             <div class="metric-label">Membership</div>
-            <div class="metric-value">Standard</div>
-            <div class="metric-detail">3–4 walks / week</div>
+            <div class="metric-value" id="metricTier">–</div>
+            <div class="metric-detail" id="metricTierDetail">–</div>
           </div>
           <div class="metric-card">
             <div class="metric-label">Walks Remaining</div>
-            <div class="metric-value" id="walksRemaining">7 of 10</div>
+            <div class="metric-value" id="walksRemaining">–</div>
             <div class="metric-detail">This month</div>
           </div>
           <div class="metric-card">
             <div class="metric-label">Next Walk</div>
-            <div class="metric-value" id="nextWalkDay">Tomorrow</div>
-            <div class="metric-detail" id="nextWalkTime">Early Morning</div>
+            <div class="metric-value" id="nextWalkDay">–</div>
+            <div class="metric-detail" id="nextWalkTime">–</div>
           </div>
         </div>
 
@@ -580,7 +580,7 @@
         </div>
         <div class="detail-box">
           <div class="detail-label">Dog</div>
-          <p class="detail-value">Scout</p>
+          <p class="detail-value" id="modalDog">–</p>
         </div>
       </div>
       <div class="modal-footer">
@@ -590,168 +590,193 @@
     </div>
   </div>
 
-  <script>
-    // Calendar state - start with current date (June 20, 2026)
-    let currentDate = new Date(2026, 5, 21); // June 21, 2026
-    const today = new Date(2026, 5, 21);
+  <script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getFirestore, doc, getDoc, collection, query, where, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
+const firebaseConfig = {
+  apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
+  authDomain: "port-city-leash-club-827ab.firebaseapp.com",
+  projectId: "port-city-leash-club-827ab",
+  storageBucket: "port-city-leash-club-827ab.firebasestorage.app",
+  messagingSenderId: "649385306352",
+  appId: "1:649385306352:web:8e8a6fcbe8a7eff29dfa35"
+};
+
+const app = initializeApp(firebaseConfig, 'member-app');
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+let memberData = null;
+let myWalks = [];
+const today = new Date(); today.setHours(0,0,0,0);
+    let currentDate = new Date(today.getFullYear(), today.getMonth(), 1);
+
+// ── AUTH GUARD ────────────────────────────────────────────────────────────────
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href = 'portal-login.html'; return; }
+  try {
+    const snap = await getDoc(doc(db, 'members', user.uid));
+    if (snap.exists()) {
+      memberData = { id: snap.id, ...snap.data() };
+      populateMemberUI();
+    }
+  } catch(e) { console.error('member load:', e.message); }
+
+  // Real-time walks subscription
+  const q = query(collection(db, 'walks'), where('memberId', '==', user.uid));
+  onSnapshot(q, (snap) => {
+    myWalks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    updateMetrics();
+    generateCalendar();
+  });
+});
+
+window.signOutMember = () => signOut(auth).then(() => window.location.href = 'portal-login.html');
+
+// ── POPULATE STATIC UI FROM MEMBER DOC ───────────────────────────────────────
+function populateMemberUI() {
+  if (!memberData) return;
+  const firstName = (memberData.name || '').split(' ')[0] || 'back';
+  document.getElementById('welcomeHeader').textContent = `Welcome back, ${firstName}`;
+
+  const dog = memberData.dogName || 'your dog';
+  const breed = memberData.petBreed || '';
+  const age = memberData.petAge ? `${memberData.petAge} yr old` : '';
+  document.getElementById('sidebarDogName').textContent = dog;
+  document.getElementById('sidebarDogInfo').textContent = [breed, age].filter(Boolean).join(' • ') || '–';
+  document.getElementById('bannerLabel').textContent = `${dog}'s Walk Routine`;
+  document.getElementById('modalDog').textContent = dog;
+
+  // Tier card
+  const tier = memberData.tier || 'Standard';
+  const tierDetail = { Essential: '5 walks / month', Standard: '10 walks / month', Daily: 'Every weekday' };
+  document.getElementById('metricTier').textContent = tier;
+  document.getElementById('metricTierDetail').textContent = tierDetail[tier] || '';
+
+  // Schedule banner — prefer stored field, else derive from walks
+  const days = (memberData.defaultWalkDays || []).join(', ');
+  const slot = memberData.defaultTimeSlot || '';
+  document.getElementById('bannerSchedule').textContent = days && slot ? `${days} • ${slot}` : 'Schedule pending';
+}
+
+// ── METRICS ───────────────────────────────────────────────────────────────────
+function updateMetrics() {
+  const now = new Date(); now.setHours(0,0,0,0);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+  const thisMonthWalks = myWalks.filter(w => {
+    const d = w.date?.toDate?.() || new Date(w.date);
+    return d >= monthStart && d <= monthEnd;
+  });
+  const completed = thisMonthWalks.filter(w => w.status === 'completed').length;
+  const total = thisMonthWalks.length;
+  const remaining = total - completed;
+  document.getElementById('walksRemaining').textContent = total ? `${remaining} of ${total}` : '–';
+
+  // Next upcoming walk
+  const upcoming = myWalks
+    .filter(w => { const d = w.date?.toDate?.() || new Date(w.date); return d >= now && w.status !== 'completed' && w.status !== 'cancelled'; })
+    .sort((a, b) => { const da = a.date?.toDate?.() || new Date(a.date); const db_ = b.date?.toDate?.() || new Date(b.date); return da - db_; });
+
+  if (upcoming.length) {
+    const nextDate = upcoming[0].date?.toDate?.() || new Date(upcoming[0].date);
+    const diff = Math.round((nextDate - now) / 86400000);
+    document.getElementById('nextWalkDay').textContent = diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : `In ${diff} days`;
+    const slotLabel = { morning: 'Morning', 'early-afternoon': 'Early Afternoon', 'late-afternoon': 'Late Afternoon' };
+    document.getElementById('nextWalkTime').textContent = slotLabel[upcoming[0].timeSlot] || upcoming[0].timeSlot || '–';
+  } else {
+    document.getElementById('nextWalkDay').textContent = 'None scheduled';
+    document.getElementById('nextWalkTime').textContent = '–';
+  }
+}
+
+// ── CALENDAR ──────────────────────────────────────────────────────────────────
     function generateCalendar() {
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth();
-      
-      // Update header
-      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                         'July', 'August', 'September', 'October', 'November', 'December'];
+      const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
       document.getElementById('calendarMonthYear').textContent = `${monthNames[month]} ${year}`;
-      
-      // Get first day of month and number of days
+
       const firstDay = new Date(year, month, 1).getDay();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
-      
-      // Generate walk dates (Monday + Wednesday pattern = 10 walks per month)
-      const walkDates = new Set();
-      for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month, day);
-        const dayOfWeek = date.getDay();
-        // 1 = Monday, 3 = Wednesday
-        if (dayOfWeek === 1 || dayOfWeek === 3) {
-          walkDates.add(day);
+
+      // Build a map of day → walk for this month
+      const walkMap = {};
+      myWalks.forEach(w => {
+        const d = w.date?.toDate?.() || new Date(w.date);
+        if (d.getFullYear() === year && d.getMonth() === month) {
+          walkMap[d.getDate()] = w;
         }
-      }
-      
-      // Calculate metrics for current month if we're viewing current month
-      if (year === today.getFullYear() && month === today.getMonth()) {
-        let completedWalks = 0;
-        let totalWalks = 0;
-        let nextWalk = null;
-        
-        for (let day = 1; day <= daysInMonth; day++) {
-          if (walkDates.has(day)) {
-            totalWalks++;
-            const cellDate = new Date(year, month, day);
-            
-            if (cellDate < today) {
-              completedWalks++;
-            } else if (!nextWalk) {
-              nextWalk = cellDate;
-            }
-          }
-        }
-        
-        // Update metric cards
-        const walksRemaining = totalWalks - completedWalks;
-        document.getElementById('walksRemaining').textContent = `${walksRemaining} of ${totalWalks}`;
-        
-        if (nextWalk) {
-          const daysUntilWalk = Math.ceil((nextWalk - today) / (1000 * 60 * 60 * 24));
-          let dayText = 'Today';
-          if (daysUntilWalk === 1) dayText = 'Tomorrow';
-          else if (daysUntilWalk > 1) dayText = `In ${daysUntilWalk} days`;
-          
-          document.getElementById('nextWalkDay').textContent = dayText;
-          document.getElementById('nextWalkTime').textContent = 'Early Morning';
-        }
-      }
-      
-      // Build calendar grid
+      });
+
       const calendarGrid = document.getElementById('calendarGrid');
       calendarGrid.innerHTML = '';
-      
-      // Empty cells for days before month starts
-      for (let i = 0; i < firstDay; i++) {
-        calendarGrid.appendChild(document.createElement('div'));
-      }
-      
-      // Days of the month
+
+      for (let i = 0; i < firstDay; i++) calendarGrid.appendChild(document.createElement('div'));
+
       for (let day = 1; day <= daysInMonth; day++) {
         const dayEl = document.createElement('div');
         dayEl.className = 'calendar-day';
-        
-        if (walkDates.has(day)) {
-          // This is a walk day
-          const cellDate = new Date(year, month, day);
-          
-          if (cellDate < today) {
-            // Past walk = completed (not clickable, no Walk text)
+        dayEl.textContent = day;
+
+        const cellDate = new Date(year, month, day); cellDate.setHours(0,0,0,0);
+        if (cellDate.getTime() === today.getTime()) dayEl.classList.add('today');
+
+        if (walkMap[day]) {
+          const w = walkMap[day];
+          if (w.status === 'completed') {
             dayEl.classList.add('completed');
-            dayEl.textContent = day;
           } else {
-            // Future walk = scheduled (clickable, no Walk text)
             dayEl.classList.add('scheduled');
-            dayEl.textContent = day;
-            dayEl.onclick = () => openWalkModal(
-              formatDateString(cellDate), 
-              'Early Morning (7-10am)', 
-              '30-minute walk'
-            );
             dayEl.style.cursor = 'pointer';
-          }
-          
-          // Mark today
-          if (cellDate.getTime() === today.getTime()) {
-            dayEl.classList.add('today');
-          }
-        } else {
-          // Not a walk day
-          dayEl.textContent = day;
-          
-          // Mark today even if no walk
-          const cellDate = new Date(year, month, day);
-          if (cellDate.getTime() === today.getTime()) {
-            dayEl.classList.add('today');
+            dayEl.onclick = () => openWalkModal(w, cellDate);
           }
         }
-        
+
         calendarGrid.appendChild(dayEl);
       }
     }
 
     function formatDateString(date) {
-      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const months = ['January', 'February', 'March', 'April', 'May', 'June',
-                     'July', 'August', 'September', 'October', 'November', 'December'];
+      const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
       return `${days[date.getDay()]}, ${months[date.getMonth()]} ${date.getDate()}`;
     }
 
-    function previousMonth() {
+    window.previousMonth = function() {
       currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
       generateCalendar();
-    }
+    };
 
-    function nextMonth() {
+    window.nextMonth = function() {
       currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
       generateCalendar();
-    }
+    };
 
-    function openWalkModal(date, time, duration) {
-      document.getElementById('modalDate').textContent = date;
-      document.getElementById('modalTime').textContent = time;
-      document.getElementById('modalDuration').textContent = duration;
-      
-      // Store walk details in session storage for reschedule page
-      sessionStorage.setItem('walkDate', date);
-      sessionStorage.setItem('walkTime', time);
-      sessionStorage.setItem('walkDuration', duration);
-      
+    let activeWalkId = null;
+    function openWalkModal(walk, date) {
+      activeWalkId = walk.id;
+      document.getElementById('modalDate').textContent = formatDateString(date);
+      const slotLabel = { morning: 'Morning (7–10am)', 'early-afternoon': 'Early Afternoon (11am–2pm)', 'late-afternoon': 'Late Afternoon (2–5pm)' };
+      document.getElementById('modalTime').textContent = slotLabel[walk.timeSlot] || walk.timeSlot || '–';
+      document.getElementById('modalDuration').textContent = walk.duration || '30-minute walk';
+      document.getElementById('modalDog').textContent = memberData?.dogName || '–';
+      sessionStorage.setItem('walkDate', formatDateString(date));
+      sessionStorage.setItem('walkTime', document.getElementById('modalTime').textContent);
+      sessionStorage.setItem('activeWalkId', walk.id);
       document.getElementById('walkModal').classList.add('show');
     }
 
-    function navigateToReschedule() {
-      window.location.href = 'portal-reschedule.html';
-    }
+    window.navigateToReschedule = function() { window.location.href = 'portal-reschedule.html'; };
+    window.closeWalkModal = function() { document.getElementById('walkModal').classList.remove('show'); };
 
-    function closeWalkModal() {
-      document.getElementById('walkModal').classList.remove('show');
-    }
-
-    // Close modal when clicking outside
     document.getElementById('walkModal').addEventListener('click', function(e) {
-      if (e.target === this) {
-        closeWalkModal();
-      }
+      if (e.target === this) closeWalkModal();
     });
 
-    // Generate initial calendar
     generateCalendar();
   </script>
 <!-- Mobile Bottom Nav -->
