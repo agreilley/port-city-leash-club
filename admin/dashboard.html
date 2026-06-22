@@ -577,7 +577,8 @@ function renderCalendarDays() {
       const member = allMembers.find(m => m.id === w.memberId);
       const walker = allWalkers.find(k => k.id === w.walkerId);
       const cls = !w.walkerId ? 'unassigned' : w.timeSlot;
-      const label = walker ? `${member?.dogName || '?'} / ${walker.name.split(' ')[0]}` : `${member?.dogName || '?'} ⚠`;
+      const dogName = member?.dogName || member?.name?.split(' ')[0] || 'Walk';
+      const label = walker ? `${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`;
       return `<div class="walk-chip ${cls}" onclick="openWalkModal('${w.id}')" title="${label}">${label}</div>`;
     }).join('');
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}</div>`;
@@ -739,7 +740,7 @@ window.openWalkModal = async (walkId) => {
       <div class="modal-field"><div class="modal-label">Current Walker</div><div class="modal-value">${walker?.name || '<span style="color:var(--rust);">Unassigned</span>'}</div></div>
     </div>
     <hr class="modal-divider">
-    ${suggestionHTML}
+    ${assignmentHTML}
   `;
   document.getElementById('walkModal').classList.add('open');
 };
