@@ -204,9 +204,8 @@
 
   html { scroll-behavior: smooth; }
   .founder-section { background: var(--warm-white); }
-  .founder-layout { display: grid; grid-template-columns: 1fr auto; gap: 48px; align-items: center; }
-  .founder-photo { border-radius: 8px; overflow: hidden; height: 480px; width: 480px; background: var(--sand); border:1px solid rgba(0,0,0,0.06); }
-  .founder-photo img { width: 100%; height: 100%; object-fit: cover; object-position: center 100%; }
+  .founder-layout { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 48px; align-items: center; }
+  .founder-photo { border-radius: 8px; overflow: hidden; height: calc(100% - 48px); min-height: 480px; max-height: 580px; background: var(--sand); border:1px solid rgba(0,0,0,0.06); }
   .founder-copy { background: white; border:1px solid rgba(0,0,0,0.06); border-radius:8px; padding: 44px 42px; }
   .founder-copy p { font-size: 15px; color: var(--text-mid); line-height: 1.8; margin-bottom: 18px; }
   .founder-signature { margin-top: 28px; }
@@ -222,7 +221,7 @@
   .faq-item.open .faq-icon { transform: rotate(45deg); }
   @media (max-width: 820px) {
     .founder-layout { grid-template-columns: 1fr; }
-    .founder-photo { height: 320px; width: 320px; margin: 0 auto; }
+    .founder-photo { height: 400px; }
     .founder-copy { padding: 32px 24px; }
     .nav-links { gap: 16px; flex-wrap: wrap; justify-content: flex-end; }
   }
@@ -285,7 +284,7 @@
 
     /* Founder */
     .founder-layout { grid-template-columns: 1fr; }
-    .founder-photo { height: 300px; width: 300px; margin: 0 auto; order: -1; }
+    .founder-photo { height: 300px; order: -1; }
     .founder-copy { padding: 28px 20px; order: 1; }
     .founder-layout { display: flex; flex-direction: column; }
 
@@ -617,7 +616,7 @@
         </div>
       </div>
       <div class="founder-photo" style="padding:0;">
-        <img src="images/founder.jpeg" alt="Alison Reilley, Founder of Port City Leash Club" style="width:100%;height:100%;object-fit:cover;object-position:center 90%;border-radius:8px;">
+        <img src="images/founder.jpeg" alt="Alison Reilley, Founder of Port City Leash Club" style="width:100%;height:100%;object-fit:cover;object-position:center top;border-radius:8px;">
       </div>
     </div>
   </div>
