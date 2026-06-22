@@ -234,10 +234,10 @@
             <label>Add-ons</label>
             <div id="addonsGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
               <label style="display:flex;align-items:center;gap:10px;border:1px solid rgba(0,0,0,0.12);border-radius:6px;padding:12px 14px;font-size:13px;font-weight:400;color:var(--text-mid);cursor:pointer;background:white;">
-                <input type="checkbox" id="addonExtraPet" onchange="updateSummary()" style="width:auto;"> Extra pet <span style="color:var(--text-light);margin-left:4px;">+$15/night</span>
+                <input type="checkbox" id="addonExtraPet" onchange="updateSummary()" style="width:auto;"> Extra pet <span style="color:var(--text-light);margin-left:4px;">+$20/night</span>
               </label>
               <label style="display:flex;align-items:center;gap:10px;border:1px solid rgba(0,0,0,0.12);border-radius:6px;padding:12px 14px;font-size:13px;font-weight:400;color:var(--text-mid);cursor:pointer;background:white;">
-                <input type="checkbox" id="addonMedication" onchange="updateSummary()" style="width:auto;"> Medication admin <span style="color:var(--text-light);margin-left:4px;">+$8/night</span>
+                <input type="checkbox" id="addonMedication" onchange="updateSummary()" style="width:auto;"> Medication admin <span style="color:var(--text-light);margin-left:4px;">+$10/night</span>
               </label>
             </div>
           </div>
@@ -313,8 +313,8 @@
     const visitsPerDay = service === 'checkin' ? parseInt(visitsEl?.value || '1') : 1;
     const qty     = service === 'checkin' ? days * visitsPerDay : days;
     const base    = info.price * qty;
-    const extraPet = document.getElementById('addonExtraPet')?.checked ? 15 * days : 0;
-    const meds     = document.getElementById('addonMedication')?.checked ? 8 * days : 0;
+    const extraPet = document.getElementById('addonExtraPet')?.checked ? 20 * days : 0;
+    const meds     = document.getElementById('addonMedication')?.checked ? 10 * days : 0;
     const total    = base + extraPet + meds;
 
     const qtyLabel = service === 'checkin'
