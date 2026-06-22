@@ -333,8 +333,8 @@
         <div class="field full" id="addons-field" style="display:none;">
           <label>Add-ons</label>
           <div class="checkbox-row">
-            <label class="checkbox-pill"><input type="checkbox" name="addon-extra-pet" id="addon-extra-pet" onchange="updateAddons()"> Extra pet <span style="color:var(--text-light);margin-left:4px;">+$15</span></label>
-            <label class="checkbox-pill"><input type="checkbox" name="addon-medication" id="addon-medication" onchange="updateAddons()"> Medication administration <span style="color:var(--text-light);margin-left:4px;">+$8</span></label>
+            <label class="checkbox-pill"><input type="checkbox" name="addon-extra-pet" id="addon-extra-pet" onchange="updateAddons()"> Extra pet <span style="color:var(--text-light);margin-left:4px;">+$20</span></label>
+            <label class="checkbox-pill"><input type="checkbox" name="addon-medication" id="addon-medication" onchange="updateAddons()"> Medication administration <span style="color:var(--text-light);margin-left:4px;">+$10</span></label>
           </div>
         </div>
         <div class="field full">
@@ -467,8 +467,8 @@
     const start    = startInput.value;
     const end      = endInput.value;
     const days     = isWalk ? 1 : getDaysBetween(start, end);
-    const extraPet = document.getElementById('addon-extra-pet')?.checked ? 15 : 0;
-    const meds     = document.getElementById('addon-medication')?.checked ? 8 : 0;
+    const extraPet = document.getElementById('addon-extra-pet')?.checked ? 20 : 0;
+    const meds     = document.getElementById('addon-medication')?.checked ? 10 : 0;
 
     const serviceTotal = info.price * (isWalk ? 1 : days);
     const addonTotal   = (extraPet + meds) * (isWalk ? 1 : Math.max(days, 1));
