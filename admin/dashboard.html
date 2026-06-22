@@ -576,7 +576,7 @@ function renderCalendarDays() {
     const chips = dayWalks.map(w => {
       const member = allMembers.find(m => m.id === w.memberId);
       const walker = allWalkers.find(k => k.id === w.walkerId);
-      const cls = !w.walkerId ? 'unassigned' : w.timeSlot;
+      const cls = (!w.walkerId || w.walkerId === '') ? 'unassigned' : (w.status === 'completed' ? 'completed' : w.timeSlot);
       const dogName = member?.dogName || member?.name?.split(' ')[0] || 'Walk';
       const label = walker ? `${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`;
       return `<div class="walk-chip ${cls}" onclick="openWalkModal('${w.id}')" title="${label}">${label}</div>`;
