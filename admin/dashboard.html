@@ -719,41 +719,52 @@ window.openWalkModal = async (walkId) => {
   const walker = _walkers.find(k => k.id === (walk.walkerId||"").trim());
   const date = walk.date?.toDate?.() || new Date(walk.date);
   const slotLabel = { morning: 'Morning (8–11am)', 'early-afternoon': 'Early Afternoon (11am–2pm)', 'late-afternoon': 'Late Afternoon (2–5pm)' }[walk.timeSlot] || walk.timeSlot;
+  const isAssigned = !!(walk.walkerId || '').trim();
 
-  // Smart suggestions — score walkers by availability + load + zone
   const suggestions = _walkers.filter(w => w.status === 'active').map(w => {
     let score = 0;
     const dayName = ['sun','mon','tue','wed','thu','fri','sat'][date.getDay()];
-    const avail = w.availability?.[dayName] || [];
-    if (avail.includes(walk.timeSlot)) score += 40;
-    const thisWeek = _walks.filter(wk => wk.walkerId === w.id).length;
-    const target = w.weeklyTarget || 20;
-    if (thisWeek < target) score += 30;
-    const memberZone = member?.zone || '';
-    if ((w.zones || []).includes(memberZone)) score += 20;
-    const existingRelationship = _walks.filter(wk => wk.walkerId === w.id && wk.memberId === walk.memberId).length;
-    score += Math.min(existingRelationship * 5, 10);
+    if ((w.availability?.[dayName] || []).includes(walk.timeSlot)) score += 40;
+    if (_walks.filter(wk => wk.walkerId === w.id).length < (w.weeklyTarget || 20)) score += 30;
+    if ((w.zones || []).includes(member?.zone || '')) score += 20;
+    score += Math.min(_walks.filter(wk => wk.walkerId === w.id && wk.memberId === walk.memberId).length * 5, 10);
     return { ...w, score };
   }).sort((a, b) => b.score - a.score);
 
-  const suggestionHTML = suggestions.length ? `
+  const walkerSelect = `<select id="manualWalkerSelect" style="width:100%;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:9px;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:10px;">
+    <option value="">Select a walker...</option>
+    ${_walkers.map(w => `<option value="${w.id}" ${w.id === (walk.walkerId||'') ? 'selected' : ''}>${w.name}</option>`).join('')}
+  </select>`;
+
+  const assignmentHTML = isAssigned ? `
+    <div class="modal-label" style="margin-bottom:10px;">Assigned Walker</div>
+    <div class="suggestion-card best" style="margin-bottom:16px;">
+      <div>
+        <div style="font-weight:500;font-size:14px;">${walker?.name || '–'}</div>
+        <div style="font-size:12px;color:var(--text-light);">${(walker?.zones||[]).join(', ')||'Any'} · ${_walks.filter(wk=>wk.walkerId===walker?.id).length} walks this week</div>
+      </div>
+      <span style="font-size:11px;color:var(--green);font-weight:500;">Assigned ✓</span>
+    </div>
+    <div class="modal-label" style="margin-bottom:8px;">Change Walker</div>
+    ${walkerSelect}
+    <div style="display:flex;gap:8px;">
+      <button class="btn-primary" style="flex:1;" onclick="assignWalkerManual('${walkId}')">Update Walker</button>
+      <button class="btn-secondary" onclick="assignWalker('${walkId}', '')" style="color:var(--rust);">Unassign</button>
+    </div>` : suggestions.length ? `
     <div class="modal-label" style="margin-bottom:10px;">Assignment Suggestions</div>
-    ${suggestions.slice(0, 3).map((w, i) => `
-      <div class="suggestion-card ${i === 0 ? 'best' : ''}" onclick="assignWalker('${walkId}', '${w.id}')">
+    ${suggestions.slice(0,3).map((w,i) => `
+      <div class="suggestion-card ${i===0?'best':''}" onclick="assignWalker('${walkId}', '${w.id}')">
         <div>
           <div style="font-weight:500;font-size:14px;">${w.name}</div>
-          <div style="font-size:12px;color:var(--text-light);">Zones: ${(w.zones||[]).join(', ')||'Any'} · ${_walks.filter(wk=>wk.walkerId===w.id).length} walks this week</div>
+          <div style="font-size:12px;color:var(--text-light);">${(w.zones||[]).join(', ')||'Any'} · ${_walks.filter(wk=>wk.walkerId===w.id).length} walks</div>
         </div>
-        <div class="suggestion-score ${i===0?'best':''}">${i===0?'Best fit':''}  ${w.score}pts</div>
+        <div class="suggestion-score ${i===0?'best':''}">${i===0?'Best fit':''} ${w.score}pts</div>
       </div>`).join('')}
     <hr class="modal-divider">
-    <div class="modal-label" style="margin-bottom:10px;">Or assign manually</div>
-    <select id="manualWalkerSelect" style="width:100%;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:9px;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:10px;">
-      <option value="">Select a walker...</option>
-      ${_walkers.map(w => `<option value="${w.id}">${w.name}</option>`).join('')}
-    </select>
-    <button class="btn-primary" style="width:100%;" onclick="assignWalkerManual('${walkId}')">Assign</button>
-  ` : '<div style="color:var(--text-light);font-size:13px;">No active walkers available.</div>';
+    <div class="modal-label" style="margin-bottom:8px;">Or assign manually</div>
+    ${walkerSelect}
+    <button class="btn-primary" style="width:100%;" onclick="assignWalkerManual('${walkId}')">Assign</button>` :
+    '<div style="color:var(--text-light);font-size:13px;">No active walkers available.</div>';
 
   document.getElementById('walkModalTitle').textContent = `${member?.dogName || 'Walk'} · ${date.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}`;
   document.getElementById('walkModalContent').innerHTML = `
@@ -761,7 +772,7 @@ window.openWalkModal = async (walkId) => {
       <div class="modal-field"><div class="modal-label">Member</div><div class="modal-value">${member?.name || '–'}</div></div>
       <div class="modal-field"><div class="modal-label">Dog</div><div class="modal-value">${member?.dogName || '–'}</div></div>
       <div class="modal-field"><div class="modal-label">Time Slot</div><div class="modal-value">${slotLabel}</div></div>
-      <div class="modal-field"><div class="modal-label">Current Walker</div><div class="modal-value">${walker?.name || '<span style="color:var(--rust);">Unassigned</span>'}</div></div>
+      <div class="modal-field"><div class="modal-label">Status</div><div class="modal-value">${walk.status || 'Scheduled'}</div></div>
     </div>
     <hr class="modal-divider">
     ${assignmentHTML}
