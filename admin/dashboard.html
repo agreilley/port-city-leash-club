@@ -398,7 +398,29 @@
 </div>
 
 <!-- INBOX DETAIL MODAL -->
-<div class="modal-overlay" id="inboxModal">
+<div class="modal-overlay" id="addWalkerModal">
+  <div class="modal-box" style="width:460px;">
+    <button class="modal-close" onclick="closeModal('addWalkerModal')">×</button>
+    <div class="modal-title">Add Walker</div>
+    <div id="addWalkerContent">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div class="form-field"><label>First name</label><input type="text" id="aw-first" placeholder="Marcus"></div>
+        <div class="form-field"><label>Last name</label><input type="text" id="aw-last" placeholder="Johnson"></div>
+      </div>
+      <div class="form-field" style="margin-bottom:12px;"><label>Email</label><input type="email" id="aw-email" placeholder="marcus@example.com"></div>
+      <div class="form-field" style="margin-bottom:12px;"><label>Phone</label><input type="tel" id="aw-phone" placeholder="(910) 555-0100"></div>
+      <div class="form-field" style="margin-bottom:12px;"><label>Temporary Password</label><input type="text" id="aw-password" placeholder="Min 8 characters — walker will be prompted to change"></div>
+      <div class="form-field" style="margin-bottom:16px;"><label>Zones (comma separated)</label><input type="text" id="aw-zones" placeholder="Midtown, Forest Hills"></div>
+      <div id="aw-error" style="color:var(--rust);font-size:13px;margin-bottom:12px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-primary" style="flex:1;" onclick="createWalkerAccount()">Create Account</button>
+        <button class="btn-secondary" onclick="closeModal('addWalkerModal')">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
   <div class="modal">
     <button class="modal-close" onclick="closeModal('inboxModal')">×</button>
     <div class="modal-title" id="inboxModalTitle"></div>
@@ -416,7 +438,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { getAuth, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import {
   getFirestore, collection, query, orderBy, onSnapshot,
-  doc, getDoc, getDocs, addDoc, updateDoc, where,
+  doc, getDoc, getDocs, addDoc, updateDoc, setDoc, where,
   serverTimestamp, Timestamp
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
@@ -792,7 +814,62 @@ window.assignWalkerManual = async (walkId) => {
 };
 
 // ── ADD WALK ──────────────────────────────────────────────────────────────────
-window.openAddWalkModal = () => document.getElementById('addWalkModal').classList.add('open');
+window.createWalkerAccount = async () => {
+  const first = document.getElementById('aw-first').value.trim();
+  const last  = document.getElementById('aw-last').value.trim();
+  const email = document.getElementById('aw-email').value.trim();
+  const phone = document.getElementById('aw-phone').value.trim();
+  const pass  = document.getElementById('aw-password').value.trim();
+  const zones = document.getElementById('aw-zones').value.split(',').map(z => z.trim()).filter(Boolean);
+  const errEl = document.getElementById('aw-error');
+  errEl.style.display = 'none';
+
+  if (!first || !last || !email || !pass) { errEl.textContent = 'Please fill in all required fields.'; errEl.style.display = 'block'; return; }
+  if (pass.length < 8) { errEl.textContent = 'Password must be at least 8 characters.'; errEl.style.display = 'block'; return; }
+
+  const btn = document.querySelector('#addWalkerModal .btn-primary');
+  btn.textContent = 'Creating...'; btn.disabled = true;
+
+  try {
+    // Create Firebase Auth user via REST API (avoids signing out current admin)
+    const apiKey = 'AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM';
+    const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pass, returnSecureToken: true })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+
+    const uid = data.localId;
+    const name = `${first} ${last}`;
+    const walkerId = `walker_${first.toLowerCase()}_${last.toLowerCase()}`.replace(/\s+/g, '_');
+
+    // Save walker document with uid field
+    await setDoc(doc(db, 'walkers', walkerId), {
+      name, email, phone, uid,
+      zones, status: 'active', weeklyTarget: 20,
+      availability: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] }
+    });
+
+    // Show success
+    document.getElementById('addWalkerContent').innerHTML = `
+      <div style="text-align:center;padding:24px 0;">
+        <div style="font-size:40px;margin-bottom:16px;">✓</div>
+        <div style="font-size:18px;font-weight:500;color:var(--navy);margin-bottom:8px;">Walker account created!</div>
+        <div style="font-size:13px;color:var(--text-light);margin-bottom:4px;">${name} can now log in at:</div>
+        <div style="font-size:13px;font-weight:500;color:var(--navy);margin-bottom:4px;">${window.location.origin}/walker/index.html</div>
+        <div style="font-size:12px;color:var(--text-light);margin-bottom:24px;">Email: ${email} · Temporary password: ${pass}</div>
+        <button class="btn-primary" onclick="closeModal('addWalkerModal');document.getElementById('addWalkerContent').innerHTML='';" style="width:100%;">Done</button>
+      </div>`;
+  } catch(e) {
+    errEl.textContent = e.message.includes('EMAIL_EXISTS') ? 'An account with this email already exists.' : e.message;
+    errEl.style.display = 'block';
+    btn.textContent = 'Create Account'; btn.disabled = false;
+  }
+};
+
+
 
 window.submitAddWalk = async () => {
   const memberId = document.getElementById('wm-member').value;
@@ -834,7 +911,7 @@ function populateWalkerSelect() {
   sel.innerHTML = '<option value="">Unassigned</option>' + allWalkers.map(w => `<option value="${w.id}">${w.name}</option>`).join('');
 }
 window.openAddMemberModal = () => {};
-window.openAddWalkerModal = () => {};
+window.openAddWalkerModal = () => document.getElementById('addWalkerModal').classList.add('open');
 window.openMemberDetail = (id) => {};
 window.openWalkerDetail = (id) => {};
 
