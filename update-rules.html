@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head><title>Update Rules</title></head>
+<body style="font-family:monospace;background:#0D1B2A;color:#8FA8A2;padding:32px;">
+<h2 style="color:white;">Updating Firestore Rules...</h2>
+<div id="log"></div>
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getAuth, signInWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
+const app = initializeApp({
+  apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
+  authDomain: "port-city-leash-club-827ab.firebaseapp.com",
+  projectId: "port-city-leash-club-827ab",
+});
+const auth = getAuth(app);
+
+function log(msg, ok=true) {
+  const d = document.createElement('div');
+  d.textContent = (ok?'✓ ':'✗ ') + msg;
+  d.style.color = ok ? '#2D9E5E' : '#C17B6F';
+  document.getElementById('log').appendChild(d);
+}
+
+const email = prompt('Admin email:');
+const pass = prompt('Admin password:');
+const cred = await signInWithEmailAndPassword(auth, email, pass);
+const token = await cred.user.getIdToken();
+log('Signed in as ' + email);
+
+const rules = `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isWalker() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/walkers/$(request.auth.uid));
+    }
+
+    match /admins/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /members/{id} {
+      allow read, write: if isAdmin();
+      allow read: if isWalker();
+    }
+    match /walkers/{id} {
+      allow read, write: if isAdmin();
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+    match /walks/{id} {
+      allow read, write: if isAdmin();
+      allow read, update: if isWalker();
+    }
+    match /submissions/{id} {
+      allow read, write: if isAdmin();
+      allow create: if true;
+    }
+    match /meet_greet_availability/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}`;
+
+// Use Firebase Management API to update rules
+const res = await fetch(
+  `https://firebaserules.googleapis.com/v1/projects/port-city-leash-club-827ab/rulesets`,
+  {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source: { files: [{ name: 'firestore.rules', content: rules }] } })
+  }
+);
+const data = await res.json();
+if (data.error) {
+  log('Ruleset creation: ' + JSON.stringify(data.error), false);
+  log('Please update rules manually in the Firebase console', false);
+} else {
+  log('Rules updated! Name: ' + data.name);
+}
+</script>
+</body>
+</html>
