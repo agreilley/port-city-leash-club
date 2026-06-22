@@ -475,6 +475,7 @@ function subscribeWalks() {
 function subscribeMembers() {
   onSnapshot(collection(db, 'members'), snap => {
     allMembers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderAll();
     renderMembersTable();
     populateMemberSelect();
     updateStats();
@@ -495,12 +496,18 @@ function subscribeInbox() {
   const q = query(collection(db, 'submissions'), orderBy('createdAt', 'desc'));
   onSnapshot(q, snap => {
     allInbox = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderAll();
     const unread = allInbox.filter(i => !i.read).length;
     const badge = document.getElementById('inboxBadge');
     badge.textContent = unread;
     badge.style.display = unread > 0 ? 'inline' : 'none';
     renderInbox();
   });
+}
+
+// ── RENDER ALL ───────────────────────────────────────────────────────────────
+function renderAll() {
+  renderAll();
 }
 
 // ── STATS ────────────────────────────────────────────────────────────────────
@@ -528,16 +535,20 @@ function renderUpcomingWalks() {
     const walker = allWalkers.find(k => k.id === w.walkerId);
     const date = w.date?.toDate?.() || new Date(w.date);
     const slotLabel = { morning: 'Morning', 'early-afternoon': 'Early Afternoon', 'late-afternoon': 'Late Afternoon' }[w.timeSlot] || w.timeSlot;
-    const statusClass = !w.walkerId ? 'unassigned' : w.status === 'completed' ? 'completed' : 'active';
-    const statusLabel = !w.walkerId ? 'Unassigned' : w.status || 'Scheduled';
+    const isUnassigned = !w.walkerId || w.walkerId === '';
+    const statusClass = isUnassigned ? 'unassigned' : w.status === 'completed' ? 'completed' : 'active';
+    const statusLabel = isUnassigned ? 'Unassigned' : w.status === 'completed' ? 'Completed' : 'Scheduled';
+    const actionBtn = isUnassigned
+      ? `<button class="btn-sm assign" onclick="openWalkModal('${w.id}')">Assign</button>`
+      : `<button class="btn-sm" onclick="openWalkModal('${w.id}')" style="background:var(--sand);color:var(--navy);">Edit</button>`;
     return `<tr>
       <td>${date.toLocaleDateString('en-US', {month:'short',day:'numeric'})}</td>
       <td>${slotLabel}</td>
       <td>${member?.name || '–'}</td>
       <td>${member?.dogName || '–'}</td>
-      <td>${walker?.name || '<span style="color:var(--rust);">Unassigned</span>'}</td>
+      <td>${isUnassigned ? '<span style="color:var(--rust);">Unassigned</span>' : walker?.name || '–'}</td>
       <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
-      <td><button class="btn-sm assign" onclick="openWalkModal('${w.id}')">Assign</button></td>
+      <td>${actionBtn}</td>
     </tr>`;
   }).join('');
 }
