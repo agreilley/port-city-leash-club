@@ -427,7 +427,6 @@
       <div class="form-field"><label>Assigned walker</label>
         <select id="am-walker">
           <option value="">Unassigned</option>
-          ${(window.allWalkers||[]).map(w => `<option value="${w.id}">${w.name}</option>`).join('')}
         </select>
       </div>
     </div>
@@ -956,6 +955,16 @@ function populateWalkerSelect() {
   const sel = document.getElementById('wm-walker');
   sel.innerHTML = '<option value="">Unassigned</option>' + allWalkers.map(w => `<option value="${w.id}">${w.name}</option>`).join('');
 }
+window.openAddMemberModal = () => {
+  // Populate walker dropdown with current walkers
+  const sel = document.getElementById('am-walker');
+  if (sel) {
+    sel.innerHTML = '<option value="">Unassigned</option>' +
+      (window.allWalkers||[]).map(w => `<option value="${w.id}">${w.name}</option>`).join('');
+  }
+  document.getElementById('addMemberModal').classList.add('open');
+};
+
 window.saveMember = async () => {
   const name    = document.getElementById('am-name').value.trim();
   const email   = document.getElementById('am-email').value.trim();
