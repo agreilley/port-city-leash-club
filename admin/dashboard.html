@@ -507,7 +507,15 @@ function subscribeInbox() {
 
 // ── RENDER ALL ───────────────────────────────────────────────────────────────
 function renderAll() {
-  renderAll();
+  console.log('renderAll - walks:', allWalks.length, 'walkers:', allWalkers.length, 'members:', allMembers.length);
+  if (allWalks.length && allWalkers.length) {
+    console.log('Sample walkerId:', JSON.stringify(allWalks[0]?.walkerId), '| walkerIds:', allWalkers.map(w=>w.id));
+  }
+  updateStats();
+  renderUpcomingWalks();
+  renderCalendarDays();
+  renderWalkerTable();
+  renderMemberTable();
 }
 
 // ── STATS ────────────────────────────────────────────────────────────────────
@@ -531,11 +539,12 @@ function renderUpcomingWalks() {
   if (!upcoming.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:24px;">No upcoming walks</td></tr>'; return; }
 
   tbody.innerHTML = upcoming.map(w => {
-    const member = allMembers.find(m => m.id === w.memberId);
-    const walker = allWalkers.find(k => k.id === w.walkerId);
+    const member = allMembers.find(m => m.id === (w.memberId||'').trim());
+    const walkerId = (w.walkerId||'').trim();
+    const walker = allWalkers.find(k => k.id === walkerId);
     const date = w.date?.toDate?.() || new Date(w.date);
     const slotLabel = { morning: 'Morning', 'early-afternoon': 'Early Afternoon', 'late-afternoon': 'Late Afternoon' }[w.timeSlot] || w.timeSlot;
-    const isUnassigned = !w.walkerId || w.walkerId === '';
+    const isUnassigned = !walkerId;
     const statusClass = isUnassigned ? 'unassigned' : w.status === 'completed' ? 'completed' : 'active';
     const statusLabel = isUnassigned ? 'Unassigned' : w.status === 'completed' ? 'Completed' : 'Scheduled';
     const actionBtn = isUnassigned
@@ -585,9 +594,10 @@ function renderCalendarDays() {
       return wd.getFullYear() === calendarYear && wd.getMonth() === calendarMonth && wd.getDate() === d;
     });
     const chips = dayWalks.map(w => {
-      const member = allMembers.find(m => m.id === w.memberId);
-      const walker = allWalkers.find(k => k.id === w.walkerId);
-      const cls = (!w.walkerId || w.walkerId === '') ? 'unassigned' : (w.status === 'completed' ? 'completed' : w.timeSlot);
+      const member = allMembers.find(m => m.id === (w.memberId||'').trim());
+      const wkId = (w.walkerId||'').trim();
+      const walker = allWalkers.find(k => k.id === wkId);
+      const cls = !wkId ? 'unassigned' : (w.status === 'completed' ? 'completed' : w.timeSlot);
       const dogName = member?.dogName || member?.name?.split(' ')[0] || 'Walk';
       const label = walker ? `${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`;
       return `<div class="walk-chip ${cls}" onclick="openWalkModal('${w.id}')" title="${label}">${label}</div>`;
