@@ -1032,22 +1032,6 @@ window.avPrevMonth = () => { avMonth--; if (avMonth < 0) { avMonth = 11; avYear-
 window.avNextMonth = () => { avMonth++; if (avMonth > 11) { avMonth = 0; avYear++; } renderAvCalendar(); };
 window.avSelectDate = avSelectDate;
 
-// Init availability when switching to that view
-const _origSwitchView = window.switchView;
-window.switchView = (view) => {
-  _origSwitchView(view);
-  if (view === 'availability') {
-    if (!window._avInit) {
-      window._avInit = true;
-      initAvailability();
-    } else {
-      renderAvCalendar();
-      renderAvUpcoming();
-    }
-  }
-};
-
-
 
 function initAvailability() {
   renderAvCalendar(); // Render immediately with empty data
@@ -1158,22 +1142,6 @@ window.avPrevMonth = () => { avMonth--; if (avMonth < 0) { avMonth = 11; avYear-
 window.avNextMonth = () => { avMonth++; if (avMonth > 11) { avMonth = 0; avYear++; } renderAvCalendar(); };
 window.avSelectDate = avSelectDate;
 
-// Init availability when switching to that view
-const _origSwitchView = window.switchView;
-window.switchView = (view) => {
-  _origSwitchView(view);
-  if (view === 'availability') {
-    if (Object.keys(avData).length === 0 && !window._avInit) {
-      window._avInit = true;
-      initAvailability();
-    } else {
-      renderAvCalendar();
-      renderAvUpcoming();
-    }
-  }
-};
-
-
 const viewTitles = { overview: 'Overview', calendar: 'Walk Calendar', walkers: 'Walkers', members: 'Members', availability: 'Meet & Greet Availability', inbox: 'Inbox' };
 window.switchView = (view) => {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -1181,6 +1149,16 @@ window.switchView = (view) => {
   document.getElementById(`view-${view}`).classList.add('active');
   document.querySelector(`[data-view="${view}"]`).classList.add('active');
   document.getElementById('topbarTitle').textContent = viewTitles[view];
+  // Init availability on first visit
+  if (view === 'availability') {
+    if (!window._avInit) {
+      window._avInit = true;
+      initAvailability();
+    } else {
+      renderAvCalendar();
+      renderAvUpcoming();
+    }
+  }
 };
 </script>
 </body>
