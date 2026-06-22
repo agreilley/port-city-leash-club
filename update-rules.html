@@ -41,12 +41,19 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/walkers/$(request.auth.uid));
     }
 
+    function isMember() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/members/$(request.auth.uid));
+    }
+
     match /admins/{uid} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
     match /members/{id} {
       allow read, write: if isAdmin();
       allow read: if isWalker();
+      // Members can read and update their own doc
+      allow read, update: if request.auth != null && request.auth.uid == id;
     }
     match /walkers/{id} {
       allow read, write: if isAdmin();
@@ -55,10 +62,14 @@ service cloud.firestore {
     match /walks/{id} {
       allow read, write: if isAdmin();
       allow read, update: if isWalker();
+      // Members can read their own walks
+      allow read: if request.auth != null && resource.data.memberId == request.auth.uid;
     }
     match /submissions/{id} {
       allow read, write: if isAdmin();
       allow create: if true;
+      // Members can read their own submissions
+      allow read: if request.auth != null && resource.data.memberId == request.auth.uid;
     }
     match /meet_greet_availability/{id} {
       allow read: if true;
