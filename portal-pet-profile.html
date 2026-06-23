@@ -440,9 +440,9 @@
         <a href="portal-extras.html" class="nav-item">Additional Care</a>
         <a href="portal-account.html" class="nav-item">Account</a>
       </nav>
-      <div class="sidebar-pet">
-        <div class="pet-name" id="sidebarDogName">–</div>
-        <div class="pet-info" id="sidebarDogInfo">–</div>
+      <div class="sidebar-pet" id="sidebarPets">
+        <div class="pet-name" id="sidebarDogName"></div>
+        <div class="pet-info" id="sidebarDogInfo"></div>
       </div>
         <a href="index.html" style="display:block;padding:16px 24px 20px;font-size:11px;color:rgba(255,255,255,0.35);text-decoration:none;letter-spacing:0.04em;border-top:1px solid rgba(255,255,255,0.08);margin-top:auto;">Port City Leash Club</a>
     </div>
@@ -496,7 +496,7 @@
   <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { getFirestore, doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
@@ -513,49 +513,30 @@ const db = getFirestore(app);
 
 let userId = null;
 let memberData = null;
+let currentDogs = []; // live working copy — add/remove edits this
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.href = 'portal-login.html'; return; }
   userId = user.uid;
-
   try {
     const snap = await getDoc(doc(db, 'members', userId));
     if (snap.exists()) {
       memberData = { id: snap.id, ...snap.data() };
-      renderProfile();
+      // Normalise to dogs array
+      currentDogs = memberData.dogs?.length
+        ? memberData.dogs.map(d => ({ ...d }))
+        : [{ name: memberData.dogName || '', breed: memberData.petBreed || '', age: memberData.petAge ? `${memberData.petAge} years` : '', weight: memberData.petWeight || '', temperament: memberData.temperament || '', walkingPrefs: memberData.walkingPrefs || '', triggers: memberData.triggers || '', medications: memberData.medications || '', allergies: memberData.allergies || '' }];
+      renderPage();
     }
   } catch(e) {
     console.error('Profile load error:', e.message);
-    document.getElementById('pageSubtitle').textContent = 'Error loading profile.';
   }
 });
 
-function renderProfile() {
-  if (!memberData) return;
-
-  // Normalise: support both legacy single-dog fields and new dogs array
-  const dogs = memberData.dogs?.length
-    ? memberData.dogs
-    : [{ name: memberData.dogName || '', breed: memberData.petBreed || '', age: memberData.petAge ? `${memberData.petAge} years` : '', weight: memberData.petWeight || '', temperament: memberData.temperament || '', walkingPrefs: memberData.walkingPrefs || '', triggers: memberData.triggers || '', medications: memberData.medications || '', allergies: memberData.allergies || '' }];
-
-  // Sidebar
-  const firstDog = dogs[0];
-  document.getElementById('sidebarDogName').textContent = firstDog.name || '';
-  const info = [firstDog.breed, firstDog.age ? `${firstDog.age} old` : ''].filter(Boolean).join(' • ');
-  document.getElementById('sidebarDogInfo').textContent = info || '';
-
-  // Page header
-  const names = dogs.map(d => d.name).filter(Boolean);
-  document.getElementById('pageTitle').textContent = names.length ? `${names.join(' & ')}'s Profile` : 'Pet Profile';
-  document.getElementById('pageSubtitle').textContent = `Update your dog${dogs.length > 1 ? 's\'' : '\'s'} information and care notes`;
-
-  // Render a card per dog
-  const container = document.getElementById('dogsContainer');
-  container.innerHTML = '';
-  dogs.forEach((dog, i) => {
-    container.insertAdjacentHTML('beforeend', dogCardHTML(dog, i, dogs.length));
-  });
-
+function renderPage() {
+  updateSidebar();
+  updatePageHeader();
+  renderDogCards();
   // Home access
   document.getElementById('homeAddress').value = memberData.address || '';
   document.getElementById('parkingNotes').value = memberData.parkingNotes || '';
@@ -565,97 +546,146 @@ function renderProfile() {
   document.getElementById('formActions').style.display = '';
 }
 
-function dogCardHTML(dog, idx, total) {
-  const label = total > 1 ? `Dog ${idx + 1}${dog.name ? ` — ${dog.name}` : ''}` : 'Your Dog';
+function updateSidebar() {
+  const names = currentDogs.map(d => d.name).filter(Boolean);
+  document.getElementById('sidebarDogName').textContent = names.join(' & ') || '';
+  const first = currentDogs[0] || {};
+  const info = [first.breed, first.age ? `${first.age} old` : ''].filter(Boolean).join(' • ');
+  document.getElementById('sidebarDogInfo').textContent = info || '';
+}
+
+function updatePageHeader() {
+  const names = currentDogs.map(d => d.name).filter(Boolean);
+  document.getElementById('pageTitle').textContent = names.length
+    ? `${names.join(' & ')}'s Profile`
+    : 'Pet Profile';
+  document.getElementById('pageSubtitle').textContent =
+    `Update your dog${currentDogs.length > 1 ? 's\'' : '\'s'} information and care notes`;
+}
+
+function renderDogCards() {
+  const container = document.getElementById('dogsContainer');
+  container.innerHTML = '';
+  currentDogs.forEach((dog, i) => {
+    container.insertAdjacentHTML('beforeend', dogCardHTML(dog, i));
+  });
+  // Add dog button
+  let addBtn = document.getElementById('addDogBtn');
+  if (!addBtn) {
+    addBtn = document.createElement('button');
+    addBtn.id = 'addDogBtn';
+    addBtn.type = 'button';
+    addBtn.style.cssText = 'margin-top:12px;background:white;border:1px dashed rgba(0,0,0,0.2);border-radius:6px;padding:12px 20px;font-size:13px;font-weight:500;color:#7A7A7A;cursor:pointer;font-family:inherit;width:100%;transition:all 0.2s;';
+    addBtn.textContent = '+ Add a dog';
+    addBtn.onmouseover = () => { addBtn.style.borderColor = '#8FA8A2'; addBtn.style.color = '#0D1B2A'; };
+    addBtn.onmouseout  = () => { addBtn.style.borderColor = 'rgba(0,0,0,0.2)'; addBtn.style.color = '#7A7A7A'; };
+    addBtn.onclick = addDog;
+    container.after(addBtn);
+  }
+}
+
+function dogCardHTML(dog, i) {
+  const isOnly = currentDogs.length === 1;
+  const label = isOnly ? 'Your Dog' : `Dog ${i + 1}${dog.name ? ` — ${dog.name}` : ''}`;
   return `
-    <div class="section-card" id="dogSection${idx}">
-      <h2 class="section-title">${label}</h2>
-
+    <div class="section-card" id="dogCard${i}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h2 class="section-title" style="margin-bottom:0;">${label}</h2>
+        ${!isOnly ? `<button type="button" onclick="removeDog(${i})" style="background:none;border:none;font-size:13px;color:#7A7A7A;cursor:pointer;padding:4px 8px;border-radius:4px;font-family:inherit;" onmouseover="this.style.color='#C17B6F'" onmouseout="this.style.color='#7A7A7A'">Remove</button>` : ''}
+      </div>
       <div class="field-row">
-        <div class="field-group">
-          <label class="field-label">Name</label>
-          <div class="field-value"><input type="text" id="dog_name_${idx}" value="${dog.name || ''}" placeholder="Dog's name"></div>
-        </div>
-        <div class="field-group">
-          <label class="field-label">Breed</label>
-          <div class="field-value"><input type="text" id="dog_breed_${idx}" value="${dog.breed || ''}" placeholder="Breed"></div>
-        </div>
+        <div class="field-group"><label class="field-label">Name</label><div class="field-value"><input type="text" id="dog_name_${i}" value="${dog.name || ''}" placeholder="Dog's name"></div></div>
+        <div class="field-group"><label class="field-label">Breed</label><div class="field-value"><input type="text" id="dog_breed_${i}" value="${dog.breed || ''}" placeholder="Breed"></div></div>
       </div>
-
       <div class="field-row">
-        <div class="field-group">
-          <label class="field-label">Age</label>
-          <div class="field-value"><input type="text" id="dog_age_${idx}" value="${dog.age || ''}" placeholder="e.g. 4 years"></div>
-        </div>
-        <div class="field-group">
-          <label class="field-label">Weight</label>
-          <div class="field-value"><input type="text" id="dog_weight_${idx}" value="${dog.weight || ''}" placeholder="e.g. 55 lbs"></div>
-        </div>
+        <div class="field-group"><label class="field-label">Age</label><div class="field-value"><input type="text" id="dog_age_${i}" value="${dog.age || ''}" placeholder="e.g. 4 years"></div></div>
+        <div class="field-group"><label class="field-label">Weight</label><div class="field-value"><input type="text" id="dog_weight_${i}" value="${dog.weight || ''}" placeholder="e.g. 55 lbs"></div></div>
       </div>
-
-      <div class="field-row full">
-        <div class="field-group">
-          <label class="field-label">Temperament</label>
-          <div class="field-value"><textarea id="dog_temperament_${idx}" placeholder="Friendly, energetic, shy…">${dog.temperament || ''}</textarea></div>
-        </div>
-      </div>
-
-      <div class="field-row full">
-        <div class="field-group">
-          <label class="field-label">Walking Preferences</label>
-          <div class="field-value"><textarea id="dog_walkingPrefs_${idx}" placeholder="Pace, favourite routes, any habits…">${dog.walkingPrefs || ''}</textarea></div>
-        </div>
-      </div>
-
-      <div class="field-row full">
-        <div class="field-group">
-          <label class="field-label">Known Triggers</label>
-          <div class="field-value"><textarea id="dog_triggers_${idx}" placeholder="Other dogs, loud noises, bicycles…">${dog.triggers || ''}</textarea></div>
-        </div>
-      </div>
-
+      <div class="field-row full"><div class="field-group"><label class="field-label">Temperament</label><div class="field-value"><textarea id="dog_temperament_${i}" placeholder="Friendly, energetic, shy…">${dog.temperament || ''}</textarea></div></div></div>
+      <div class="field-row full"><div class="field-group"><label class="field-label">Walking Preferences</label><div class="field-value"><textarea id="dog_walkingPrefs_${i}" placeholder="Pace, favourite routes, any habits…">${dog.walkingPrefs || ''}</textarea></div></div></div>
+      <div class="field-row full"><div class="field-group"><label class="field-label">Known Triggers</label><div class="field-value"><textarea id="dog_triggers_${i}" placeholder="Other dogs, loud noises, bicycles…">${dog.triggers || ''}</textarea></div></div></div>
       <div class="field-row">
-        <div class="field-group">
-          <label class="field-label">Medications</label>
-          <div class="field-value"><input type="text" id="dog_medications_${idx}" value="${dog.medications || ''}" placeholder="Any medications?"></div>
-        </div>
-        <div class="field-group">
-          <label class="field-label">Allergies</label>
-          <div class="field-value"><input type="text" id="dog_allergies_${idx}" value="${dog.allergies || ''}" placeholder="Any known allergies?"></div>
-        </div>
+        <div class="field-group"><label class="field-label">Medications</label><div class="field-value"><input type="text" id="dog_medications_${i}" value="${dog.medications || ''}" placeholder="Any medications?"></div></div>
+        <div class="field-group"><label class="field-label">Allergies</label><div class="field-value"><input type="text" id="dog_allergies_${i}" value="${dog.allergies || ''}" placeholder="Any known allergies?"></div></div>
       </div>
     </div>
   `;
 }
 
+function collectCurrentFormValues() {
+  return currentDogs.map((_, i) => ({
+    name:         document.getElementById(`dog_name_${i}`)?.value || '',
+    breed:        document.getElementById(`dog_breed_${i}`)?.value || '',
+    age:          document.getElementById(`dog_age_${i}`)?.value || '',
+    weight:       document.getElementById(`dog_weight_${i}`)?.value || '',
+    temperament:  document.getElementById(`dog_temperament_${i}`)?.value || '',
+    walkingPrefs: document.getElementById(`dog_walkingPrefs_${i}`)?.value || '',
+    triggers:     document.getElementById(`dog_triggers_${i}`)?.value || '',
+    medications:  document.getElementById(`dog_medications_${i}`)?.value || '',
+    allergies:    document.getElementById(`dog_allergies_${i}`)?.value || '',
+  }));
+}
+
+window.addDog = () => {
+  // Snapshot current form values before re-render so nothing is lost
+  currentDogs = collectCurrentFormValues();
+  currentDogs.push({ name: '', breed: '', age: '', weight: '', temperament: '', walkingPrefs: '', triggers: '', medications: '', allergies: '' });
+  renderDogCards();
+  updateSidebar();
+  updatePageHeader();
+  // Scroll new card into view
+  const newCard = document.getElementById(`dogCard${currentDogs.length - 1}`);
+  newCard?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+window.removeDog = (i) => {
+  const dogName = document.getElementById(`dog_name_${i}`)?.value || `Dog ${i + 1}`;
+  if (!confirm(`Remove ${dogName} from your profile?`)) return;
+  currentDogs = collectCurrentFormValues();
+  currentDogs.splice(i, 1);
+  renderDogCards();
+  updateSidebar();
+  updatePageHeader();
+};
+
 window.saveProfile = async () => {
   if (!userId || !memberData) return;
-
-  const dogs = memberData.dogs?.length
-    ? memberData.dogs
-    : [{}];
-  const updatedDogs = dogs.map((_, i) => ({
-    name:        document.getElementById(`dog_name_${i}`)?.value || '',
-    breed:       document.getElementById(`dog_breed_${i}`)?.value || '',
-    age:         document.getElementById(`dog_age_${i}`)?.value || '',
-    weight:      document.getElementById(`dog_weight_${i}`)?.value || '',
-    temperament: document.getElementById(`dog_temperament_${i}`)?.value || '',
-    walkingPrefs:document.getElementById(`dog_walkingPrefs_${i}`)?.value || '',
-    triggers:    document.getElementById(`dog_triggers_${i}`)?.value || '',
-    medications: document.getElementById(`dog_medications_${i}`)?.value || '',
-    allergies:   document.getElementById(`dog_allergies_${i}`)?.value || '',
-  }));
+  const updatedDogs = collectCurrentFormValues();
+  const previousDogNames = (memberData.dogs || [{ name: memberData.dogName }]).map(d => d.name).filter(Boolean).sort().join(', ');
+  const newDogNames = updatedDogs.map(d => d.name).filter(Boolean).sort().join(', ');
+  const dogsChanged = previousDogNames !== newDogNames;
 
   try {
     await updateDoc(doc(db, 'members', userId), {
       dogs: updatedDogs,
-      dogName:    updatedDogs[0].name,
-      petBreed:   updatedDogs[0].breed,
-      address:    document.getElementById('homeAddress').value,
+      dogName:  updatedDogs[0].name,
+      petBreed: updatedDogs[0].breed,
+      address:      document.getElementById('homeAddress').value,
       parkingNotes: document.getElementById('parkingNotes').value,
-      entryCode:  document.getElementById('entryCode').value,
-      accessNotes: document.getElementById('accessNotes').value,
+      entryCode:    document.getElementById('entryCode').value,
+      accessNotes:  document.getElementById('accessNotes').value,
     });
+
+    // Notify admin if dog roster changed
+    if (dogsChanged) {
+      await addDoc(collection(db, 'submissions'), {
+        type: 'dog_update',
+        memberId: userId,
+        memberName: memberData.name || '',
+        previousDogs: previousDogNames,
+        newDogs: newDogNames,
+        message: `${memberData.name || 'A member'} updated their dog roster. Was: ${previousDogNames || 'none'}. Now: ${newDogNames || 'none'}.`,
+        read: false,
+        createdAt: serverTimestamp(),
+      });
+    }
+
+    // Update local state
+    memberData.dogs = updatedDogs;
+    memberData.dogName = updatedDogs[0].name;
+    currentDogs = updatedDogs.map(d => ({ ...d }));
+    updateSidebar();
+    updatePageHeader();
     showNotification('Profile saved!');
   } catch(e) {
     showNotification('Error saving: ' + e.message, 'error');
@@ -672,6 +702,7 @@ function showNotification(message, type = 'success') {
   setTimeout(() => { n.classList.add('dismiss'); setTimeout(() => n.remove(), 300); }, 3000);
 }
   </script>
+
 <!-- Mobile Bottom Nav -->
 <nav class="mobile-bottom-nav">
   <a class="mobile-tab " href="portal-dashboard.html"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="2" y="2" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="2" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="12" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="12" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg><span>Home</span></a>
