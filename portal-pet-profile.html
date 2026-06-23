@@ -581,6 +581,14 @@ function renderDogCards() {
     addBtn.onmouseout  = () => { addBtn.style.background = '#8FA8A2'; };
     addBtn.onclick = addDog;
     container.after(addBtn);
+    // Spacer between button and Home Access
+    let spacer = document.getElementById('addDogSpacer');
+    if (!spacer) {
+      spacer = document.createElement('div');
+      spacer.id = 'addDogSpacer';
+      spacer.style.height = '24px';
+      addBtn.after(spacer);
+    }
   }
 }
 
