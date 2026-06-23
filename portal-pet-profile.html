@@ -540,9 +540,9 @@ function renderProfile() {
 
   // Sidebar
   const firstDog = dogs[0];
-  document.getElementById('sidebarDogName').textContent = firstDog.name || '–';
+  document.getElementById('sidebarDogName').textContent = firstDog.name || '';
   const info = [firstDog.breed, firstDog.age ? `${firstDog.age} old` : ''].filter(Boolean).join(' • ');
-  document.getElementById('sidebarDogInfo').textContent = info || '–';
+  document.getElementById('sidebarDogInfo').textContent = info || '';
 
   // Page header
   const names = dogs.map(d => d.name).filter(Boolean);
@@ -631,8 +631,10 @@ function dogCardHTML(dog, idx, total) {
 window.saveProfile = async () => {
   if (!userId || !memberData) return;
 
-  const dogCount = memberData.dogs?.length || 1;
-  const dogs = Array.from({ length: dogCount }, (_, i) => ({
+  const dogs = memberData.dogs?.length
+    ? memberData.dogs
+    : [{}];
+  const updatedDogs = dogs.map((_, i) => ({
     name:        document.getElementById(`dog_name_${i}`)?.value || '',
     breed:       document.getElementById(`dog_breed_${i}`)?.value || '',
     age:         document.getElementById(`dog_age_${i}`)?.value || '',
@@ -646,10 +648,9 @@ window.saveProfile = async () => {
 
   try {
     await updateDoc(doc(db, 'members', userId), {
-      dogs,
-      // Keep legacy top-level fields in sync with first dog
-      dogName:    dogs[0].name,
-      petBreed:   dogs[0].breed,
+      dogs: updatedDogs,
+      dogName:    updatedDogs[0].name,
+      petBreed:   updatedDogs[0].breed,
       address:    document.getElementById('homeAddress').value,
       parkingNotes: document.getElementById('parkingNotes').value,
       entryCode:  document.getElementById('entryCode').value,
