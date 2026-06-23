@@ -549,9 +549,14 @@ function renderPage() {
 function updateSidebar() {
   const names = currentDogs.map(d => d.name).filter(Boolean);
   document.getElementById('sidebarDogName').textContent = names.join(' & ') || '';
-  const first = currentDogs[0] || {};
-  const info = [first.breed, first.age ? `${first.age} old` : ''].filter(Boolean).join(' • ');
-  document.getElementById('sidebarDogInfo').textContent = info || '';
+  if (currentDogs.length > 1) {
+    document.getElementById('sidebarDogInfo').textContent =
+      currentDogs.map(d => d.breed).filter(Boolean).join(' & ') || '';
+  } else {
+    const first = currentDogs[0] || {};
+    const info = [first.breed, first.age ? `${first.age} old` : ''].filter(Boolean).join(' • ');
+    document.getElementById('sidebarDogInfo').textContent = info || '';
+  }
 }
 
 function updatePageHeader() {

@@ -641,11 +641,13 @@ function populateMemberUI() {
   const firstName = (memberData.name || '').split(' ')[0] || 'back';
   document.getElementById('welcomeHeader').textContent = `Welcome back, ${firstName}`;
 
-  const dog = memberData.dogName || 'your dog';
-  const breed = memberData.petBreed || '';
-  const age = memberData.petAge ? `${memberData.petAge} yr old` : '';
-  document.getElementById('sidebarDogName').textContent = dog;
-  document.getElementById('sidebarDogInfo').textContent = [breed, age].filter(Boolean).join(' • ') || '–';
+  const dogs = memberData.dogs?.length ? memberData.dogs : null;
+  document.getElementById('sidebarDogName').textContent = dogs
+    ? dogs.map(d => d.name).filter(Boolean).join(' & ')
+    : memberData.dogName || '';
+  document.getElementById('sidebarDogInfo').textContent = dogs?.length > 1
+    ? dogs.map(d => d.breed).filter(Boolean).join(' & ')
+    : [memberData.petBreed, memberData.petAge ? `${memberData.petAge} yr old` : ''].filter(Boolean).join(' • ') || '';
   document.getElementById('bannerLabel').textContent = `${dog}'s Walk Routine`;
   document.getElementById('modalDog').textContent = dog;
 
