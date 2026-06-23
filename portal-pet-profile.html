@@ -547,16 +547,14 @@ function renderPage() {
 }
 
 function updateSidebar() {
-  const names = currentDogs.map(d => d.name).filter(Boolean);
-  document.getElementById('sidebarDogName').textContent = names.join(' & ') || '';
-  if (currentDogs.length > 1) {
-    document.getElementById('sidebarDogInfo').textContent =
-      currentDogs.map(d => d.breed).filter(Boolean).join(' & ') || '';
-  } else {
-    const first = currentDogs[0] || {};
-    const info = [first.breed, first.age ? `${first.age} old` : ''].filter(Boolean).join(' • ');
-    document.getElementById('sidebarDogInfo').textContent = info || '';
-  }
+  const sidebarPets = document.getElementById('sidebarPets');
+  sidebarPets.innerHTML = currentDogs.map(d => {
+    const info = [d.breed, d.age ? `${d.age} old` : ''].filter(Boolean).join(' • ');
+    return `<div style="margin-bottom:10px;">
+      <div class="pet-name">${d.name || ''}</div>
+      <div class="pet-info">${info || ''}</div>
+    </div>`;
+  }).join('');
 }
 
 function updatePageHeader() {

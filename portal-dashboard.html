@@ -475,9 +475,9 @@
         <a href="portal-extras.html" class="nav-item">Additional Care</a>
         <a href="portal-account.html" class="nav-item">Account</a>
       </nav>
-      <div class="sidebar-pet">
-        <div class="pet-name" id="sidebarDogName">–</div>
-        <div class="pet-info" id="sidebarDogInfo">–</div>
+      <div class="sidebar-pet" id="sidebarPets">
+        <div class="pet-name" id="sidebarDogName"></div>
+        <div class="pet-info" id="sidebarDogInfo"></div>
       </div>
         <a href="index.html" style="display:block;padding:16px 24px 20px;font-size:11px;color:rgba(255,255,255,0.35);text-decoration:none;letter-spacing:0.04em;border-top:1px solid rgba(255,255,255,0.08);margin-top:auto;">Port City Leash Club</a>
     </div>
@@ -641,13 +641,23 @@ function populateMemberUI() {
   const firstName = (memberData.name || '').split(' ')[0] || 'back';
   document.getElementById('welcomeHeader').textContent = `Welcome back, ${firstName}`;
 
-  const dogs = memberData.dogs?.length ? memberData.dogs : null;
-  document.getElementById('sidebarDogName').textContent = dogs
-    ? dogs.map(d => d.name).filter(Boolean).join(' & ')
-    : memberData.dogName || '';
-  document.getElementById('sidebarDogInfo').textContent = dogs?.length > 1
-    ? dogs.map(d => d.breed).filter(Boolean).join(' & ')
-    : [memberData.petBreed, memberData.petAge ? `${memberData.petAge} yr old` : ''].filter(Boolean).join(' • ') || '';
+  const dogs = memberData.dogs?.length
+    ? memberData.dogs
+    : [{ name: memberData.dogName, breed: memberData.petBreed, age: memberData.petAge ? `${memberData.petAge} years` : '' }];
+  const sidebarPets = document.getElementById('sidebarPets');
+  if (sidebarPets) {
+    sidebarPets.innerHTML = dogs.map(d => {
+      const info = [d.breed, d.age ? `${d.age} old` : ''].filter(Boolean).join(' • ');
+      return `<div style="margin-bottom:10px;">
+        <div class="pet-name">${d.name || ''}</div>
+        <div class="pet-info">${info || ''}</div>
+      </div>`;
+    }).join('');
+  } else {
+    // Fallback for single pet-name/pet-info elements
+    document.getElementById('sidebarDogName').textContent = dogs[0]?.name || '';
+    document.getElementById('sidebarDogInfo').textContent = [dogs[0]?.breed, dogs[0]?.age ? `${dogs[0].age} old` : ''].filter(Boolean).join(' • ');
+  }
   document.getElementById('bannerLabel').textContent = `${dog}'s Walk Routine`;
   document.getElementById('modalDog').textContent = dog;
 
