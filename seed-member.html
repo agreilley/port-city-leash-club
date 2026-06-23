@@ -75,9 +75,14 @@ await setDoc(doc(db, 'members', memberUid), {
   tier: 'Standard',
   status: 'active',
   billingDate: 3,
+  // Legacy single-dog fields (kept for backwards compat)
   dogName: 'Scout',
   petBreed: 'Golden Retriever',
   petAge: 5,
+  // New dogs array
+  dogs: [
+    { name: 'Scout', breed: 'Golden Retriever', age: '5 years', weight: '65 lbs', temperament: 'Friendly, energetic, loves other dogs. Food motivated and responds well to treats.', walkingPrefs: 'Moderate to fast pace. Loves exploring new areas.', triggers: 'Gets excited around other dogs but is friendly. Nervous around loud noises.', medications: '', allergies: '' }
+  ],
   defaultWalkDays: ['Monday', 'Wednesday'],
   defaultTimeSlot: 'Early Morning',
   address: '412 Forest Hills Dr, Wilmington NC 28403',

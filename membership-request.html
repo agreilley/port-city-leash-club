@@ -261,12 +261,15 @@
       <section class="form-section">
         <p class="section-kicker">Step 03</p>
         <h2>Tell us about your dog</h2>
-        <div class="field-grid">
-          <div class="field"><label class="field-label" for="dogName">Dog's name</label><input id="dogName" name="dogName" type="text" placeholder="Example: Scout"></div>
-          <div class="field"><label class="field-label" for="breed">Breed</label><input id="breed" name="breed" type="text" placeholder="Example: Golden Retriever"></div>
-          <div class="field"><label class="field-label" for="age">Age</label><input id="age" name="age" type="text" placeholder="Example: 4 years"></div>
-          <div class="field"><label class="field-label" for="weight">Weight</label><input id="weight" name="weight" type="text" placeholder="Example: 55 lbs"></div>
-        </div>
+        <p class="section-copy">All dogs in the household will be walked together within the same 30-minute visit. If you'd like more time, you can add a 45-minute extended walk.</p>
+
+        <!-- Dog cards container -->
+        <div id="dogsList"></div>
+
+        <!-- Add another dog -->
+        <button type="button" id="addDogBtn" onclick="addDog()" style="margin-top:16px;background:white;border:1px dashed rgba(0,0,0,0.2);border-radius:6px;padding:12px 20px;font-size:13px;font-weight:500;color:var(--text-mid);cursor:pointer;font-family:'DM Sans',sans-serif;width:100%;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--seafoam)';this.style.color='var(--navy)';" onmouseout="this.style.borderColor='rgba(0,0,0,0.2)';this.style.color='var(--text-mid)';">
+          + Add another dog
+        </button>
       </section>
 
       <section class="form-section">
@@ -536,10 +539,12 @@
         phone: document.getElementById('phone')?.value || '',
         address: document.getElementById('address')?.value || '',
         accessNotes: document.getElementById('accessNotes')?.value || '',
-        dogName: document.getElementById('dogName')?.value || '',
-        breed: document.getElementById('breed')?.value || '',
-        age: document.getElementById('age')?.value || '',
-        weight: document.getElementById('weight')?.value || '',
+        dogs: collectDogs(),
+        // legacy single-dog fields for backwards compat
+        dogName: collectDogs()[0]?.name || '',
+        breed: collectDogs()[0]?.breed || '',
+        age: collectDogs()[0]?.age || '',
+        weight: collectDogs()[0]?.weight || '',
         startDate: document.getElementById('startDate')?.value || '',
         timeWindow: document.querySelector('input[name=timeWindow]:checked')?.value || '',
         days: Array.from(document.querySelectorAll('input[name=days]:checked')).map(c=>c.value).join(', '),
@@ -555,6 +560,79 @@
     }
     btn.textContent = 'Request Your Meet & Greet'; btn.disabled = false;
   });
+
+  // ── MULTI-DOG ─────────────────────────────────────────────────────────────
+  let dogCount = 0;
+
+  function dogCardHTML(n) {
+    const isFirst = n === 1;
+    return `
+      <div id="dogCard${n}" style="background:${isFirst?'#fafaf8':'#f4f0ea'};border:1px solid rgba(0,0,0,0.08);border-radius:8px;padding:24px;margin-bottom:14px;position:relative;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+          <div style="font-size:12px;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:var(--seafoam);">
+            ${isFirst ? 'Dog 1' : `Dog ${n}`}
+          </div>
+          ${!isFirst ? `<button type="button" onclick="removeDog(${n})" style="background:none;border:none;font-size:13px;color:var(--text-light);cursor:pointer;padding:4px 8px;border-radius:4px;" onmouseover="this.style.color='var(--rust)'" onmouseout="this.style.color='var(--text-light)'">Remove</button>` : ''}
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label class="field-label">Dog's name</label>
+            <input type="text" name="dog_name_${n}" placeholder="Example: Scout">
+          </div>
+          <div class="field">
+            <label class="field-label">Breed</label>
+            <input type="text" name="dog_breed_${n}" placeholder="Example: Golden Retriever">
+          </div>
+          <div class="field">
+            <label class="field-label">Age</label>
+            <input type="text" name="dog_age_${n}" placeholder="Example: 4 years">
+          </div>
+          <div class="field">
+            <label class="field-label">Weight</label>
+            <input type="text" name="dog_weight_${n}" placeholder="Example: 55 lbs">
+          </div>
+        </div>
+        <div class="field" style="margin-top:14px;">
+          <label class="field-label">Temperament & any notes for your walker</label>
+          <textarea name="dog_notes_${n}" placeholder="E.g. friendly, pulls on leash, nervous around traffic, food motivated…" style="min-height:80px;resize:vertical;"></textarea>
+        </div>
+      </div>
+    `;
+  }
+
+  function addDog() {
+    dogCount++;
+    document.getElementById('dogsList').insertAdjacentHTML('beforeend', dogCardHTML(dogCount));
+    // Hide button once 4 dogs added (edge case ceiling)
+    if (dogCount >= 4) document.getElementById('addDogBtn').style.display = 'none';
+  }
+
+  function removeDog(n) {
+    document.getElementById(`dogCard${n}`)?.remove();
+    if (dogCount >= 4) document.getElementById('addDogBtn').style.display = 'block';
+  }
+
+  function collectDogs() {
+    const dogs = [];
+    for (let i = 1; i <= dogCount; i++) {
+      const card = document.getElementById(`dogCard${i}`);
+      if (!card) continue;
+      dogs.push({
+        name:   card.querySelector(`[name=dog_name_${i}]`)?.value || '',
+        breed:  card.querySelector(`[name=dog_breed_${i}]`)?.value || '',
+        age:    card.querySelector(`[name=dog_age_${i}]`)?.value || '',
+        weight: card.querySelector(`[name=dog_weight_${i}]`)?.value || '',
+        notes:  card.querySelector(`[name=dog_notes_${i}]`)?.value || '',
+      });
+    }
+    return dogs;
+  }
+
+  window.addDog = addDog;
+  window.removeDog = removeDog;
+
+  // Initialize with one dog on load
+  addDog();
 
   // ── MEET & GREET CALENDAR ─────────────────────────────────────────────────
   let mgYear = new Date().getFullYear();
