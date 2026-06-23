@@ -201,6 +201,11 @@
       font-weight: 500;
     }
 
+    .calendar-day.scheduled.extended {
+      background: #C17B6F;
+      outline: 2px solid #0D1B2A;
+      outline-offset: -3px;
+    }
     .calendar-day.overnight-confirmed {
       background: #E8F4F0;
       color: #2D7A5E;
@@ -704,8 +709,9 @@ function populateMemberUI() {
     document.getElementById('sidebarDogName').textContent = dogs[0]?.name || '';
     document.getElementById('sidebarDogInfo').textContent = [dogs[0]?.breed, dogs[0]?.age ? `${dogs[0].age} old` : ''].filter(Boolean).join(' • ');
   }
-  document.getElementById('bannerLabel').textContent = `${dog}'s Walk Routine`;
-  document.getElementById('modalDog').textContent = dog;
+  const dogNames = dogs.map(d => d.name).filter(Boolean).join(' & ') || 'your dog';
+  document.getElementById('bannerLabel').textContent = `${dogNames}'s Walk Routine`;
+  document.getElementById('modalDog').textContent = dogNames;
 
   // Tier card
   const tier = memberData.tier || 'Standard';
@@ -805,6 +811,7 @@ function updateMetrics() {
             dayEl.classList.add('completed');
           } else {
             dayEl.classList.add('scheduled');
+            if (w.extended) dayEl.classList.add('extended');
             dayEl.style.cursor = 'pointer';
             dayEl.onclick = () => openWalkModal(w, cellDate);
           }
@@ -836,7 +843,9 @@ function updateMetrics() {
       document.getElementById('modalDate').textContent = formatDateString(date);
       const slotLabel = { morning: 'Morning (7–10am)', 'early-afternoon': 'Early Afternoon (11am–2pm)', 'late-afternoon': 'Late Afternoon (2–5pm)' };
       document.getElementById('modalTime').textContent = slotLabel[walk.timeSlot] || walk.timeSlot || '–';
-      document.getElementById('modalDuration').textContent = walk.extended ? '45-minute walk' : (walk.duration || '30-minute walk');
+      // Always read from the live myWalks array so extended flag is current
+      const liveWalk = myWalks.find(w => w.id === walk.id) || walk;
+      document.getElementById('modalDuration').textContent = liveWalk.extended ? '45-minute walk' : (liveWalk.duration || '30-minute walk');
       // Show all dogs in the household
       const dogs = memberData?.dogs?.length
         ? memberData.dogs.map(d => d.name).filter(Boolean).join(' & ')
