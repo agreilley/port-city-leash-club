@@ -575,10 +575,10 @@ function renderDogCards() {
     addBtn = document.createElement('button');
     addBtn.id = 'addDogBtn';
     addBtn.type = 'button';
-    addBtn.style.cssText = 'margin-top:12px;background:white;border:1px dashed rgba(0,0,0,0.2);border-radius:6px;padding:12px 20px;font-size:13px;font-weight:500;color:#7A7A7A;cursor:pointer;font-family:inherit;width:100%;transition:all 0.2s;';
+    addBtn.style.cssText = 'margin-top:12px;background:#8FA8A2;border:none;border-radius:6px;padding:14px 24px;font-size:14px;font-weight:500;color:white;cursor:pointer;font-family:inherit;width:100%;transition:background 0.2s;letter-spacing:0.02em;';
     addBtn.textContent = '+ Add a dog';
-    addBtn.onmouseover = () => { addBtn.style.borderColor = '#8FA8A2'; addBtn.style.color = '#0D1B2A'; };
-    addBtn.onmouseout  = () => { addBtn.style.borderColor = 'rgba(0,0,0,0.2)'; addBtn.style.color = '#7A7A7A'; };
+    addBtn.onmouseover = () => { addBtn.style.background = '#7a9690'; };
+    addBtn.onmouseout  = () => { addBtn.style.background = '#8FA8A2'; };
     addBtn.onclick = addDog;
     container.after(addBtn);
   }
