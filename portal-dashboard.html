@@ -762,8 +762,12 @@ function updateMetrics() {
       document.getElementById('modalDate').textContent = formatDateString(date);
       const slotLabel = { morning: 'Morning (7–10am)', 'early-afternoon': 'Early Afternoon (11am–2pm)', 'late-afternoon': 'Late Afternoon (2–5pm)' };
       document.getElementById('modalTime').textContent = slotLabel[walk.timeSlot] || walk.timeSlot || '–';
-      document.getElementById('modalDuration').textContent = walk.duration || '30-minute walk';
-      document.getElementById('modalDog').textContent = memberData?.dogName || '–';
+      document.getElementById('modalDuration').textContent = walk.extended ? '45-minute walk' : (walk.duration || '30-minute walk');
+      // Show all dogs in the household
+      const dogs = memberData?.dogs?.length
+        ? memberData.dogs.map(d => d.name).filter(Boolean).join(' & ')
+        : memberData?.dogName || '–';
+      document.getElementById('modalDog').textContent = dogs;
       sessionStorage.setItem('walkDate', formatDateString(date));
       sessionStorage.setItem('walkTime', document.getElementById('modalTime').textContent);
       sessionStorage.setItem('activeWalkId', walk.id);

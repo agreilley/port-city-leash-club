@@ -197,7 +197,7 @@
   <div class="page-header">
     <div class="eyebrow">The Leash Club</div>
     <h1>Extend a Walk</h1>
-    <p>Select upcoming walks you'd like to upgrade to 45 minutes. Scout gets more time — you get more peace of mind.</p>
+    <p id="pageSubtitle">Select upcoming walks you'd like to upgrade to 45 minutes.</p>
   </div>
 
   <div class="upcharge-banner">
@@ -206,99 +206,15 @@
   </div>
 
   <div class="layout">
-
-    <!-- Walk List -->
     <div>
-      <div class="walks-card">
-        <div class="walks-month">June 2026</div>
-
-        <div class="walk-row" onclick="toggleWalk(this)" data-date="Mon Jun 23">
-          <div class="walk-checkbox"><span class="walk-checkbox-tick">✓</span></div>
-          <div class="walk-date"><div class="walk-date-day">23</div><div class="walk-date-weekday">Mon</div></div>
-          <div class="walk-divider"></div>
-          <div class="walk-info">
-            <div class="walk-time">Early Morning · 8:15am</div>
-            <div class="walk-walker">With Marcus</div>
-          </div>
-          <div class="walk-current-length">30 min</div>
-          <div class="walk-extended-badge">45 min ✓</div>
-          <div class="walk-price">$12</div>
-        </div>
-
-        <div class="walk-row" onclick="toggleWalk(this)" data-date="Wed Jun 25">
-          <div class="walk-checkbox"><span class="walk-checkbox-tick">✓</span></div>
-          <div class="walk-date"><div class="walk-date-day">25</div><div class="walk-date-weekday">Wed</div></div>
-          <div class="walk-divider"></div>
-          <div class="walk-info">
-            <div class="walk-time">Early Morning · 8:15am</div>
-            <div class="walk-walker">With Marcus</div>
-          </div>
-          <div class="walk-current-length">30 min</div>
-          <div class="walk-extended-badge">45 min ✓</div>
-          <div class="walk-price">$12</div>
-        </div>
-
-        <div class="walk-row" onclick="toggleWalk(this)" data-date="Fri Jun 27">
-          <div class="walk-checkbox"><span class="walk-checkbox-tick">✓</span></div>
-          <div class="walk-date"><div class="walk-date-day">27</div><div class="walk-date-weekday">Fri</div></div>
-          <div class="walk-divider"></div>
-          <div class="walk-info">
-            <div class="walk-time">Early Morning · 8:15am</div>
-            <div class="walk-walker">With Marcus</div>
-          </div>
-          <div class="walk-current-length">30 min</div>
-          <div class="walk-extended-badge">45 min ✓</div>
-          <div class="walk-price">$12</div>
-        </div>
-
-        <div class="walks-month">July 2026</div>
-
-        <div class="walk-row" onclick="toggleWalk(this)" data-date="Mon Jun 30">
-          <div class="walk-checkbox"><span class="walk-checkbox-tick">✓</span></div>
-          <div class="walk-date"><div class="walk-date-day">30</div><div class="walk-date-weekday">Mon</div></div>
-          <div class="walk-divider"></div>
-          <div class="walk-info">
-            <div class="walk-time">Early Morning · 8:15am</div>
-            <div class="walk-walker">With Marcus</div>
-          </div>
-          <div class="walk-current-length">30 min</div>
-          <div class="walk-extended-badge">45 min ✓</div>
-          <div class="walk-price">$12</div>
-        </div>
-
-        <div class="walk-row" onclick="toggleWalk(this)" data-date="Wed Jul 2">
-          <div class="walk-checkbox"><span class="walk-checkbox-tick">✓</span></div>
-          <div class="walk-date"><div class="walk-date-day">2</div><div class="walk-date-weekday">Wed</div></div>
-          <div class="walk-divider"></div>
-          <div class="walk-info">
-            <div class="walk-time">Early Morning · 8:15am</div>
-            <div class="walk-walker">With Marcus</div>
-          </div>
-          <div class="walk-current-length">30 min</div>
-          <div class="walk-extended-badge">45 min ✓</div>
-          <div class="walk-price">$12</div>
-        </div>
-
-        <div class="walk-row" onclick="toggleWalk(this)" data-date="Fri Jul 4">
-          <div class="walk-checkbox"><span class="walk-checkbox-tick">✓</span></div>
-          <div class="walk-date"><div class="walk-date-day">4</div><div class="walk-date-weekday">Fri</div></div>
-          <div class="walk-divider"></div>
-          <div class="walk-info">
-            <div class="walk-time">Early Morning · 8:15am</div>
-            <div class="walk-walker">With Marcus</div>
-          </div>
-          <div class="walk-current-length">30 min</div>
-          <div class="walk-extended-badge">45 min ✓</div>
-          <div class="walk-price">$12</div>
-        </div>
-
+      <div class="walks-card" id="walksContainer">
+        <div style="text-align:center;padding:32px;color:#7A7A7A;font-size:14px;">Loading walks…</div>
       </div>
     </div>
 
-    <!-- Summary -->
     <div class="summary-card">
       <div class="summary-kicker">Order Summary</div>
-      <div class="summary-title">Scout's Extended Walks</div>
+      <div class="summary-title" id="summaryTitle">Extended Walks</div>
       <div class="summary-total" id="summaryTotal">$0</div>
       <div class="summary-sub">Estimated total</div>
       <div id="summaryLines">
@@ -306,54 +222,186 @@
       </div>
       <button class="btn-confirm" id="confirmBtn" disabled onclick="confirmExtensions()">Confirm Extensions</button>
     </div>
-
   </div>
 </div>
 
-<script>
-  const selected = new Set();
-  const PRICE = 12;
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getFirestore, doc, getDoc, collection, query, where, getDocs, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
-  function toggleWalk(row) {
-    const date = row.dataset.date;
-    if (selected.has(date)) {
-      selected.delete(date);
-      row.classList.remove('selected');
-    } else {
-      selected.add(date);
-      row.classList.add('selected');
+const firebaseConfig = {
+  apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
+  authDomain: "port-city-leash-club-827ab.firebaseapp.com",
+  projectId: "port-city-leash-club-827ab",
+  storageBucket: "port-city-leash-club-827ab.firebasestorage.app",
+  messagingSenderId: "649385306352",
+  appId: "1:649385306352:web:8e8a6fcbe8a7eff29dfa35"
+};
+
+const app = initializeApp(firebaseConfig, 'member-app');
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const PRICE = 12;
+const selected = new Set(); // walk IDs selected for extension
+let upcomingWalks = [];
+let memberData = null;
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href = 'portal-login.html'; return; }
+
+  try {
+    const memberSnap = await getDoc(doc(db, 'members', user.uid));
+    if (memberSnap.exists()) {
+      memberData = memberSnap.data();
+      const dogs = memberData.dogs?.map(d => d.name).filter(Boolean) || [memberData.dogName];
+      const dogLabel = dogs.join(' & ');
+      document.getElementById('summaryTitle').textContent = `${dogLabel}'s Extended Walks`;
+      document.getElementById('pageSubtitle').textContent =
+        `Select upcoming walks you'd like to upgrade to 45 minutes. ${dogLabel} get${dogs.length > 1 ? '' : 's'} more time — you get more peace of mind.`;
     }
-    updateSummary();
+
+    const now = new Date(); now.setHours(0,0,0,0);
+    const walksSnap = await getDocs(query(
+      collection(db, 'walks'),
+      where('memberId', '==', user.uid)
+    ));
+
+    upcomingWalks = walksSnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(w => {
+        const d = w.date?.toDate?.() || new Date(w.date);
+        return d >= now && w.status !== 'cancelled' && w.status !== 'completed';
+      })
+      .sort((a, b) => {
+        const da = a.date?.toDate?.() || new Date(a.date);
+        const db_ = b.date?.toDate?.() || new Date(b.date);
+        return da - db_;
+      });
+
+    renderWalks();
+  } catch(e) {
+    console.error(e);
+    document.getElementById('walksContainer').innerHTML =
+      '<div style="text-align:center;padding:32px;color:#C17B6F;font-size:14px;">Error loading walks. Please refresh.</div>';
+  }
+});
+
+function renderWalks() {
+  const container = document.getElementById('walksContainer');
+  if (!upcomingWalks.length) {
+    container.innerHTML = '<div style="text-align:center;padding:32px;color:#7A7A7A;font-size:14px;">No upcoming walks to extend.</div>';
+    return;
   }
 
-  function updateSummary() {
-    const count = selected.size;
-    const total = count * PRICE;
-    document.getElementById('summaryTotal').textContent = `$${total}`;
+  const slotLabel = { morning: 'Morning', 'early-afternoon': 'Early Afternoon', 'late-afternoon': 'Late Afternoon' };
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-    const btn = document.getElementById('confirmBtn');
-    btn.disabled = count === 0;
+  let currentMonth = '';
+  let html = '';
 
-    if (count === 0) {
-      document.getElementById('summaryLines').innerHTML = '<div class="summary-empty">Select walks above to see your total.</div>';
-      return;
+  upcomingWalks.forEach(walk => {
+    const date = walk.date?.toDate?.() || new Date(walk.date);
+    const month = `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
+    if (month !== currentMonth) {
+      html += `<div class="walks-month">${month}</div>`;
+      currentMonth = month;
     }
 
-    const dates = Array.from(selected).sort();
-    let lines = dates.map(d =>
-      `<div class="summary-line"><span>${d}</span><strong>$${PRICE}</strong></div>`
-    ).join('');
-    lines += `<div class="summary-line" style="border-top:1px solid rgba(255,255,255,0.2);margin-top:4px;padding-top:14px;"><span>${count} walk${count > 1 ? 's' : ''} extended</span><strong>$${total}</strong></div>`;
-    document.getElementById('summaryLines').innerHTML = lines;
+    const alreadyExtended = walk.extended === true;
+    const isSelected = selected.has(walk.id);
+
+    html += `
+      <div class="walk-row ${isSelected ? 'selected' : ''} ${alreadyExtended ? 'already-extended' : ''}"
+           onclick="${alreadyExtended ? '' : `toggleWalk('${walk.id}', this)`}"
+           style="${alreadyExtended ? 'opacity:0.6;cursor:default;' : 'cursor:pointer;'}"
+           data-id="${walk.id}">
+        <div class="walk-checkbox"><span class="walk-checkbox-tick">✓</span></div>
+        <div class="walk-date">
+          <div class="walk-date-day">${date.getDate()}</div>
+          <div class="walk-date-weekday">${dayNames[date.getDay()]}</div>
+        </div>
+        <div class="walk-divider"></div>
+        <div class="walk-info">
+          <div class="walk-time">${slotLabel[walk.timeSlot] || walk.timeSlot || '–'}</div>
+          <div class="walk-walker">${walk.walkerName ? `With ${walk.walkerName}` : ''}</div>
+        </div>
+        <div class="walk-current-length">${alreadyExtended ? '45 min' : '30 min'}</div>
+        <div class="walk-extended-badge">${alreadyExtended ? 'Already 45 min' : '45 min ✓'}</div>
+        <div class="walk-price">${alreadyExtended ? '' : '$12'}</div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+}
+
+window.toggleWalk = (walkId, row) => {
+  if (selected.has(walkId)) {
+    selected.delete(walkId);
+    row.classList.remove('selected');
+  } else {
+    selected.add(walkId);
+    row.classList.add('selected');
+  }
+  updateSummary();
+};
+
+function updateSummary() {
+  const count = selected.size;
+  const total = count * PRICE;
+  document.getElementById('summaryTotal').textContent = `$${total}`;
+  document.getElementById('confirmBtn').disabled = count === 0;
+
+  if (count === 0) {
+    document.getElementById('summaryLines').innerHTML = '<div class="summary-empty">Select walks above to see your total.</div>';
+    return;
   }
 
-  function confirmExtensions() {
+  const selectedWalks = upcomingWalks.filter(w => selected.has(w.id));
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  let lines = selectedWalks.map(w => {
+    const d = w.date?.toDate?.() || new Date(w.date);
+    const label = `${dayNames[d.getDay()]} ${monthNames[d.getMonth()]} ${d.getDate()}`;
+    return `<div class="summary-line"><span>${label}</span><strong>$${PRICE}</strong></div>`;
+  }).join('');
+  lines += `<div class="summary-line" style="border-top:1px solid rgba(255,255,255,0.2);margin-top:4px;padding-top:14px;"><span>${count} walk${count > 1 ? 's' : ''} extended</span><strong>$${total}</strong></div>`;
+  document.getElementById('summaryLines').innerHTML = lines;
+}
+
+window.confirmExtensions = async () => {
+  const btn = document.getElementById('confirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  try {
+    await Promise.all(
+      Array.from(selected).map(walkId =>
+        updateDoc(doc(db, 'walks', walkId), {
+          extended: true,
+          duration: '45-minute walk',
+        })
+      )
+    );
+
     const n = document.createElement('div');
     n.className = 'notification';
-    n.textContent = `${selected.size} walk${selected.size > 1 ? 's' : ''} extended to 45 minutes. We'll confirm shortly.`;
+    n.textContent = `${selected.size} walk${selected.size > 1 ? 's' : ''} upgraded to 45 minutes.`;
     document.body.appendChild(n);
-    setTimeout(() => { n.style.opacity = '0'; setTimeout(() => { n.remove(); window.location.href = 'portal-extras.html'; }, 300); }, 2500);
+    setTimeout(() => {
+      n.style.opacity = '0';
+      setTimeout(() => { n.remove(); window.location.href = 'portal-extras.html'; }, 300);
+    }, 2000);
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = 'Confirm Extensions';
+    alert('Error saving: ' + e.message);
   }
+};
 </script>
 <!-- Mobile Bottom Nav -->
 <nav class="mobile-bottom-nav">
