@@ -75,6 +75,10 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAdmin();
     }
+    match /overnights/{id} {
+      allow read, write: if isAdmin();
+      allow read: if request.auth != null && resource.data.memberId == request.auth.uid;
+    }
   }
 }`;
 

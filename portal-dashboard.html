@@ -201,7 +201,17 @@
       font-weight: 500;
     }
 
-    .calendar-day.completed {
+    .calendar-day.overnight-confirmed {
+      background: #E8F4F0;
+      color: #2D7A5E;
+      border: 1.5px solid #8FA8A2;
+      font-weight: 500;
+    }
+    .calendar-day.overnight-pending {
+      background: #FEF9EC;
+      color: #92400E;
+      border: 1.5px dashed #D4A843;
+    }
       background: #8FA8A2;
       color: white;
       opacity: 0.6;
@@ -553,6 +563,14 @@
               <div class="legend-color" style="background: #8FA8A2;"></div>
               <span>Completed walks</span>
             </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background: #E8F4F0; border: 1.5px solid #8FA8A2;"></div>
+              <span>Overnight (confirmed)</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background: #FEF9EC; border: 1.5px dashed #D4A843;"></div>
+              <span>Overnight (pending)</span>
+            </div>
             <div class="legend-item" style="margin-left: auto; color: #888;">
               Click a walk to reschedule
             </div>
@@ -594,7 +612,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getFirestore, doc, getDoc, collection, query, where, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-
 const firebaseConfig = {
   apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
   authDomain: "port-city-leash-club-827ab.firebaseapp.com",
@@ -610,6 +627,7 @@ const db = getFirestore(app);
 
 let memberData = null;
 let myWalks = [];
+let myOvernights = []; // confirmed overnights + pending requests
 const today = new Date(); today.setHours(0,0,0,0);
     let currentDate = new Date(today.getFullYear(), today.getMonth(), 1);
 
@@ -625,13 +643,41 @@ onAuthStateChanged(auth, async (user) => {
   } catch(e) { console.error('member load:', e.message); }
 
   // Real-time walks subscription
-  const q = query(collection(db, 'walks'), where('memberId', '==', user.uid));
-  onSnapshot(q, (snap) => {
+  const walksQ = query(collection(db, 'walks'), where('memberId', '==', user.uid));
+  onSnapshot(walksQ, (snap) => {
     myWalks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     updateMetrics();
     generateCalendar();
   });
+
+  // Real-time overnights (confirmed)
+  const overnightsQ = query(collection(db, 'overnights'), where('memberId', '==', user.uid));
+  onSnapshot(overnightsQ, () => {
+    loadOvernights(user.uid);
+  });
+
+  // Real-time pending overnight submissions
+  const pendingQ = query(collection(db, 'submissions'), where('memberId', '==', user.uid), where('type', '==', 'overnight_request'));
+  onSnapshot(pendingQ, () => {
+    loadOvernights(user.uid);
+  });
 });
+
+async function loadOvernights(uid) {
+  try {
+    const { getDocs } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+    const [confirmedSnap, pendingSnap] = await Promise.all([
+      getDocs(query(collection(db, 'overnights'), where('memberId', '==', uid))),
+      getDocs(query(collection(db, 'submissions'), where('memberId', '==', uid), where('type', '==', 'overnight_request'))),
+    ]);
+    const confirmed = confirmedSnap.docs.map(d => ({ id: d.id, ...d.data(), calendarType: 'overnight', status: 'confirmed' }));
+    const pending   = pendingSnap.docs
+      .map(d => ({ id: d.id, ...d.data(), calendarType: 'overnight', status: 'pending' }))
+      .filter(s => s.status !== 'confirmed'); // exclude already confirmed
+    myOvernights = [...confirmed, ...pending];
+    generateCalendar();
+  } catch(e) { console.error('overnights load:', e.message); }
+}
 
 window.signOutMember = () => signOut(auth).then(() => window.location.href = 'portal-login.html');
 
@@ -715,12 +761,24 @@ function updateMetrics() {
       const firstDay = new Date(year, month, 1).getDay();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-      // Build a map of day → walk for this month
+      // Map of day → walk
       const walkMap = {};
       myWalks.forEach(w => {
         const d = w.date?.toDate?.() || new Date(w.date);
         if (d.getFullYear() === year && d.getMonth() === month) {
           walkMap[d.getDate()] = w;
+        }
+      });
+
+      // Map of day → overnight (pending or confirmed) — spans multiple days
+      const overnightMap = {};
+      myOvernights.forEach(o => {
+        const start = o.startDate?.toDate?.() || new Date(o.startDate);
+        const end   = o.endDate?.toDate?.()   || new Date(o.endDate);
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          if (d.getFullYear() === year && d.getMonth() === month) {
+            overnightMap[d.getDate()] = o;
+          }
         }
       });
 
@@ -737,7 +795,11 @@ function updateMetrics() {
         const cellDate = new Date(year, month, day); cellDate.setHours(0,0,0,0);
         if (cellDate.getTime() === today.getTime()) dayEl.classList.add('today');
 
-        if (walkMap[day]) {
+        if (overnightMap[day]) {
+          const o = overnightMap[day];
+          dayEl.classList.add(o.status === 'confirmed' ? 'overnight-confirmed' : 'overnight-pending');
+          dayEl.title = o.status === 'confirmed' ? 'Overnight stay (confirmed)' : 'Overnight stay (pending confirmation)';
+        } else if (walkMap[day]) {
           const w = walkMap[day];
           if (w.status === 'completed') {
             dayEl.classList.add('completed');

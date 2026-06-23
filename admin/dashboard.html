@@ -754,7 +754,7 @@ function renderInbox() {
   const container = document.getElementById('inboxList');
   const filtered = currentInboxFilter === 'all' ? allInbox : allInbox.filter(i => i.type === currentInboxFilter);
   if (!filtered.length) { container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📬</div><div class="empty-state-title">No submissions yet</div></div>'; return; }
-  const typeLabels = { membership_request: 'Membership', service_request: 'Service', application: 'Application', contact: 'Contact', dog_update: 'Dog Update' };
+  const typeLabels = { membership_request: 'Membership', service_request: 'Service', application: 'Application', contact: 'Contact', dog_update: 'Dog Update', overnight_request: 'Overnight' };
   container.innerHTML = filtered.map(item => {
     const time = item.createdAt?.toDate?.() ? item.createdAt.toDate().toLocaleDateString('en-US', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '–';
     const typeClass = item.type?.replace('_request','').replace('_','') || 'contact';
@@ -942,13 +942,45 @@ window.openInboxItem = async (id) => {
     .filter(([k]) => !['id','type','read','createdAt'].includes(k))
     .map(([k,v]) => `<div class="modal-field"><div class="modal-label">${k}</div><div class="modal-value">${v || '–'}</div></div>`)
     .join('');
-  document.getElementById('inboxModalTitle').textContent = item.name || item.ownerName || 'Submission';
+  document.getElementById('inboxModalTitle').textContent = item.name || item.ownerName || item.memberName || 'Submission';
   document.getElementById('inboxModalContent').innerHTML = `<div class="form-grid">${fieldHTML}</div>`;
   const actionBtn = document.getElementById('inboxActionBtn');
-  if (item.type === 'membership_request') { actionBtn.textContent = 'Convert to Member'; actionBtn.style.display = 'block'; }
-  else if (item.type === 'application') { actionBtn.textContent = 'Add as Walker'; actionBtn.style.display = 'block'; }
+  if (item.type === 'membership_request') { actionBtn.textContent = 'Convert to Member'; actionBtn.style.display = 'block'; actionBtn.onclick = null; }
+  else if (item.type === 'application') { actionBtn.textContent = 'Add as Walker'; actionBtn.style.display = 'block'; actionBtn.onclick = null; }
+  else if (item.type === 'overnight_request' && item.status !== 'confirmed') {
+    actionBtn.textContent = 'Confirm Overnight';
+    actionBtn.style.display = 'block';
+    actionBtn.onclick = () => confirmOvernight(item.id, item);
+  }
   else actionBtn.style.display = 'none';
   document.getElementById('inboxModal').classList.add('open');
+};
+
+window.confirmOvernight = async (submissionId, item) => {
+  const btn = document.getElementById('inboxActionBtn');
+  btn.textContent = 'Confirming…'; btn.disabled = true;
+  try {
+    // Write to overnights collection
+    await addDoc(collection(db, 'overnights'), {
+      memberId:    item.memberId || '',
+      memberName:  item.memberName || item.name || '',
+      dogName:     item.dogName || '',
+      startDate:   item.startDate || null,
+      endDate:     item.endDate || null,
+      serviceType: item.serviceType || 'overnight',
+      notes:       item.notes || '',
+      status:      'confirmed',
+      confirmedAt: serverTimestamp(),
+      submissionId: submissionId,
+    });
+    // Mark submission as confirmed
+    await updateDoc(doc(db, 'submissions', submissionId), { status: 'confirmed', read: true });
+    closeModal('inboxModal');
+    showToast('Overnight stay confirmed');
+  } catch(e) {
+    btn.textContent = 'Confirm Overnight'; btn.disabled = false;
+    alert('Error: ' + e.message);
+  }
 };
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
