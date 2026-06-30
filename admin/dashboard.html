@@ -76,6 +76,7 @@
   .walk-chip.early-afternoon { background: #EEF2FF; color: #3730A3; }
   .walk-chip.late-afternoon { background: #FEF3C7; color: #92400E; }
   .walk-chip.unassigned { background: #FEE2E2; color: #991B1B; }
+  .walk-chip.overnight  { background: #E8F4F0; color: #2D7A5E; }
   .walk-chip.completed { background: var(--sand); color: var(--text-light); }
 
   /* ── CALENDAR LEGEND ── */
@@ -245,6 +246,7 @@
         <div class="legend-item"><div class="legend-dot" style="background:#EEF2FF;border:1px solid #3730A3;"></div> Early Afternoon</div>
         <div class="legend-item"><div class="legend-dot" style="background:#FEF3C7;border:1px solid #92400E;"></div> Late Afternoon</div>
         <div class="legend-item"><div class="legend-dot" style="background:#FEE2E2;border:1px solid #991B1B;"></div> Unassigned</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#E8F4F0;border:1px solid #8FA8A2;"></div> Overnight</div>
       </div>
       <div class="calendar-header">
         <div class="calendar-nav">
@@ -519,6 +521,7 @@ let allWalks = [], allMembers = [], allWalkers = [], allInbox = [];
 let calendarYear = new Date().getFullYear();
 let calendarMonth = new Date().getMonth();
 let currentInboxFilter = 'all';
+let allOvernights = [];
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 function initDashboard() {
@@ -526,6 +529,7 @@ function initDashboard() {
   subscribeMembers();
   subscribeWalkers();
   subscribeInbox();
+  subscribeOvernights();
   renderCalendar();
 }
 
@@ -537,6 +541,13 @@ function subscribeWalks() {
     renderUpcomingWalks();
     renderCalendarDays();
     updateStats();
+  });
+}
+
+function subscribeOvernights() {
+  onSnapshot(collection(db, 'overnights'), snap => {
+    allOvernights = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderCalendarDays();
   });
 }
 
@@ -653,6 +664,20 @@ function renderCalendarDays() {
     html += `<div class="calendar-day other-month"><div class="day-num">${daysInPrev - i}</div></div>`;
   }
 
+  // Build overnight map: day → overnight doc
+  const overnightMap = {};
+  allOvernights.forEach(o => {
+    const start = o.startDate?.toDate?.() || new Date(o.startDate);
+    const end   = o.endDate?.toDate?.()   || new Date(o.endDate);
+    const s = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const e = new Date(end.getFullYear(),   end.getMonth(),   end.getDate());
+    for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+      if (d.getFullYear() === calendarYear && d.getMonth() === calendarMonth) {
+        overnightMap[d.getDate()] = o;
+      }
+    }
+  });
+
   // Current month days
   for (let d = 1; d <= daysInMonth; d++) {
     const isToday = d === today.getDate() && calendarMonth === today.getMonth() && calendarYear === today.getFullYear();
@@ -670,7 +695,10 @@ function renderCalendarDays() {
       const label = walker ? `${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`;
       return `<div class="walk-chip ${cls}" onclick="openWalkModal('${w.id}')" title="${label}">${label}</div>`;
     }).join('');
-    html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}</div>`;
+    const overnightChip = overnightMap[d]
+      ? `<div class="walk-chip overnight" title="${overnightMap[d].memberName || overnightMap[d].memberId} · Overnight">🌙 ${overnightMap[d].memberName || 'Overnight'}</div>`
+      : '';
+    html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}</div>`;
   }
 
   // Next month padding
