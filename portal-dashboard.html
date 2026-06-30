@@ -794,7 +794,10 @@ function updateMetrics() {
       myOvernights.forEach(o => {
         const start = o.startDate?.toDate?.() || new Date(o.startDate);
         const end   = o.endDate?.toDate?.()   || new Date(o.endDate);
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        // Iterate by local date to avoid timezone off-by-one
+        const s = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+        const e = new Date(end.getFullYear(),   end.getMonth(),   end.getDate());
+        for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
           if (d.getFullYear() === year && d.getMonth() === month) {
             overnightMap[d.getDate()] = o;
           }

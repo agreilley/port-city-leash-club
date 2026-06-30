@@ -357,13 +357,20 @@
       const memberSnap = await fsGetDoc(fsDoc(db2, 'members', user.uid));
       const memberName = memberSnap.exists() ? (memberSnap.data().name || '') : '';
 
+      // Parse date strings without timezone shift (treat as local dates)
+      function localDateToTimestamp(str) {
+        if (!str) return null;
+        const [y, m, d] = str.split('-').map(Number);
+        return Timestamp.fromDate(new Date(y, m - 1, d, 12, 0, 0)); // noon local time avoids DST issues
+      }
+
       const data = {
         type: isOvernight ? 'overnight_request' : 'service_request',
         memberId:   user.uid,
         memberName: memberName,
         service,
-        startDate:  startStr ? Timestamp.fromDate(new Date(startStr)) : null,
-        endDate:    endStr   ? Timestamp.fromDate(new Date(endStr))   : null,
+        startDate:  localDateToTimestamp(startStr),
+        endDate:    localDateToTimestamp(endStr),
         notes:      document.querySelector('textarea[name=notes]')?.value || '',
         addonExtraPet:   document.getElementById('addonExtraPet')?.checked  || false,
         addonMedication: document.getElementById('addonMedication')?.checked || false,
