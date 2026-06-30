@@ -976,7 +976,12 @@ window.confirmOvernight = async (submissionId, item) => {
     // Mark submission as confirmed
     await updateDoc(doc(db, 'submissions', submissionId), { status: 'confirmed', read: true });
     closeModal('inboxModal');
-    showToast('Overnight stay confirmed');
+    // Show brief success message
+    const msg = document.createElement('div');
+    msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2D9E5E;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
+    msg.textContent = 'Overnight stay confirmed';
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 3000);
   } catch(e) {
     btn.textContent = 'Confirm Overnight'; btn.disabled = false;
     alert('Error: ' + e.message);
