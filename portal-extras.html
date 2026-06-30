@@ -542,8 +542,10 @@
         <a href="portal-account.html" class="nav-item">Account</a>
       </nav>
       <div class="sidebar-pet">
-        <div class="pet-name">Scout</div>
-        <div class="pet-info">Golden Retriever • 5 years old</div>
+        <div id="sidebarPets">
+          <div class="pet-name" id="sidebarPetName">Scout</div>
+          <div class="pet-info" id="sidebarPetInfo">Golden Retriever • 5 years old</div>
+        </div>
       </div>
         <a href="index.html" style="display:block;padding:16px 24px 20px;font-size:11px;color:rgba(255,255,255,0.35);text-decoration:none;letter-spacing:0.04em;border-top:1px solid rgba(255,255,255,0.08);margin-top:auto;">Port City Leash Club</a>
     </div>
@@ -553,7 +555,7 @@
       <div class="content-max">
         <div class="page-header">
           <h1>Additional Care</h1>
-          <p>Extra support for Scout, whenever you need it</p>
+          <p id="pageSubtitle" data-prefix="" data-suffix="'s extra care options">Extra support, whenever you need it</p>
         </div>
 
         <!-- Pet Sitting -->
@@ -564,7 +566,7 @@
             <!-- Overnight Stay -->
             <div class="service-card" style="display:flex;flex-direction:column;">
               <h3>Overnight Stay</h3>
-              <p>Around-the-clock care for Scout, including evening settling, overnight supervision, and daytime check-ins tailored to their routine.</p>
+              <p>Around-the-clock care, including evening settling, overnight supervision, and daytime check-ins tailored to their routine.</p>
               <div style="font-size: 22px; font-weight: 600; color: #0D1B2A; margin: 16px 0 20px;">$115 <span style="font-size: 13px; font-weight: 400; color: #7A7A7A;">/ night</span></div>
               <a href="portal-request-extras.html?service=overnight" style="text-decoration: none; margin-top: auto;">
                 <button class="btn-primary" style="width: 100%;">Book Now</button>
@@ -574,7 +576,7 @@
             <!-- Check-In Visit -->
             <div class="service-card" style="display:flex;flex-direction:column;">
               <h3>Check-In Visit</h3>
-              <p>A 20-minute drop-in for a potty break, playtime, and a photo update. Ideal for short trips or days when Scout needs extra attention.</p>
+              <p>A 20-minute drop-in for a potty break, playtime, and a photo update. Ideal for short trips or days when they need extra attention.</p>
               <div style="font-size: 22px; font-weight: 600; color: #0D1B2A; margin: 16px 0 20px;">$25 <span style="font-size: 13px; font-weight: 400; color: #7A7A7A;">/ visit</span></div>
               <a href="portal-request-extras.html?service=checkin" style="text-decoration: none; margin-top: auto;">
                 <button class="btn-primary" style="width: 100%;">Book Now</button>
@@ -797,6 +799,45 @@
       }, 3000);
     }
   </script>
+<script type="module">
+import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getFirestore, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
+const app = getApps().find(a => a.name === 'member-app') || initializeApp(cfg, 'member-app');
+const auth = getAuth(app);
+const db = getFirestore(app);
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href = 'portal-login.html'; return; }
+  try {
+    const snap = await getDoc(doc(db, 'members', user.uid));
+    if (!snap.exists()) return;
+    const m = snap.data();
+    const dogs = m.dogs?.length ? m.dogs : [{ name: m.dogName, breed: m.petBreed, age: m.petAge ? m.petAge + ' years' : '' }];
+    const names = dogs.map(d => d.name).filter(Boolean);
+    const sidebarEl = document.getElementById('sidebarPets');
+    if (sidebarEl) {
+      sidebarEl.innerHTML = dogs.map(d => {
+        const info = [d.breed, d.age ? d.age + ' old' : ''].filter(Boolean).join(' • ');
+        return '<div style="margin-bottom:10px;"><div class="pet-name">' + d.name + '</div><div class="pet-info">' + info + '</div></div>';
+      }).join('');
+    } else {
+      const nameEl = document.getElementById('sidebarPetName');
+      const infoEl = document.getElementById('sidebarPetInfo');
+      if (nameEl) nameEl.textContent = names.join(' & ');
+      if (infoEl) infoEl.textContent = dogs.length > 1
+        ? dogs.map(d => d.breed).filter(Boolean).join(' & ')
+        : [dogs[0].breed, dogs[0].age ? dogs[0].age + ' old' : ''].filter(Boolean).join(' • ');
+    }
+    const titleEl = document.getElementById('pageTitle');
+    const subEl   = document.getElementById('pageSubtitle');
+    if (titleEl && titleEl.dataset.suffix !== undefined && names.length)
+      titleEl.textContent = names.join(' & ') + titleEl.dataset.suffix;
+    if (subEl && subEl.dataset.prefix !== undefined && names.length)
+      subEl.textContent = subEl.dataset.prefix + names.join(' & ') + (subEl.dataset.suffix || '');
+  } catch(e) { console.error('sidebar load:', e.message); }
+});
+</script>
 <!-- Mobile Bottom Nav -->
 <nav class="mobile-bottom-nav">
   <a class="mobile-tab " href="portal-dashboard.html"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="2" y="2" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="2" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="12" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="12" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg><span>Home</span></a>
