@@ -843,6 +843,9 @@ window.openOvernightModal = (overnightId) => {
   `;
   document.getElementById('overnightModal').classList.add('open');
 };
+
+// ── WALK MODAL (ASSIGN) ───────────────────────────────────────────────────────
+window.openWalkModal = async (walkId) => {
   const _walks = window.allWalks || allWalks;
   const _members = window.allMembers || allMembers;
   const _walkers = window.allWalkers || allWalkers;
