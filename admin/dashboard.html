@@ -936,23 +936,73 @@ window.submitAddWalk = async () => {
 window.openInboxItem = async (id) => {
   const item = allInbox.find(i => i.id === id);
   if (!item) return;
-  // Mark as read
   if (!item.read) await updateDoc(doc(db, 'submissions', id), { read: true });
-  const fieldHTML = Object.entries(item)
-    .filter(([k]) => !['id','type','read','createdAt'].includes(k))
-    .map(([k,v]) => `<div class="modal-field"><div class="modal-label">${k}</div><div class="modal-value">${v || '–'}</div></div>`)
-    .join('');
-  document.getElementById('inboxModalTitle').textContent = item.name || item.ownerName || item.memberName || 'Submission';
-  document.getElementById('inboxModalContent').innerHTML = `<div class="form-grid">${fieldHTML}</div>`;
-  const actionBtn = document.getElementById('inboxActionBtn');
-  if (item.type === 'membership_request') { actionBtn.textContent = 'Convert to Member'; actionBtn.style.display = 'block'; actionBtn.onclick = null; }
-  else if (item.type === 'application') { actionBtn.textContent = 'Add as Walker'; actionBtn.style.display = 'block'; actionBtn.onclick = null; }
-  else if (item.type === 'overnight_request' && item.status !== 'confirmed') {
-    actionBtn.textContent = 'Confirm Overnight';
-    actionBtn.style.display = 'block';
-    actionBtn.onclick = () => confirmOvernight(item.id, item);
+
+  // Format a Firestore Timestamp or date string to readable date
+  function fmtDate(val) {
+    if (!val) return '–';
+    try {
+      const d = val.toDate ? val.toDate() : new Date(val);
+      return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+    } catch { return String(val); }
   }
-  else actionBtn.style.display = 'none';
+
+  // Build clean field list based on submission type
+  const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request' };
+  const title = typeLabels[item.type] || 'Submission';
+
+  let fields = [];
+  if (item.type === 'overnight_request' || item.service === 'overnight' || item.service === 'checkin') {
+    fields = [
+      { label: 'Member', value: item.memberName || item.memberId || '–' },
+      { label: 'Service', value: item.service === 'overnight' ? 'Overnight Stay' : item.service === 'checkin' ? 'Check-In Visit' : item.service },
+      { label: 'Start Date', value: fmtDate(item.startDate) },
+      { label: 'End Date', value: fmtDate(item.endDate) },
+      { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
+      { label: 'Extra Pet', value: item.addonExtraPet ? 'Yes' : 'No' },
+      { label: 'Medication Admin', value: item.addonMedication ? 'Yes' : 'No' },
+      { label: 'Notes', value: item.notes || '–' },
+    ];
+  } else if (item.type === 'dog_update') {
+    fields = [
+      { label: 'Member', value: item.memberName || '–' },
+      { label: 'Previous Dogs', value: item.previousDogs || '–' },
+      { label: 'Updated Dogs', value: item.newDogs || '–' },
+      { label: 'Message', value: item.message || '–' },
+    ];
+  } else {
+    // Generic — show all fields, formatted
+    const skip = ['id','type','read'];
+    fields = Object.entries(item)
+      .filter(([k]) => !skip.includes(k))
+      .map(([k, v]) => {
+        let display = v;
+        if (v && typeof v === 'object' && v.toDate) display = fmtDate(v);
+        else if (typeof v === 'boolean') display = v ? 'Yes' : 'No';
+        else if (!v && v !== 0) display = '–';
+        const label = k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+        return { label, value: String(display) };
+      });
+  }
+
+  const fieldHTML = fields.map(f =>
+    `<div class="modal-field"><div class="modal-label">${f.label}</div><div class="modal-value">${f.value}</div></div>`
+  ).join('');
+
+  document.getElementById('inboxModalTitle').textContent = title;
+  document.getElementById('inboxModalContent').innerHTML = `<div class="form-grid">${fieldHTML}</div>`;
+
+  const actionBtn = document.getElementById('inboxActionBtn');
+  if (item.type === 'membership_request') {
+    actionBtn.textContent = 'Convert to Member'; actionBtn.style.display = 'block'; actionBtn.onclick = null;
+  } else if (item.type === 'application') {
+    actionBtn.textContent = 'Add as Walker'; actionBtn.style.display = 'block'; actionBtn.onclick = null;
+  } else if ((item.type === 'overnight_request' || item.service === 'overnight') && item.status !== 'confirmed') {
+    actionBtn.textContent = 'Confirm Overnight'; actionBtn.style.display = 'block';
+    actionBtn.onclick = () => confirmOvernight(item.id, item);
+  } else {
+    actionBtn.style.display = 'none';
+  }
   document.getElementById('inboxModal').classList.add('open');
 };
 
