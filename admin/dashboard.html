@@ -376,6 +376,15 @@
   </div>
 </div>
 
+<!-- OVERNIGHT MODAL -->
+<div class="modal-overlay" id="overnightModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('overnightModal')">×</button>
+    <div class="modal-title" id="overnightModalTitle">Overnight Stay</div>
+    <div id="overnightModalContent"></div>
+  </div>
+</div>
+
 <!-- ADD WALK MODAL -->
 <div class="modal-overlay" id="addWalkModal">
   <div class="modal">
@@ -696,7 +705,7 @@ function renderCalendarDays() {
       return `<div class="walk-chip ${cls}" onclick="openWalkModal('${w.id}')" title="${label}">${label}</div>`;
     }).join('');
     const overnightChip = overnightMap[d]
-      ? `<div class="walk-chip overnight" title="${overnightMap[d].memberName || overnightMap[d].memberId} · Overnight">🌙 ${overnightMap[d].memberName || 'Overnight'}</div>`
+      ? `<div class="walk-chip overnight" onclick="openOvernightModal('${overnightMap[d].id}')" title="${overnightMap[d].memberName || overnightMap[d].memberId} · Overnight">🌙 ${overnightMap[d].memberName || 'Overnight'}</div>`
       : '';
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}</div>`;
   }
@@ -805,7 +814,35 @@ window.filterInbox = (type, btn) => {
 };
 
 // ── WALK MODAL (ASSIGN) ───────────────────────────────────────────────────────
-window.openWalkModal = async (walkId) => {
+window.openOvernightModal = (overnightId) => {
+  const o = allOvernights.find(x => x.id === overnightId);
+  if (!o) return;
+
+  function fmtDate(val) {
+    if (!val) return '–';
+    try {
+      const d = val.toDate ? val.toDate() : new Date(val);
+      return d.toLocaleDateString('en-US', { weekday:'short', month:'long', day:'numeric', year:'numeric' });
+    } catch { return '–'; }
+  }
+
+  const member = allMembers.find(m => m.id === o.memberId);
+  const memberName = member?.name || o.memberName || o.memberId || '–';
+  const dogNames = member?.dogs?.map(d => d.name).filter(Boolean).join(' & ') || member?.dogName || '–';
+
+  document.getElementById('overnightModalTitle').textContent = `${memberName} · Overnight Stay`;
+  document.getElementById('overnightModalContent').innerHTML = `
+    <div class="form-grid">
+      <div class="modal-field"><div class="modal-label">Member</div><div class="modal-value">${memberName}</div></div>
+      <div class="modal-field"><div class="modal-label">Dog(s)</div><div class="modal-value">${dogNames}</div></div>
+      <div class="modal-field"><div class="modal-label">Start Date</div><div class="modal-value">${fmtDate(o.startDate)}</div></div>
+      <div class="modal-field"><div class="modal-label">End Date</div><div class="modal-value">${fmtDate(o.endDate)}</div></div>
+      <div class="modal-field"><div class="modal-label">Status</div><div class="modal-value">${o.status === 'confirmed' ? '✓ Confirmed' : o.status || '–'}</div></div>
+      <div class="modal-field"><div class="modal-label">Notes</div><div class="modal-value">${o.notes || '–'}</div></div>
+    </div>
+  `;
+  document.getElementById('overnightModal').classList.add('open');
+};
   const _walks = window.allWalks || allWalks;
   const _members = window.allMembers || allMembers;
   const _walkers = window.allWalkers || allWalkers;
