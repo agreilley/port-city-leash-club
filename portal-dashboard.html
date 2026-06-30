@@ -658,8 +658,6 @@ onAuthStateChanged(auth, async (user) => {
   // Real-time walks subscription
   const walksQ = query(collection(db, 'walks'), where('memberId', '==', user.uid));
   onSnapshot(walksQ, (snap) => {
-    console.log('walks snapshot:', snap.docs.length, 'docs, uid:', user.uid);
-    snap.docs.forEach(d => console.log(' -', d.id, d.data().status, d.data().memberId));
     myWalks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     updateMetrics();
     generateCalendar();
