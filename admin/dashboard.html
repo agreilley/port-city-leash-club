@@ -1011,9 +1011,17 @@ window.confirmOvernight = async (submissionId, item) => {
   btn.textContent = 'Confirming…'; btn.disabled = true;
   try {
     // Write to overnights collection
+    // Look up member name from members collection
+    let memberName = item.memberName || '';
+    if (!memberName && item.memberId) {
+      try {
+        const memberSnap = await getDoc(doc(db, 'members', item.memberId));
+        if (memberSnap.exists()) memberName = memberSnap.data().name || '';
+      } catch(e) { /* ok to fail */ }
+    }
     await addDoc(collection(db, 'overnights'), {
       memberId:    item.memberId || '',
-      memberName:  item.memberName || item.name || '',
+      memberName:  memberName,
       dogName:     item.dogName || '',
       startDate:   item.startDate || null,
       endDate:     item.endDate || null,
