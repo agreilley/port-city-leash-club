@@ -18,7 +18,6 @@
   /* SIDEBAR */
   .sidebar { width: 240px; min-height: 100vh; background: var(--navy); display: flex; flex-direction: column; padding: 0; flex-shrink: 0; position: fixed; top: 0; left: 0; bottom: 0; }
   .sidebar-logo { padding: 28px 24px 20px; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500; color: white; letter-spacing: 0.01em; border-bottom: 1px solid rgba(255,255,255,0.08); line-height: 1.4; }
-  .sidebar-logo:hover { opacity: 0.85; }
   .sidebar-nav { padding: 20px 0; flex: 1; }
   .nav-item { display: block; white-space: nowrap; line-height: 1.4; padding: 10px 24px; font-size: 13px; color: rgba(255,255,255,0.65); text-decoration: none; transition: all 0.15s; letter-spacing: 0.01em; }
   .nav-item:hover { color: white; background: rgba(255,255,255,0.06); }
@@ -50,14 +49,14 @@
   .summary-line { display: flex; justify-content: space-between; border-top: 1px solid rgba(255,255,255,0.1); padding: 10px 0; font-size: 13px; color: rgba(255,255,255,0.7); }
   .summary-line strong { color: white; font-weight: 500; }
   .summary-empty { font-size: 13px; color: rgba(255,255,255,0.4); font-style: italic; }
-  .btn-confirm { width: 100%; margin-top: 20px; background: var(--rust); color: white; border: none; border-radius: 6px; padding: 13px; font-size: 14px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: background 0.2s; }
+  .btn-confirm { width: 100%; margin-top: 20px; background: var(--rust); color: white; border: none; border-radius: 6px; padding: 13px; font-size: 14px; font-weight: 500; font-family: 'DM Sans', sans-serif;  transition: background 0.2s; }
   .btn-confirm:hover { background: var(--rust-dark); }
   .btn-confirm:disabled { background: rgba(255,255,255,0.15); cursor: not-allowed; }
 
   /* WALK LIST */
   .walks-card { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; overflow: hidden; }
   .walks-month { font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-light); padding: 16px 24px 10px; background: var(--sand-light); border-bottom: 1px solid rgba(0,0,0,0.06); }
-  .walk-row { display: flex; align-items: center; gap: 16px; padding: 16px 24px; border-bottom: 1px solid rgba(0,0,0,0.06); transition: background 0.15s; cursor: pointer; }
+  .walk-row { display: flex; align-items: center; gap: 16px; padding: 16px 24px; border-bottom: 1px solid rgba(0,0,0,0.06); transition: background 0.15s;  }
   .walk-row:last-child { border-bottom: none; }
   .walk-row:hover { background: #fafaf8; }
   .walk-row.selected { background: #fffaf8; border-left: 3px solid var(--rust); padding-left: 21px; }
