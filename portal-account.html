@@ -514,7 +514,7 @@
         <div class="field-row">
           <div class="field-group">
             <label class="field-label">First Name</label>
-            <input type="text" class="field-input" value="Sarah" placeholder="First name">
+            <input type="text" class="field-input" id="firstName" value="" placeholder="First name">
           </div>
           <div class="field-group">
             <label class="field-label">Last Name</label>
@@ -661,45 +661,7 @@
   document.getElementById('memberBenefitList').innerHTML =
     plan.benefits.map(b => `<div class="benefit-item">${b}</div>`).join('');
 </script>
-<script type="module">
-import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { getFirestore, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
-const app = getApps().find(a => a.name === 'member-app') || initializeApp(cfg, 'member-app');
-const auth = getAuth(app);
-const db = getFirestore(app);
-onAuthStateChanged(auth, async (user) => {
-  if (!user) { window.location.href = 'portal-login.html'; return; }
-  try {
-    const snap = await getDoc(doc(db, 'members', user.uid));
-    if (!snap.exists()) return;
-    const m = snap.data();
-    const dogs = m.dogs?.length ? m.dogs : [{ name: m.dogName, breed: m.petBreed, age: m.petAge ? m.petAge + ' years' : '' }];
-    const names = dogs.map(d => d.name).filter(Boolean);
-    const sidebarEl = document.getElementById('sidebarPets');
-    if (sidebarEl) {
-      sidebarEl.innerHTML = dogs.map(d => {
-        const info = [d.breed, d.age ? d.age + ' old' : ''].filter(Boolean).join(' • ');
-        return '<div style="margin-bottom:10px;"><div class="pet-name">' + d.name + '</div><div class="pet-info">' + info + '</div></div>';
-      }).join('');
-    } else {
-      const nameEl = document.getElementById('sidebarPetName');
-      const infoEl = document.getElementById('sidebarPetInfo');
-      if (nameEl) nameEl.textContent = names.join(' & ');
-      if (infoEl) infoEl.textContent = dogs.length > 1
-        ? dogs.map(d => d.breed).filter(Boolean).join(' & ')
-        : [dogs[0].breed, dogs[0].age ? dogs[0].age + ' old' : ''].filter(Boolean).join(' • ');
-    }
-    const titleEl = document.getElementById('pageTitle');
-    const subEl   = document.getElementById('pageSubtitle');
-    if (titleEl && titleEl.dataset.suffix !== undefined && names.length)
-      titleEl.textContent = names.join(' & ') + titleEl.dataset.suffix;
-    if (subEl && subEl.dataset.prefix !== undefined && names.length)
-      subEl.textContent = subEl.dataset.prefix + names.join(' & ') + (subEl.dataset.suffix || '');
-  } catch(e) { console.error('sidebar load:', e.message); }
-});
-</script>
+
 <!-- Mobile Bottom Nav -->
 <nav class="mobile-bottom-nav">
   <a class="mobile-tab " href="portal-dashboard.html"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="2" y="2" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="2" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="12" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="12" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg><span>Home</span></a>
@@ -708,5 +670,82 @@ onAuthStateChanged(auth, async (user) => {
   <a class="mobile-tab " href="portal-pet-profile.html"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M3 20c0-4.418 3.582-7 8-7s8 2.582 8 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>Profile</span></a>
   <a class="mobile-tab active" href="portal-account.html"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>Account</span></a>
 </nav>
+<script type="module">
+import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
+const app = getApps().find(a => a.name === 'member-app') || initializeApp(cfg, 'member-app');
+const auth = getAuth(app);
+const db = getFirestore(app);
+let userId = null, memberData = null;
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href = 'portal-login.html'; return; }
+  userId = user.uid;
+  try {
+    const snap = await getDoc(doc(db, 'members', user.uid));
+    if (!snap.exists()) return;
+    memberData = { id: snap.id, ...snap.data() };
+    loadPageData();
+    updateSidebar();
+  } catch(e) { console.error(e.message); }
+});
+
+function updateSidebar() {
+  if (!memberData) return;
+  const dogs = memberData.dogs?.length ? memberData.dogs : [{ name: memberData.dogName, breed: memberData.petBreed, age: memberData.petAge ? memberData.petAge + ' years' : '' }];
+  const el = document.getElementById('sidebarPets');
+  if (el) el.innerHTML = dogs.map(d => {
+    const info = [d.breed, d.age ? d.age + ' old' : ''].filter(Boolean).join(' • ');
+    return '<div style="margin-bottom:10px;"><div class="pet-name">' + (d.name||'') + '</div><div class="pet-info">' + info + '</div></div>';
+  }).join('');
+}
+
+window.signOutMember = () => signOut(auth).then(() => window.location.href = 'portal-login.html');
+
+function loadPageData() {
+  if (!memberData) return;
+  const el = id => document.getElementById(id);
+  // Personal info
+  const [first, ...rest] = (memberData.name || '').split(' ');
+  if (el('firstName')) el('firstName').value = first || '';
+  if (el('lastName')) el('lastName').value = rest.join(' ') || '';
+  if (el('email')) el('email').value = memberData.email || '';
+  if (el('phone')) el('phone').value = memberData.phone || '';
+  if (el('address')) el('address').value = memberData.address || '';
+  // Membership info
+  if (el('membershipTier')) el('membershipTier').textContent = memberData.tier || 'Standard';
+  if (el('memberStatus')) el('memberStatus').textContent = memberData.status || 'Active';
+  // Walk schedule
+  const days = (memberData.defaultWalkDays || []).join(', ');
+  const slot = memberData.defaultTimeSlot || '';
+  if (el('walkSchedule')) el('walkSchedule').textContent = days && slot ? days + ' · ' + slot : '–';
+}
+
+window.saveAccount = async () => {
+  if (!userId) return;
+  const el = id => document.getElementById(id);
+  const first = el('firstName')?.value || '';
+  const last = el('lastName')?.value || '';
+  try {
+    await updateDoc(doc(db, 'members', userId), {
+      name: (first + ' ' + last).trim(),
+      phone: el('phone')?.value || '',
+      address: el('address')?.value || '',
+    });
+    showNotif('Changes saved!');
+  } catch(e) { showNotif('Error: ' + e.message, true); }
+};
+
+function showNotif(msg, error) {
+  const n = document.createElement('div');
+  n.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:' + (error ? '#C17B6F' : '#2D9E5E') + ';color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
+  n.textContent = msg;
+  document.body.appendChild(n);
+  setTimeout(() => n.remove(), 3000);
+}
+
+</script>
 </body>
 </html>

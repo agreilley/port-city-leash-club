@@ -445,165 +445,83 @@
         <button class="filter-btn" onclick="filterWalks('last-month', this)">Last month</button>
       </div>
 
-      <!-- Walk Report 1 -->
-      <div class="visit-report" data-month="6" data-year="2026">
-        <div class="report-header">
-          <div class="walker-avatar">👨</div>
-          <div class="walker-info">
-            <div class="walker-name">Marcus</div>
-            <div class="walker-role">Lead Walker</div>
-            <div class="walker-badge">Scout's Most Frequent Walker</div>
-          </div>
-          <div class="report-date">June 19, 2026</div>
-        </div>
-
-        <div class="report-content">
-          <div class="report-text">
-            Scout had an amazing walk today! We did our usual Forest Hills route and Scout was full of energy. He spent time at the off-leash area and made friends with a few new dogs. He was well-behaved and came back when called every time.
-          </div>
-
-          <div class="report-meta">
-            <div class="meta-item"><span class="meta-value">30 min</span> Duration</div>
-            <div class="meta-item"><span class="meta-value">3 photos</span> Uploaded</div>
-            <div class="meta-item"><span class="meta-value">Forest Hills</span> Route</div>
-            <div class="meta-item"><span class="meta-value">✓</span> Potty Break</div>
-          </div>
-
-          <div class="report-photos">
-            <div class="photo-item">📸</div>
-            <div class="photo-item">📸</div>
-            <div class="photo-item">📸</div>
-          </div>
-
-          <div class="report-notes">
-            <div class="notes-label">Walker Notes:</div>
-            Scout is in great shape! He's friendly with all dogs and people. Hydrated well during the walk. Ready for more adventures!
-          </div>
-
-          <button class="view-details-btn">View Full Report</button>
-        </div>
-      </div>
-
-      <!-- Walk Report 2 -->
-      <div class="visit-report" data-month="6" data-year="2026">
-        <div class="report-header">
-          <div class="walker-avatar">👩</div>
-          <div class="walker-info">
-            <div class="walker-name">Priya</div>
-            <div class="walker-role">Backup Walker</div>
-          </div>
-          <div class="report-date">June 17, 2026</div>
-        </div>
-
-        <div class="report-content">
-          <div class="report-text">
-            Scout was excited to see me today! We went for a nice walk through the downtown area and Scout was very responsive to commands. He got water at the park and had a great time exploring new neighborhoods.
-          </div>
-
-          <div class="report-meta">
-            <div class="meta-item"><span class="meta-value">30 min</span> Duration</div>
-            <div class="meta-item"><span class="meta-value">2 photos</span> Uploaded</div>
-            <div class="meta-item"><span class="meta-value">Downtown</span> Route</div>
-            <div class="meta-item"><span class="meta-value">✓</span> Potty Break</div>
-          </div>
-
-          <div class="report-photos">
-            <div class="photo-item">📸</div>
-            <div class="photo-item">📸</div>
-            <div style="opacity: 0.3;">📸</div>
-          </div>
-
-          <div class="report-notes">
-            <div class="notes-label">Walker Notes:</div>
-            Scout was very attentive on the leash. Great recall. Enjoyed the urban scenery and dog watching!
-          </div>
-
-          <button class="view-details-btn">View Full Report</button>
-        </div>
-      </div>
-
-      <!-- Walk Report 3 -->
-      <div class="visit-report" data-month="5" data-year="2026">
-        <div class="report-header">
-          <div class="walker-avatar">👨</div>
-          <div class="walker-info">
-            <div class="walker-name">Marcus</div>
-            <div class="walker-role">Lead Walker</div>
-            <div class="walker-badge">Scout's Most Frequent Walker</div>
-          </div>
-          <div class="report-date">May 15, 2026</div>
-        </div>
-
-        <div class="report-content">
-          <div class="report-text">
-            Beautiful day for a walk! Scout and I did a longer route through Airlie Road. Scout was calm and collected the entire time. He loved sniffing around the neighborhoods and we made great time.
-          </div>
-
-          <div class="report-meta">
-            <div class="meta-item"><span class="meta-value">45 min</span> Duration</div>
-            <div class="meta-item"><span class="meta-value">4 photos</span> Uploaded</div>
-            <div class="meta-item"><span class="meta-value">Airlie Road</span> Route</div>
-            <div class="meta-item"><span class="meta-value">✓</span> Potty Break</div>
-          </div>
-
-          <div class="report-photos">
-            <div class="photo-item">📸</div>
-            <div class="photo-item">📸</div>
-            <div class="photo-item">📸</div>
-          </div>
-
-          <div class="report-notes">
-            <div class="notes-label">Walker Notes:</div>
-            Took the extended walk option. Scout did excellent! No pulling on leash, great energy the whole time.
-          </div>
-
-          <button class="view-details-btn">View Full Report</button>
-        </div>
+      <div id="walksContainer">
+        <div style="text-align:center;padding:48px 24px;color:#7A7A7A;font-size:14px;">Loading walk history…</div>
       </div>
     </div>
   </div>
 
   <script>
+    let allWalks = [];
+
     function filterWalks(period, button) {
-      // Update active button
       document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
       button.classList.add('active');
+      renderWalks(period);
+    }
 
-      // Filter walks
-      const reports = document.querySelectorAll('.visit-report');
+    function renderWalks(period = 'all') {
+      const container = document.getElementById('walksContainer');
       const now = new Date();
-      const currentMonth = now.getMonth() + 1;
+      const currentMonth = now.getMonth();
       const currentYear = now.getFullYear();
 
-      reports.forEach(report => {
-        let show = false;
-        const month = parseInt(report.dataset.month);
-        const year = parseInt(report.dataset.year);
+      let filtered = allWalks.filter(w => w.status === 'completed');
 
-        if (period === 'all') {
-          show = true;
-        } else if (period === 'month') {
-          show = month === currentMonth && year === currentYear;
-        } else if (period === 'last-month') {
-          const lastMonth = currentMonth === 1 ? 12 : currentMonth - 1;
-          const lastMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear;
-          show = month === lastMonth && year === lastMonthYear;
-        }
+      if (period === 'month') {
+        filtered = filtered.filter(w => {
+          const d = w.date?.toDate?.() || new Date(w.date);
+          return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+        });
+      } else if (period === 'last-month') {
+        const lm = currentMonth === 0 ? 11 : currentMonth - 1;
+        const lmy = currentMonth === 0 ? currentYear - 1 : currentYear;
+        filtered = filtered.filter(w => {
+          const d = w.date?.toDate?.() || new Date(w.date);
+          return d.getMonth() === lm && d.getFullYear() === lmy;
+        });
+      }
 
-        report.style.display = show ? 'block' : 'none';
+      filtered.sort((a, b) => {
+        const da = a.date?.toDate?.() || new Date(a.date);
+        const db = b.date?.toDate?.() || new Date(b.date);
+        return db - da;
       });
 
-      // Show empty state if needed
-      const visibleReports = Array.from(reports).filter(r => r.style.display !== 'none').length;
-      if (visibleReports === 0) {
-        // Could add empty state message here
+      if (!filtered.length) {
+        container.innerHTML = '<div style="text-align:center;padding:48px 24px;color:#7A7A7A;font-size:14px;">No completed walks yet.</div>';
+        return;
       }
+
+      const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      const slotLabel = { morning: 'Morning', 'early-afternoon': 'Early Afternoon', 'late-afternoon': 'Late Afternoon' };
+
+      container.innerHTML = filtered.map(w => {
+        const date = w.date?.toDate?.() || new Date(w.date);
+        const dateStr = monthNames[date.getMonth()] + ' ' + date.getDate() + ', ' + date.getFullYear();
+        const duration = w.extended ? '45-minute walk' : (w.duration || '30-minute walk');
+        const slot = slotLabel[w.timeSlot] || w.timeSlot || '';
+        return '<div class="visit-report" data-month="' + (date.getMonth()+1) + '" data-year="' + date.getFullYear() + '">' +
+          '<div class="report-header">' +
+          '<div class="walker-avatar">🐾</div>' +
+          '<div class="walker-info">' +
+          '<div class="walker-name">' + (w.walkerName || 'Your Walker') + '</div>' +
+          '<div class="walker-role">' + slot + '</div>' +
+          '</div>' +
+          '<div class="report-date">' + dateStr + '</div>' +
+          '</div>' +
+          '<div class="report-content">' +
+          (w.notes ? '<div class="report-text">' + w.notes + '</div>' : '<div class="report-text" style="color:#aaa;font-style:italic;">No notes for this walk.</div>') +
+          '<div class="report-meta" style="margin-top:12px;font-size:13px;color:#7A7A7A;">' + duration + '</div>' +
+          '</div>' +
+          '</div>';
+      }).join('');
     }
   </script>
 <script type="module">
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { getFirestore, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { getFirestore, doc, getDoc, collection, query, where, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
 const app = getApps().find(a => a.name === 'member-app') || initializeApp(cfg, 'member-app');
 const auth = getAuth(app);
@@ -622,21 +540,19 @@ onAuthStateChanged(auth, async (user) => {
         const info = [d.breed, d.age ? d.age + ' old' : ''].filter(Boolean).join(' • ');
         return '<div style="margin-bottom:10px;"><div class="pet-name">' + d.name + '</div><div class="pet-info">' + info + '</div></div>';
       }).join('');
-    } else {
-      const nameEl = document.getElementById('sidebarPetName');
-      const infoEl = document.getElementById('sidebarPetInfo');
-      if (nameEl) nameEl.textContent = names.join(' & ');
-      if (infoEl) infoEl.textContent = dogs.length > 1
-        ? dogs.map(d => d.breed).filter(Boolean).join(' & ')
-        : [dogs[0].breed, dogs[0].age ? dogs[0].age + ' old' : ''].filter(Boolean).join(' • ');
     }
     const titleEl = document.getElementById('pageTitle');
-    const subEl   = document.getElementById('pageSubtitle');
+    const subEl = document.getElementById('pageSubtitle');
     if (titleEl && titleEl.dataset.suffix !== undefined && names.length)
       titleEl.textContent = names.join(' & ') + titleEl.dataset.suffix;
     if (subEl && subEl.dataset.prefix !== undefined && names.length)
       subEl.textContent = subEl.dataset.prefix + names.join(' & ') + (subEl.dataset.suffix || '');
-  } catch(e) { console.error('sidebar load:', e.message); }
+
+    // Load walks
+    const walksSnap = await getDocs(query(collection(db, 'walks'), where('memberId', '==', user.uid)));
+    window.allWalks = walksSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderWalks('all');
+  } catch(e) { console.error('walk history load:', e.message); }
 });
 </script>
 <!-- Mobile Bottom Nav -->

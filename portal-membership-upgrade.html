@@ -233,7 +233,7 @@
     <div>
       <div class="eyebrow">The Leash Club</div>
       <h1>Change Your Plan</h1>
-      <p class="hero-sub">Find a membership that better fits Scout's needs. You can upgrade, downgrade, or stay where you are.</p>
+      <p class="hero-sub">Find a membership that better fits your dog's needs. You can upgrade, downgrade, or stay where you are.</p>
     </div>
   </div>
 </div>
@@ -508,5 +508,68 @@
   <a class="mobile-tab " href="portal-pet-profile.html"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M3 20c0-4.418 3.582-7 8-7s8 2.582 8 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>Profile</span></a>
   <a class="mobile-tab active" href="portal-account.html"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>Account</span></a>
 </nav>
+<script type="module">
+import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
+const app = getApps().find(a => a.name === 'member-app') || initializeApp(cfg, 'member-app');
+const auth = getAuth(app);
+const db = getFirestore(app);
+let userId = null, memberData = null;
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href = 'portal-login.html'; return; }
+  userId = user.uid;
+  try {
+    const snap = await getDoc(doc(db, 'members', user.uid));
+    if (!snap.exists()) return;
+    memberData = { id: snap.id, ...snap.data() };
+    loadPageData();
+    updateSidebar();
+  } catch(e) { console.error(e.message); }
+});
+
+function updateSidebar() {
+  if (!memberData) return;
+  const dogs = memberData.dogs?.length ? memberData.dogs : [{ name: memberData.dogName, breed: memberData.petBreed, age: memberData.petAge ? memberData.petAge + ' years' : '' }];
+  const el = document.getElementById('sidebarPets');
+  if (el) el.innerHTML = dogs.map(d => {
+    const info = [d.breed, d.age ? d.age + ' old' : ''].filter(Boolean).join(' • ');
+    return '<div style="margin-bottom:10px;"><div class="pet-name">' + (d.name||'') + '</div><div class="pet-info">' + info + '</div></div>';
+  }).join('');
+}
+
+window.signOutMember = () => signOut(auth).then(() => window.location.href = 'portal-login.html');
+
+function loadPageData() {
+  if (!memberData) return;
+  const currentEl = document.getElementById('currentTier');
+  if (currentEl) currentEl.textContent = memberData.tier || 'Standard';
+  // Highlight current tier card
+  const tier = memberData.tier || 'Standard';
+  document.querySelectorAll('.tier-card').forEach(card => {
+    if (card.dataset.tier === tier) card.classList.add('current');
+  });
+}
+
+window.submitUpgrade = async (newTier) => {
+  if (!userId) return;
+  try {
+    await addDoc(collection(db, 'submissions'), {
+      type: 'tierChange',
+      memberId: userId,
+      memberName: memberData?.name || '',
+      currentTier: memberData?.tier || '',
+      newTier: newTier,
+      status: 'pending',
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+    alert('Request submitted! We\'ll update your membership within 24 hours.');
+  } catch(e) { alert('Error: ' + e.message); }
+};
+
+</script>
 </body>
 </html>
