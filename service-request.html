@@ -351,24 +351,65 @@
 
     <div class="form-section">
       <h2 class="form-section-title">Dog Details</h2>
-      <div class="form-grid-3">
-        <div class="field"><label for="dog-name">Dog Name</label><input id="dog-name" name="dog-name" type="text"></div>
-        <div class="field"><label for="breed">Breed</label><input id="breed" name="breed" type="text"></div>
-        <div class="field"><label for="age">Age</label><input id="age" name="age" type="text"></div>
-        <div class="field"><label for="weight">Weight</label><input id="weight" name="weight" type="text"></div>
-        <div class="field"><label for="spayed">Spayed/Neutered?</label><select id="spayed"><option>Select</option><option>Yes</option><option>No</option></select></div>
-        <div class="field"><label for="temperament">Temperament</label><select id="temperament"><option>Select</option><option>Easygoing</option><option>Excitable</option><option>Nervous</option><option>Reactive</option></select></div>
-        <div class="field full"><label>Helpful Context</label>
-          <div class="checkbox-row">
-            <label class="checkbox-pill"><input type="checkbox"> Friendly with people</label>
-            <label class="checkbox-pill"><input type="checkbox"> Friendly with other dogs</label>
-            <label class="checkbox-pill"><input type="checkbox"> Pulls on leash</label>
-            <label class="checkbox-pill"><input type="checkbox"> Takes medication</label>
-          </div>
-        </div>
-        <div class="field full"><label for="behavior-notes">Behavioral or Medical Notes</label><textarea id="behavior-notes" placeholder="Anything we should know before caring for your dog?"></textarea></div>
-      </div>
+
+      <!-- Dog cards container -->
+      <div id="dogsList"></div>
+
+      <!-- Add another dog -->
+      <button type="button" id="addDogBtn" onclick="addDog()" style="margin-top:8px;margin-bottom:20px;background:var(--seafoam);border:none;border-radius:6px;padding:14px 24px;font-size:14px;font-weight:500;color:white;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%;transition:background 0.2s;letter-spacing:0.02em;" onmouseover="this.style.background='#7a9690';" onmouseout="this.style.background='var(--seafoam)';">
+        + Add another dog
+      </button>
     </div>
+
+    <script>
+      let dogCount = 0;
+
+      function dogCardHTML(n) {
+        const isFirst = n === 1;
+        return `
+          <div id="dogCard${n}" style="background:${isFirst ? '#fafaf8' : '#f4f0ea'};border:1px solid rgba(0,0,0,0.08);border-radius:8px;padding:24px;margin-bottom:14px;position:relative;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+              <div style="font-size:12px;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:var(--seafoam);">Dog ${n}</div>
+              ${!isFirst ? `<button type="button" onclick="removeDog(${n})" style="background:none;border:none;font-size:13px;color:var(--text-light);cursor:pointer;padding:4px 8px;border-radius:4px;" onmouseover="this.style.color='var(--rust)'" onmouseout="this.style.color='var(--text-light)'">Remove</button>` : ''}
+            </div>
+            <div class="form-grid-3">
+              <div class="field"><label for="dog-name-${n}">Dog Name</label><input id="dog-name-${n}" name="dog-name-${n}" type="text"></div>
+              <div class="field"><label for="breed-${n}">Breed</label><input id="breed-${n}" name="breed-${n}" type="text"></div>
+              <div class="field"><label for="age-${n}">Age</label><input id="age-${n}" name="age-${n}" type="text"></div>
+              <div class="field"><label for="weight-${n}">Weight</label><input id="weight-${n}" name="weight-${n}" type="text"></div>
+              <div class="field"><label for="spayed-${n}">Spayed/Neutered?</label><select id="spayed-${n}"><option>Select</option><option>Yes</option><option>No</option></select></div>
+              <div class="field"><label for="temperament-${n}">Temperament</label><select id="temperament-${n}"><option>Select</option><option>Easygoing</option><option>Excitable</option><option>Nervous</option><option>Reactive</option></select></div>
+              <div class="field full"><label>Helpful Context</label>
+                <div class="checkbox-row">
+                  <label class="checkbox-pill"><input type="checkbox"> Friendly with people</label>
+                  <label class="checkbox-pill"><input type="checkbox"> Friendly with other dogs</label>
+                  <label class="checkbox-pill"><input type="checkbox"> Pulls on leash</label>
+                  <label class="checkbox-pill"><input type="checkbox"> Takes medication</label>
+                </div>
+              </div>
+              <div class="field full"><label for="behavior-notes-${n}">Behavioral or Medical Notes</label><textarea id="behavior-notes-${n}" placeholder="Anything we should know before caring for your dog?"></textarea></div>
+            </div>
+          </div>
+        `;
+      }
+
+      function addDog() {
+        dogCount++;
+        document.getElementById('dogsList').insertAdjacentHTML('beforeend', dogCardHTML(dogCount));
+        if (dogCount >= 6) document.getElementById('addDogBtn').style.display = 'none';
+      }
+
+      function removeDog(n) {
+        document.getElementById(`dogCard${n}`)?.remove();
+        if (dogCount >= 6) document.getElementById('addDogBtn').style.display = 'block';
+      }
+
+      window.addDog = addDog;
+      window.removeDog = removeDog;
+
+      // Initialize with one dog on load
+      addDog();
+    </script>
 
     <div class="form-section">
       <h2 class="form-section-title">Owner Information</h2>
