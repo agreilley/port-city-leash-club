@@ -449,10 +449,10 @@
       if (selectedCount >= 5 && currentPlan !== 'daily') {
         selectPlan('daily');
         setDays(5);
-        showNotification('You\'ve selected 5 days — upgraded to Daily.');
+        showNotification('You\'ve selected 5 days. Upgraded to Daily.');
       } else if (selectedCount >= 3 && selectedCount < 5 && currentPlan === 'essential') {
         selectPlan('standard');
-        showNotification('You\'ve selected 3 days — upgraded to Standard.');
+        showNotification('You\'ve selected 3 days. Upgraded to Standard.');
       }
 
       // Auto-downgrade logic

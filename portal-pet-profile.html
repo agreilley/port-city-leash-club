@@ -596,7 +596,7 @@ function renderDogCards() {
 
 function dogCardHTML(dog, i) {
   const isOnly = currentDogs.length === 1;
-  const label = isOnly ? 'Your Dog' : `Dog ${i + 1}${dog.name ? ` — ${dog.name}` : ''}`;
+  const label = isOnly ? 'Your Dog' : `Dog ${i + 1}${dog.name ? `: ${dog.name}` : ''}`;
   return `
     <div class="section-card" id="dogCard${i}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">

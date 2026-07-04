@@ -261,7 +261,7 @@ onAuthStateChanged(auth, async (user) => {
       const dogLabel = dogs.join(' & ');
       document.getElementById('summaryTitle').textContent = `${dogLabel}'s Extended Walks`;
       document.getElementById('pageSubtitle').textContent =
-        `Select upcoming walks you'd like to upgrade to 45 minutes. ${dogLabel} get${dogs.length > 1 ? '' : 's'} more time — you get more peace of mind.`;
+        `Select upcoming walks you'd like to upgrade to 45 minutes. ${dogLabel} get${dogs.length > 1 ? '' : 's'} more time, and you get more peace of mind.`;
     }
 
     const now = new Date(); now.setHours(0,0,0,0);
