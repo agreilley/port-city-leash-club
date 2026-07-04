@@ -78,6 +78,16 @@
   .single-walk-note { font-size: 13px; color: var(--text-light); margin-bottom: 32px; }
   .single-walk-banner { text-align: center; background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 6px; padding: 12px 20px; font-size: 13px; color: var(--text-mid); margin-top: 20px; margin-bottom: 8px; }
 
+  /* PET SITTING SERVICES CARDS */
+  .sitting-cards-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .sitting-card { display: flex; flex-direction: column; justify-content: space-between; background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 32px; text-decoration: none; color: inherit; transition: box-shadow 0.2s, transform 0.2s; min-height: 220px; }
+  .sitting-card:hover { box-shadow: 0 8px 24px rgba(13,27,42,0.08); transform: translateY(-2px); }
+  .sitting-card-title { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 400; color: var(--navy); margin-bottom: 10px; }
+  .sitting-card-desc { font-size: 14px; color: var(--text-mid); line-height: 1.6; }
+  .sitting-card-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 20px; margin-top: 20px; border-top: 1px solid rgba(0,0,0,0.08); }
+  .sitting-card-price { font-size: 22px; font-weight: 500; color: var(--navy); }
+  .sitting-card-cta { font-size: 13px; color: var(--rust); font-weight: 500; }
+
   .steps-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 48px; }
   .step-inline { padding: 22px; background: white; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06); }
   .step-inline .step-num { font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 300; color: var(--seafoam-light); line-height: 1; margin-bottom: 10px; }
@@ -265,11 +275,8 @@
     .addons-grid { grid-template-columns: 1fr 1fr !important; }
     .service-options-grid { grid-template-columns: 1fr !important; }
 
-    /* One-Time Services: stack columns, simplify price rows */
-    div[style*="grid-template-columns:1fr 1fr;gap:0 64px"] { display: block !important; }
-    div[style*="grid-template-columns:1fr 1fr;gap:0 64px"] > div:last-child { margin-top: 32px; border-top: 1px solid rgba(0,0,0,0.08); padding-top: 32px; }
-    a[style*="display:flex;justify-content:space-between"] { flex-wrap: wrap !important; gap: 8px !important; }
-    a[style*="display:flex;justify-content:space-between"] > div:last-child { flex-direction: row !important; gap: 12px !important; }
+    /* Pet Sitting Services: stack cards on mobile */
+    .sitting-cards-grid { grid-template-columns: 1fr !important; gap: 16px; }
 
     /* Why section: hide photo, show cards full width */
     div[style*="grid-template-columns:1fr 1fr;gap:40px;align-items:stretch"] { display: block !important; }
@@ -396,40 +403,38 @@
     <h2 class="section-headline">Book care when you need it</h2>
     <p class="section-sub">Drop-in visits and overnight stays for trips, long days, and everything in between — no membership required.</p>
 
-    <div style="max-width:560px;margin-top:40px;">
+    <div class="sitting-cards-grid" style="margin-top:40px;">
 
-      <div>
-        <a href="service-request.html?service=drop-in-visit" style="display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:18px 0;border-top:1px solid rgba(0,0,0,0.08);text-decoration:none;color:inherit;transition:opacity 0.15s;" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
-          <div>
-            <div style="font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px;">Drop-In Visit</div>
-            <div style="font-size:14px;color:var(--text-mid);line-height:1.6;">Feeding, potty break, play, and a photo update. Ideal for short trips or extra coverage.</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:20px;flex-shrink:0;">
-            <div style="font-size:18px;font-weight:500;color:var(--navy);">$25</div>
-            <div style="font-size:13px;color:var(--rust);white-space:nowrap;">Book &rsaquo;</div>
-          </div>
-        </a>
-
-        <a href="service-request.html?service=overnight-stay" style="display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:18px 0;border-top:1px solid rgba(0,0,0,0.08);border-bottom:1px solid rgba(0,0,0,0.08);text-decoration:none;color:inherit;transition:opacity 0.15s;" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
-          <div>
-            <div style="font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px;">Overnight Stay</div>
-            <div style="font-size:14px;color:var(--text-mid);line-height:1.6;">Around-the-clock care for your dog — evening settling, overnight supervision, and daytime check-ins tailored to their routine.</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:20px;flex-shrink:0;">
-            <div style="font-size:18px;font-weight:500;color:var(--navy);">$115</div>
-            <div style="font-size:13px;color:var(--rust);white-space:nowrap;">Book &rsaquo;</div>
-          </div>
-        </a>
-
-        <!-- Add-ons inline -->
-        <div style="margin-top:12px;padding:8px 14px;background:rgba(0,0,0,0.03);border-radius:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <span style="font-size:11px;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-light);margin-right:8px;">Add-ons</span>
-          <span style="font-size:13px;color:var(--navy);">Extra pet · $20</span>
-          <span style="color:var(--text-light);font-size:13px;">·</span>
-          <span style="font-size:13px;color:var(--navy);">Medication administration · $10</span>
+      <a href="service-request.html?service=drop-in-visit" class="sitting-card">
+        <div>
+          <div class="sitting-card-title">Drop-In Visit</div>
+          <div class="sitting-card-desc">Feeding, potty break, play, and a photo update. Ideal for short trips or extra coverage.</div>
         </div>
-      </div>
+        <div class="sitting-card-footer">
+          <div class="sitting-card-price">$25</div>
+          <div class="sitting-card-cta">Book &rsaquo;</div>
+        </div>
+      </a>
 
+      <a href="service-request.html?service=overnight-stay" class="sitting-card">
+        <div>
+          <div class="sitting-card-title">Overnight Stay</div>
+          <div class="sitting-card-desc">Around-the-clock care for your dog — evening settling, overnight supervision, and daytime check-ins tailored to their routine.</div>
+        </div>
+        <div class="sitting-card-footer">
+          <div class="sitting-card-price">$115</div>
+          <div class="sitting-card-cta">Book &rsaquo;</div>
+        </div>
+      </a>
+
+    </div>
+
+    <!-- Add-ons inline -->
+    <div style="margin-top:24px;padding:8px 14px;background:rgba(0,0,0,0.03);border-radius:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+      <span style="font-size:11px;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-light);margin-right:8px;">Add-ons</span>
+      <span style="font-size:13px;color:var(--navy);">Extra pet · $20</span>
+      <span style="color:var(--text-light);font-size:13px;">·</span>
+      <span style="font-size:13px;color:var(--navy);">Medication administration · $10</span>
     </div>
 
     <div class="membership-callout" style="margin-top:32px;">
@@ -492,6 +497,8 @@
       </div>
     </div>
 
+    <div class="single-walk-banner">Not ready to commit? <a href="service-request.html?service=standard-walk" style="color:var(--navy);font-weight:500;">One-time walks start at $29</a>, no membership required.</div>
+
     <hr class="how-divider" style="margin:64px 0 48px 0;">
     <div id="how-it-works"></div>
     <p class="section-eyebrow">How The Leash Club Works</p>
@@ -519,35 +526,6 @@
         <div class="step-title">Leave the Logistics to Us</div>
         <div class="step-text">Once your schedule is set, we'll take care of the rest so you can focus on your day, knowing your dog's routine is covered.</div>
       </div>
-    </div>
-
-    <hr class="how-divider" style="margin:64px 0 48px 0;">
-    <p class="section-eyebrow">Dog Walking</p>
-    <h2 class="section-headline" style="font-size:32px;">Prefer a one-time walk?</h2>
-    <p class="section-sub" style="margin-bottom:24px;">No membership required — book a single walk whenever you need one.</p>
-
-    <div style="max-width:640px;">
-      <a href="service-request.html?service=standard-walk" style="display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:18px 0;border-top:1px solid rgba(0,0,0,0.08);text-decoration:none;color:inherit;transition:opacity 0.15s;" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
-        <div>
-          <div style="font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px;">Standard Walk</div>
-          <div style="font-size:14px;color:var(--text-mid);line-height:1.6;">A 30-minute individual walk for exercise, enrichment, and a mid-day reset.</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:20px;flex-shrink:0;">
-          <div style="font-size:18px;font-weight:500;color:var(--navy);">$29</div>
-          <div style="font-size:13px;color:var(--rust);white-space:nowrap;">Book &rsaquo;</div>
-        </div>
-      </a>
-
-      <a href="service-request.html?service=extended-walk" style="display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:18px 0;border-top:1px solid rgba(0,0,0,0.08);border-bottom:1px solid rgba(0,0,0,0.08);text-decoration:none;color:inherit;transition:opacity 0.15s;" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
-        <div>
-          <div style="font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px;">Extended Walk</div>
-          <div style="font-size:14px;color:var(--text-mid);line-height:1.6;">A 45-minute walk for dogs who need more time, movement, and attention.</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:20px;flex-shrink:0;">
-          <div style="font-size:18px;font-weight:500;color:var(--navy);">$40</div>
-          <div style="font-size:13px;color:var(--rust);white-space:nowrap;">Book &rsaquo;</div>
-        </div>
-      </a>
     </div>
   </div>
 </section>
