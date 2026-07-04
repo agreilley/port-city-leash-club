@@ -327,10 +327,12 @@
         <div class="field" id="visits-field">
           <label for="visits">Visits Per Day</label>
           <select id="visits" name="visits">
-            <option>1 visit</option>
-            <option>2 visits</option>
-            <option>3 visits</option>
-            <option>4+ visits</option>
+            <option value="1">1 visit</option>
+            <option value="2">2 visits</option>
+            <option value="3">3 visits</option>
+            <option value="4">4 visits</option>
+            <option value="5">5 visits</option>
+            <option value="6">6 visits</option>
           </select>
         </div>
         <div class="field full" id="addons-field" style="display:none;">
@@ -439,6 +441,7 @@
     updateSummary();
   });
   endInput.addEventListener('change', updateSummary);
+  document.getElementById('visits').addEventListener('change', updateSummary);
 
   const params = new URLSearchParams(window.location.search);
   const requested = params.get('service');
@@ -466,30 +469,35 @@
     const info     = PRICES[service];
     if (!info) return;
 
-    const isWalk   = service === 'standard-walk' || service === 'extended-walk';
-    const start    = startInput.value;
-    const end      = endInput.value;
-    const days     = isWalk ? 1 : getDaysBetween(start, end);
-    const extraPet = document.getElementById('addon-extra-pet')?.checked ? 20 : 0;
-    const meds     = document.getElementById('addon-medication')?.checked ? 10 : 0;
+    const isWalk    = service === 'standard-walk' || service === 'extended-walk';
+    const isDropIn  = service === 'drop-in-visit';
+    const start     = startInput.value;
+    const end       = endInput.value;
+    const days      = isWalk ? 1 : getDaysBetween(start, end);
+    const visits    = isDropIn ? (parseInt(document.getElementById('visits').value, 10) || 1) : 1;
+    const extraPet  = document.getElementById('addon-extra-pet')?.checked ? 20 : 0;
+    const meds      = document.getElementById('addon-medication')?.checked ? 10 : 0;
 
-    const serviceTotal = info.price * (isWalk ? 1 : days);
+    const unitCount    = isWalk ? 1 : (isDropIn ? days * visits : days);
+    const serviceTotal = info.price * unitCount;
     const addonTotal   = (extraPet + meds) * (isWalk ? 1 : Math.max(days, 1));
     const grandTotal   = serviceTotal + addonTotal;
 
     // Build lines
     let lines = '';
-    const unitLabel = isWalk ? '1 walk' : (days > 0 ? `${days} night${days !== 1 ? 's' : ''}` : '—');
 
     lines += `<div class="order-line"><span>${info.name}</span><strong>$${serviceTotal || info.price}</strong></div>`;
     if (!isWalk && days > 0) {
-      lines += `<div class="order-line"><span style="font-size:11px;opacity:.6;">${days} × $${info.price}/night</span><strong></strong></div>`;
+      const detail = isDropIn
+        ? `${days} night${days !== 1 ? 's' : ''} &times; ${visits} visit${visits !== 1 ? 's' : ''}/day &times; $${info.price}`
+        : `${days} &times; $${info.price}/night`;
+      lines += `<div class="order-line"><span style="font-size:11px;opacity:.6;">${detail}</span><strong></strong></div>`;
     }
     if (extraPet) {
-      lines += `<div class="order-line"><span>Extra pet${!isWalk && days > 1 ? ` × ${days}` : ''}</span><strong>$${extraPet * (isWalk ? 1 : Math.max(days,1))}</strong></div>`;
+      lines += `<div class="order-line"><span>Extra pet${!isWalk && days > 1 ? ` &times; ${days}` : ''}</span><strong>$${extraPet * (isWalk ? 1 : Math.max(days,1))}</strong></div>`;
     }
     if (meds) {
-      lines += `<div class="order-line"><span>Medication admin${!isWalk && days > 1 ? ` × ${days}` : ''}</span><strong>$${meds * (isWalk ? 1 : Math.max(days,1))}</strong></div>`;
+      lines += `<div class="order-line"><span>Medication admin${!isWalk && days > 1 ? ` &times; ${days}` : ''}</span><strong>$${meds * (isWalk ? 1 : Math.max(days,1))}</strong></div>`;
     }
 
     const totalEl = document.getElementById('orderTotal');
