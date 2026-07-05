@@ -381,10 +381,10 @@
               <div class="field"><label for="temperament-${n}">Temperament</label><select id="temperament-${n}"><option>Select</option><option>Easygoing</option><option>Excitable</option><option>Nervous</option><option>Reactive</option></select></div>
               <div class="field full"><label>Helpful Context</label>
                 <div class="checkbox-row">
-                  <label class="checkbox-pill"><input type="checkbox"> Friendly with people</label>
-                  <label class="checkbox-pill"><input type="checkbox"> Friendly with other dogs</label>
-                  <label class="checkbox-pill"><input type="checkbox"> Pulls on leash</label>
-                  <label class="checkbox-pill"><input type="checkbox"> Takes medication</label>
+                  <label class="checkbox-pill"><input type="checkbox" name="friendly-people-${n}"> Friendly with people</label>
+                  <label class="checkbox-pill"><input type="checkbox" name="friendly-dogs-${n}"> Friendly with other dogs</label>
+                  <label class="checkbox-pill"><input type="checkbox" name="pulls-leash-${n}"> Pulls on leash</label>
+                  <label class="checkbox-pill"><input type="checkbox" name="takes-medication-${n}"> Takes medication</label>
                 </div>
               </div>
               <div class="field full"><label for="behavior-notes-${n}">Behavioral or Medical Notes</label><textarea id="behavior-notes-${n}" placeholder="Anything we should know before caring for your dog?"></textarea></div>
@@ -407,6 +407,29 @@
       window.addDog = addDog;
       window.removeDog = removeDog;
 
+      function collectDogs() {
+        const dogs = [];
+        for (let i = 1; i <= dogCount; i++) {
+          const card = document.getElementById(`dogCard${i}`);
+          if (!card) continue;
+          dogs.push({
+            name:        card.querySelector(`[name="dog-name-${i}"]`)?.value || '',
+            breed:       card.querySelector(`[name="breed-${i}"]`)?.value || '',
+            age:         card.querySelector(`[name="age-${i}"]`)?.value || '',
+            weight:      card.querySelector(`[name="weight-${i}"]`)?.value || '',
+            spayed:      card.querySelector(`#spayed-${i}`)?.value || '',
+            temperament: card.querySelector(`#temperament-${i}`)?.value || '',
+            friendlyWithPeople: card.querySelector(`[name="friendly-people-${i}"]`)?.checked || false,
+            friendlyWithDogs:   card.querySelector(`[name="friendly-dogs-${i}"]`)?.checked || false,
+            pullsOnLeash:       card.querySelector(`[name="pulls-leash-${i}"]`)?.checked || false,
+            takesMedication:    card.querySelector(`[name="takes-medication-${i}"]`)?.checked || false,
+            notes:       card.querySelector(`[name="behavior-notes-${i}"]`)?.value || '',
+          });
+        }
+        return dogs;
+      }
+      window.collectDogs = collectDogs;
+
       // Initialize with one dog on load
       addDog();
     </script>
@@ -423,14 +446,14 @@
 
     <div class="form-section">
       <h2 class="form-section-title">Payment Method</h2>
-      <p class="section-copy">We'll securely save your card on file through Stripe. You won't be charged today — payment is collected once your request is confirmed.</p>
+      <p class="section-copy">We'll securely save your card on file through Stripe. You won't be charged today. Payment is collected once your request is confirmed.</p>
       <div id="card-element" style="padding:14px 16px;border:1px solid rgba(0,0,0,0.15);border-radius:6px;background:white;max-width:480px;"></div>
       <div id="card-errors" role="alert" style="color:var(--rust);font-size:13px;margin-top:8px;"></div>
     </div>
 
     <div class="form-actions">
       <p class="microcopy">Submitting this form does not confirm the booking. We'll review your request, confirm availability, and follow up with next steps.</p>
-      <button class="btn-primary" type="button" onclick="alert('Mockup only: this would submit the service request.')">Submit Request</button>
+      <button class="btn-primary" type="submit">Submit Request</button>
     </div>
   </form>
 
@@ -552,6 +575,7 @@
     const linesEl = document.getElementById('orderLines');
     totalEl.textContent = grandTotal > 0 ? `$${grandTotal}` : '$0';
     linesEl.innerHTML   = lines || '<div class="order-empty">Select a service and dates to see your estimate.</div>';
+    window._lastEstimatedTotal = grandTotal;
   }
 
   function updateAddons() { updateSummary(); }
@@ -561,6 +585,67 @@
   document.getElementById('addon-medication')?.addEventListener('change', updateSummary);
 
   updateServiceFields();
+
+  function showNotification(msg) {
+    let notif = document.getElementById('serviceNotif');
+    if (!notif) {
+      notif = document.createElement('div');
+      notif.id = 'serviceNotif';
+      notif.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:var(--navy);color:white;padding:13px 24px;border-radius:6px;font-size:13px;font-weight:500;z-index:999;box-shadow:0 8px 24px rgba(0,0,0,0.2);transition:opacity 0.3s;white-space:nowrap;';
+      document.body.appendChild(notif);
+    }
+    notif.textContent = msg;
+    notif.style.opacity = '1';
+    clearTimeout(notif._timeout);
+    notif._timeout = setTimeout(() => notif.style.opacity = '0', 3000);
+  }
+
+  document.getElementById('serviceForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.target;
+    const btn = form.querySelector('[type=submit]');
+    btn.textContent = 'Sending...'; btn.disabled = true;
+    try {
+      const ownerName = document.getElementById('name')?.value || '';
+      const email     = document.getElementById('email')?.value || '';
+
+      const data = {
+        type: 'service_request',
+        service: serviceSelect.value,
+        startDate: startInput.value,
+        endDate: endInput.value,
+        visitsPerDay: document.getElementById('visits')?.value || '',
+        extraPet: document.getElementById('addon-extra-pet')?.checked || false,
+        medication: document.getElementById('addon-medication')?.checked || false,
+        dogs: collectDogs(),
+        ownerName,
+        email,
+        phone: document.getElementById('phone')?.value || '',
+        address: document.getElementById('address')?.value || '',
+        estimatedTotal: window._lastEstimatedTotal || 0,
+        read: false,
+        createdAt: window._serverTimestamp()
+      };
+
+      const docRef = await window._addDoc(window._collection(window._db, 'submissions'), data);
+
+      if (window._saveCardOnFile) {
+        const cardResult = await window._saveCardOnFile({ name: ownerName, email, submissionId: docRef.id });
+        if (!cardResult.success) {
+          showNotification('Request submitted, but we had trouble saving your card: ' + cardResult.error);
+          btn.textContent = 'Submit Request'; btn.disabled = false;
+          return;
+        }
+      }
+
+      showNotification('Request submitted! We\'ll be in touch within 24 hours.');
+      form.reset();
+    } catch (e) {
+      console.error(e);
+      showNotification('Something went wrong. Please email hello@portcityleashclub.com');
+    }
+    btn.textContent = 'Submit Request'; btn.disabled = false;
+  });
 </script>
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
@@ -582,8 +667,9 @@
 </script>
 <script src="https://js.stripe.com/v3/"></script>
 <script type="module">
-  import { mountCardField } from './firebase-payments.js';
+  import { mountCardField, saveCardOnFile } from './firebase-payments.js';
   mountCardField('card-element');
+  window._saveCardOnFile = saveCardOnFile;
 </script>
 <script>
   function toggleNav() {

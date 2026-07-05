@@ -13,7 +13,7 @@ Running list of things to work on. Add to this as new items come up; check items
 
 ## Known Issues
 
-- [ ] `service-request.html` and `membership-request.html` submit buttons still don't actually save anything (still `alert('Mockup only...')` / no real submit handler wired). The card-saving piece is now built (see below) but needs to be connected to real form submission logic — the submission needs to be written to Firestore first (to get a `submissionId`), then `saveCardOnFile()` called with that ID before showing the confirmation message.
+- [x] ~~`service-request.html` and `membership-request.html` submit buttons don't actually save anything~~ — **Fixed.** Both forms now write real submissions to Firestore and call `saveCardOnFile()` with the resulting submission ID. Still blocked on the Stripe/Firebase setup checklist below before the card-saving piece actually works end-to-end.
 - [ ] "Extra pet +$20" add-on checkbox on the service request page is disconnected from the new multi-dog card system — someone could add 2+ dog cards without checking the add-on, or vice versa. Worth deciding whether pricing should auto-derive from number of dog cards instead of a manual checkbox.
 
 ## Payments — Stripe Setup Checklist (do these yourself, in order)
@@ -34,7 +34,7 @@ Code is built (`/functions`, `firebase-payments.js`, card fields on both forms).
    ```
    firebase deploy --only functions
    ```
-8. **Wire up real form submission** on both request forms (see Known Issues above) — write the submission to Firestore, then call `saveCardOnFile()` from `firebase-payments.js` with the resulting submission ID.
+8. **Real form submission is already wired** — both forms write to Firestore and call `saveCardOnFile()` automatically on submit. Nothing further needed here once steps 1–7 are done.
 9. **Build the admin-side "Confirm" actions** in the admin dashboard to actually call `chargeSavedCard` (one-time services) or `createMembershipSubscription` (memberships) — right now these Cloud Functions exist but nothing in the UI calls them yet.
 
 ## Still Open From Earlier Sessions

@@ -340,7 +340,7 @@
       <section class="form-section">
         <p class="section-kicker">Step 06</p>
         <h2>Save a payment method</h2>
-        <p class="section-copy">We'll securely save your card on file through Stripe. You won't be charged today — your first charge happens once your meet & greet is confirmed.</p>
+        <p class="section-copy">We'll securely save your card on file through Stripe. You won't be charged today. Your first charge happens once your meet & greet is confirmed.</p>
         <div id="card-element" style="padding:14px 16px;border:1px solid rgba(0,0,0,0.15);border-radius:6px;background:white;max-width:480px;"></div>
         <div id="card-errors" role="alert" style="color:var(--rust);font-size:13px;margin-top:8px;"></div>
       </section>
@@ -570,7 +570,17 @@
         read: false,
         createdAt: window._serverTimestamp()
       };
-      await window._addDoc(window._collection(window._db, 'submissions'), data);
+      const docRef = await window._addDoc(window._collection(window._db, 'submissions'), data);
+
+      if (window._saveCardOnFile) {
+        const cardResult = await window._saveCardOnFile({ name: data.ownerName, email: data.email, submissionId: docRef.id });
+        if (!cardResult.success) {
+          showNotification('Request submitted, but we had trouble saving your card: ' + cardResult.error);
+          btn.textContent = 'Request Your Meet & Greet'; btn.disabled = false;
+          return;
+        }
+      }
+
       showNotification('Request submitted! We\'ll be in touch within 24 hours.');
       form.reset();
     } catch(e) {
@@ -829,8 +839,9 @@
 </script>
 <script src="https://js.stripe.com/v3/"></script>
 <script type="module">
-  import { mountCardField } from './firebase-payments.js';
+  import { mountCardField, saveCardOnFile } from './firebase-payments.js';
   mountCardField('card-element');
+  window._saveCardOnFile = saveCardOnFile;
 </script>
 <script>
   function toggleNav() {
