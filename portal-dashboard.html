@@ -722,19 +722,22 @@ function populateMemberUI() {
     document.getElementById('sidebarDogInfo').textContent = [dogs[0]?.breed, dogs[0]?.age ? `${dogs[0].age} old` : ''].filter(Boolean).join(' • ');
   }
   const dogNames = dogs.map(d => d.name).filter(Boolean).join(' & ') || 'your dog';
-  document.getElementById('bannerLabel').textContent = `${dogNames}'s Walk Routine`;
   document.getElementById('modalDog').textContent = dogNames;
 
   // Tier card
   const tier = memberData.tier || 'Standard';
   const tierDetail = { Essential: '5 walks / month', Standard: '10 walks / month', Daily: 'Every weekday' };
-  document.getElementById('metricTier').textContent = tier;
-  document.getElementById('metricTierDetail').textContent = tierDetail[tier] || '';
+  const isTravelOnly = tier === 'Travel';
+  document.getElementById('metricTier').textContent = isTravelOnly ? 'Pet Sitting' : tier;
+  document.getElementById('metricTierDetail').textContent = isTravelOnly ? 'No recurring walks' : (tierDetail[tier] || '');
 
   // Schedule banner — prefer stored field, else derive from walks
   const days = (memberData.defaultWalkDays || []).join(', ');
   const slot = memberData.defaultTimeSlot || '';
-  document.getElementById('bannerSchedule').textContent = days && slot ? `${days} • ${slot}` : 'Schedule pending';
+  document.getElementById('bannerLabel').textContent = isTravelOnly ? `${dogNames}'s Care Plan` : `${dogNames}'s Walk Routine`;
+  document.getElementById('bannerSchedule').textContent = isTravelOnly
+    ? 'No recurring walks on file'
+    : (days && slot ? `${days} • ${slot}` : 'Schedule pending');
 }
 
 // ── METRICS ───────────────────────────────────────────────────────────────────

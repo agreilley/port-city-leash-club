@@ -39,5 +39,11 @@ Code is built (`/functions`, `firebase-payments.js`, card fields on both forms).
 
 ## Still Open From Earlier Sessions
 
-- [ ] Firestore: add `"travel"` as a valid `tier` value for pet-sitting-only clients (no active walk membership)
+- [x] ~~Firestore: add "travel" as a valid tier value for pet-sitting-only clients~~ — **Done.** "Travel" is now a valid `tier` value. Admin can create one manually (Add Member modal), or — the main intended path — one gets created automatically the first time a non-member's one-time service request is confirmed in the admin inbox ("Confirm & Save as Client" button on `service_request` items). The tier stays invisible to the client themselves — the portal dashboard, account page, and pause-membership page all show neutral copy ("Pet Sitting," "No walk membership yet") instead of the literal word "Travel."
 - [ ] Launch timeline: remove "Now booking pet sitting and dog walking for our August 2026 launch. Reserve your spot today." language from the hero once walks actually start (mental deadline: August 15, adjust as needed)
+
+## Newly Found While Building the Travel Tier
+
+- [ ] **Pre-existing gap, not something I introduced:** the "Convert to Member" button (on `membership_request` inbox items) and "Add as Walker" button (on `application` items) in the admin dashboard are visually present but not wired to anything (`onclick = null`). I built the equivalent action for `service_request` items ("Confirm & Save as Client") since that's what the travel tier needed, but these two older buttons still do nothing when clicked.
+- [ ] Worth deciding whether "Pause Membership" makes sense to show at all for Travel-tier clients — they have no recurring membership/billing to pause, so that nav item may be confusing for them. Not fixed yet, just flagging.
+- [ ] Admin dashboard's Add Member tier dropdown still shows outdated pricing (Essential $129/mo, Standard $249/mo, Daily $429/mo — the old flat-tier model) and uses em dashes. Wasn't touched since it's out of scope for the travel tier work, but worth a cleanup pass.

@@ -427,6 +427,7 @@
           <option value="Essential">Essential — $129/mo</option>
           <option value="Standard" selected>Standard — $249/mo</option>
           <option value="Daily">Daily — $429/mo</option>
+          <option value="Travel">Travel (pet sitting only, no monthly fee)</option>
         </select>
       </div>
     </div>
@@ -1068,6 +1069,9 @@ window.openInboxItem = async (id) => {
     actionBtn.textContent = 'Convert to Member'; actionBtn.style.display = 'block'; actionBtn.onclick = null;
   } else if (item.type === 'application') {
     actionBtn.textContent = 'Add as Walker'; actionBtn.style.display = 'block'; actionBtn.onclick = null;
+  } else if (item.type === 'service_request' && item.status !== 'confirmed') {
+    actionBtn.textContent = 'Confirm & Save as Client'; actionBtn.style.display = 'block';
+    actionBtn.onclick = () => confirmServiceRequest(item.id, item);
   } else if ((item.type === 'overnight_request' || item.service === 'overnight') && item.status !== 'confirmed') {
     actionBtn.textContent = 'Confirm Overnight'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => confirmOvernight(item.id, item);
@@ -1075,6 +1079,62 @@ window.openInboxItem = async (id) => {
     actionBtn.style.display = 'none';
   }
   document.getElementById('inboxModal').classList.add('open');
+};
+
+// Confirm a one-time service request (drop-in visit, overnight stay, walk).
+// If the requester isn't already a member (matched by email), this creates
+// a new Travel-tier client record — per the "first booking creates the
+// account" design. Existing members/clients just get the request confirmed
+// without touching their existing tier.
+window.confirmServiceRequest = async (submissionId, item) => {
+  const btn = document.getElementById('inboxActionBtn');
+  btn.textContent = 'Confirming…'; btn.disabled = true;
+  try {
+    let memberId = item.memberId || '';
+
+    if (!memberId && item.email) {
+      const existing = allMembers.find(m => (m.email || '').toLowerCase() === item.email.toLowerCase());
+      if (existing) {
+        memberId = existing.id;
+      } else {
+        const dogs = item.dogs || [];
+        const newMemberRef = await addDoc(collection(db, 'members'), {
+          name: item.ownerName || '',
+          email: item.email || '',
+          phone: item.phone || '',
+          address: item.address || '',
+          tier: 'Travel',
+          dogName: dogs[0]?.name || '',
+          dogBreed: dogs[0]?.breed || '',
+          dogAge: dogs[0]?.age || '',
+          dogs: dogs,
+          walksThisMonth: 0,
+          status: 'active',
+          createdAt: serverTimestamp(),
+        });
+        memberId = newMemberRef.id;
+      }
+    }
+
+    await updateDoc(doc(db, 'submissions', submissionId), {
+      status: 'confirmed',
+      memberId,
+      read: true,
+    });
+
+    closeModal('inboxModal');
+    const msg = document.createElement('div');
+    msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2D9E5E;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
+    msg.textContent = 'Service request confirmed';
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 3000);
+    // NOTE: charging the saved card (via the chargeSavedCard Cloud Function)
+    // happens as a separate step once that admin-side integration is built —
+    // see TODO.md.
+  } catch (e) {
+    btn.textContent = 'Confirm & Save as Client'; btn.disabled = false;
+    alert('Error: ' + e.message);
+  }
 };
 
 window.confirmOvernight = async (submissionId, item) => {

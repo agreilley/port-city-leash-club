@@ -715,7 +715,7 @@ function loadPageData() {
   if (el('phone')) el('phone').value = memberData.phone || '';
   if (el('address')) el('address').value = memberData.address || '';
   // Membership info
-  if (el('membershipTier')) el('membershipTier').textContent = memberData.tier || 'Standard';
+  if (el('membershipTier')) el('membershipTier').textContent = memberData.tier === 'Travel' ? 'Pet Sitting (no walk membership)' : (memberData.tier || 'Standard');
   if (el('memberStatus')) el('memberStatus').textContent = memberData.status || 'Active';
   // Walk schedule
   const days = (memberData.defaultWalkDays || []).join(', ');

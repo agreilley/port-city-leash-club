@@ -582,7 +582,7 @@ window.signOutMember = () => signOut(auth).then(() => window.location.href = 'po
 function loadPageData() {
   if (!memberData) return;
   const el = document.getElementById('memberTier');
-  if (el) el.textContent = memberData.tier || 'Standard';
+  if (el) el.textContent = memberData.tier === 'Travel' ? 'Pet Sitting (no walk membership)' : (memberData.tier || 'Standard');
 }
 
 window.submitPause = async (startDate, endDate) => {

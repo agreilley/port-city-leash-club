@@ -544,10 +544,11 @@ window.signOutMember = () => signOut(auth).then(() => window.location.href = 'po
 
 function loadPageData() {
   if (!memberData) return;
-  const currentEl = document.getElementById('currentTier');
-  if (currentEl) currentEl.textContent = memberData.tier || 'Standard';
-  // Highlight current tier card
   const tier = memberData.tier || 'Standard';
+  const isTravelOnly = tier === 'Travel';
+  const currentEl = document.getElementById('currentTier');
+  if (currentEl) currentEl.textContent = isTravelOnly ? 'No walk membership yet' : tier;
+  // Highlight current tier card (Travel-only clients have no walk tier card to highlight)
   document.querySelectorAll('.tier-card').forEach(card => {
     if (card.dataset.tier === tier) card.classList.add('current');
   });
