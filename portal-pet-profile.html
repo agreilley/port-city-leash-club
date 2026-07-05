@@ -562,7 +562,7 @@ function updatePageHeader() {
     ? `${names.join(' & ')}'s Profile`
     : 'Pet Profile';
   document.getElementById('pageSubtitle').textContent =
-    `Update your dog${currentDogs.length > 1 ? 's\'' : '\'s'} information and care notes`;
+    `Update your pet${currentDogs.length > 1 ? 's\'' : '\'s'} information and care notes`;
 }
 
 function renderDogCards() {
@@ -578,7 +578,7 @@ function renderDogCards() {
     addBtn.id = 'addDogBtn';
     addBtn.type = 'button';
     addBtn.style.cssText = 'margin-top:12px;background:#8FA8A2;border:none;border-radius:6px;padding:14px 24px;font-size:14px;font-weight:500;color:white;cursor:pointer;font-family:inherit;width:100%;transition:background 0.2s;letter-spacing:0.02em;';
-    addBtn.textContent = '+ Add a dog';
+    addBtn.textContent = '+ Add a pet';
     addBtn.onmouseover = () => { addBtn.style.background = '#7a9690'; };
     addBtn.onmouseout  = () => { addBtn.style.background = '#8FA8A2'; };
     addBtn.onclick = addDog;
@@ -596,7 +596,7 @@ function renderDogCards() {
 
 function dogCardHTML(dog, i) {
   const isOnly = currentDogs.length === 1;
-  const label = isOnly ? 'Your Dog' : `Dog ${i + 1}${dog.name ? `: ${dog.name}` : ''}`;
+  const label = isOnly ? 'Your Pet' : `Pet ${i + 1}${dog.name ? `: ${dog.name}` : ''}`;
   return `
     <div class="section-card" id="dogCard${i}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
@@ -604,7 +604,7 @@ function dogCardHTML(dog, i) {
         ${!isOnly ? `<button type="button" onclick="removeDog(${i})" style="background:none;border:none;font-size:13px;color:#7A7A7A;cursor:pointer;padding:4px 8px;border-radius:4px;font-family:inherit;" onmouseover="this.style.color='#C17B6F'" onmouseout="this.style.color='#7A7A7A'">Remove</button>` : ''}
       </div>
       <div class="field-row">
-        <div class="field-group"><label class="field-label">Name</label><div class="field-value"><input type="text" id="dog_name_${i}" value="${dog.name || ''}" placeholder="Dog's name"></div></div>
+        <div class="field-group"><label class="field-label">Name</label><div class="field-value"><input type="text" id="dog_name_${i}" value="${dog.name || ''}" placeholder="Pet's name"></div></div>
         <div class="field-group"><label class="field-label">Breed</label><div class="field-value"><input type="text" id="dog_breed_${i}" value="${dog.breed || ''}" placeholder="Breed"></div></div>
       </div>
       <div class="field-row">
@@ -612,8 +612,8 @@ function dogCardHTML(dog, i) {
         <div class="field-group"><label class="field-label">Weight</label><div class="field-value"><input type="text" id="dog_weight_${i}" value="${dog.weight || ''}" placeholder="e.g. 55 lbs"></div></div>
       </div>
       <div class="field-row full"><div class="field-group"><label class="field-label">Temperament</label><div class="field-value"><textarea id="dog_temperament_${i}" placeholder="Friendly, energetic, shy…">${dog.temperament || ''}</textarea></div></div></div>
-      <div class="field-row full"><div class="field-group"><label class="field-label">Walking Preferences</label><div class="field-value"><textarea id="dog_walkingPrefs_${i}" placeholder="Pace, favourite routes, any habits…">${dog.walkingPrefs || ''}</textarea></div></div></div>
-      <div class="field-row full"><div class="field-group"><label class="field-label">Known Triggers</label><div class="field-value"><textarea id="dog_triggers_${i}" placeholder="Other dogs, loud noises, bicycles…">${dog.triggers || ''}</textarea></div></div></div>
+      <div class="field-row full"><div class="field-group"><label class="field-label">Care Preferences</label><div class="field-value"><textarea id="dog_walkingPrefs_${i}" placeholder="Routine, favorite spots, any habits…">${dog.walkingPrefs || ''}</textarea></div></div></div>
+      <div class="field-row full"><div class="field-group"><label class="field-label">Known Triggers</label><div class="field-value"><textarea id="dog_triggers_${i}" placeholder="Loud noises, other animals, specific situations…">${dog.triggers || ''}</textarea></div></div></div>
       <div class="field-row">
         <div class="field-group"><label class="field-label">Medications</label><div class="field-value"><input type="text" id="dog_medications_${i}" value="${dog.medications || ''}" placeholder="Any medications?"></div></div>
         <div class="field-group"><label class="field-label">Allergies</label><div class="field-value"><input type="text" id="dog_allergies_${i}" value="${dog.allergies || ''}" placeholder="Any known allergies?"></div></div>
@@ -649,7 +649,7 @@ window.addDog = () => {
 };
 
 window.removeDog = (i) => {
-  const dogName = document.getElementById(`dog_name_${i}`)?.value || `Dog ${i + 1}`;
+  const dogName = document.getElementById(`dog_name_${i}`)?.value || `Pet ${i + 1}`;
   if (!confirm(`Remove ${dogName} from your profile?`)) return;
   currentDogs = collectCurrentFormValues();
   currentDogs.splice(i, 1);
@@ -684,7 +684,7 @@ window.saveProfile = async () => {
         memberName: memberData.name || '',
         previousDogs: previousDogNames,
         newDogs: newDogNames,
-        message: `${memberData.name || 'A member'} updated their dog roster. Was: ${previousDogNames || 'none'}. Now: ${newDogNames || 'none'}.`,
+        message: `${memberData.name || 'A member'} updated their pet roster. Was: ${previousDogNames || 'none'}. Now: ${newDogNames || 'none'}.`,
         read: false,
         createdAt: serverTimestamp(),
       });

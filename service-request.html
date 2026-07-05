@@ -350,14 +350,14 @@
     </div>
 
     <div class="form-section">
-      <h2 class="form-section-title">Dog Details</h2>
+      <h2 class="form-section-title">Pet Details</h2>
 
-      <!-- Dog cards container -->
+      <!-- Pet cards container -->
       <div id="dogsList"></div>
 
-      <!-- Add another dog -->
+      <!-- Add another pet -->
       <button type="button" id="addDogBtn" onclick="addDog()" style="margin-top:8px;margin-bottom:20px;background:var(--seafoam);border:none;border-radius:6px;padding:14px 24px;font-size:14px;font-weight:500;color:white;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%;transition:background 0.2s;letter-spacing:0.02em;" onmouseover="this.style.background='#7a9690';" onmouseout="this.style.background='var(--seafoam)';">
-        + Add another dog
+        + Add another pet
       </button>
     </div>
 
@@ -369,11 +369,12 @@
         return `
           <div id="dogCard${n}" style="background:${isFirst ? '#fafaf8' : '#f4f0ea'};border:1px solid rgba(0,0,0,0.08);border-radius:8px;padding:24px;margin-bottom:14px;position:relative;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
-              <div style="font-size:12px;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:var(--seafoam);">Dog ${n}</div>
+              <div style="font-size:12px;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:var(--seafoam);">Pet ${n}</div>
               ${!isFirst ? `<button type="button" onclick="removeDog(${n})" style="background:none;border:none;font-size:13px;color:var(--text-light);cursor:pointer;padding:4px 8px;border-radius:4px;" onmouseover="this.style.color='var(--rust)'" onmouseout="this.style.color='var(--text-light)'">Remove</button>` : ''}
             </div>
             <div class="form-grid-3">
-              <div class="field"><label for="dog-name-${n}">Dog Name</label><input id="dog-name-${n}" name="dog-name-${n}" type="text"></div>
+              <div class="field"><label for="pet-name-${n}">Pet's Name</label><input id="pet-name-${n}" name="pet-name-${n}" type="text"></div>
+              <div class="field"><label for="species-${n}">Pet Type</label><select id="species-${n}" name="species-${n}"><option value="Dog" selected>Dog</option><option value="Cat">Cat</option></select></div>
               <div class="field"><label for="breed-${n}">Breed</label><input id="breed-${n}" name="breed-${n}" type="text"></div>
               <div class="field"><label for="age-${n}">Age</label><input id="age-${n}" name="age-${n}" type="text"></div>
               <div class="field"><label for="weight-${n}">Weight</label><input id="weight-${n}" name="weight-${n}" type="text"></div>
@@ -387,7 +388,7 @@
                   <label class="checkbox-pill"><input type="checkbox" name="takes-medication-${n}"> Takes medication</label>
                 </div>
               </div>
-              <div class="field full"><label for="behavior-notes-${n}">Behavioral or Medical Notes</label><textarea id="behavior-notes-${n}" placeholder="Anything we should know before caring for your dog?"></textarea></div>
+              <div class="field full"><label for="behavior-notes-${n}">Behavioral or Medical Notes</label><textarea id="behavior-notes-${n}" placeholder="Anything we should know before caring for your pet?"></textarea></div>
             </div>
           </div>
         `;
@@ -413,7 +414,8 @@
           const card = document.getElementById(`dogCard${i}`);
           if (!card) continue;
           dogs.push({
-            name:        card.querySelector(`[name="dog-name-${i}"]`)?.value || '',
+            name:        card.querySelector(`[name="pet-name-${i}"]`)?.value || '',
+            species:     card.querySelector(`#species-${i}`)?.value || 'Dog',
             breed:       card.querySelector(`[name="breed-${i}"]`)?.value || '',
             age:         card.querySelector(`[name="age-${i}"]`)?.value || '',
             weight:      card.querySelector(`[name="weight-${i}"]`)?.value || '',
