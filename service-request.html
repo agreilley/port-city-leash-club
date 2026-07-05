@@ -421,6 +421,13 @@
       </div>
     </div>
 
+    <div class="form-section">
+      <h2 class="form-section-title">Payment Method</h2>
+      <p class="section-copy">We'll securely save your card on file through Stripe. You won't be charged today — payment is collected once your request is confirmed.</p>
+      <div id="card-element" style="padding:14px 16px;border:1px solid rgba(0,0,0,0.15);border-radius:6px;background:white;max-width:480px;"></div>
+      <div id="card-errors" role="alert" style="color:var(--rust);font-size:13px;margin-top:8px;"></div>
+    </div>
+
     <div class="form-actions">
       <p class="microcopy">Submitting this form does not confirm the booking. We'll review your request, confirm availability, and follow up with next steps.</p>
       <button class="btn-primary" type="button" onclick="alert('Mockup only: this would submit the service request.')">Submit Request</button>
@@ -572,6 +579,11 @@
   window._addDoc = addDoc;
   window._collection = collection;
   window._serverTimestamp = serverTimestamp;
+</script>
+<script src="https://js.stripe.com/v3/"></script>
+<script type="module">
+  import { mountCardField } from './firebase-payments.js';
+  mountCardField('card-element');
 </script>
 <script>
   function toggleNav() {

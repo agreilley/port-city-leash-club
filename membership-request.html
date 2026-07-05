@@ -338,6 +338,14 @@
       </section>
 
       <section class="form-section">
+        <p class="section-kicker">Step 06</p>
+        <h2>Save a payment method</h2>
+        <p class="section-copy">We'll securely save your card on file through Stripe. You won't be charged today — your first charge happens once your meet & greet is confirmed.</p>
+        <div id="card-element" style="padding:14px 16px;border:1px solid rgba(0,0,0,0.15);border-radius:6px;background:white;max-width:480px;"></div>
+        <div id="card-errors" role="alert" style="color:var(--rust);font-size:13px;margin-top:8px;"></div>
+      </section>
+
+      <section class="form-section">
         <div class="next-steps">
           <div class="next-steps-title">What happens next</div>
           <ol>
@@ -818,6 +826,11 @@
   window._addDoc = addDoc;
   window._collection = collection;
   window._serverTimestamp = serverTimestamp;
+</script>
+<script src="https://js.stripe.com/v3/"></script>
+<script type="module">
+  import { mountCardField } from './firebase-payments.js';
+  mountCardField('card-element');
 </script>
 <script>
   function toggleNav() {
