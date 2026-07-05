@@ -272,6 +272,8 @@
     .order-sidebar { position: static; }
     .service-grid { grid-template-columns: 1fr; }
     .form-section { padding: 24px 20px; }
+    #meetGreetCalendar { grid-template-columns: 1fr !important; gap: 16px !important; }
+    #mgTimePanel { min-height: auto !important; }
     .field-group { grid-template-columns: 1fr; }
     * { max-width: 100%; }
     .page-hero, main { padding-left: 20px; padding-right: 20px; }
@@ -447,6 +449,46 @@
     </div>
 
     <div class="form-section">
+      <h2 class="form-section-title">Schedule Your Meet & Greet</h2>
+      <p class="section-copy">First time booking with us? Select a date and time that works for you. Available slots are shown in green. Already a client? Feel free to select a slot anyway, or leave this blank and we'll follow up.</p>
+
+      <div id="meetGreetCalendar" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;">
+
+        <!-- Month calendar -->
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <button type="button" onclick="mgPrevMonth()" style="background:white;border:1px solid rgba(0,0,0,0.1);border-radius:4px;padding:6px 12px;font-size:13px;cursor:pointer;">←</button>
+            <div id="mgMonthTitle" style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:300;color:var(--navy);"></div>
+            <button type="button" onclick="mgNextMonth()" style="background:white;border:1px solid rgba(0,0,0,0.1);border-radius:4px;padding:6px 12px;font-size:13px;cursor:pointer;">→</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);background:var(--sand-light);border-radius:6px 6px 0 0;border:1px solid rgba(0,0,0,0.08);">
+            <div style="padding:8px;font-size:10px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">Su</div>
+            <div style="padding:8px;font-size:10px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">Mo</div>
+            <div style="padding:8px;font-size:10px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">Tu</div>
+            <div style="padding:8px;font-size:10px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">We</div>
+            <div style="padding:8px;font-size:10px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">Th</div>
+            <div style="padding:8px;font-size:10px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">Fr</div>
+            <div style="padding:8px;font-size:10px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">Sa</div>
+          </div>
+          <div id="mgCalDays" style="display:grid;grid-template-columns:repeat(7,1fr);border:1px solid rgba(0,0,0,0.08);border-top:none;border-radius:0 0 6px 6px;overflow:hidden;"></div>
+        </div>
+
+        <!-- Time slots -->
+        <div>
+          <div id="mgTimePanel" style="background:var(--sand-light);border:1px solid rgba(0,0,0,0.08);border-radius:6px;padding:20px;min-height:180px;">
+            <div style="font-size:13px;color:var(--text-light);text-align:center;padding:24px 0;">Select a date to see available times.</div>
+          </div>
+          <div id="mgSelectedDisplay" style="margin-top:12px;padding:12px 16px;background:white;border:1px solid rgba(0,0,0,0.08);border-radius:6px;font-size:13px;color:var(--text-mid);display:none;">
+            Selected: <strong id="mgSelectedText" style="color:var(--navy);"></strong>
+          </div>
+          <input type="hidden" id="meetGreetDateTime" name="meetGreetDateTime">
+        </div>
+      </div>
+
+      <div id="mgLoadingMsg" style="font-size:13px;color:var(--text-light);padding:12px 0;">Loading availability...</div>
+    </div>
+
+    <div class="form-section">
       <h2 class="form-section-title">Payment Method</h2>
       <p class="section-copy">We'll securely save your card on file through Stripe. You won't be charged today. Payment is collected once your request is confirmed.</p>
       <div id="card-element" style="padding:14px 16px;border:1px solid rgba(0,0,0,0.15);border-radius:6px;background:white;max-width:480px;"></div>
@@ -504,7 +546,9 @@
   const endInput   = document.getElementById('end-date');
   const minDate    = new Date();
   minDate.setDate(minDate.getDate() + 2);
-  const minDateStr = minDate.toISOString().split('T')[0];
+  const launchDate = new Date('2026-08-17');
+  const effectiveMin = minDate > launchDate ? minDate : launchDate;
+  const minDateStr = effectiveMin.toISOString().split('T')[0];
   startInput.min = minDateStr;
   endInput.min   = minDateStr;
 
@@ -624,6 +668,7 @@
         email,
         phone: document.getElementById('phone')?.value || '',
         address: document.getElementById('address')?.value || '',
+        meetGreetDateTime: document.getElementById('meetGreetDateTime')?.value || '',
         estimatedTotal: window._lastEstimatedTotal || 0,
         read: false,
         createdAt: window._serverTimestamp()
@@ -672,6 +717,10 @@
   import { mountCardField, saveCardOnFile } from './firebase-payments.js';
   mountCardField('card-element');
   window._saveCardOnFile = saveCardOnFile;
+</script>
+<script type="module">
+  import { initMeetGreetCalendar } from './meet-greet-calendar.js';
+  initMeetGreetCalendar();
 </script>
 <script>
   function toggleNav() {
