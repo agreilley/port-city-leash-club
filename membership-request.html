@@ -116,8 +116,6 @@
     .nav-links { gap:16px; flex-wrap:wrap; justify-content:flex-end; }
     .page-hero, main { padding-left:20px; padding-right:20px; }
     .membership-grid, .field-grid, .field-grid.three, .days-grid, .time-grid { grid-template-columns:1fr; }
-    h1 { font-size:44px; }
-    h2 { font-size:32px; }
     .form-section { padding:24px; }
     .submit-row { flex-direction:column; align-items:flex-start; }
   }
@@ -162,6 +160,10 @@
     #meetGreetCalendar { grid-template-columns: 1fr !important; gap: 16px !important; }
     #mgTimePanel { min-height: auto !important; }
     .order-sidebar { max-width: 100%; }
+  }
+  @media (max-width: 640px) {
+    h1 { font-size: 44px; }
+    h2 { font-size: 32px; }
   }
 </style>
 </head>
