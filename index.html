@@ -101,37 +101,6 @@
   .step-text { font-size: 14px; color: var(--text-mid); line-height: 1.7; }
   .how-divider { border: none; border-top: 1px solid rgba(0,0,0,0.08); margin: 0 0 64px 0; }
 
-  /* SERVICES */
-  .services-top { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
-  .service-card { border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 32px 28px; background: white; }
-  .service-title { font-size: 17px; font-weight: 500; color: var(--navy); margin-bottom: 10px; }
-  .service-text { font-size: 14px; color: var(--text-mid); line-height: 1.7; margin-bottom: 20px; }
-  .service-price { font-size: 14px; color: var(--seafoam); font-weight: 500; }
-  .petsitting-split { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-top: 1px solid rgba(0,0,0,0.08); margin-top: 8px; padding-top: 20px; }
-  .petsitting-item:first-child { padding-right: 24px; border-right: 1px solid rgba(0,0,0,0.08); }
-  .petsitting-item:last-child { padding-left: 24px; }
-  .petsitting-name { font-size: 15px; font-weight: 500; color: var(--navy); margin-bottom: 6px; }
-  .petsitting-desc { font-size: 13px; color: var(--text-mid); line-height: 1.6; margin-bottom: 10px; }
-  .petsitting-price { font-size: 14px; color: var(--seafoam); font-weight: 500; }
-  .addons-card { border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 28px 32px; background: var(--sand-light); }
-  .addons-label { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-light); margin-bottom: 20px; }
-  .addons-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-  .addon-name { font-size: 14px; font-weight: 500; color: var(--navy); margin-bottom: 4px; }
-  .addon-price { font-size: 13px; color: var(--seafoam); }
-
-
-  .service-options-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 24px; }
-  .service-option { background: var(--warm-white); border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 22px; display: flex; flex-direction: column; min-height: 210px; transition: box-shadow 0.25s, transform 0.25s, border-color 0.25s; text-decoration: none; color: inherit; }
-  .service-option:hover { box-shadow: 0 8px 28px rgba(0,0,0,0.08); transform: translateY(-2px); border-color: rgba(13,27,42,0.22); }
-  .service-option-meta { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 10px; }
-  .service-option-title { font-size: 17px; font-weight: 500; color: var(--navy); margin-bottom: 8px; }
-  .service-option-desc { font-size: 13px; color: var(--text-mid); line-height: 1.6; margin-bottom: 18px; flex-grow: 1; }
-  .service-option-bottom { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: auto; }
-  .service-option-price { font-family: 'Cormorant Garamond', serif; font-size: 28px; color: var(--navy); line-height: 1; }
-  .service-option-cta { font-size: 13px; color: var(--rust); font-weight: 500; white-space: nowrap; }
-  .membership-callout { background: var(--sand-light); border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 24px 28px; display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; margin-top: 24px; }
-  .membership-callout-title { font-size: 17px; font-weight: 500; color: var(--navy); margin-bottom: 4px; }
-  .membership-callout-text { font-size: 13px; color: var(--text-mid); line-height: 1.6; }
   a.btn-primary, a.btn-nav { display: inline-block; text-align: center; text-decoration: none; color: white !important; }
   a.btn-tier { display: inline-block; text-align: center; text-decoration: none; }
   a.btn-tier-solid { color: white !important; }
@@ -198,7 +167,6 @@
   .carousel-arrow:hover { background:var(--navy); color:white; border-color:var(--navy); }
   /* WHY US */
   .why-section { background: var(--sand-light); }
-  .why-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
   .why-card { padding: 32px 28px; background: white; border: 1px solid rgba(0,0,0,0.06); border-radius: 8px; }
   .why-title { font-size: 17px; font-weight: 500; color: var(--navy); margin-bottom: 10px; }
   .why-text { font-size: 14px; color: var(--text-mid); line-height: 1.7; }
@@ -273,25 +241,17 @@
     /* Membership tiers */
     .tiers-grid { grid-template-columns: 1fr !important; gap: 16px; }
     .steps-row { grid-template-columns: 1fr !important; gap: 16px; }
-    .steps-grid { grid-template-columns: 1fr !important; gap: 20px; }
-    .addons-grid { grid-template-columns: 1fr 1fr !important; }
-    .service-options-grid { grid-template-columns: 1fr !important; }
 
     /* Pet Sitting Services: stack cards on mobile */
     .sitting-cards-grid { grid-template-columns: 1fr !important; gap: 16px; }
 
     /* Why section: hide photo, show cards full width */
-    div[style*="grid-template-columns:1fr 1fr;gap:40px;align-items:stretch"] { display: block !important; }
-    div[style*="border-radius:8px;overflow:hidden;height:640px"] { display: none !important; }
-    div[style*="display:flex;flex-direction:column;gap:18px;justify-content:center"] { margin-top: 0 !important; }
+    .why-layout { grid-template-columns: 1fr; margin-top: 24px !important; }
+    .why-photo { display: none !important; }
+    .why-cards { margin-top: 0 !important; }
     .tier-card { padding: 28px 24px; }
 
-    /* Services */
-    .services-top { grid-template-columns: 1fr; }
-    .petsitting-split { grid-template-columns: 1fr; }
-
     /* Why PCLC */
-    .why-layout { grid-template-columns: 1fr; }
     .why-section > div { padding: 48px 20px; }
 
     /* Founder */
@@ -303,7 +263,6 @@
 
     /* Map */
     .map-section { padding: 48px 20px; }
-    .map-search { padding: 0 20px; }
 
     /* Footer */
     footer { flex-direction: column; gap: 28px; padding: 40px 20px; align-items: flex-start; }
@@ -311,19 +270,12 @@
 
     /* Misc */
     h2 { font-size: 36px; }
-    .membership-callout { flex-direction: column; gap: 16px; padding: 24px; }
-    .membership-callout a { width: 100%; text-align: center; }
     * { max-width: 100%; }
     .trust-signals { overflow-x: auto; }
     .hero { padding: 40px 20px; }
     section { padding: 48px 20px; overflow: hidden; }
-    .tier-cards, .tiers { max-width: 100%; }
-    .services-top, .petsitting-split { max-width: 100%; }
     .map-section iframe { width: 100% !important; }
-    .membership-callout { max-width: 100%; }
     .cta-section { padding: 48px 20px; }
-    .how-it-works-grid { grid-template-columns: 1fr; }
-    .why-grid { grid-template-columns: 1fr; }
   }
 
   @media (max-width: 480px) {
@@ -523,15 +475,15 @@
   <div class="section-inner">
     <p class="section-eyebrow">Why Port City Leash Club</p>
     <h2 class="section-headline">Built for Consistency. Designed for Peace of Mind.</h2>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:stretch;margin-top:40px;">
+    <div class="why-layout" style="display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:stretch;margin-top:40px;">
 
       <!-- Left: photo -->
-      <div style="border-radius:8px;overflow:hidden;height:640px;">
+      <div class="why-photo" style="border-radius:8px;overflow:hidden;height:640px;">
         <img src="images/lifestyle.jpeg" alt="Dog on the beach in Wilmington, NC" style="width:100%;height:100%;object-fit:cover;object-position:center center;">
       </div>
 
       <!-- Right: stacked cards -->
-      <div style="display:flex;flex-direction:column;gap:18px;justify-content:center;">
+      <div class="why-cards" style="display:flex;flex-direction:column;gap:18px;justify-content:center;">
         <div class="why-card">
           <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-bottom:18px;display:block;">
             <path d="M16 3L4 8v8c0 6.5 5 12.5 12 14 7-1.5 12-7.5 12-14V8L16 3z" stroke="#8FA8A2" stroke-width="1.5" stroke-linejoin="round"/>
