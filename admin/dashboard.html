@@ -168,12 +168,78 @@
   .empty-state { text-align: center; padding: 48px; color: var(--text-light); }
   .empty-state-icon { font-size: 32px; margin-bottom: 12px; }
   .empty-state-title { font-size: 15px; font-weight: 500; color: var(--text-mid); margin-bottom: 6px; }
+
+  /* ── MOBILE NAV (hidden on desktop) ── */
+  .hamburger-btn { display: none; background: none; border: none; padding: 4px; cursor: pointer; color: var(--navy); }
+  .sidebar-overlay { display: none; }
+
+  @media (max-width: 900px) {
+    html, body { overflow-x: hidden; }
+
+    /* Sidebar becomes an off-canvas drawer */
+    .sidebar {
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      box-shadow: 0 0 0 rgba(0,0,0,0);
+    }
+    .sidebar.open {
+      transform: translateX(0);
+      box-shadow: 8px 0 24px rgba(0,0,0,0.15);
+    }
+    .sidebar-overlay {
+      display: block;
+      position: fixed;
+      inset: 0;
+      background: rgba(13,27,42,0.4);
+      z-index: 90;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+    .sidebar-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .hamburger-btn { display: block; }
+
+    .main { margin-left: 0; }
+    .topbar { padding: 0 16px; height: 52px; }
+    .topbar-title { font-size: 16px; }
+    .topbar-actions { gap: 6px; }
+    .topbar-actions .btn-primary,
+    .topbar-actions .btn-secondary { padding: 7px 10px; font-size: 11px; white-space: nowrap; }
+    .content { padding: 16px; }
+
+    /* Stats: 4 columns is too tight on a phone */
+    .stats-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-card { padding: 14px; }
+    .stat-value { font-size: 22px; }
+
+    /* Tables: scroll horizontally instead of squeezing columns unreadably */
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .table-scroll table { min-width: 640px; }
+
+    /* Availability weekly grid: same horizontal-scroll treatment */
+    .availability-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .availability-grid { min-width: 480px; }
+
+    /* Availability view: stack the calendar picker and side panel */
+    #view-availability > div { grid-template-columns: 1fr !important; max-width: 100% !important; }
+
+    /* Calendar: shorter cells so a month fits without excess scrolling */
+    .calendar-day { min-height: 64px; padding: 4px; }
+    .calendar-legend { flex-wrap: wrap; gap: 8px 14px; }
+
+    /* Inbox filters: allow wrapping instead of overflowing */
+    .inbox-filters { flex-wrap: wrap; }
+  }
 </style>
 </head>
 <body>
 
 <!-- SIDEBAR -->
-<nav class="sidebar">
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
+<nav class="sidebar" id="sidebar">
   <div class="sidebar-brand">The Leash Club</div>
   <a class="nav-item active" data-view="overview" onclick="switchView('overview')">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
@@ -213,7 +279,12 @@
 <!-- MAIN -->
 <div class="main">
   <div class="topbar">
-    <div class="topbar-title" id="topbarTitle">Overview</div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button class="hamburger-btn" id="hamburgerBtn" onclick="toggleSidebar()" aria-label="Menu">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M2 5h16M2 10h16M2 15h16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      </button>
+      <div class="topbar-title" id="topbarTitle">Overview</div>
+    </div>
     <div class="topbar-actions">
       <button class="btn-secondary" onclick="openAddWalkModal()">+ Schedule Walk</button>
       <button class="btn-primary" onclick="openAddMemberModal()">+ Add Member</button>
@@ -235,10 +306,12 @@
           <div class="table-title">Upcoming Walks</div>
           <button class="btn-secondary" onclick="switchView('calendar')">View Calendar</button>
         </div>
+        <div class="table-scroll">
         <table>
           <thead><tr><th>Date</th><th>Time Slot</th><th>Member</th><th>Dog</th><th>Walker</th><th>Status</th><th></th></tr></thead>
           <tbody id="upcomingWalksTable"><tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
         </table>
+        </div>
       </div>
     </div>
 
@@ -276,13 +349,16 @@
             <div class="table-title">Walker Team</div>
             <button class="btn-primary" onclick="openAddWalkerModal()">+ Add Walker</button>
           </div>
+          <div class="table-scroll">
           <table>
             <thead><tr><th>Name</th><th>Zones</th><th>Walks/Week Target</th><th>Walks This Week</th><th>Status</th><th></th></tr></thead>
             <tbody id="walkersTable"><tr><td colspan="6" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
           </table>
+          </div>
         </div>
         <div>
           <div class="table-title" style="margin-bottom:16px;">This Week's Availability</div>
+          <div class="availability-scroll">
           <div class="availability-grid">
             <div class="availability-header">
               <div class="availability-header-cell">Walker</div>
@@ -293,6 +369,7 @@
               <div class="availability-header-cell">Fri</div>
             </div>
             <div id="availabilityGrid"><div style="padding:20px;text-align:center;color:var(--text-light);">Loading...</div></div>
+          </div>
           </div>
         </div>
       </div>
@@ -305,10 +382,12 @@
           <div class="table-title">All Members</div>
           <input class="table-search" type="text" placeholder="Search members..." oninput="filterMembers(this.value)">
         </div>
+        <div class="table-scroll">
         <table>
           <thead><tr><th>Name</th><th>Dog</th><th>Tier</th><th>Walks/Month</th><th>Walker</th><th>Member Since</th><th></th></tr></thead>
           <tbody id="membersTable"><tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
         </table>
+        </div>
       </div>
     </div>
 
@@ -1474,12 +1553,21 @@ window.avSelectDate = avSelectDate;
 
 
 const viewTitles = { overview: 'Overview', calendar: 'Walk Calendar', walkers: 'Walkers', members: 'Members', availability: 'Meet & Greet Availability', inbox: 'Inbox' };
+window.toggleSidebar = (force) => {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  const shouldOpen = force !== undefined ? force : !sidebar.classList.contains('open');
+  sidebar.classList.toggle('open', shouldOpen);
+  overlay.classList.toggle('open', shouldOpen);
+};
+
 window.switchView = (view) => {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById(`view-${view}`).classList.add('active');
   document.querySelector(`[data-view="${view}"]`).classList.add('active');
   document.getElementById('topbarTitle').textContent = viewTitles[view];
+  toggleSidebar(false);
   // Init availability on first visit
   if (view === 'availability') {
     if (!window._avInit) {

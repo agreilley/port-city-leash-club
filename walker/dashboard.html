@@ -98,6 +98,80 @@
   .detail-value { color: var(--navy); font-weight: 500; text-align: right; }
   .btn-complete { width: 100%; background: var(--green); color: white; border: none; border-radius: 4px; padding: 13px; font-size: 15px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; margin-top: 20px; transition: background 0.2s; }
   .btn-complete:hover { background: #235533; }
+
+  /* Mobile bottom nav + topbar sign-out (hidden on desktop) */
+  .mobile-bottom-nav { display: none; }
+  .mobile-topbar-signout { display: none; }
+
+  @media (max-width: 768px) {
+    html, body { overflow-x: hidden; }
+
+    /* Hide sidebar, expand main full width */
+    .sidebar { display: none !important; }
+    .main { margin-left: 0 !important; }
+    .content { padding: 16px 16px 90px !important; }
+
+    /* Topbar: show sign-out here instead of the hidden sidebar */
+    .topbar { padding: 0 16px; height: 52px; justify-content: space-between; }
+    .topbar-title { font-size: 18px; }
+    .mobile-topbar-signout {
+      display: block;
+      width: auto;
+      background: transparent;
+      border: 1px solid rgba(13,27,42,0.15);
+      color: var(--text-mid);
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+    }
+
+    /* Stats: 3 columns is tight on a phone, stack to a 3-col grid with less padding instead */
+    .stats-row { gap: 8px; }
+    .stat-card { padding: 12px; }
+    .stat-value { font-size: 20px; }
+
+    /* Calendar: shorter cells so a full month fits without excess scrolling */
+    .calendar-day { min-height: 56px; padding: 4px; }
+
+    /* Walk cards: tighten padding */
+    .walk-card { padding: 16px; gap: 12px; }
+
+    /* Bottom nav */
+    .mobile-bottom-nav {
+      display: flex;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: var(--navy);
+      border-top: 1px solid rgba(255,255,255,0.08);
+      z-index: 200;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .mobile-tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 10px 4px 12px;
+      text-decoration: none;
+      color: rgba(255,255,255,0.45);
+      font-size: 10px;
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      transition: color 0.15s;
+      cursor: pointer;
+    }
+    .mobile-tab.active { color: var(--rust); }
+    .mobile-tab svg { opacity: 0.7; }
+    .mobile-tab.active svg { opacity: 1; }
+
+    /* Modal: full-height sheet instead of centered card */
+    .modal { width: 100%; max-height: 85vh; overflow-y: auto; }
+  }
 </style>
 </head>
 <body>
@@ -128,6 +202,7 @@
 <div class="main">
   <div class="topbar">
     <div class="topbar-title" id="topbarTitle">Upcoming Walks</div>
+    <button class="btn-signout mobile-topbar-signout" onclick="signOut()">Sign out</button>
   </div>
   <div class="content">
 
@@ -190,6 +265,21 @@
     <div id="walkModalContent"></div>
   </div>
 </div>
+
+<nav class="mobile-bottom-nav">
+  <a class="mobile-tab active" data-view="upcoming" onclick="switchView('upcoming')">
+    <svg width="20" height="20" viewBox="0 0 16 16" fill="none"><path d="M2 8h12M8 2v12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <span>Upcoming</span>
+  </a>
+  <a class="mobile-tab" data-view="calendar" onclick="switchView('calendar')">
+    <svg width="20" height="20" viewBox="0 0 16 16" fill="none"><rect x="1" y="2.5" width="14" height="12.5" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M1 6.5h14M5 1v3M11 1v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <span>Calendar</span>
+  </a>
+  <a class="mobile-tab" data-view="history" onclick="switchView('history')">
+    <svg width="20" height="20" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3.5l2.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <span>History</span>
+  </a>
+</nav>
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
@@ -424,9 +514,9 @@ window.markComplete = async (walkId) => {
 const titles = { upcoming: 'Upcoming Walks', calendar: 'Calendar', history: 'Walk History' };
 window.switchView = (view) => {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.nav-item, .mobile-tab').forEach(n => n.classList.remove('active'));
   document.getElementById(`view-${view}`).classList.add('active');
-  document.querySelector(`[data-view="${view}"]`).classList.add('active');
+  document.querySelectorAll(`[data-view="${view}"]`).forEach(n => n.classList.add('active'));
   document.getElementById('topbarTitle').textContent = titles[view];
 };
 
