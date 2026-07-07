@@ -98,10 +98,10 @@
   @media (max-width: 768px) {
     nav { padding: 0 24px; }
     .page-hero { padding: 56px 24px 48px; }
-    h1 { font-size: 44px; }
     main { padding: 48px 24px; }
     .form-card { padding: 28px; }
     .form-grid, .checkbox-grid { grid-template-columns: 1fr; }
+    .form-intro h2 { font-size: 30px; }
     footer { background: var(--navy); border-top: 1px solid rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); padding: 48px; display: flex; justify-content: space-between; align-items: center; }
   }
 
@@ -338,8 +338,6 @@
       alert('Something went wrong. Please email hello@portcityleashclub.com');
     }
     btn.textContent = 'Submit Application'; btn.disabled = false;
-  }, 4000);
-    e.target.reset();
   }
 </script>
 <script type="module">
