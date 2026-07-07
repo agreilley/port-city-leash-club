@@ -75,7 +75,7 @@
   onAuthStateChanged(auth, async (user) => {
     if (user) {
       const snap = await getDoc(doc(db, 'admins', user.uid));
-      if (snap.exists()) window.location.href = 'dashboard.html';
+      if (snap.exists()) window.location.href = '/admin/dashboard';
     }
   });
 
@@ -96,7 +96,7 @@
         await auth.signOut();
         throw new Error('You do not have admin access.');
       }
-      window.location.href = 'dashboard.html';
+      window.location.href = '/admin/dashboard';
     } catch (e) {
       err.textContent = e.code === 'auth/invalid-credential' ? 'Incorrect email or password.' : e.message;
       err.style.display = 'block';

@@ -63,10 +63,10 @@
   onAuthStateChanged(auth, async (user) => {
     if (user) {
       const uidDoc = await getDoc(doc(db, 'walkers', user.uid));
-      if (uidDoc.exists()) { window.location.href = 'dashboard.html'; return; }
+      if (uidDoc.exists()) { window.location.href = '/walker/dashboard'; return; }
       const q = query(collection(db, 'walkers'), where('uid', '==', user.uid));
       const snap = await getDocs(q);
-      if (!snap.empty) window.location.href = 'dashboard.html';
+      if (!snap.empty) window.location.href = '/walker/dashboard';
     }
   });
 
@@ -85,7 +85,7 @@
         const snap = await getDocs(q);
         if (snap.empty) { await auth.signOut(); throw new Error('No walker account found for this email.'); }
       }
-      window.location.href = 'dashboard.html';
+      window.location.href = '/walker/dashboard';
     } catch (e) {
       err.textContent = e.code === 'auth/invalid-credential' ? 'Incorrect email or password.' : e.message;
       err.style.display = 'block';
