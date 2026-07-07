@@ -385,6 +385,27 @@
       .services-grid {
         grid-template-columns: 1fr;
       }
+
+      .extended-walk-card {
+        flex-direction: column;
+        align-items: stretch !important;
+        gap: 20px !important;
+      }
+
+      .extended-walk-actions {
+        flex-direction: column;
+        align-items: stretch !important;
+        gap: 16px !important;
+        width: 100%;
+      }
+
+      .extended-walk-actions > div:first-child {
+        text-align: left !important;
+      }
+
+      .extended-walk-actions .btn-primary {
+        width: 100%;
+      }
     }
 
     .notification {
@@ -588,17 +609,17 @@
         <!-- Extended Walk -->
         <div style="margin-top: 40px;">
           <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: #8FA8A2; margin-bottom: 16px;">Walk Upgrades</div>
-          <div style="background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 12px; padding: 28px 32px; display: flex; justify-content: space-between; align-items: center; gap: 32px;">
+          <div class="extended-walk-card" style="background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 12px; padding: 28px 32px; display: flex; justify-content: space-between; align-items: center; gap: 32px;">
             <div>
               <div style="font-size: 17px; font-weight: 600; color: #0D1B2A; margin-bottom: 6px;">Extended Walk</div>
               <div style="font-size: 14px; color: #4A4A4A; line-height: 1.6; max-width: 480px;">Add 15 minutes to any upcoming walk, turning a 30-minute walk into a 45-minute one. Select which walks to upgrade from your schedule.</div>
             </div>
-            <div style="display: flex; align-items: center; gap: 32px; flex-shrink: 0;">
+            <div class="extended-walk-actions" style="display: flex; align-items: center; gap: 32px; flex-shrink: 0;">
               <div style="text-align: right;">
                 <div style="font-size: 11px; color: #7A7A7A; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">Upcharge</div>
                 <div style="font-size: 22px; font-weight: 600; color: #0D1B2A;">$12 <span style="font-size: 13px; font-weight: 400; color: #7A7A7A;">/ walk</span></div>
               </div>
-              <a href="portal-extend-walk.html" style="text-decoration: none;">
+              <a href="portal-extend-walk.html" style="text-decoration: none;" class="extended-walk-btn-link">
                 <button class="btn-primary" style="white-space: nowrap;">Select Walks</button>
               </a>
             </div>
