@@ -1197,12 +1197,18 @@ window.openInboxItem = async (id) => {
     ];
   } else {
     // Generic — show all fields, formatted
-    const skip = ['id','type','read'];
+    const hasDogsArray = Array.isArray(item.dogs) && item.dogs.length > 0;
+    // Skip the raw id/type/read, plus the legacy single-dog fields when the full dogs[] array covers the same info
+    const skip = ['id', 'type', 'read', ...(hasDogsArray ? ['dogName', 'breed', 'age', 'weight'] : [])];
     fields = Object.entries(item)
       .filter(([k]) => !skip.includes(k))
       .map(([k, v]) => {
         let display = v;
-        if (v && typeof v === 'object' && v.toDate) display = fmtDate(v);
+        if (k === 'dogs' && Array.isArray(v)) {
+          display = v.length
+            ? v.map(d => `${d.name || 'Unnamed'} (${[d.breed, d.age, d.weight].filter(Boolean).join(', ') || 'no details'})`).join('; ')
+            : '–';
+        } else if (v && typeof v === 'object' && v.toDate) display = fmtDate(v);
         else if (typeof v === 'boolean') display = v ? 'Yes' : 'No';
         else if (!v && v !== 0) display = '–';
         const label = k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
