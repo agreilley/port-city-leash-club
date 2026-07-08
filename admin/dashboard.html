@@ -223,12 +223,74 @@
     .table-header .btn-secondary { width: 100%; }
 
     /* Tables: scroll horizontally instead of squeezing columns unreadably */
-    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .table-scroll table { min-width: 640px; }
+    /* Tables: transform into stacked cards instead of requiring horizontal scroll */
+    .table-scroll table,
+    .table-scroll tbody,
+    .table-scroll tr,
+    .table-scroll td { display: block; width: 100%; }
+    .table-scroll thead { display: none; }
+    .table-scroll tr {
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 8px;
+      padding: 4px 14px;
+      margin: 12px;
+    }
+    .table-scroll tr:first-child { margin-top: 12px; }
+    .table-scroll td {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 9px 0;
+      border-top: 1px solid rgba(0,0,0,0.05);
+      text-align: right;
+      font-size: 13px;
+    }
+    .table-scroll td:first-child { border-top: none; }
+    .table-scroll td[data-label=""] { justify-content: flex-end; }
+    .table-scroll td::before {
+      content: attr(data-label);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-light);
+      text-align: left;
+      flex-shrink: 0;
+    }
+    .table-scroll td[data-label=""]::before { content: none; }
+    /* Single-message rows (loading / empty states) shouldn't get the label treatment */
+    .table-scroll td[colspan] { display: block; text-align: center; border-top: none; }
+    .table-scroll td[colspan]::before { content: none; }
 
-    /* Availability weekly grid: same horizontal-scroll treatment */
-    .availability-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .availability-grid { min-width: 480px; }
+    /* Availability grid: stack into per-walker cards instead of a wide scrolling grid */
+    .availability-header { display: none; }
+    .availability-row {
+      display: block;
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 8px;
+      padding: 4px 14px;
+      margin: 12px;
+    }
+    .availability-walker { padding: 10px 0; border-bottom: 1px solid rgba(0,0,0,0.05); }
+    .availability-slot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 0;
+      border-top: 1px solid rgba(0,0,0,0.05);
+      border-left: none;
+      text-align: right;
+    }
+    .availability-slot:first-of-type { border-top: none; }
+    .availability-slot::before {
+      content: attr(data-day);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-light);
+    }
 
     /* Availability view: stack the calendar picker and side panel */
     #view-availability > div { grid-template-columns: 1fr !important; max-width: 100% !important; }
@@ -729,13 +791,13 @@ function renderUpcomingWalks() {
       ? `<button class="btn-sm assign" onclick="openWalkModal('${w.id}')">Assign</button>`
       : `<button class="btn-sm" onclick="openWalkModal('${w.id}')" style="background:var(--sand);color:var(--navy);">Edit</button>`;
     return `<tr>
-      <td>${date.toLocaleDateString('en-US', {month:'short',day:'numeric'})}</td>
-      <td>${slotLabel}</td>
-      <td>${member?.name || '–'}</td>
-      <td>${member?.dogName || '–'}</td>
-      <td>${isUnassigned ? '<span style="color:var(--rust);">Unassigned</span>' : walker?.name || '–'}</td>
-      <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
-      <td>${actionBtn}</td>
+      <td data-label="Date">${date.toLocaleDateString('en-US', {month:'short',day:'numeric'})}</td>
+      <td data-label="Time Slot">${slotLabel}</td>
+      <td data-label="Member">${member?.name || '–'}</td>
+      <td data-label="Dog">${member?.dogName || '–'}</td>
+      <td data-label="Walker">${isUnassigned ? '<span style="color:var(--rust);">Unassigned</span>' : walker?.name || '–'}</td>
+      <td data-label="Status"><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+      <td data-label="">${actionBtn}</td>
     </tr>`;
   }).join('');
 }
@@ -817,12 +879,12 @@ function renderWalkersTable() {
   tbody.innerHTML = allWalkers.map(w => {
     const thisWeek = allWalks.filter(walk => walk.walkerId === w.id && (() => { const d = walk.date?.toDate?.() || new Date(walk.date); return d >= now && d <= weekEnd; })()).length;
     return `<tr>
-      <td><strong>${w.name}</strong><br><span style="font-size:11px;color:var(--text-light);">${w.email}</span></td>
-      <td>${(w.zones || []).join(', ') || '–'}</td>
-      <td>${w.weeklyTarget || '–'}</td>
-      <td>${thisWeek}</td>
-      <td><span class="status-badge ${w.status === 'active' ? 'active' : 'pending'}">${w.status || 'active'}</span></td>
-      <td><button class="btn-sm view" onclick="openWalkerDetail('${w.id}')">View</button></td>
+      <td data-label="Name"><strong>${w.name}</strong><br><span style="font-size:11px;color:var(--text-light);">${w.email}</span></td>
+      <td data-label="Zones">${(w.zones || []).join(', ') || '–'}</td>
+      <td data-label="Walks/Week Target">${w.weeklyTarget || '–'}</td>
+      <td data-label="Walks This Week">${thisWeek}</td>
+      <td data-label="Status"><span class="status-badge ${w.status === 'active' ? 'active' : 'pending'}">${w.status || 'active'}</span></td>
+      <td data-label=""><button class="btn-sm view" onclick="openWalkerDetail('${w.id}')">View</button></td>
     </tr>`;
   }).join('');
 }
@@ -843,12 +905,12 @@ function renderAvailabilityGrid() {
         <div class="walker-dot" style="background:${dotColors[i % dotColors.length]};"></div>
         ${w.name.split(' ')[0]}
       </div>
-      ${days.map(day => {
+      ${days.map((day, di) => {
         const dayAvail = avail[day] || [];
         const available = slots.filter(s => dayAvail.includes(s)).length;
         const cls = available === 3 ? 'slot-available' : available > 0 ? 'slot-partial' : 'slot-unavailable';
         const label = available === 3 ? 'All' : available > 0 ? `${available}/3` : 'Off';
-        return `<div class="availability-slot"><div class="${cls}">${label}</div></div>`;
+        return `<div class="availability-slot" data-day="${dayLabels[di]}"><div class="${cls}">${label}</div></div>`;
       }).join('')}
     </div>`;
   }).join('');
@@ -863,13 +925,13 @@ function renderMembersTable(filter = '') {
     const walker = allWalkers.find(w => w.id === m.assignedWalkerId);
     const since = m.createdAt?.toDate?.() ? m.createdAt.toDate().toLocaleDateString('en-US', {month:'short', year:'numeric'}) : '–';
     return `<tr>
-      <td><strong>${m.name}</strong><br><span style="font-size:11px;color:var(--text-light);">${m.email}</span></td>
-      <td>${m.dogName || '–'}</td>
-      <td><span class="status-badge active">${m.tier || 'Standard'}</span></td>
-      <td>${m.walksThisMonth || 0}</td>
-      <td>${walker?.name || '–'}</td>
-      <td>${since}</td>
-      <td><button class="btn-sm view" onclick="openMemberDetail('${m.id}')">View</button></td>
+      <td data-label="Name"><strong>${m.name}</strong><br><span style="font-size:11px;color:var(--text-light);">${m.email}</span></td>
+      <td data-label="Dog">${m.dogName || '–'}</td>
+      <td data-label="Tier"><span class="status-badge active">${m.tier || 'Standard'}</span></td>
+      <td data-label="Walks/Month">${m.walksThisMonth || 0}</td>
+      <td data-label="Walker">${walker?.name || '–'}</td>
+      <td data-label="Member Since">${since}</td>
+      <td data-label=""><button class="btn-sm view" onclick="openMemberDetail('${m.id}')">View</button></td>
     </tr>`;
   }).join('');
 }
