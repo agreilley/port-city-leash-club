@@ -202,13 +202,14 @@
     }
     .hamburger-btn { display: block; }
 
-    .main { margin-left: 0; }
+    .main { margin-left: 0; min-width: 0; }
     .topbar { padding: 0 16px; height: 52px; }
     .topbar-title { font-size: 16px; }
     .topbar-actions { gap: 6px; }
     .topbar-actions .btn-primary,
     .topbar-actions .btn-secondary { padding: 7px 10px; font-size: 11px; white-space: nowrap; }
-    .content { padding: 16px; }
+    .content { padding: 16px; min-width: 0; }
+    .walkers-grid-wrap > * { min-width: 0; }
 
     /* Stats: 4 columns is too tight on a phone */
     .stats-row { grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -349,7 +350,7 @@
 
     <!-- WALKERS VIEW -->
     <div class="view" id="view-walkers">
-      <div style="display:grid;grid-template-columns:1fr;gap:24px;">
+      <div class="walkers-grid-wrap" style="display:grid;grid-template-columns:1fr;gap:24px;">
         <div class="table-card">
           <div class="table-header">
             <div class="table-title">Walker Team</div>
