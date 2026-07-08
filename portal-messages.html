@@ -461,25 +461,11 @@
           <h2>Messages</h2>
         </div>
         <div class="conversations">
-          <div class="conversation-item active" onclick="selectConversation(this, 'port-city')">
+          <div class="conversation-item active">
             <div class="conversation-avatar">🏢</div>
             <div class="conversation-info">
               <div class="conversation-name">Port City Leash Club</div>
               <div class="conversation-preview">Scout's membership was confirmed</div>
-            </div>
-          </div>
-          <div class="conversation-item" onclick="selectConversation(this, 'marcus')">
-            <div class="conversation-avatar">👨</div>
-            <div class="conversation-info">
-              <div class="conversation-name">Marcus</div>
-              <div class="conversation-preview">Scout was great today!</div>
-            </div>
-          </div>
-          <div class="conversation-item" onclick="selectConversation(this, 'priya')">
-            <div class="conversation-avatar">👩</div>
-            <div class="conversation-info">
-              <div class="conversation-name">Priya</div>
-              <div class="conversation-preview">Ready for Scout's walk tomorrow</div>
             </div>
           </div>
         </div>
@@ -537,43 +523,6 @@
   </div>
 
   <script>
-    function selectConversation(element, conversationId) {
-      // Update active state
-      document.querySelectorAll('.conversation-item').forEach(item => {
-        item.classList.remove('active');
-      });
-      element.classList.add('active');
-
-      // In a real implementation, would load conversation from backend
-      console.log('Selected conversation:', conversationId);
-    }
-
-    function sendMessage() {
-      const input = document.querySelector('.message-input');
-      const text = input.value.trim();
-
-      if (text) {
-        // Create message bubble
-        const messagesDiv = document.querySelector('.messages');
-        const messageEl = document.createElement('div');
-        messageEl.className = 'message sent';
-        messageEl.innerHTML = `
-          <div>
-            <div class="message-bubble">${text}</div>
-            <div class="message-time">Just now</div>
-          </div>
-        `;
-        messagesDiv.appendChild(messageEl);
-
-        // Clear input
-        input.value = '';
-        input.style.height = 'auto';
-
-        // Scroll to bottom
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-      }
-    }
-
     // Auto-expand textarea
     document.querySelector('.message-input').addEventListener('input', function() {
       this.style.height = 'auto';

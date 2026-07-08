@@ -577,10 +577,10 @@
       <div class="form-field"><label>Phone</label><input type="tel" id="am-phone" placeholder="(000) 000-0000"></div>
       <div class="form-field"><label>Membership tier</label>
         <select id="am-tier">
-          <option value="Essential">Essential — $129/mo</option>
-          <option value="Standard" selected>Standard — $249/mo</option>
-          <option value="Daily">Daily — $429/mo</option>
-          <option value="Travel">Travel (pet sitting only, no monthly fee)</option>
+          <option value="Essential">Essential — $26/walk</option>
+          <option value="Standard" selected>Standard — $25/walk</option>
+          <option value="Daily">Daily — $22/walk</option>
+          <option value="Travel">Travel (pet sitting only, no membership rate)</option>
         </select>
       </div>
     </div>
@@ -1127,6 +1127,13 @@ window.createWalkerAccount = async () => {
     // Also save at uid so Firestore rules can find it via exists(/walkers/$(uid))
     await setDoc(doc(db, 'walkers', uid), walkerData);
 
+    if (window._addWalkerSubmissionId) {
+      await updateDoc(doc(db, 'submissions', window._addWalkerSubmissionId), {
+        status: 'confirmed', walkerId, read: true,
+      });
+      window._addWalkerSubmissionId = null;
+    }
+
     // Show success
     document.getElementById('addWalkerContent').innerHTML = `
       <div style="text-align:center;padding:24px 0;">
@@ -1224,10 +1231,12 @@ window.openInboxItem = async (id) => {
   document.getElementById('inboxModalContent').innerHTML = `<div class="form-grid">${fieldHTML}</div>`;
 
   const actionBtn = document.getElementById('inboxActionBtn');
-  if (item.type === 'membership_request') {
-    actionBtn.textContent = 'Convert to Member'; actionBtn.style.display = 'block'; actionBtn.onclick = null;
-  } else if (item.type === 'application') {
-    actionBtn.textContent = 'Add as Walker'; actionBtn.style.display = 'block'; actionBtn.onclick = null;
+  if (item.type === 'membership_request' && !item.memberId) {
+    actionBtn.textContent = 'Convert to Member'; actionBtn.style.display = 'block';
+    actionBtn.onclick = () => { closeModal('inboxModal'); openAddMemberModal(item, item.id); };
+  } else if (item.type === 'application' && item.status !== 'confirmed') {
+    actionBtn.textContent = 'Add as Walker'; actionBtn.style.display = 'block';
+    actionBtn.onclick = () => { closeModal('inboxModal'); openAddWalkerModal(item, item.id); };
   } else if (item.type === 'service_request' && item.status !== 'confirmed') {
     actionBtn.textContent = 'Confirm & Save as Client'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => confirmServiceRequest(item.id, item);
@@ -1345,13 +1354,33 @@ function populateWalkerSelect() {
   const sel = document.getElementById('wm-walker');
   sel.innerHTML = '<option value="">Unassigned</option>' + allWalkers.map(w => `<option value="${w.id}">${w.name}</option>`).join('');
 }
-window.openAddMemberModal = () => {
+window.openAddMemberModal = (prefill, submissionId) => {
   // Populate walker dropdown with current walkers
   const sel = document.getElementById('am-walker');
   if (sel) {
     sel.innerHTML = '<option value="">Unassigned</option>' +
       (window.allWalkers||[]).map(w => `<option value="${w.id}">${w.name}</option>`).join('');
   }
+
+  // Track the source submission (if converting from an inbox item) so saveMember()
+  // can mark it confirmed once the member record is created. Also keep the full
+  // dogs[] array from the request, since the form's own dog fields only capture one.
+  window._addMemberSubmissionId = submissionId || null;
+  window._addMemberPrefillDogs = (prefill && Array.isArray(prefill.dogs) && prefill.dogs.length) ? prefill.dogs : null;
+
+  const dog = prefill?.dogs?.[0] || {};
+  document.getElementById('am-name').value = prefill?.ownerName || prefill?.name || '';
+  document.getElementById('am-email').value = prefill?.email || '';
+  document.getElementById('am-phone').value = prefill?.phone || '';
+  document.getElementById('am-tier').value = ['Essential','Standard','Daily','Travel'].includes(prefill?.plan) ? prefill.plan : 'Standard';
+  document.getElementById('am-address').value = prefill?.address || '';
+  document.getElementById('am-access').value = prefill?.accessNotes || '';
+  document.getElementById('am-zone').value = '';
+  document.getElementById('am-dogname').value = dog.name || prefill?.dogName || '';
+  document.getElementById('am-breed').value = dog.breed || prefill?.breed || '';
+  document.getElementById('am-age').value = dog.age || prefill?.age || '';
+  document.getElementById('am-dognotes').value = [dog.temperament, dog.walkingPrefs, dog.triggers, dog.medications].filter(Boolean).join(' · ');
+
   document.getElementById('addMemberModal').classList.add('open');
 };
 
@@ -1377,17 +1406,30 @@ window.saveMember = async () => {
   btn.textContent = 'Saving...'; btn.disabled = true;
 
   try {
-    await addDoc(collection(db, 'members'), {
+    // Preserve the full multi-dog roster from the original request if there was one;
+    // otherwise fall back to a single dog built from the form fields.
+    const dogs = window._addMemberPrefillDogs || (dogName ? [{ name: dogName, breed, age, notes: dogNotes }] : []);
+
+    const newMemberRef = await addDoc(collection(db, 'members'), {
       name, email, phone, tier, address,
       accessNotes: access, zone,
-      dogName, dogBreed: breed, dogAge: age,
-      dogNotes, assignedWalkerId: walker,
+      dogName, dogBreed: breed, dogAge: age, dogNotes,
+      dogs, assignedWalkerId: walker,
       walksThisMonth: 0, status: 'active',
       createdAt: serverTimestamp()
     });
+
+    if (window._addMemberSubmissionId) {
+      await updateDoc(doc(db, 'submissions', window._addMemberSubmissionId), {
+        status: 'confirmed', memberId: newMemberRef.id, read: true,
+      });
+    }
+
     closeModal('addMemberModal');
-    // Clear form
+    // Clear form + state
     ['am-name','am-email','am-phone','am-address','am-access','am-zone','am-dogname','am-breed','am-age','am-dognotes'].forEach(id => document.getElementById(id).value = '');
+    window._addMemberSubmissionId = null;
+    window._addMemberPrefillDogs = null;
   } catch(e) {
     errEl.textContent = e.message;
     errEl.style.display = 'block';
@@ -1396,7 +1438,17 @@ window.saveMember = async () => {
 };
 
 
-window.openAddWalkerModal = () => document.getElementById('addWalkerModal').classList.add('open');
+window.openAddWalkerModal = (prefill, submissionId) => {
+  window._addWalkerSubmissionId = submissionId || null;
+  const nameParts = (prefill?.name || '').trim().split(/\s+/);
+  document.getElementById('aw-first').value = nameParts[0] || '';
+  document.getElementById('aw-last').value = nameParts.slice(1).join(' ') || '';
+  document.getElementById('aw-email').value = prefill?.email || '';
+  document.getElementById('aw-phone').value = prefill?.phone || '';
+  document.getElementById('aw-password').value = '';
+  document.getElementById('aw-zones').value = prefill?.neighborhood || '';
+  document.getElementById('addWalkerModal').classList.add('open');
+};
 window.openMemberDetail = (id) => {};
 window.openWalkerDetail = (id) => {};
 
