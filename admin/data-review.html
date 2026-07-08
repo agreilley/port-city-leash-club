@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="apple-touch-icon" href="../images/favicon.png">
+  <link rel="icon" type="image/x-icon" href="../favicon.ico">
+  <link rel="icon" type="image/png" href="../images/favicon.png">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Review | Admin | Port City Leash Club</title>
+  <style>
+    :root {
+      --navy: #0D1B2A; --seafoam: #8FA8A2; --sand: #F4F0EA; --rust: #C17B6F;
+      --text-mid: #4A4A4A; --text-light: #7A7A7A; --green: #2D7A5E; --green-light: #E8F4F0;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'DM Sans', -apple-system, sans-serif; background: var(--sand); color: var(--navy); }
+
+    header { background: white; border-bottom: 1px solid rgba(0,0,0,0.07); padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; }
+    header a { color: var(--text-light); text-decoration: none; font-size: 13px; }
+    h1 { font-size: 20px; font-weight: 500; }
+
+    main { max-width: 900px; margin: 0 auto; padding: 32px; }
+    .intro { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 20px 24px; margin-bottom: 28px; font-size: 13px; color: var(--text-mid); line-height: 1.7; }
+    .intro strong { color: var(--navy); }
+
+    .section-title { font-size: 15px; font-weight: 500; margin: 32px 0 12px; display: flex; align-items: center; gap: 8px; }
+    .count-badge { background: rgba(0,0,0,0.06); color: var(--text-mid); font-size: 12px; padding: 2px 8px; border-radius: 10px; }
+
+    .record-card { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 16px 20px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .record-main { flex: 1; min-width: 0; }
+    .record-title { font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .record-sub { font-size: 12px; color: var(--text-light); margin-top: 3px; }
+    .record-meta { font-size: 11px; color: var(--text-light); margin-top: 4px; font-family: monospace; }
+
+    .demo-badge { background: #FEF3C7; color: #92400E; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; }
+
+    .btn-delete { background: white; border: 1px solid #F5C6C0; color: #A32D2D; border-radius: 4px; padding: 7px 14px; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+    .btn-delete:hover { background: #FFF0EE; }
+    .btn-delete:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .empty-msg { font-size: 13px; color: var(--text-light); padding: 16px 20px; }
+    .loading-msg { font-size: 13px; color: var(--text-light); padding: 16px 20px; }
+
+    .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--navy); color: white; padding: 12px 24px; border-radius: 8px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity 0.3s; z-index: 999; }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Data Review</h1>
+  <a href="/admin/dashboard">&larr; Back to dashboard</a>
+</header>
+
+<main>
+  <div class="intro">
+    <strong>What this page does:</strong> lists every member, walker, and form submission in the database so you can tell demo/test data apart from real data before launch. Records matching the <em>documented</em> seed data (the demo member account, the four sample walkers) are flagged automatically — everything else is shown as-is for you to judge. Deleting is permanent and can't be undone from here, so double-check before confirming.
+  </div>
+
+  <div class="section-title">Members <span class="count-badge" id="memberCount">–</span></div>
+  <div id="membersList"><div class="loading-msg">Loading...</div></div>
+
+  <div class="section-title">Walkers <span class="count-badge" id="walkerCount">–</span></div>
+  <div id="walkersList"><div class="loading-msg">Loading...</div></div>
+
+  <div class="section-title">Submissions <span class="count-badge" id="submissionCount">–</span></div>
+  <div id="submissionsList"><div class="loading-msg">Loading...</div></div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+  import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+  import {
+    getFirestore, collection, getDocs, doc, getDoc, deleteDoc
+  } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
+    authDomain: "port-city-leash-club-827ab.firebaseapp.com",
+    projectId: "port-city-leash-club-827ab",
+    storageBucket: "port-city-leash-club-827ab.firebasestorage.app",
+    messagingSenderId: "649385306352",
+    appId: "1:649385306352:web:8e8a6fcbe8a7eff29dfa35"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  // ── AUTH GUARD ──
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) { window.location.href = '/admin'; return; }
+    const snap = await getDoc(doc(db, 'admins', user.uid));
+    if (!snap.exists()) { window.location.href = '/admin'; return; }
+    loadAll();
+  });
+
+  // Documented seed/demo identifiers (see PCLC_SOURCE_OF_TRUTH.md)
+  const DEMO_MEMBER_EMAIL = 'demo@portcityleashclub.com';
+  const DEMO_WALKER_IDS = ['walker_marcus', 'walker_priya', 'walker_sam', 'walker_sarah_test'];
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  function fmtDate(ts) {
+    if (!ts) return '–';
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  async function loadAll() {
+    await loadMembers();
+    await loadWalkers();
+    await loadSubmissions();
+  }
+
+  async function loadMembers() {
+    const snap = await getDocs(collection(db, 'members'));
+    const list = document.getElementById('membersList');
+    document.getElementById('memberCount').textContent = snap.size;
+    if (snap.empty) { list.innerHTML = '<div class="empty-msg">No members yet.</div>'; return; }
+
+    list.innerHTML = snap.docs.map(d => {
+      const m = d.data();
+      const isDemo = m.email === DEMO_MEMBER_EMAIL;
+      return `
+        <div class="record-card">
+          <div class="record-main">
+            <div class="record-title">${m.name || 'Unnamed'} ${isDemo ? '<span class="demo-badge">Demo</span>' : ''}</div>
+            <div class="record-sub">${m.email || 'no email'} &middot; ${m.tier || 'no tier'} &middot; joined ${fmtDate(m.createdAt)}</div>
+            <div class="record-meta">members/${d.id}</div>
+          </div>
+          <button class="btn-delete" onclick="window.deleteRecord('members', '${d.id}', this)">Delete</button>
+        </div>`;
+    }).join('');
+  }
+
+  async function loadWalkers() {
+    const snap = await getDocs(collection(db, 'walkers'));
+    const list = document.getElementById('walkersList');
+    document.getElementById('walkerCount').textContent = snap.size;
+    if (snap.empty) { list.innerHTML = '<div class="empty-msg">No walkers yet.</div>'; return; }
+
+    list.innerHTML = snap.docs.map(d => {
+      const w = d.data();
+      const isDemo = DEMO_WALKER_IDS.includes(d.id);
+      return `
+        <div class="record-card">
+          <div class="record-main">
+            <div class="record-title">${w.name || 'Unnamed'} ${isDemo ? '<span class="demo-badge">Demo</span>' : ''}</div>
+            <div class="record-sub">${w.email || 'no email'} &middot; ${(w.zones || []).join(', ') || 'no zones'} &middot; ${w.status || 'active'}</div>
+            <div class="record-meta">walkers/${d.id}${w.uid ? ' &middot; has login account' : ' &middot; no login account'}</div>
+          </div>
+          <button class="btn-delete" onclick="window.deleteRecord('walkers', '${d.id}', this)">Delete</button>
+        </div>`;
+    }).join('');
+  }
+
+  async function loadSubmissions() {
+    const snap = await getDocs(collection(db, 'submissions'));
+    const list = document.getElementById('submissionsList');
+    document.getElementById('submissionCount').textContent = snap.size;
+    if (snap.empty) { list.innerHTML = '<div class="empty-msg">No submissions yet.</div>'; return; }
+
+    // Newest first
+    const docs = snap.docs.sort((a, b) => {
+      const at = a.data().createdAt?.toMillis?.() || 0;
+      const bt = b.data().createdAt?.toMillis?.() || 0;
+      return bt - at;
+    });
+
+    list.innerHTML = docs.map(d => {
+      const s = d.data();
+      return `
+        <div class="record-card">
+          <div class="record-main">
+            <div class="record-title">${s.type || 'unknown type'}</div>
+            <div class="record-sub">${s.ownerName || s.memberName || s.name || 'no name'} &middot; ${s.email || 'no email'} &middot; ${fmtDate(s.createdAt)}</div>
+            <div class="record-meta">submissions/${d.id} &middot; status: ${s.status || 'pending'}</div>
+          </div>
+          <button class="btn-delete" onclick="window.deleteRecord('submissions', '${d.id}', this)">Delete</button>
+        </div>`;
+    }).join('');
+  }
+
+  window.deleteRecord = async (collectionName, id, btn) => {
+    const confirmed = confirm(`Permanently delete this ${collectionName.slice(0, -1)} record?\n\n${collectionName}/${id}\n\nThis cannot be undone.`);
+    if (!confirmed) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Deleting...';
+    try {
+      await deleteDoc(doc(db, collectionName, id));
+      btn.closest('.record-card').remove();
+      showToast('Deleted.');
+      // Update count
+      const countEl = document.getElementById(collectionName === 'members' ? 'memberCount' : collectionName === 'walkers' ? 'walkerCount' : 'submissionCount');
+      countEl.textContent = parseInt(countEl.textContent, 10) - 1;
+    } catch (e) {
+      alert('Failed to delete: ' + e.message);
+      btn.disabled = false;
+      btn.textContent = 'Delete';
+    }
+  };
+</script>
+</body>
+</html>
