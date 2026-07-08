@@ -6,10 +6,7 @@ Running list of things to work on. Add to this as new items come up; check items
 
 ## Website / Content
 
-- [ ] **Cats and other pets are missing from Pet Sitting Services.** The site currently only talks about dogs (dog walking, dog details forms, etc.), but drop-in visits and overnight stays should also cover other pets — cats especially. Needs:
-  - Homepage Pet Sitting Services copy/cards reviewed for dog-only language
-  - Service request form: "Dog Details" section either renamed/generalized or a parallel path added for non-dog pets
-  - New FAQ entry answering "Do you take care of pets other than dogs?" (or similar)
+- [x] ~~Cats and other pets are missing from Pet Sitting Services~~ — **Done.** Homepage copy, service request form (Pet Type dropdown added), FAQ entry, and the member portal's Pet Profile page wording are all species-neutral now.
 
 ## Known Issues
 
@@ -47,3 +44,8 @@ Code is built (`/functions`, `firebase-payments.js`, card fields on both forms).
 - [ ] **Pre-existing gap, not something I introduced:** the "Convert to Member" button (on `membership_request` inbox items) and "Add as Walker" button (on `application` items) in the admin dashboard are visually present but not wired to anything (`onclick = null`). I built the equivalent action for `service_request` items ("Confirm & Save as Client") since that's what the travel tier needed, but these two older buttons still do nothing when clicked.
 - [ ] Worth deciding whether "Pause Membership" makes sense to show at all for Travel-tier clients — they have no recurring membership/billing to pause, so that nav item may be confusing for them. Not fixed yet, just flagging.
 - [ ] Admin dashboard's Add Member tier dropdown still shows outdated pricing (Essential $129/mo, Standard $249/mo, Daily $429/mo — the old flat-tier model) and uses em dashes. Wasn't touched since it's out of scope for the travel tier work, but worth a cleanup pass.
+
+## Password Reset
+
+- [x] ~~Add password reset workflow to all three portals~~ — **Done.** Member portal already had a working reset flow (`portal-password-reset.html`); built matching versions for admin (`admin/reset-password.html`) and walker (`walker/reset-password.html`), each using the correct named Firebase app instance to match their login/dashboard pages. "Forgot password?" links added to both the admin and walker login pages.
+- [ ] Firebase Console: customize the password reset email template (Authentication → Templates) — the workflow is fully functional, but the actual email a user receives is still Firebase's generic default wording/branding unless customized. This is an account-level setting, not something fixable from code.
