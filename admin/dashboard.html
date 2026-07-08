@@ -224,16 +224,17 @@
 
     /* Tables: scroll horizontally instead of squeezing columns unreadably */
     /* Tables: transform into stacked cards instead of requiring horizontal scroll */
+    .table-scroll { padding: 0 12px; box-sizing: border-box; }
     .table-scroll table,
     .table-scroll tbody,
     .table-scroll tr,
-    .table-scroll td { display: block; width: 100%; }
+    .table-scroll td { display: block; width: 100%; box-sizing: border-box; }
     .table-scroll thead { display: none; }
     .table-scroll tr {
       border: 1px solid rgba(0,0,0,0.08);
       border-radius: 8px;
       padding: 4px 14px;
-      margin: 12px;
+      margin: 12px 0;
     }
     .table-scroll tr:first-child { margin-top: 12px; }
     .table-scroll td {
@@ -270,7 +271,7 @@
       border: 1px solid rgba(0,0,0,0.08);
       border-radius: 8px;
       padding: 4px 14px;
-      margin: 12px;
+      margin: 12px 0;
     }
     .availability-walker { padding: 10px 0; border-bottom: 1px solid rgba(0,0,0,0.05); }
     .availability-slot {
