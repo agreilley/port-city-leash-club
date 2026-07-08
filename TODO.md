@@ -11,7 +11,13 @@ Running list of things to work on. Add to this as new items come up; check items
 ## Known Issues
 
 - [x] ~~`service-request.html` and `membership-request.html` submit buttons don't actually save anything~~ — **Fixed.** Both forms now write real submissions to Firestore and call `saveCardOnFile()` with the resulting submission ID. Still blocked on the Stripe/Firebase setup checklist below before the card-saving piece actually works end-to-end.
-- [ ] "Extra pet +$20" add-on checkbox on the service request page is disconnected from the new multi-dog card system — someone could add 2+ dog cards without checking the add-on, or vice versa. Worth deciding whether pricing should auto-derive from number of dog cards instead of a manual checkbox.
+- [x] ~~"Extra pet +$20" add-on checkbox disconnected from the multi-dog card system~~ — **Fixed.** Removed the manual checkbox; the $20 add-on is now derived automatically from the number of pet cards (charged whenever more than one pet is added).
+
+## Found During Full Site Audit (July 8)
+
+- [x] ~~`portal-messages.html` had a leftover pre-Firebase `sendMessage()` stub and fake "Marcus" / "Priya" conversation threads in the sidebar~~ — **Partially fixed.** Removed the dead stub and the fake per-walker conversation switcher (it never loaded different content — just changed which item looked active). Sending a message to Port City Leash Club now reliably hits the real Firestore-backed `sendMessage`.
+- [ ] **Still open:** `portal-messages.html` doesn't load or display real message history — the thread shown is hardcoded demo content, not pulled from Firestore. Sent messages land in `submissions` but the member never sees them (or anything else) rendered back. Needs a real read path (query `submissions` where `type == 'message' && memberId == current user`, render as a thread, ideally `onSnapshot` for live updates) before this page is genuinely functional.
+- [ ] No UI anywhere calls the `chargeSavedCard` or `createMembershipSubscription` Cloud Functions — confirmed still true as of this audit. This is the biggest remaining gap before real payments can go live; needs its own design pass on what the admin "Confirm" flow should look like (charge immediately vs. on a schedule, what happens on failure, etc).
 
 ## Payments — Stripe Setup Checklist (do these yourself, in order)
 
@@ -41,9 +47,9 @@ Code is built (`/functions`, `firebase-payments.js`, card fields on both forms).
 
 ## Newly Found While Building the Travel Tier
 
-- [ ] **Pre-existing gap, not something I introduced:** the "Convert to Member" button (on `membership_request` inbox items) and "Add as Walker" button (on `application` items) in the admin dashboard are visually present but not wired to anything (`onclick = null`). I built the equivalent action for `service_request` items ("Confirm & Save as Client") since that's what the travel tier needed, but these two older buttons still do nothing when clicked.
+- [x] ~~"Convert to Member" and "Add as Walker" buttons in the admin dashboard inbox were visually present but not wired to anything (`onclick = null`)~~ — **Fixed.** Both now open the existing Add Member / Add Walker modals prefilled with the request's data, and mark the source submission `confirmed` once the member/walker record is created.
 - [ ] Worth deciding whether "Pause Membership" makes sense to show at all for Travel-tier clients — they have no recurring membership/billing to pause, so that nav item may be confusing for them. Not fixed yet, just flagging.
-- [ ] Admin dashboard's Add Member tier dropdown still shows outdated pricing (Essential $129/mo, Standard $249/mo, Daily $429/mo — the old flat-tier model) and uses em dashes. Wasn't touched since it's out of scope for the travel tier work, but worth a cleanup pass.
+- [x] ~~Admin dashboard's Add Member tier dropdown still shows outdated pricing (Essential $129/mo, Standard $249/mo, Daily $429/mo)~~ — **Fixed.** Now shows current per-walk rates ($26 / $25 / $22).
 
 ## Password Reset
 
