@@ -12,6 +12,8 @@ Running list of things to work on. Add to this as new items come up; check items
 
 - [x] ~~`service-request.html` and `membership-request.html` submit buttons don't actually save anything~~ — **Fixed.** Both forms now write real submissions to Firestore and call `saveCardOnFile()` with the resulting submission ID. Still blocked on the Stripe/Firebase setup checklist below before the card-saving piece actually works end-to-end.
 - [x] ~~"Extra pet +$20" add-on checkbox disconnected from the multi-dog card system~~ — **Fixed.** Removed the manual checkbox; the $20 add-on is now derived automatically from the number of pet cards (charged whenever more than one pet is added).
+- [x] ~~Walker portal's "Mark as Completed" set `status: 'completed'` and nothing else — no photo, no note, despite `portal-walk-history.html` and the marketing site both promising walk photos/notes~~ — **Fixed.** Completing a walk now opens a small form (note textarea + photo upload to Firebase Storage) before it's marked done. `walks` docs now actually get `notes` and `photoUrl` populated. This was a prerequisite for the automated walk-update texts below — there was nothing to send.
+- [ ] `DATABASE_SCHEMA.md` is a stale planning document from before the app was actually built — field names, collection structure, and even the security rules example in it don't match what's actually implemented (e.g. it describes a `messages` collection with `senderId`/`recipientId` that was never built; the real system uses `submissions` and, as of this session, `conversations`). Didn't touch it this session since it's out of scope, but it should probably move to the "archived" list alongside the other outdated docs, or get rewritten to match reality.
 
 ## Found During Full Site Audit (July 8)
 
@@ -39,6 +41,86 @@ Code is built (`/functions`, `firebase-payments.js`, card fields on both forms).
    ```
 8. **Real form submission is already wired** — both forms write to Firestore and call `saveCardOnFile()` automatically on submit. Nothing further needed here once steps 1–7 are done.
 9. **Build the admin-side "Confirm" actions** in the admin dashboard to actually call `chargeSavedCard` (one-time services) or `createMembershipSubscription` (memberships) — right now these Cloud Functions exist but nothing in the UI calls them yet.
+
+## Member Communication — Messaging Setup Checklist (do these yourself, in order)
+
+Code is built (`functions/index.js`, admin portal "Messages" section, walker photo/note capture). These are the account-level steps that need to happen in your own Google, Twilio, and Firebase accounts before any of it actually sends or receives anything — none of these can be done on your behalf. Until they're done, the system degrades gracefully rather than breaking: manual sends show a clear "not set up yet" error, and automated walk-completion texts log what *would* have been sent instead of silently doing nothing (visible in the admin Messages screen with a "texting isn't connected yet" note).
+
+### Google Workspace / Gmail
+
+1. **Go to** [console.cloud.google.com](https://console.cloud.google.com) and create a new project (e.g. "Port City Leash Club Admin").
+2. **Enable the Gmail API** for that project (APIs & Services → Library → search "Gmail API" → Enable).
+3. **Set up the OAuth consent screen** — APIs & Services → OAuth consent screen. Choose **User type: Internal** (only available because this is a Workspace account — this is what avoids Google's verification process and the token-expiry issue entirely).
+4. **Create an OAuth Client ID** — APIs & Services → Credentials → Create Credentials → OAuth client ID → Application type: **Web application**. Under "Authorized redirect URIs," add:
+   ```
+   https://us-central1-port-city-leash-club-827ab.cloudfunctions.net/gmailAuthCallback
+   ```
+   (This must match `GMAIL_REDIRECT_URI` in `functions/index.js` exactly — only change one if you change the other.)
+5. **Copy the Client ID and Client Secret**, then set them:
+   ```
+   firebase functions:secrets:set GOOGLE_CLIENT_ID
+   firebase functions:secrets:set GOOGLE_CLIENT_SECRET
+   ```
+6. **Check the "from" address** — `functions/index.js` sends as `hello@portcityleashclub.com` (the `BUSINESS_EMAIL_DISPLAY` / `BUSINESS_EMAIL_DOMAIN` constants near the top of the messaging section). If your real Workspace address is different, update both constants before deploying.
+7. **Deploy, then click "Connect Gmail"** in the admin portal's Messages screen — this takes you through Google's consent flow and stores the connection. One-time step (Internal apps don't need reconnecting on a schedule).
+
+### Twilio (phone number for walk-update texts + client texting)
+
+1. **Sign up** at twilio.com and verify your business.
+2. **Buy a US local number** with SMS + MMS capability (~$1.15/month).
+3. **Complete A2P 10DLC registration** — Twilio's required process for business texting in the US (your LLC's info + a description of the use case: service notifications + customer messaging). Worth starting early — approval can take a few days.
+4. **Copy the Account SID, Auth Token, and phone number**, then set them:
+   ```
+   firebase functions:secrets:set TWILIO_ACCOUNT_SID
+   firebase functions:secrets:set TWILIO_AUTH_TOKEN
+   firebase functions:secrets:set TWILIO_PHONE_NUMBER
+   ```
+5. **Set the inbound webhook** — in the Twilio Console, under your phone number's Messaging configuration, set "A message comes in" to:
+   ```
+   https://us-central1-port-city-leash-club-827ab.cloudfunctions.net/twilioInboundWebhook
+   ```
+   (Must match `TWILIO_WEBHOOK_URL` in `functions/index.js` exactly, including `https://` — signature validation will silently fail otherwise.)
+
+### Firestore & Storage security rules — add manually, not deployed from this repo
+
+This repo doesn't currently track the live Firestore rules as a file (they're edited directly in the Firebase Console), so rather than guess at and overwrite your actual live rules from a summary, add these two blocks to what's already there:
+
+```
+// Conversations — admin only, never exposed to members or walkers
+match /conversations/{memberId} {
+  allow read, write: if request.auth.token.admin == true
+                      || exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+  match /messages/{messageId} {
+    allow read, write: if request.auth.token.admin == true
+                        || exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+  }
+}
+
+// Gmail refresh token — admin only, very sensitive
+match /system/gmailAuth {
+  allow read, write: if request.auth.token.admin == true
+                      || exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+}
+```
+
+And in **Storage rules** (Firebase Console → Storage → Rules), allow walkers to upload walk photos:
+```
+match /walk-photos/{walkId}/{fileName} {
+  allow read: if request.auth != null;
+  allow write: if request.auth != null; // any signed-in walker/admin; tighten later if needed
+}
+```
+
+### Deploy
+
+```
+firebase deploy --only functions
+```
+
+### What's NOT built yet, worth knowing
+
+- **Unmatched texts** (from a number that doesn't match any member) show up in the admin Messages screen under their own thread, clearly labeled, but there's no "link this to a member" button yet — you'd currently just find/create the member manually and know to expect their replies going forward via the normal matching. Fine at low volume; worth a real "claim" button if this becomes frequent.
+- **Gmail sync runs on a 5-minute poll**, not instant push — a member's email reply will take up to 5 minutes to show up in the admin portal. Fine for a business this size; can move to Gmail's push notifications (Pub/Sub) later if that lag ever matters.
 
 ## Still Open From Earlier Sessions
 

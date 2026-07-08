@@ -285,6 +285,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getFirestore, collection, query, where, onSnapshot, doc, getDoc, updateDoc, getDocs, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 
 // ─── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────────────
 const firebaseConfig = {
@@ -300,6 +301,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig, "walker-app");
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 let walkerDoc = null;
 let myWalks = [];
@@ -498,16 +500,63 @@ window.openWalkDetail = (walkId) => {
     <div class="detail-row"><span class="detail-label">Access Notes</span><span class="detail-value">${member?.accessNotes || 'None'}</span></div>
     <div class="detail-row"><span class="detail-label">Time Slot</span><span class="detail-value">${slotLabel}</span></div>
     <div class="detail-row"><span class="detail-label">Dog Notes</span><span class="detail-value">${member?.dogNotes || 'None'}</span></div>
-    <div class="detail-row"><span class="detail-label">Walk Notes</span><span class="detail-value">${walk.notes || 'None'}</span></div>
     <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted ? '✓ Completed' : isPast ? 'Past' : 'Scheduled'}</span></div>
-    ${!isCompleted && isPast ? `<button class="btn-complete" onclick="markComplete('${walkId}')">Mark as Completed</button>` : ''}
+    ${isCompleted ? `
+      <div class="detail-row"><span class="detail-label">Walk Notes</span><span class="detail-value">${walk.notes || 'None'}</span></div>
+      ${walk.photoUrl ? `<img src="${walk.photoUrl}" style="width:100%;border-radius:8px;margin-top:8px;" alt="Walk photo">` : ''}
+    ` : !isCompleted && isPast ? `
+      <div style="margin-top:16px;">
+        <label class="detail-label" style="display:block;margin-bottom:6px;">How'd it go? <span style="font-weight:400;color:#7A7A7A;">(sent to the owner as a text)</span></label>
+        <textarea id="completeNotes" rows="2" placeholder="e.g. Scout had a great walk today, lots of tail wags!" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;"></textarea>
+        <label class="detail-label" style="display:block;margin-top:10px;margin-bottom:6px;">Photo</label>
+        <input type="file" id="completePhoto" accept="image/*" capture="environment" style="width:100%;">
+        <div id="completeError" style="color:#C17B6F;font-size:13px;margin-top:6px;display:none;"></div>
+      </div>
+      <button class="btn-complete" id="completeWalkBtn" onclick="completeWalk('${walkId}')">Mark as Completed</button>
+    ` : ''}
   `;
   document.getElementById('walkModal').classList.add('open');
 };
 
-window.markComplete = async (walkId) => {
-  await updateDoc(doc(db, 'walks', walkId), { status: 'completed', completedAt: serverTimestamp() });
-  document.getElementById('walkModal').classList.remove('open');
+window.completeWalk = async (walkId) => {
+  const btn = document.getElementById('completeWalkBtn');
+  const errEl = document.getElementById('completeError');
+  const notes = document.getElementById('completeNotes')?.value.trim() || '';
+  const fileInput = document.getElementById('completePhoto');
+  const file = fileInput?.files?.[0] || null;
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  errEl.style.display = 'none';
+
+  try {
+    let photoUrl = null;
+    if (file) {
+      // Cap upload size at 8MB — plenty for a phone photo, avoids someone
+      // accidentally uploading a huge raw file over cell data.
+      if (file.size > 8 * 1024 * 1024) {
+        throw new Error('Photo is too large — please use a smaller image (under 8MB).');
+      }
+      const path = `walk-photos/${walkId}/${Date.now()}_${file.name}`;
+      const fileRef = storageRef(storage, path);
+      await uploadBytes(fileRef, file);
+      photoUrl = await getDownloadURL(fileRef);
+    }
+
+    await updateDoc(doc(db, 'walks', walkId), {
+      status: 'completed',
+      completedAt: serverTimestamp(),
+      notes,
+      photoUrl: photoUrl || null,
+    });
+
+    document.getElementById('walkModal').classList.remove('open');
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Mark as Completed';
+  }
 };
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
