@@ -37,6 +37,7 @@
     .btn-delete { background: white; border: 1px solid #F5C6C0; color: #A32D2D; border-radius: 4px; padding: 7px 14px; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
     .btn-delete:hover { background: #FFF0EE; }
     .btn-delete:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-delete-all { margin-left: auto; background: none; border: none; color: var(--rust); font-size: 12px; font-weight: 500; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 
     .empty-msg { font-size: 13px; color: var(--text-light); padding: 16px 20px; }
     .loading-msg { font-size: 13px; color: var(--text-light); padding: 16px 20px; }
@@ -57,13 +58,13 @@
     <strong>What this page does:</strong> lists every member, walker, and form submission in the database so you can tell demo/test data apart from real data before launch. Records matching the <em>documented</em> seed data (the demo member account, the four sample walkers) are flagged automatically — everything else is shown as-is for you to judge. Deleting is permanent and can't be undone from here, so double-check before confirming.
   </div>
 
-  <div class="section-title">Members <span class="count-badge" id="memberCount">–</span></div>
+  <div class="section-title">Members <span class="count-badge" id="memberCount">–</span> <button class="btn-delete-all" onclick="window.deleteAll('members')">Delete all members</button></div>
   <div id="membersList"><div class="loading-msg">Loading...</div></div>
 
-  <div class="section-title">Walkers <span class="count-badge" id="walkerCount">–</span></div>
+  <div class="section-title">Walkers <span class="count-badge" id="walkerCount">–</span> <button class="btn-delete-all" onclick="window.deleteAll('walkers')">Delete all walkers</button></div>
   <div id="walkersList"><div class="loading-msg">Loading...</div></div>
 
-  <div class="section-title">Submissions <span class="count-badge" id="submissionCount">–</span></div>
+  <div class="section-title">Submissions <span class="count-badge" id="submissionCount">–</span> <button class="btn-delete-all" onclick="window.deleteAll('submissions')">Delete all submissions</button></div>
   <div id="submissionsList"><div class="loading-msg">Loading...</div></div>
 </main>
 
@@ -188,6 +189,30 @@
         </div>`;
     }).join('');
   }
+
+  window.deleteAll = async (collectionName) => {
+    const snap = await getDocs(collection(db, collectionName));
+    if (snap.empty) { showToast('Nothing to delete.'); return; }
+
+    const confirmed = confirm(`Permanently delete ALL ${snap.size} record(s) in "${collectionName}"?\n\nThis cannot be undone.`);
+    if (!confirmed) return;
+
+    let deleted = 0;
+    for (const d of snap.docs) {
+      try {
+        await deleteDoc(doc(db, collectionName, d.id));
+        deleted++;
+      } catch (e) {
+        console.error(`Failed to delete ${collectionName}/${d.id}:`, e);
+      }
+    }
+
+    showToast(`Deleted ${deleted} of ${snap.size} record(s).`);
+    // Reload this section to reflect the change
+    if (collectionName === 'members') loadMembers();
+    if (collectionName === 'walkers') loadWalkers();
+    if (collectionName === 'submissions') loadSubmissions();
+  };
 
   window.deleteRecord = async (collectionName, id, btn) => {
     const confirmed = confirm(`Permanently delete this ${collectionName.slice(0, -1)} record?\n\n${collectionName}/${id}\n\nThis cannot be undone.`);
