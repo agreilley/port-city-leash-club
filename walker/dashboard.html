@@ -284,7 +284,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { getFirestore, collection, query, where, onSnapshot, doc, getDoc, updateDoc, getDocs, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { getFirestore, collection, query, where, onSnapshot, doc, getDoc, updateDoc, getDocs, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 
 // ─── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────────────
@@ -380,6 +380,11 @@ function renderStats() {
   document.getElementById('stat-completed').textContent = completed.length;
 }
 
+function getDogNames(member) {
+  const dogs = (Array.isArray(member?.dogs) && member.dogs.length) ? member.dogs : (member?.dogName ? [{ name: member.dogName }] : []);
+  return dogs.map(d => d.name).filter(Boolean).join(' & ') || '–';
+}
+
 // ── UPCOMING ──────────────────────────────────────────────────────────────────
 function renderUpcoming() {
   const container = document.getElementById('upcomingList');
@@ -409,7 +414,7 @@ function renderUpcoming() {
       </div>
       <div class="walk-divider"></div>
       <div class="walk-info">
-        <div class="walk-dog">${member?.dogName || '–'}</div>
+        <div class="walk-dog">${getDogNames(member)}</div>
         <div class="walk-meta">${member?.name || '–'} · ${member?.address || ''}</div>
         <div class="walk-slot">${slotLabel}</div>
       </div>
@@ -442,7 +447,7 @@ function renderCalendar() {
     });
     const chips = dayWalks.map(w => {
       const member = allMembers.find(m => m.id === w.memberId);
-      return `<div class="my-walk-chip ${w.timeSlot}" onclick="openWalkDetail('${w.id}')">${member?.dogName || '?'}</div>`;
+      return `<div class="my-walk-chip ${w.timeSlot}" onclick="openWalkDetail('${w.id}')">${getDogNames(member)}</div>`;
     }).join('');
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}</div>`;
   }
@@ -473,7 +478,7 @@ function renderHistory() {
       </div>
       <div class="walk-divider"></div>
       <div class="walk-info">
-        <div class="walk-dog">${member?.dogName || '–'}</div>
+        <div class="walk-dog">${getDogNames(member)}</div>
         <div class="walk-meta">${member?.name || '–'}</div>
         <div class="walk-slot">${slotLabel}</div>
       </div>
@@ -483,6 +488,47 @@ function renderHistory() {
 }
 
 // ── WALK DETAIL MODAL ─────────────────────────────────────────────────────────
+
+function renderDogProfiles(member) {
+  // Build the full dogs array — prefer the structured dogs[] array if it
+  // exists, fall back to the legacy single-dog fields for older records.
+  const dogs = (Array.isArray(member?.dogs) && member.dogs.length)
+    ? member.dogs
+    : member?.dogName
+      ? [{ name: member.dogName, breed: member.dogBreed, age: member.dogAge, weight: '', temperament: member.dogNotes || '', walkingPrefs: '', triggers: '', medications: '', allergies: '' }]
+      : [];
+
+  if (!dogs.length) return '<div style="font-size:13px;color:#7A7A7A;padding:8px 0;">No dog info on file.</div>';
+
+  return dogs.map((dog, i) => {
+    const fields = [
+      dog.breed && `${dog.breed}`,
+      dog.age && `${dog.age}`,
+      dog.weight && `${dog.weight}`,
+    ].filter(Boolean).join(' · ');
+
+    // Flags that matter for safety get their own prominent lines —
+    // a walker shouldn't have to scan a paragraph to find out if a dog
+    // is reactive or on medication.
+    const alerts = [
+      dog.triggers && `<div style="background:#FEF3C7;border-radius:6px;padding:8px 10px;font-size:13px;color:#92400E;margin-top:6px;">⚠️ <strong>Triggers:</strong> ${esc(dog.triggers)}</div>`,
+      dog.medications && `<div style="background:#EEF2FF;border-radius:6px;padding:8px 10px;font-size:13px;color:#3730A3;margin-top:6px;">💊 <strong>Medications:</strong> ${esc(dog.medications)}</div>`,
+      dog.allergies && `<div style="background:#FFF0EE;border-radius:6px;padding:8px 10px;font-size:13px;color:#8B2E22;margin-top:6px;">🚫 <strong>Allergies:</strong> ${esc(dog.allergies)}</div>`,
+    ].filter(Boolean).join('');
+
+    return `
+      <div style="background:var(--sand);border-radius:8px;padding:14px 16px;margin-bottom:10px;">
+        <div style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:2px;">${esc(dog.name || 'Unnamed dog')}${dogs.length > 1 ? ` <span style="font-weight:400;color:#7A7A7A;font-size:12px;">(${i+1} of ${dogs.length})</span>` : ''}</div>
+        ${fields ? `<div style="font-size:13px;color:#4A4A4A;margin-bottom:4px;">${esc(fields)}</div>` : ''}
+        ${dog.temperament ? `<div style="font-size:13px;color:#4A4A4A;margin-top:4px;"><strong>Temperament:</strong> ${esc(dog.temperament)}</div>` : ''}
+        ${dog.walkingPrefs ? `<div style="font-size:13px;color:#4A4A4A;margin-top:2px;"><strong>Preferences:</strong> ${esc(dog.walkingPrefs)}</div>` : ''}
+        ${alerts}
+      </div>`;
+  }).join('');
+}
+
+function esc(s) { return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
 window.openWalkDetail = (walkId) => {
   const walk = myWalks.find(w => w.id === walkId);
   if (!walk) return;
@@ -492,17 +538,20 @@ window.openWalkDetail = (walkId) => {
   const isPast = date < new Date();
   const isCompleted = walk.status === 'completed';
 
-  document.getElementById('walkModalTitle').textContent = `${member?.dogName || 'Walk'} · ${date.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}`;
+  // Title uses all dog names for multi-dog households
+  const dogs = (Array.isArray(member?.dogs) && member.dogs.length) ? member.dogs : (member?.dogName ? [{ name: member.dogName }] : []);
+  const dogNames = dogs.map(d => d.name).filter(Boolean).join(' & ') || 'Walk';
+
+  document.getElementById('walkModalTitle').textContent = `${dogNames} · ${date.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}`;
   document.getElementById('walkModalContent').innerHTML = `
-    <div class="detail-row"><span class="detail-label">Dog</span><span class="detail-value">${member?.dogName || '–'} (${member?.dogBreed || '–'})</span></div>
-    <div class="detail-row"><span class="detail-label">Owner</span><span class="detail-value">${member?.name || '–'}</span></div>
-    <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${member?.address || '–'}</span></div>
-    <div class="detail-row"><span class="detail-label">Access Notes</span><span class="detail-value">${member?.accessNotes || 'None'}</span></div>
+    ${renderDogProfiles(member)}
+    <div class="detail-row"><span class="detail-label">Owner</span><span class="detail-value">${esc(member?.name) || '–'}</span></div>
+    <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${esc(member?.address) || '–'}</span></div>
+    <div class="detail-row"><span class="detail-label">Access</span><span class="detail-value">${esc(member?.accessNotes) || 'None'}</span></div>
     <div class="detail-row"><span class="detail-label">Time Slot</span><span class="detail-value">${slotLabel}</span></div>
-    <div class="detail-row"><span class="detail-label">Dog Notes</span><span class="detail-value">${member?.dogNotes || 'None'}</span></div>
     <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted ? '✓ Completed' : isPast ? 'Past' : 'Scheduled'}</span></div>
     ${isCompleted ? `
-      <div class="detail-row"><span class="detail-label">Walk Notes</span><span class="detail-value">${walk.notes || 'None'}</span></div>
+      <div class="detail-row"><span class="detail-label">Walk Notes</span><span class="detail-value">${esc(walk.notes) || 'None'}</span></div>
       ${walk.photoUrl ? `<img src="${walk.photoUrl}" style="width:100%;border-radius:8px;margin-top:8px;" alt="Walk photo">` : ''}
     ` : !isCompleted && isPast ? `
       <div style="margin-top:16px;">
@@ -514,8 +563,55 @@ window.openWalkDetail = (walkId) => {
       </div>
       <button class="btn-complete" id="completeWalkBtn" onclick="completeWalk('${walkId}')">Mark as Completed</button>
     ` : ''}
+    <button onclick="showIncidentForm('${walkId}')" style="width:100%;margin-top:12px;background:transparent;border:1px solid rgba(0,0,0,0.12);border-radius:4px;padding:10px;font-size:13px;font-family:inherit;color:var(--text-mid);cursor:pointer;">Report an Issue</button>
+    <div id="incidentForm" style="display:none;margin-top:12px;">
+      <textarea id="incidentNotes" rows="3" placeholder="Describe what happened — aggressive behavior, dog got loose, injury, anything that needs attention." style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;"></textarea>
+      <div id="incidentError" style="color:#C17B6F;font-size:13px;margin-top:6px;display:none;"></div>
+      <button id="incidentSubmitBtn" onclick="submitIncident('${walkId}')" style="width:100%;margin-top:8px;background:#C17B6F;color:white;border:none;border-radius:4px;padding:11px;font-size:14px;font-weight:500;font-family:inherit;cursor:pointer;">Submit Report</button>
+    </div>
   `;
   document.getElementById('walkModal').classList.add('open');
+};
+
+window.showIncidentForm = (walkId) => {
+  document.getElementById('incidentForm').style.display = 'block';
+};
+
+window.submitIncident = async (walkId) => {
+  const notes = document.getElementById('incidentNotes')?.value.trim();
+  const errEl = document.getElementById('incidentError');
+  const btn = document.getElementById('incidentSubmitBtn');
+  errEl.style.display = 'none';
+
+  if (!notes) { errEl.textContent = 'Please describe what happened.'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true; btn.textContent = 'Submitting...';
+
+  const walk = myWalks.find(w => w.id === walkId);
+  const member = allMembers.find(m => m.id === walk?.memberId);
+  const dogs = (Array.isArray(member?.dogs) && member.dogs.length) ? member.dogs : (member?.dogName ? [{ name: member.dogName }] : []);
+
+  try {
+    await addDoc(collection(db, 'submissions'), {
+      type: 'walker_incident',
+      walkId,
+      walkerId: walkerDoc?.id || null,
+      walkerName: walkerDoc?.name || null,
+      memberId: walk?.memberId || null,
+      memberName: member?.name || null,
+      dogNames: dogs.map(d => d.name).filter(Boolean).join(', '),
+      message: notes,
+      status: 'pending',
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+
+    document.getElementById('incidentForm').innerHTML = '<div style="background:var(--green-light);color:var(--green);padding:10px 14px;border-radius:6px;font-size:13px;">Report submitted — Alison will follow up.</div>';
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Submit Report';
+  }
 };
 
 window.completeWalk = async (walkId) => {

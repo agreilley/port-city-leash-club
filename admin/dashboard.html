@@ -120,6 +120,7 @@
   .request-type.application { background: var(--amber-light); color: var(--amber); }
   .request-type.contact { background: var(--sand); color: var(--text-mid); }
   .request-type.dogupdate { background: #FEF3C7; color: #92400E; }
+  .request-type.walkerincident { background: #FFF0EE; color: #8B2E22; }
   .request-name { font-size: 14px; font-weight: 500; color: var(--navy); }
   .request-preview { font-size: 13px; color: var(--text-mid); line-height: 1.5; }
   .request-time { font-size: 11px; color: var(--text-light); margin-left: auto; }
@@ -522,6 +523,7 @@
         <button class="request-filter" onclick="filterRequests('service_request', this)">Services</button>
         <button class="request-filter" onclick="filterRequests('application', this)">Applications</button>
         <button class="request-filter" onclick="filterRequests('contact', this)">Contact</button>
+        <button class="request-filter" onclick="filterRequests('walker_incident', this)">Incidents</button>
       </div>
       <div id="requestsList"><div class="loading-spinner">Loading...</div></div>
     </div>
@@ -1163,14 +1165,14 @@ function renderRequests() {
   const container = document.getElementById('requestsList');
   const filtered = currentRequestFilter === 'all' ? allRequests : allRequests.filter(i => i.type === currentRequestFilter);
   if (!filtered.length) { container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📬</div><div class="empty-state-title">No submissions yet</div></div>'; return; }
-  const typeLabels = { membership_request: 'Membership', service_request: 'Service', application: 'Application', contact: 'Contact', dog_update: 'Dog Update', overnight_request: 'Overnight' };
+  const typeLabels = { membership_request: 'Membership', service_request: 'Service', application: 'Application', contact: 'Contact', dog_update: 'Dog Update', overnight_request: 'Overnight', walker_incident: 'Incident' };
   container.innerHTML = filtered.map(item => {
     const time = item.createdAt?.toDate?.() ? item.createdAt.toDate().toLocaleDateString('en-US', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '–';
     const typeClass = item.type?.replace('_request','').replace('_','') || 'contact';
     return `<div class="list-row ${item.read ? '' : 'unread'}" onclick="openRequestItem('${item.id}')">
       <div class="request-meta">
         <span class="request-type ${typeClass}">${typeLabels[item.type] || item.type}</span>
-        <span class="request-name">${item.name || item.ownerName || 'Unknown'}</span>
+        <span class="request-name">${item.name || item.ownerName || item.walkerName || 'Unknown'}</span>
         <span class="request-time">${time}</span>
       </div>
       <div class="request-preview">${item.email || ''} ${item.dogName ? '· ' + item.dogName : ''}</div>
@@ -1395,7 +1397,7 @@ window.openRequestItem = async (id) => {
   }
 
   // Build clean field list based on submission type
-  const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request' };
+  const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report' };
   const title = typeLabels[item.type] || 'Submission';
 
   let fields = [];
@@ -1416,6 +1418,15 @@ window.openRequestItem = async (id) => {
       { label: 'Previous Dogs', value: item.previousDogs || '–' },
       { label: 'Updated Dogs', value: item.newDogs || '–' },
       { label: 'Message', value: item.message || '–' },
+    ];
+  } else if (item.type === 'walker_incident') {
+    fields = [
+      { label: 'Reported By', value: item.walkerName || '–' },
+      { label: 'Member', value: item.memberName || '–' },
+      { label: 'Dog(s)', value: item.dogNames || '–' },
+      { label: 'What Happened', value: item.message || '–' },
+      { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
+      { label: 'Reported', value: fmtDate(item.createdAt) },
     ];
   } else {
     // Generic — show all fields, formatted
