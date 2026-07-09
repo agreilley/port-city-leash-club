@@ -179,11 +179,11 @@
 ### Minor / Polish
 - [ ] Walk History page: currently shows real data but walker notes are sparse in demo data — will improve as real walks accumulate
 - [ ] Account page: walk schedule display pulls from `defaultWalkDays`/`defaultTimeSlot` on member doc — needs to be set when admin creates member
-- [ ] Messages page: currently sends to Firestore submissions only — no real-time inbox on member side yet
+- [x] ~~Messages page~~ — **Removed.** Member communication now goes through real email/text (Gmail + Twilio), not an in-app inbox. `portal-messages.html` deleted. Contact info shown on Account page instead.
 - [ ] Password reset page: UI exists but Firebase password reset email not yet configured
 
 ### When Ready to Launch to Real Members
-- [ ] Add real member accounts via admin portal (or Firebase console)
+- [x] ~~Add real member accounts via admin portal~~ — **Done (July 8).** "Add Member" and "Convert to Member" now create a real Firebase Auth login and save the member doc at the Auth UID. Admin sees login credentials (email + temporary password) on the success screen.
 - [ ] Set `defaultWalkDays` and `defaultTimeSlot` on each member doc when onboarding
 - [ ] Configure Firebase password reset email template (Firebase Console → Authentication → Templates)
 - [ ] Remove demo member account (`demo@portcityleashclub.com`) or leave for testing

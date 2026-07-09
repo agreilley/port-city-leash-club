@@ -591,6 +591,7 @@
       <div class="form-field"><label>Owner name</label><input type="text" id="am-name" placeholder="Sarah Mitchell"></div>
       <div class="form-field"><label>Email</label><input type="email" id="am-email" placeholder="sarah@example.com"></div>
       <div class="form-field"><label>Phone</label><input type="tel" id="am-phone" placeholder="(000) 000-0000"></div>
+      <div class="form-field"><label>Temporary password</label><input type="text" id="am-password" placeholder="Min 8 characters" value=""></div>
       <div class="form-field"><label>Membership tier</label>
         <select id="am-tier">
           <option value="Essential">Essential — $26/walk</option>
@@ -1623,7 +1624,24 @@ function populateWalkerSelect() {
   const sel = document.getElementById('wm-walker');
   sel.innerHTML = '<option value="">Unassigned</option>' + allWalkers.map(w => `<option value="${w.id}">${w.name}</option>`).join('');
 }
+// Cache the Add Member modal's original HTML so it can be restored after
+// the success screen replaces it.
+let _addMemberModalOriginalHTML = null;
+window.restoreAddMemberModal = () => {
+  const box = document.querySelector('#addMemberModal .modal-box');
+  if (!box) return;
+  if (!_addMemberModalOriginalHTML) {
+    _addMemberModalOriginalHTML = box.innerHTML;
+  } else {
+    box.innerHTML = _addMemberModalOriginalHTML;
+  }
+};
+// Capture on load
+setTimeout(() => { _addMemberModalOriginalHTML = document.querySelector('#addMemberModal .modal-box')?.innerHTML; }, 100);
+
 window.openAddMemberModal = (prefill, submissionId) => {
+  // Restore the form if it was replaced by the success screen
+  restoreAddMemberModal();
   // Populate walker dropdown with current walkers
   const sel = document.getElementById('am-walker');
   if (sel) {
@@ -1641,6 +1659,9 @@ window.openAddMemberModal = (prefill, submissionId) => {
   document.getElementById('am-name').value = prefill?.ownerName || prefill?.name || '';
   document.getElementById('am-email').value = prefill?.email || '';
   document.getElementById('am-phone').value = prefill?.phone || '';
+  // Generate a simple default password — admin can change it before saving
+  const defaultPass = 'PCLC' + Math.random().toString(36).slice(2, 8);
+  document.getElementById('am-password').value = defaultPass;
   document.getElementById('am-tier').value = ['Essential','Standard','Daily','Travel'].includes(prefill?.plan) ? prefill.plan : 'Standard';
   document.getElementById('am-address').value = prefill?.address || '';
   document.getElementById('am-access').value = prefill?.accessNotes || '';
@@ -1657,6 +1678,7 @@ window.saveMember = async () => {
   const name    = document.getElementById('am-name').value.trim();
   const email   = document.getElementById('am-email').value.trim();
   const phone   = document.getElementById('am-phone').value.trim();
+  const pass    = document.getElementById('am-password').value.trim();
   const tier    = document.getElementById('am-tier').value;
   const address = document.getElementById('am-address').value.trim();
   const access  = document.getElementById('am-access').value.trim();
@@ -1670,23 +1692,35 @@ window.saveMember = async () => {
   errEl.style.display = 'none';
 
   if (!name || !email) { errEl.textContent = 'Owner name and email are required.'; errEl.style.display = 'block'; return; }
+  if (!pass || pass.length < 8) { errEl.textContent = 'Password must be at least 8 characters.'; errEl.style.display = 'block'; return; }
 
   const btn = document.querySelector('#addMemberModal .btn-primary');
-  btn.textContent = 'Saving...'; btn.disabled = true;
+  btn.textContent = 'Creating account...'; btn.disabled = true;
 
   try {
-    // Preserve the full multi-dog roster from the original request if there was one;
-    // otherwise fall back to a single dog built from the form fields.
+    // 1. Create Firebase Auth account via REST API (avoids signing out the
+    //    current admin session — the normal createUserWithEmailAndPassword
+    //    would switch the active auth context to the new user).
+    const apiKey = 'AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM';
+    const authRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pass, returnSecureToken: true })
+    });
+    const authData = await authRes.json();
+    if (authData.error) throw new Error(authData.error.message === 'EMAIL_EXISTS' ? 'An account with this email already exists.' : authData.error.message);
+
+    const uid = authData.localId;
+
+    // 2. Build the member document
     const dogs = window._addMemberPrefillDogs || (dogName ? [{ name: dogName, breed, age, notes: dogNotes }] : []);
-
-    // Normalized fields for matching inbound texts/emails to this member —
-    // stored lowercase/digits-only since a phone or email typed by hand
-    // ("(910) 555-1234" vs "9105551234") won't exact-match otherwise.
     const emailNormalized = email.toLowerCase();
-    const phoneDigits = phone.replace(/\D/g, '').replace(/^1/, ''); // strip leading US country code if present
+    const phoneDigits = phone.replace(/\D/g, '').replace(/^1/, '');
 
-    const newMemberRef = await addDoc(collection(db, 'members'), {
-      name, email, phone, tier, address,
+    // 3. Save at the Auth UID — this is what the member portal looks up
+    //    via getDoc(doc(db, 'members', user.uid))
+    await setDoc(doc(db, 'members', uid), {
+      name, email, phone, tier, address, uid,
       emailNormalized, phoneDigits,
       accessNotes: access, zone,
       dogName, dogBreed: breed, dogAge: age, dogNotes,
@@ -1695,22 +1729,34 @@ window.saveMember = async () => {
       createdAt: serverTimestamp()
     });
 
+    // 4. Mark the source submission confirmed if this came from Convert to Member
     if (window._addMemberSubmissionId) {
       await updateDoc(doc(db, 'submissions', window._addMemberSubmissionId), {
-        status: 'confirmed', memberId: newMemberRef.id, read: true,
+        status: 'confirmed', memberId: uid, read: true,
       });
     }
 
-    closeModal('addMemberModal');
-    // Clear form + state
-    ['am-name','am-email','am-phone','am-address','am-access','am-zone','am-dogname','am-breed','am-age','am-dognotes'].forEach(id => document.getElementById(id).value = '');
+    // 5. Show success with login credentials
+    document.querySelector('#addMemberModal .modal-box').innerHTML = `
+      <button class="modal-close" onclick="closeModal('addMemberModal')">×</button>
+      <div style="text-align:center;padding:24px 0;">
+        <div style="font-size:40px;margin-bottom:16px;">✓</div>
+        <div style="font-size:18px;font-weight:500;color:var(--navy);margin-bottom:8px;">Member account created!</div>
+        <div style="font-size:13px;color:var(--text-light);margin-bottom:4px;">${name} can now log in at:</div>
+        <div style="font-size:13px;font-weight:500;color:var(--navy);margin-bottom:4px;">${window.location.origin}/portal-login</div>
+        <div style="font-size:12px;color:var(--text-light);margin-bottom:24px;">Email: ${email} · Temporary password: ${pass}</div>
+        <button class="btn-primary" onclick="closeModal('addMemberModal');restoreAddMemberModal();" style="width:100%;">Done</button>
+      </div>
+    `;
+
+    // Clear state
     window._addMemberSubmissionId = null;
     window._addMemberPrefillDogs = null;
   } catch(e) {
     errEl.textContent = e.message;
     errEl.style.display = 'block';
+    btn.textContent = 'Add Member'; btn.disabled = false;
   }
-  btn.textContent = 'Add Member'; btn.disabled = false;
 };
 
 
