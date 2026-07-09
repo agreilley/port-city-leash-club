@@ -73,7 +73,7 @@
 ### Firebase
 - **Project:** `port-city-leash-club-839bc`
 - **API Key:** `AIzaSyC9xuNrH15BOxVEpUzCD4mAJudUNXsUveY`
-- **Admin UID:** TBD — set when admin account is created in the new project (alison@portcityleashclub.com)
+- **Admin UID:** `nh4WfKxCEQZbmlpVCPKC6WEceV52` (alison@portcityleashclub.com)
 - **Auth authorized domains:** localhost, portcityleashclub.com, www.portcityleashclub.com, port-city-leash-club.vercel.app
 
 ### Design System
