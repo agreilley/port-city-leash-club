@@ -53,7 +53,7 @@ Code is built (`functions/index.js`, admin portal "Messages" section, walker pho
 3. **Set up the OAuth consent screen** — APIs & Services → OAuth consent screen. Choose **User type: Internal** (only available because this is a Workspace account — this is what avoids Google's verification process and the token-expiry issue entirely).
 4. **Create an OAuth Client ID** — APIs & Services → Credentials → Create Credentials → OAuth client ID → Application type: **Web application**. Under "Authorized redirect URIs," add:
    ```
-   https://us-central1-port-city-leash-club-839bc.cloudfunctions.net/gmailAuthCallback
+   https://us-central1-port-city-leash-club-827ab.cloudfunctions.net/gmailAuthCallback
    ```
    (This must match `GMAIL_REDIRECT_URI` in `functions/index.js` exactly — only change one if you change the other.)
 5. **Copy the Client ID and Client Secret**, then set them:
@@ -77,7 +77,7 @@ Code is built (`functions/index.js`, admin portal "Messages" section, walker pho
    ```
 5. **Set the inbound webhook** — in the Twilio Console, under your phone number's Messaging configuration, set "A message comes in" to:
    ```
-   https://us-central1-port-city-leash-club-839bc.cloudfunctions.net/twilioInboundWebhook
+   https://us-central1-port-city-leash-club-827ab.cloudfunctions.net/twilioInboundWebhook
    ```
    (Must match `TWILIO_WEBHOOK_URL` in `functions/index.js` exactly, including `https://` — signature validation will silently fail otherwise.)
 
@@ -165,10 +165,10 @@ firebase deploy --only functions
 ### What's left to finish the Gmail connection
 
 1. **Enable Secret Manager API** in Google Cloud Console (it needs enabling before secrets can be created):
-   - Go to: https://console.cloud.google.com/marketplace/product/google/secretmanager.googleapis.com?project=port-city-leash-club-839bc
+   - Go to: https://console.cloud.google.com/marketplace/product/google/secretmanager.googleapis.com?project=port-city-leash-club-827ab
    - Click Enable
 
-2. **Create two secrets** in Secret Manager (https://console.cloud.google.com/security/secret-manager?authuser=2&project=port-city-leash-club-839bc):
+2. **Create two secrets** in Secret Manager (https://console.cloud.google.com/security/secret-manager?authuser=2&project=port-city-leash-club-827ab):
    - Name: `GOOGLE_CLIENT_ID`
      Value: [paste from your notes — the Client ID from the OAuth credentials screen ending in .apps.googleusercontent.com]
    - Name: `GOOGLE_CLIENT_SECRET`
@@ -192,7 +192,7 @@ Old project (827ab) is still intact under alison.reilley@gmail.com as a fallback
 
 ### What's left to finish Gmail connection
 
-1. **Enable Secret Manager API**: https://console.cloud.google.com/marketplace/product/google/secretmanager.googleapis.com?project=port-city-leash-club-839bc
+1. **Enable Secret Manager API**: https://console.cloud.google.com/marketplace/product/google/secretmanager.googleapis.com?project=port-city-leash-club-827ab
 
 2. **Create two secrets** in Secret Manager:
    - `GOOGLE_CLIENT_ID` — from the OAuth credentials you created today

@@ -235,7 +235,7 @@ const GOOGLE_CLIENT_SECRET = defineSecret('GOOGLE_CLIENT_SECRET');
 // Update the project region/ID here if either ever changes — these two
 // URLs have to match EXACTLY what's configured in the Twilio phone number
 // settings and the Google OAuth Client's "Authorized redirect URIs".
-const FUNCTIONS_BASE_URL = 'https://us-central1-port-city-leash-club-839bc.cloudfunctions.net';
+const FUNCTIONS_BASE_URL = 'https://us-central1-port-city-leash-club-827ab.cloudfunctions.net';
 const GMAIL_REDIRECT_URI = `${FUNCTIONS_BASE_URL}/gmailAuthCallback`;
 const TWILIO_WEBHOOK_URL = `${FUNCTIONS_BASE_URL}/twilioInboundWebhook`;
 

@@ -1,10 +1,10 @@
 const firebaseConfig = {
-  apiKey: "AIzaSyC9xuNrH15BOxVEpUzCD4mAJudUNXsUveY",
-  authDomain: "port-city-leash-club-839bc.firebaseapp.com",
-  projectId: "port-city-leash-club-839bc",
-  storageBucket: "port-city-leash-club-839bc.firebasestorage.app",
-  messagingSenderId: "877238974243",
-  appId: "1:877238974243:web:e0aeffa1306312ad67be96"
+  apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
+  authDomain: "port-city-leash-club-827ab.firebaseapp.com",
+  projectId: "port-city-leash-club-827ab",
+  storageBucket: "port-city-leash-club-827ab.firebasestorage.app",
+  messagingSenderId: "649385306352",
+  appId: "1:649385306352:web:51e46c0b58b8b6b3a8dece"
 };
 
 export default firebaseConfig;

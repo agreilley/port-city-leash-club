@@ -50,10 +50,10 @@ async function loadMeetGreetAvailability() {
     const { getFirestore, collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
     const { initializeApp, getApps } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js');
     const cfg = {
-      apiKey: "AIzaSyC9xuNrH15BOxVEpUzCD4mAJudUNXsUveY",
-      authDomain: "port-city-leash-club-839bc.firebaseapp.com",
-      projectId: "port-city-leash-club-839bc",
-      storageBucket: "port-city-leash-club-839bc.firebasestorage.app",
+      apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
+      authDomain: "port-city-leash-club-827ab.firebaseapp.com",
+      projectId: "port-city-leash-club-827ab",
+      storageBucket: "port-city-leash-club-827ab.firebasestorage.app",
       messagingSenderId: "649385306352",
       appId: "1:649385306352:web:8e8a6fcbe8a7eff29dfa35"
     };

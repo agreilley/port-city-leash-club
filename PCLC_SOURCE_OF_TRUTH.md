@@ -71,9 +71,9 @@
 - **Push command:** `git add . && git commit -m "message" && git push origin main`
 
 ### Firebase
-- **Project:** `port-city-leash-club-839bc`
-- **API Key:** `AIzaSyC9xuNrH15BOxVEpUzCD4mAJudUNXsUveY`
-- **Admin UID:** `nh4WfKxCEQZbmlpVCPKC6WEceV52` (alison@portcityleashclub.com)
+- **Project:** `port-city-leash-club-827ab`
+- **API Key:** `AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM`
+- **Admin UID:** `SZNWwqHGPDYp8TOixmg1EOUZaBD2` (alison@portcityleashclub.com)
 - **Auth authorized domains:** localhost, portcityleashclub.com, www.portcityleashclub.com, port-city-leash-club.vercel.app
 
 ### Design System
