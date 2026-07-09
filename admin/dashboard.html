@@ -604,6 +604,26 @@
     <div class="form-field" style="margin-bottom:12px;"><label>Address</label><input type="text" id="am-address" placeholder="123 Forest Hills Dr, Wilmington NC"></div>
     <div class="form-field" style="margin-bottom:12px;"><label>Access notes</label><input type="text" id="am-access" placeholder="Key under mat, gate code 1234"></div>
     <div class="form-field" style="margin-bottom:12px;"><label>Zone / Neighborhood</label><input type="text" id="am-zone" placeholder="Forest Hills"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <div class="form-field"><label>Walk days</label>
+        <select id="am-walkdays" multiple size="5" style="min-height:auto;">
+          <option value="Monday">Monday</option>
+          <option value="Tuesday">Tuesday</option>
+          <option value="Wednesday">Wednesday</option>
+          <option value="Thursday">Thursday</option>
+          <option value="Friday">Friday</option>
+        </select>
+        <div style="font-size:11px;color:var(--text-light);margin-top:3px;">Hold Ctrl/Cmd to select multiple</div>
+      </div>
+      <div class="form-field"><label>Preferred time slot</label>
+        <select id="am-timeslot">
+          <option value="">Not set</option>
+          <option value="morning">Morning (8–11am)</option>
+          <option value="early-afternoon">Early Afternoon (11am–2pm)</option>
+          <option value="late-afternoon">Late Afternoon (2–5pm)</option>
+        </select>
+      </div>
+    </div>
     <hr class="modal-divider">
     <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:12px;">Dog Info</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
@@ -1666,6 +1686,10 @@ window.openAddMemberModal = (prefill, submissionId) => {
   document.getElementById('am-address').value = prefill?.address || '';
   document.getElementById('am-access').value = prefill?.accessNotes || '';
   document.getElementById('am-zone').value = '';
+  // Reset walk schedule fields
+  const walkDaysSel = document.getElementById('am-walkdays');
+  Array.from(walkDaysSel.options).forEach(o => o.selected = false);
+  document.getElementById('am-timeslot').value = '';
   document.getElementById('am-dogname').value = dog.name || prefill?.dogName || '';
   document.getElementById('am-breed').value = dog.breed || prefill?.breed || '';
   document.getElementById('am-age').value = dog.age || prefill?.age || '';
@@ -1683,6 +1707,8 @@ window.saveMember = async () => {
   const address = document.getElementById('am-address').value.trim();
   const access  = document.getElementById('am-access').value.trim();
   const zone    = document.getElementById('am-zone').value.trim();
+  const defaultWalkDays = Array.from(document.getElementById('am-walkdays').selectedOptions).map(o => o.value);
+  const defaultTimeSlot = document.getElementById('am-timeslot').value || null;
   const dogName = document.getElementById('am-dogname').value.trim();
   const breed   = document.getElementById('am-breed').value.trim();
   const age     = document.getElementById('am-age').value.trim();
@@ -1723,6 +1749,7 @@ window.saveMember = async () => {
       name, email, phone, tier, address, uid,
       emailNormalized, phoneDigits,
       accessNotes: access, zone,
+      defaultWalkDays, defaultTimeSlot,
       dogName, dogBreed: breed, dogAge: age, dogNotes,
       dogs, assignedWalkerId: walker,
       walksThisMonth: 0, status: 'active',
