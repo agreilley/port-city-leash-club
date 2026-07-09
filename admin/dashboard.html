@@ -768,7 +768,14 @@ function subscribeMembers() {
 
 function subscribeWalkers() {
   onSnapshot(collection(db, 'walkers'), snap => {
-    allWalkers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Every walker is intentionally saved at TWO doc IDs — a friendly one
+    // (used as walkerId in walks) and their Auth UID (so security rules
+    // can look them up by uid). Keep only the friendly-ID copy so tables/
+    // dropdowns/availability grids don't show each walker twice. Docs
+    // missing walkerId entirely (shouldn't happen going forward, but just
+    // in case of older/manual records) are kept rather than dropped.
+    allWalkers = all.filter(w => !w.walkerId || w.id === w.walkerId);
     renderWalkersTable();
     renderAvailabilityGrid();
     populateWalkerSelect();
