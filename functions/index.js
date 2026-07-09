@@ -663,6 +663,8 @@ const REQUEST_TYPE_LABELS = {
   tier_change: 'Membership tier change request',
   dog_update: 'Dog roster update',
   overnight_request: 'Overnight / check-in request',
+  walker_incident: 'Walker incident report',
+  walker_schedule_request: 'Walker schedule request',
 };
 
 exports.onNewSubmission = onDocumentCreated({
@@ -686,7 +688,7 @@ exports.onNewSubmission = onDocumentCreated({
   if (!notifyEmail) return;
 
   const label = REQUEST_TYPE_LABELS[sub.type] || `New ${sub.type || 'request'}`;
-  const name = sub.name || sub.ownerName || 'Unknown';
+  const name = sub.name || sub.ownerName || sub.walkerName || 'Unknown';
   const emailAddr = sub.email || '';
   const dogName = sub.dogName || (Array.isArray(sub.dogs) && sub.dogs[0]?.name) || '';
 

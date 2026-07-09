@@ -194,6 +194,14 @@
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3.5l2.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     Walk History
   </a>
+  <a class="nav-item" data-view="schedule" onclick="switchView('schedule')">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    My Schedule
+  </a>
+  <a class="nav-item" data-view="earnings" onclick="switchView('earnings')">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v12M5 5c0-1.1.9-2 3-2s3 .9 3 2-1.5 2-3 2-3 .9-3 2 .9 2 3 2 3-.9 3-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    Earnings
+  </a>
   <div class="sidebar-footer">
     <button class="btn-signout" onclick="signOut()">Sign out</button>
   </div>
@@ -254,6 +262,38 @@
       <div id="historyList"><div style="text-align:center;padding:40px;color:var(--text-light);">Loading...</div></div>
     </div>
 
+    <!-- SCHEDULE VIEW -->
+    <div class="view" id="view-schedule">
+      <div class="section-title">My Availability</div>
+      <p style="font-size:13px;color:var(--text-light);margin-bottom:16px;">Your current weekly schedule, set by Alison. Need a day off or a schedule change? Submit a request below.</p>
+      <div id="availabilityDisplay" style="margin-bottom:32px;"><div style="text-align:center;padding:40px;color:var(--text-light);">Loading...</div></div>
+
+      <div class="section-title">Request Time Off or Schedule Change</div>
+      <div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:20px 24px;">
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px;font-weight:500;color:var(--navy);display:block;margin-bottom:6px;">What do you need?</label>
+          <select id="scheduleRequestType" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:14px;">
+            <option value="time_off">Time off (specific dates)</option>
+            <option value="schedule_change">Schedule change (ongoing availability)</option>
+          </select>
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px;font-weight:500;color:var(--navy);display:block;margin-bottom:6px;">Details</label>
+          <textarea id="scheduleRequestDetails" rows="3" placeholder="e.g. 'I need July 20–22 off' or 'Starting August, I can't do mornings on Wednesdays'" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;"></textarea>
+        </div>
+        <div id="scheduleRequestError" style="color:#C17B6F;font-size:13px;margin-bottom:8px;display:none;"></div>
+        <button id="scheduleRequestBtn" onclick="submitScheduleRequest()" style="width:100%;background:var(--navy);color:white;border:none;border-radius:4px;padding:12px;font-size:14px;font-weight:500;font-family:inherit;cursor:pointer;">Submit Request</button>
+        <div id="scheduleRequestSuccess" style="display:none;background:var(--green-light);color:var(--green);padding:10px 14px;border-radius:6px;font-size:13px;margin-top:10px;">Request submitted — Alison will follow up.</div>
+      </div>
+    </div>
+
+    <!-- EARNINGS VIEW -->
+    <div class="view" id="view-earnings">
+      <div class="section-title">Earnings</div>
+      <p style="font-size:13px;color:var(--text-light);margin-bottom:16px;">Based on your completed walks. Paid weekly — Fridays for the previous week's work.</p>
+      <div id="earningsDisplay"><div style="text-align:center;padding:40px;color:var(--text-light);">Loading...</div></div>
+    </div>
+
   </div>
 </div>
 
@@ -278,6 +318,14 @@
   <a class="mobile-tab" data-view="history" onclick="switchView('history')">
     <svg width="20" height="20" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3.5l2.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     <span>History</span>
+  </a>
+  <a class="mobile-tab" data-view="schedule" onclick="switchView('schedule')">
+    <svg width="20" height="20" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <span>Schedule</span>
+  </a>
+  <a class="mobile-tab" data-view="earnings" onclick="switchView('earnings')">
+    <svg width="20" height="20" viewBox="0 0 16 16" fill="none"><path d="M8 2v12M5 5c0-1.1.9-2 3-2s3 .9 3 2-1.5 2-3 2-3 .9-3 2 .9 2 3 2 3-.9 3-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <span>Earnings</span>
   </a>
 </nav>
 
@@ -355,6 +403,7 @@ function loadData() {
     renderUpcoming();
     renderCalendar();
     renderHistory();
+    renderEarnings();
   });
 
   // Load members for dog/owner info
@@ -363,7 +412,10 @@ function loadData() {
     renderUpcoming();
     renderCalendar();
     renderHistory();
+    renderEarnings();
   });
+
+  renderSchedule();
 }
 
 // ── STATS ─────────────────────────────────────────────────────────────────────
@@ -706,8 +758,195 @@ window.completeWalk = async (walkId) => {
   }
 };
 
+// ── SCHEDULE ──────────────────────────────────────────────────────────────────
+function renderSchedule() {
+  const container = document.getElementById('availabilityDisplay');
+  if (!walkerDoc) { container.innerHTML = '<div style="color:var(--text-light);">No schedule data yet.</div>'; return; }
+
+  const avail = walkerDoc.availability || {};
+  const days = [
+    { key: 'mon', label: 'Monday' }, { key: 'tue', label: 'Tuesday' }, { key: 'wed', label: 'Wednesday' },
+    { key: 'thu', label: 'Thursday' }, { key: 'fri', label: 'Friday' }, { key: 'sat', label: 'Saturday' }, { key: 'sun', label: 'Sunday' },
+  ];
+  const slotLabels = { morning: 'Morning (8–11am)', 'early-afternoon': 'Early Afternoon (11am–2pm)', 'late-afternoon': 'Late Afternoon (2–5pm)' };
+  const slotColors = { morning: '#EBF5EF', 'early-afternoon': '#EEF2FF', 'late-afternoon': '#FEF3C7' };
+  const slotTextColors = { morning: '#1A5C30', 'early-afternoon': '#3730A3', 'late-afternoon': '#92400E' };
+
+  const zones = walkerDoc.zones || [];
+
+  container.innerHTML = `
+    ${zones.length ? `<div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:14px 18px;margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);margin-bottom:4px;">Assigned Zones</div>
+      <div style="font-size:14px;color:var(--navy);font-weight:500;">${zones.join(', ')}</div>
+    </div>` : ''}
+    <div style="display:grid;gap:8px;">
+      ${days.map(d => {
+        const daySlots = avail[d.key] || [];
+        const isOff = !daySlots.length;
+        return `<div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;">
+          <div style="font-size:14px;font-weight:500;color:${isOff ? 'var(--text-light)' : 'var(--navy)'};">${d.label}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            ${isOff
+              ? '<span style="font-size:12px;color:var(--text-light);">Off</span>'
+              : daySlots.map(s => `<span style="background:${slotColors[s] || '#eee'};color:${slotTextColors[s] || '#666'};font-size:11px;font-weight:500;padding:3px 10px;border-radius:12px;">${slotLabels[s] || s}</span>`).join('')
+            }
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+window.submitScheduleRequest = async () => {
+  const type = document.getElementById('scheduleRequestType').value;
+  const details = document.getElementById('scheduleRequestDetails').value.trim();
+  const errEl = document.getElementById('scheduleRequestError');
+  const btn = document.getElementById('scheduleRequestBtn');
+  const successEl = document.getElementById('scheduleRequestSuccess');
+  errEl.style.display = 'none';
+  successEl.style.display = 'none';
+
+  if (!details) { errEl.textContent = 'Please describe what you need.'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true; btn.textContent = 'Submitting...';
+  try {
+    await addDoc(collection(db, 'submissions'), {
+      type: 'walker_schedule_request',
+      requestType: type,
+      walkerId: walkerDoc?.id || null,
+      walkerName: walkerDoc?.name || null,
+      message: details,
+      status: 'pending',
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+    document.getElementById('scheduleRequestDetails').value = '';
+    successEl.style.display = 'block';
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+  btn.disabled = false; btn.textContent = 'Submit Request';
+};
+
+// ── EARNINGS ─────────────────────────────────────────────────────────────────
+const WALKER_RATES = {
+  standard: 16,
+  extended: 24,
+};
+
+function renderEarnings() {
+  const container = document.getElementById('earningsDisplay');
+  const completed = myWalks.filter(w => w.status === 'completed');
+
+  if (!completed.length) {
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-light);">No completed walks yet — earnings will show up here once you start.</div>';
+    return;
+  }
+
+  const now = new Date();
+
+  // This week (Mon–Sun)
+  const dayOfWeek = now.getDay(); // 0=Sun
+  const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const thisWeekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayOffset);
+  const thisWeekEnd = new Date(thisWeekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  // This month
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const thisMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+  // Last month
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  function calcPeriod(walks) {
+    let total = 0;
+    let count = 0;
+    walks.forEach(w => {
+      const rate = w.extended ? WALKER_RATES.extended : WALKER_RATES.standard;
+      total += rate;
+      count++;
+    });
+    return { total, count };
+  }
+
+  function walksInRange(start, end) {
+    return completed.filter(w => {
+      const ds = walkDateStr(w.date);
+      const startStr = `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}`;
+      const endStr = `${end.getFullYear()}-${String(end.getMonth()+1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}`;
+      return ds >= startStr && ds < endStr;
+    });
+  }
+
+  const thisWeek = calcPeriod(walksInRange(thisWeekStart, thisWeekEnd));
+  const thisMonth = calcPeriod(walksInRange(thisMonthStart, thisMonthEnd));
+  const lastMonth = calcPeriod(walksInRange(lastMonthStart, lastMonthEnd));
+  const allTime = calcPeriod(completed);
+
+  const monthName = now.toLocaleString('en-US', { month: 'long' });
+  const lastMonthName = lastMonthStart.toLocaleString('en-US', { month: 'long' });
+
+  container.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:24px;">
+      <div class="stat-card">
+        <div class="stat-label">This Week</div>
+        <div class="stat-value" style="color:var(--green);">$${thisWeek.total}</div>
+        <div class="stat-sub">${thisWeek.count} walk${thisWeek.count !== 1 ? 's' : ''}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">${monthName}</div>
+        <div class="stat-value" style="color:var(--green);">$${thisMonth.total}</div>
+        <div class="stat-sub">${thisMonth.count} walk${thisMonth.count !== 1 ? 's' : ''}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">${lastMonthName}</div>
+        <div class="stat-value">$${lastMonth.total}</div>
+        <div class="stat-sub">${lastMonth.count} walk${lastMonth.count !== 1 ? 's' : ''}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">All Time</div>
+        <div class="stat-value">$${allTime.total}</div>
+        <div class="stat-sub">${allTime.count} walk${allTime.count !== 1 ? 's' : ''}</div>
+      </div>
+    </div>
+
+    <div class="section-title">Rate Card</div>
+    <div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;overflow:hidden;">
+      <div style="display:flex;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(0,0,0,0.05);">
+        <span style="font-size:14px;color:var(--navy);">Standard Walk (30 min)</span>
+        <span style="font-size:14px;font-weight:600;color:var(--navy);">$16</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(0,0,0,0.05);">
+        <span style="font-size:14px;color:var(--navy);">Extended Walk (45 min)</span>
+        <span style="font-size:14px;font-weight:600;color:var(--navy);">$24</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(0,0,0,0.05);">
+        <span style="font-size:14px;color:var(--navy);">Check-In Visit (20 min)</span>
+        <span style="font-size:14px;font-weight:600;color:var(--navy);">$13</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(0,0,0,0.05);">
+        <span style="font-size:14px;color:var(--navy);">Overnight Stay</span>
+        <span style="font-size:14px;font-weight:600;color:var(--navy);">$45</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(0,0,0,0.05);">
+        <span style="font-size:14px;color:var(--navy);">Extra Pet (overnight)</span>
+        <span style="font-size:14px;font-weight:600;color:var(--navy);">$8</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(0,0,0,0.05);">
+        <span style="font-size:14px;color:var(--navy);">Medication Admin</span>
+        <span style="font-size:14px;font-weight:600;color:var(--navy);">$3</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:14px 18px;background:rgba(0,0,0,0.02);">
+        <span style="font-size:14px;color:var(--navy);">Holiday Surcharge</span>
+        <span style="font-size:14px;font-weight:600;color:var(--navy);">+30%</span>
+      </div>
+    </div>
+  `;
+}
+
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
-const titles = { upcoming: 'Upcoming Walks', calendar: 'Calendar', history: 'Walk History' };
+const titles = { upcoming: 'Upcoming Walks', calendar: 'Calendar', history: 'Walk History', schedule: 'My Schedule', earnings: 'Earnings' };
 window.switchView = (view) => {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.nav-item, .mobile-tab').forEach(n => n.classList.remove('active'));
