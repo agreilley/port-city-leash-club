@@ -389,9 +389,10 @@ function getDogNames(member) {
 function renderUpcoming() {
   const container = document.getElementById('upcomingList');
   const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const upcoming = myWalks.filter(w => {
     const d = w.date?.toDate?.() || new Date(w.date);
-    return d >= new Date(now.setHours(0,0,0,0)) && w.status !== 'completed';
+    return d >= todayStart && w.status !== 'completed';
   }).slice(0, 15);
 
   if (!upcoming.length) {
@@ -399,28 +400,61 @@ function renderUpcoming() {
     return;
   }
 
+  // Today's uncompleted walks get a prominent action card at the top
   const today = new Date();
-  container.innerHTML = upcoming.map(w => {
-    const member = allMembers.find(m => m.id === w.memberId);
-    const date = w.date?.toDate?.() || new Date(w.date);
-    const isToday = date.toDateString() === today.toDateString();
-    const slotLabel = { morning: 'Morning · 8–11am', 'early-afternoon': 'Early Afternoon · 11am–2pm', 'late-afternoon': 'Late Afternoon · 2–5pm' }[w.timeSlot] || w.timeSlot;
-    const statusClass = isToday ? 'today' : 'scheduled';
-    const statusLabel = isToday ? 'Today' : 'Scheduled';
-    return `<div class="walk-card" onclick="openWalkDetail('${w.id}')">
-      <div class="walk-date-block">
-        <div class="walk-date-day">${date.getDate()}</div>
-        <div class="walk-date-month">${date.toLocaleString('en-US',{month:'short'})}</div>
-      </div>
-      <div class="walk-divider"></div>
-      <div class="walk-info">
-        <div class="walk-dog">${getDogNames(member)}</div>
-        <div class="walk-meta">${member?.name || '–'} · ${member?.address || ''}</div>
-        <div class="walk-slot">${slotLabel}</div>
-      </div>
-      <span class="walk-status ${statusClass}">${statusLabel}</span>
-    </div>`;
-  }).join('');
+  const todaysWalks = upcoming.filter(w => {
+    const d = w.date?.toDate?.() || new Date(w.date);
+    return d.toDateString() === today.toDateString();
+  });
+
+  let html = '';
+
+  if (todaysWalks.length) {
+    html += todaysWalks.map(w => {
+      const member = allMembers.find(m => m.id === w.memberId);
+      const slotLabel = { morning: 'Morning · 8–11am', 'early-afternoon': 'Early Afternoon · 11am–2pm', 'late-afternoon': 'Late Afternoon · 2–5pm' }[w.timeSlot] || w.timeSlot;
+      return `<div onclick="openWalkDetail('${w.id}')" style="background:white;border:2px solid var(--rust);border-radius:10px;padding:20px 24px;margin-bottom:16px;cursor:pointer;transition:box-shadow 0.15s;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--rust);">Ready to complete</div>
+          <span class="walk-status today">Today</span>
+        </div>
+        <div style="font-size:18px;font-weight:600;color:var(--navy);margin-bottom:4px;">${getDogNames(member)}</div>
+        <div style="font-size:14px;color:var(--text-mid);margin-bottom:2px;">${member?.name || '–'}${member?.address ? ' · ' + member.address : ''}</div>
+        <div style="font-size:13px;color:var(--text-light);">${slotLabel}</div>
+        <div style="margin-top:12px;background:var(--rust);color:white;text-align:center;padding:11px;border-radius:6px;font-size:14px;font-weight:500;">Complete This Walk →</div>
+      </div>`;
+    }).join('');
+  }
+
+  // Remaining upcoming walks (excluding today's, which are already shown above)
+  const futureWalks = upcoming.filter(w => {
+    const d = w.date?.toDate?.() || new Date(w.date);
+    return d.toDateString() !== today.toDateString();
+  });
+
+  if (futureWalks.length) {
+    if (todaysWalks.length) html += '<div class="section-title" style="margin-top:8px;">Coming Up</div>';
+    html += futureWalks.map(w => {
+      const member = allMembers.find(m => m.id === w.memberId);
+      const date = w.date?.toDate?.() || new Date(w.date);
+      const slotLabel = { morning: 'Morning · 8–11am', 'early-afternoon': 'Early Afternoon · 11am–2pm', 'late-afternoon': 'Late Afternoon · 2–5pm' }[w.timeSlot] || w.timeSlot;
+      return `<div class="walk-card" onclick="openWalkDetail('${w.id}')">
+        <div class="walk-date-block">
+          <div class="walk-date-day">${date.getDate()}</div>
+          <div class="walk-date-month">${date.toLocaleString('en-US',{month:'short'})}</div>
+        </div>
+        <div class="walk-divider"></div>
+        <div class="walk-info">
+          <div class="walk-dog">${getDogNames(member)}</div>
+          <div class="walk-meta">${member?.name || '–'} · ${member?.address || ''}</div>
+          <div class="walk-slot">${slotLabel}</div>
+        </div>
+        <span class="walk-status scheduled">Scheduled</span>
+      </div>`;
+    }).join('');
+  }
+
+  container.innerHTML = html;
 }
 
 // ── CALENDAR ──────────────────────────────────────────────────────────────────
@@ -535,7 +569,9 @@ window.openWalkDetail = (walkId) => {
   const member = allMembers.find(m => m.id === walk.memberId);
   const date = walk.date?.toDate?.() || new Date(walk.date);
   const slotLabel = { morning: 'Morning (8–11am)', 'early-afternoon': 'Early Afternoon (11am–2pm)', 'late-afternoon': 'Late Afternoon (2–5pm)' }[walk.timeSlot] || walk.timeSlot;
-  const isPast = date < new Date();
+  const isToday = date.toDateString() === new Date().toDateString();
+  const isPastDay = date < new Date(new Date().setHours(0,0,0,0));
+  const canComplete = isToday || isPastDay; // completable on the day of the walk or after
   const isCompleted = walk.status === 'completed';
 
   // Title uses all dog names for multi-dog households
@@ -549,11 +585,11 @@ window.openWalkDetail = (walkId) => {
     <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${esc(member?.address) || '–'}</span></div>
     <div class="detail-row"><span class="detail-label">Access</span><span class="detail-value">${esc(member?.accessNotes) || 'None'}</span></div>
     <div class="detail-row"><span class="detail-label">Time Slot</span><span class="detail-value">${slotLabel}</span></div>
-    <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted ? '✓ Completed' : isPast ? 'Past' : 'Scheduled'}</span></div>
+    <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted ? '✓ Completed' : isToday ? 'Today' : isPastDay ? 'Past' : 'Scheduled'}</span></div>
     ${isCompleted ? `
       <div class="detail-row"><span class="detail-label">Walk Notes</span><span class="detail-value">${esc(walk.notes) || 'None'}</span></div>
       ${walk.photoUrl ? `<img src="${walk.photoUrl}" style="width:100%;border-radius:8px;margin-top:8px;" alt="Walk photo">` : ''}
-    ` : !isCompleted && isPast ? `
+    ` : !isCompleted && canComplete ? `
       <div style="margin-top:16px;">
         <label class="detail-label" style="display:block;margin-bottom:6px;">How'd it go? <span style="font-weight:400;color:#7A7A7A;">(sent to the owner as a text)</span></label>
         <textarea id="completeNotes" rows="2" placeholder="e.g. Scout had a great walk today, lots of tail wags!" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;"></textarea>
