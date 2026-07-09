@@ -7,10 +7,10 @@ import { getFirestore, collection, addDoc, serverTimestamp } from 'https://www.g
 
 // ─── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────────────
 const firebaseConfig = {
-  apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
-  authDomain: "port-city-leash-club-827ab.firebaseapp.com",
-  projectId: "port-city-leash-club-827ab",
-  storageBucket: "port-city-leash-club-827ab.firebasestorage.app",
+  apiKey: "AIzaSyB4tKsUrk8-K8J74O7xHJE66A2bvEav-ME",
+  authDomain: "port-city-leash-club-e391d.firebaseapp.com",
+  projectId: "port-city-leash-club-e391d",
+  storageBucket: "port-city-leash-club-e391d.firebasestorage.app",
   messagingSenderId: "649385306352",
   appId: "1:649385306352:web:8e8a6fcbe8a7eff29dfa35"
 };

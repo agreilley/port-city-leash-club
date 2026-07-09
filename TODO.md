@@ -53,7 +53,7 @@ Code is built (`functions/index.js`, admin portal "Messages" section, walker pho
 3. **Set up the OAuth consent screen** — APIs & Services → OAuth consent screen. Choose **User type: Internal** (only available because this is a Workspace account — this is what avoids Google's verification process and the token-expiry issue entirely).
 4. **Create an OAuth Client ID** — APIs & Services → Credentials → Create Credentials → OAuth client ID → Application type: **Web application**. Under "Authorized redirect URIs," add:
    ```
-   https://us-central1-port-city-leash-club-827ab.cloudfunctions.net/gmailAuthCallback
+   https://us-central1-port-city-leash-club-e391d.cloudfunctions.net/gmailAuthCallback
    ```
    (This must match `GMAIL_REDIRECT_URI` in `functions/index.js` exactly — only change one if you change the other.)
 5. **Copy the Client ID and Client Secret**, then set them:
@@ -77,7 +77,7 @@ Code is built (`functions/index.js`, admin portal "Messages" section, walker pho
    ```
 5. **Set the inbound webhook** — in the Twilio Console, under your phone number's Messaging configuration, set "A message comes in" to:
    ```
-   https://us-central1-port-city-leash-club-827ab.cloudfunctions.net/twilioInboundWebhook
+   https://us-central1-port-city-leash-club-e391d.cloudfunctions.net/twilioInboundWebhook
    ```
    (Must match `TWILIO_WEBHOOK_URL` in `functions/index.js` exactly, including `https://` — signature validation will silently fail otherwise.)
 
