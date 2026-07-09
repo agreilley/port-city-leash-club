@@ -106,23 +106,23 @@
   .btn-sm.assign { background: var(--navy); color: white; }
   .btn-sm.view { background: transparent; border: 1px solid rgba(0,0,0,0.12); color: var(--text-mid); }
 
-  /* ── INBOX ── */
-  .inbox-filters { display: flex; gap: 8px; margin-bottom: 20px; }
-  .inbox-filter { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
-  .inbox-filter.active { background: var(--navy); color: white; border-color: var(--navy); }
-  .inbox-item { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 20px; margin-bottom: 12px; cursor: pointer; transition: box-shadow 0.15s; }
-  .inbox-item:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-  .inbox-item.unread { border-left: 3px solid var(--rust); }
-  .inbox-meta { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-  .inbox-type { font-size: 10px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; }
-  .inbox-type.membership { background: #EEF2FF; color: #3730A3; }
-  .inbox-type.service { background: var(--green-light); color: var(--green); }
-  .inbox-type.application { background: var(--amber-light); color: var(--amber); }
-  .inbox-type.contact { background: var(--sand); color: var(--text-mid); }
-  .inbox-type.dogupdate { background: #FEF3C7; color: #92400E; }
-  .inbox-name { font-size: 14px; font-weight: 500; color: var(--navy); }
-  .inbox-preview { font-size: 13px; color: var(--text-mid); line-height: 1.5; }
-  .inbox-time { font-size: 11px; color: var(--text-light); margin-left: auto; }
+  /* ── REQUESTS ── */
+  .request-filters { display: flex; gap: 8px; margin-bottom: 20px; }
+  .request-filter { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
+  .request-filter.active { background: var(--navy); color: white; border-color: var(--navy); }
+  .list-row { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 20px; margin-bottom: 12px; cursor: pointer; transition: box-shadow 0.15s; }
+  .list-row:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+  .list-row.unread { border-left: 3px solid var(--rust); }
+  .request-meta { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .request-type { font-size: 10px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; }
+  .request-type.membership { background: #EEF2FF; color: #3730A3; }
+  .request-type.service { background: var(--green-light); color: var(--green); }
+  .request-type.application { background: var(--amber-light); color: var(--amber); }
+  .request-type.contact { background: var(--sand); color: var(--text-mid); }
+  .request-type.dogupdate { background: #FEF3C7; color: #92400E; }
+  .request-name { font-size: 14px; font-weight: 500; color: var(--navy); }
+  .request-preview { font-size: 13px; color: var(--text-mid); line-height: 1.5; }
+  .request-time { font-size: 11px; color: var(--text-light); margin-left: auto; }
 
   /* ── MODAL ── */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; display: none; align-items: center; justify-content: center; }
@@ -300,8 +300,8 @@
     .calendar-day { min-height: 64px; padding: 4px; }
     .calendar-legend { flex-wrap: wrap; gap: 8px 14px; }
 
-    /* Inbox filters: allow wrapping instead of overflowing */
-    .inbox-filters { flex-wrap: wrap; }
+    /* Request filters: allow wrapping instead of overflowing */
+    .request-filters { flex-wrap: wrap; }
   }
 </style>
 </head>
@@ -332,10 +332,10 @@
     Availability
   </a>
   <hr class="nav-divider">
-  <a class="nav-item" data-view="inbox" onclick="switchView('inbox')">
+  <a class="nav-item" data-view="requests" onclick="switchView('requests')">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M1 5.5l7 4 7-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-    Inbox
-    <span class="badge" id="inboxBadge" style="display:none;">0</span>
+    Requests
+    <span class="badge" id="requestsBadge" style="display:none;">0</span>
   </a>
   <a class="nav-item" data-view="conversations" onclick="switchView('conversations')">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h11A1.5 1.5 0 0 1 15 3.5v6A1.5 1.5 0 0 1 13.5 11H6l-3 3v-3H2.5A1.5 1.5 0 0 1 1 9.5v-6Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
@@ -513,16 +513,17 @@
       </div>
     </div>
 
-    <!-- INBOX VIEW -->
-    <div class="view" id="view-inbox">
-      <div class="inbox-filters">
-        <button class="inbox-filter active" onclick="filterInbox('all', this)">All</button>
-        <button class="inbox-filter" onclick="filterInbox('membership_request', this)">Membership</button>
-        <button class="inbox-filter" onclick="filterInbox('service_request', this)">Services</button>
-        <button class="inbox-filter" onclick="filterInbox('application', this)">Applications</button>
-        <button class="inbox-filter" onclick="filterInbox('contact', this)">Contact</button>
+    <!-- REQUESTS VIEW -->
+    <div class="view" id="view-requests">
+      <p style="font-size:13px;color:var(--text-light);margin:0 20px 12px;">New members, walk changes, service requests, applications — things that need a decision from you. Emailed to you as they come in.</p>
+      <div class="request-filters">
+        <button class="request-filter active" onclick="filterRequests('all', this)">All</button>
+        <button class="request-filter" onclick="filterRequests('membership_request', this)">Membership</button>
+        <button class="request-filter" onclick="filterRequests('service_request', this)">Services</button>
+        <button class="request-filter" onclick="filterRequests('application', this)">Applications</button>
+        <button class="request-filter" onclick="filterRequests('contact', this)">Contact</button>
       </div>
-      <div id="inboxList"><div class="loading-spinner">Loading...</div></div>
+      <div id="requestsList"><div class="loading-spinner">Loading...</div></div>
     </div>
 
     <!-- CONVERSATIONS VIEW -->
@@ -647,16 +648,16 @@
 </div>
 
 
-<!-- INBOX DETAIL MODAL -->
-<div class="modal-overlay" id="inboxModal">
+<!-- REQUEST DETAIL MODAL -->
+<div class="modal-overlay" id="requestModal">
   <div class="modal">
-    <button class="modal-close" onclick="closeModal('inboxModal')">×</button>
-    <div class="modal-title" id="inboxModalTitle"></div>
-    <div id="inboxModalContent"></div>
+    <button class="modal-close" onclick="closeModal('requestModal')">×</button>
+    <div class="modal-title" id="requestModalTitle"></div>
+    <div id="requestModalContent"></div>
     <hr class="modal-divider">
     <div style="display:flex;gap:10px;justify-content:flex-end;">
-      <button class="btn-secondary" onclick="closeModal('inboxModal')">Close</button>
-      <button class="btn-primary" id="inboxActionBtn">Convert to Member</button>
+      <button class="btn-secondary" onclick="closeModal('requestModal')">Close</button>
+      <button class="btn-primary" id="requestActionBtn">Convert to Member</button>
     </div>
   </div>
 </div>
@@ -721,10 +722,10 @@ onAuthStateChanged(auth, async (user) => {
 window.signOut = () => fbSignOut(auth).then(() => window.location.href = 'index.html');
 
 // ── STATE ───────────────────────────────────────────────────────────────────
-let allWalks = [], allMembers = [], allWalkers = [], allInbox = [];
+let allWalks = [], allMembers = [], allWalkers = [], allRequests = [];
 let calendarYear = new Date().getFullYear();
 let calendarMonth = new Date().getMonth();
-let currentInboxFilter = 'all';
+let currentRequestFilter = 'all';
 let allOvernights = [];
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
@@ -732,7 +733,7 @@ function initDashboard() {
   subscribeWalks();
   subscribeMembers();
   subscribeWalkers();
-  subscribeInbox();
+  subscribeRequests();
   subscribeConversations();
   subscribeOvernights();
   renderCalendar();
@@ -783,16 +784,16 @@ function subscribeWalkers() {
   });
 }
 
-function subscribeInbox() {
+function subscribeRequests() {
   const q = query(collection(db, 'submissions'), orderBy('createdAt', 'desc'));
   onSnapshot(q, snap => {
-    allInbox = snap.docs.map(d => ({ id: d.id, ...d.data() })); window.allInbox = allInbox;
+    allRequests = snap.docs.map(d => ({ id: d.id, ...d.data() })); window.allRequests = allRequests;
     renderAll();
-    const unread = allInbox.filter(i => !i.read).length;
-    const badge = document.getElementById('inboxBadge');
+    const unread = allRequests.filter(i => !i.read).length;
+    const badge = document.getElementById('requestsBadge');
     badge.textContent = unread;
     badge.style.display = unread > 0 ? 'inline' : 'none';
-    renderInbox();
+    renderRequests();
   });
 }
 
@@ -837,7 +838,7 @@ function renderConversationsList() {
     return;
   }
   el.innerHTML = allConversations.map(c => `
-    <div class="inbox-item ${c.unreadByAdmin ? 'unread' : ''}" onclick="openConversation('${c.id}')" style="display:flex;align-items:center;gap:10px;">
+    <div class="list-row ${c.unreadByAdmin ? 'unread' : ''}" onclick="openConversation('${c.id}')" style="display:flex;align-items:center;gap:10px;">
       <div style="flex-shrink:0;">${channelIcon(c.lastMessageChannel)}</div>
       <div style="flex:1;min-width:0;">
         <div style="font-weight:${c.unreadByAdmin ? '700' : '500'};font-size:14px;">${c.memberName || c.memberPhone || c.memberEmail || 'Unknown'}</div>
@@ -1157,31 +1158,31 @@ function renderMembersTable(filter = '') {
 
 window.filterMembers = (val) => renderMembersTable(val);
 
-// ── INBOX ─────────────────────────────────────────────────────────────────────
-function renderInbox() {
-  const container = document.getElementById('inboxList');
-  const filtered = currentInboxFilter === 'all' ? allInbox : allInbox.filter(i => i.type === currentInboxFilter);
+// ── REQUESTS ─────────────────────────────────────────────────────────────────
+function renderRequests() {
+  const container = document.getElementById('requestsList');
+  const filtered = currentRequestFilter === 'all' ? allRequests : allRequests.filter(i => i.type === currentRequestFilter);
   if (!filtered.length) { container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📬</div><div class="empty-state-title">No submissions yet</div></div>'; return; }
   const typeLabels = { membership_request: 'Membership', service_request: 'Service', application: 'Application', contact: 'Contact', dog_update: 'Dog Update', overnight_request: 'Overnight' };
   container.innerHTML = filtered.map(item => {
     const time = item.createdAt?.toDate?.() ? item.createdAt.toDate().toLocaleDateString('en-US', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '–';
     const typeClass = item.type?.replace('_request','').replace('_','') || 'contact';
-    return `<div class="inbox-item ${item.read ? '' : 'unread'}" onclick="openInboxItem('${item.id}')">
-      <div class="inbox-meta">
-        <span class="inbox-type ${typeClass}">${typeLabels[item.type] || item.type}</span>
-        <span class="inbox-name">${item.name || item.ownerName || 'Unknown'}</span>
-        <span class="inbox-time">${time}</span>
+    return `<div class="list-row ${item.read ? '' : 'unread'}" onclick="openRequestItem('${item.id}')">
+      <div class="request-meta">
+        <span class="request-type ${typeClass}">${typeLabels[item.type] || item.type}</span>
+        <span class="request-name">${item.name || item.ownerName || 'Unknown'}</span>
+        <span class="request-time">${time}</span>
       </div>
-      <div class="inbox-preview">${item.email || ''} ${item.dogName ? '· ' + item.dogName : ''}</div>
+      <div class="request-preview">${item.email || ''} ${item.dogName ? '· ' + item.dogName : ''}</div>
     </div>`;
   }).join('');
 }
 
-window.filterInbox = (type, btn) => {
-  currentInboxFilter = type;
-  document.querySelectorAll('.inbox-filter').forEach(b => b.classList.remove('active'));
+window.filterRequests = (type, btn) => {
+  currentRequestFilter = type;
+  document.querySelectorAll('.request-filter').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  renderInbox();
+  renderRequests();
 };
 
 // ── WALK MODAL (ASSIGN) ───────────────────────────────────────────────────────
@@ -1378,9 +1379,9 @@ window.submitAddWalk = async () => {
   closeModal('addWalkModal');
 };
 
-// ── INBOX MODAL ───────────────────────────────────────────────────────────────
-window.openInboxItem = async (id) => {
-  const item = allInbox.find(i => i.id === id);
+// ── REQUEST MODAL ────────────────────────────────────────────────────────────
+window.openRequestItem = async (id) => {
+  const item = allRequests.find(i => i.id === id);
   if (!item) return;
   if (!item.read) await updateDoc(doc(db, 'submissions', id), { read: true });
 
@@ -1441,16 +1442,16 @@ window.openInboxItem = async (id) => {
     `<div class="modal-field"><div class="modal-label">${f.label}</div><div class="modal-value">${f.value}</div></div>`
   ).join('');
 
-  document.getElementById('inboxModalTitle').textContent = title;
-  document.getElementById('inboxModalContent').innerHTML = `<div class="form-grid">${fieldHTML}</div>`;
+  document.getElementById('requestModalTitle').textContent = title;
+  document.getElementById('requestModalContent').innerHTML = `<div class="form-grid">${fieldHTML}</div>`;
 
-  const actionBtn = document.getElementById('inboxActionBtn');
+  const actionBtn = document.getElementById('requestActionBtn');
   if (item.type === 'membership_request' && !item.memberId) {
     actionBtn.textContent = 'Convert to Member'; actionBtn.style.display = 'block';
-    actionBtn.onclick = () => { closeModal('inboxModal'); openAddMemberModal(item, item.id); };
+    actionBtn.onclick = () => { closeModal('requestModal'); openAddMemberModal(item, item.id); };
   } else if (item.type === 'application' && item.status !== 'confirmed') {
     actionBtn.textContent = 'Add as Walker'; actionBtn.style.display = 'block';
-    actionBtn.onclick = () => { closeModal('inboxModal'); openAddWalkerModal(item, item.id); };
+    actionBtn.onclick = () => { closeModal('requestModal'); openAddWalkerModal(item, item.id); };
   } else if (item.type === 'service_request' && item.status !== 'confirmed') {
     actionBtn.textContent = 'Confirm & Save as Client'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => confirmServiceRequest(item.id, item);
@@ -1460,7 +1461,7 @@ window.openInboxItem = async (id) => {
   } else {
     actionBtn.style.display = 'none';
   }
-  document.getElementById('inboxModal').classList.add('open');
+  document.getElementById('requestModal').classList.add('open');
 };
 
 // Confirm a one-time service request (drop-in visit, overnight stay, walk).
@@ -1469,7 +1470,7 @@ window.openInboxItem = async (id) => {
 // account" design. Existing members/clients just get the request confirmed
 // without touching their existing tier.
 window.confirmServiceRequest = async (submissionId, item) => {
-  const btn = document.getElementById('inboxActionBtn');
+  const btn = document.getElementById('requestActionBtn');
   btn.textContent = 'Confirming…'; btn.disabled = true;
   try {
     let memberId = item.memberId || '';
@@ -1504,7 +1505,7 @@ window.confirmServiceRequest = async (submissionId, item) => {
       read: true,
     });
 
-    closeModal('inboxModal');
+    closeModal('requestModal');
     const msg = document.createElement('div');
     msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2D9E5E;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
     msg.textContent = 'Service request confirmed';
@@ -1520,7 +1521,7 @@ window.confirmServiceRequest = async (submissionId, item) => {
 };
 
 window.confirmOvernight = async (submissionId, item) => {
-  const btn = document.getElementById('inboxActionBtn');
+  const btn = document.getElementById('requestActionBtn');
   btn.textContent = 'Confirming…'; btn.disabled = true;
   try {
     // Write to overnights collection
@@ -1546,7 +1547,7 @@ window.confirmOvernight = async (submissionId, item) => {
     });
     // Mark submission as confirmed
     await updateDoc(doc(db, 'submissions', submissionId), { status: 'confirmed', read: true });
-    closeModal('inboxModal');
+    closeModal('requestModal');
     // Show brief success message
     const msg = document.createElement('div');
     msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2D9E5E;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
@@ -1576,7 +1577,7 @@ window.openAddMemberModal = (prefill, submissionId) => {
       (window.allWalkers||[]).map(w => `<option value="${w.id}">${w.name}</option>`).join('');
   }
 
-  // Track the source submission (if converting from an inbox item) so saveMember()
+  // Track the source submission (if converting from a request item) so saveMember()
   // can mark it confirmed once the member record is created. Also keep the full
   // dogs[] array from the request, since the form's own dog fields only capture one.
   window._addMemberSubmissionId = submissionId || null;
@@ -1911,7 +1912,7 @@ window.avSelectDate = avSelectDate;
 
 
 
-const viewTitles = { overview: 'Overview', calendar: 'Walk Calendar', walkers: 'Walkers', members: 'Members', availability: 'Meet & Greet Availability', inbox: 'Inbox', conversations: 'Messages' };
+const viewTitles = { overview: 'Overview', calendar: 'Walk Calendar', walkers: 'Walkers', members: 'Members', availability: 'Meet & Greet Availability', requests: 'Requests', conversations: 'Messages' };
 window.toggleSidebar = (force) => {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebarOverlay');

@@ -121,6 +121,8 @@ firebase deploy --only functions
 
 - **Unmatched texts** (from a number that doesn't match any member) show up in the admin Messages screen under their own thread, clearly labeled, but there's no "link this to a member" button yet — you'd currently just find/create the member manually and know to expect their replies going forward via the normal matching. Fine at low volume; worth a real "claim" button if this becomes frequent.
 - **Gmail sync runs on a 5-minute poll**, not instant push — a member's email reply will take up to 5 minutes to show up in the admin portal. Fine for a business this size; can move to Gmail's push notifications (Pub/Sub) later if that lag ever matters.
+- **"Inbox" is now "Requests"** — renamed throughout (nav, view, CSS classes, JS functions/variables) to match what it actually is: a task queue (new members, service requests, applications, reschedules, etc.), distinct from Messages (ongoing member conversations). Every new item in Requests now also emails you automatically — `onNewSubmission`, added this session — sent to whatever address is connected via "Connect Gmail," so nothing extra to configure once Gmail's connected.
+- **Requests and Messages still don't hand off to each other.** Confirming someone in Requests (e.g. "Convert to Member") doesn't automatically start a Messages thread or send a welcome message — that's still a manual follow-up step. Worth revisiting once the account setup below is done and this can actually be tested end-to-end.
 
 ## Still Open From Earlier Sessions
 

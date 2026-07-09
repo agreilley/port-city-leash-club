@@ -213,7 +213,7 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
 // (status: 'pending_credentials') instead of silently doing nothing.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const { onDocumentUpdated } = require('firebase-functions/v2/firestore');
+const { onDocumentUpdated, onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 
 // Set via:
@@ -364,14 +364,14 @@ function extractPlainTextBody(message) {
   return walk(message.payload);
 }
 
-async function sendGmailMessage({ to, subject, body, threadId, inReplyTo, references }) {
+async function sendGmailMessage({ to, subject, body, threadId, inReplyTo, references, from }) {
   const gmail = await getGmailClient();
   if (!gmail) {
     throw new HttpsError('failed-precondition', 'Gmail isn\'t connected yet — connect it from the admin portal first.');
   }
   const headers = [
     `To: ${to}`,
-    `From: ${BUSINESS_EMAIL_DISPLAY}`,
+    `From: ${from || BUSINESS_EMAIL_DISPLAY}`,
     `Subject: ${subject || '(no subject)'}`,
     'Content-Type: text/plain; charset="UTF-8"',
     'MIME-Version: 1.0',
@@ -642,5 +642,72 @@ exports.onWalkCompleted = onDocumentUpdated({
       sentBy: 'system', automated: true, status: 'failed',
     });
     console.error('Walk-update text failed:', e.message);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 10. Email notification for every new request (membership request, service
+//    request, application, contact form, reschedule, pause, tier change,
+//    dog roster update — everything that lands in the admin "Requests"
+//    tab). Sends TO and FROM whichever address authorized the Gmail
+//    connection, so there's no separate "notification email" setting to
+//    keep in sync — it just goes to whoever connected Gmail.
+// ─────────────────────────────────────────────────────────────────────────
+const REQUEST_TYPE_LABELS = {
+  membership_request: 'New membership request',
+  service_request: 'New service request',
+  application: 'New walker application',
+  contact: 'New contact form message',
+  reschedule: 'Walk reschedule request',
+  pause_request: 'Membership pause request',
+  tier_change: 'Membership tier change request',
+  dog_update: 'Dog roster update',
+  overnight_request: 'Overnight / check-in request',
+};
+
+exports.onNewSubmission = onDocumentCreated({
+  document: 'submissions/{submissionId}',
+  secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET],
+}, async (event) => {
+  const sub = event.data?.data();
+  if (!sub) return;
+
+  const gmail = await getGmailClient();
+  if (!gmail) return; // Gmail not connected yet — nothing to notify with, and nothing lost: it's still sitting in the Requests tab either way
+
+  let notifyEmail;
+  try {
+    const profile = await gmail.users.getProfile({ userId: 'me' });
+    notifyEmail = profile.data.emailAddress;
+  } catch (e) {
+    console.error('Could not look up connected Gmail address for notification:', e.message);
+    return;
+  }
+  if (!notifyEmail) return;
+
+  const label = REQUEST_TYPE_LABELS[sub.type] || `New ${sub.type || 'request'}`;
+  const name = sub.name || sub.ownerName || 'Unknown';
+  const emailAddr = sub.email || '';
+  const dogName = sub.dogName || (Array.isArray(sub.dogs) && sub.dogs[0]?.name) || '';
+
+  const bodyLines = [
+    `${label} from ${name}${emailAddr ? ` (${emailAddr})` : ''}.`,
+    dogName ? `Dog: ${dogName}` : null,
+    sub.message ? `Message: ${sub.message}` : null,
+    '',
+    'Review and act on it in the admin portal — Requests tab.',
+  ].filter(Boolean);
+
+  try {
+    // Self-notification: sent to and from the same address so there's no
+    // "From" alias mismatch to worry about.
+    await sendGmailMessage({
+      to: notifyEmail,
+      from: notifyEmail,
+      subject: `${label} — ${name}`,
+      body: bodyLines.join('\n'),
+    });
+  } catch (e) {
+    console.error('Request notification email failed:', e.message);
   }
 });
