@@ -1175,7 +1175,7 @@ function renderRequests() {
         <span class="request-name">${item.name || item.ownerName || item.walkerName || 'Unknown'}</span>
         <span class="request-time">${time}</span>
       </div>
-      <div class="request-preview">${item.email || ''} ${item.dogName ? '· ' + item.dogName : ''}</div>
+      <div class="request-preview">${item.type === 'walker_incident' ? (item.message || '').slice(0, 80) : (item.email || '') + (item.dogName ? ' · ' + item.dogName : item.dogNames ? ' · ' + item.dogNames : '')}</div>
     </div>`;
   }).join('');
 }
@@ -1469,6 +1469,13 @@ window.openRequestItem = async (id) => {
   } else if ((item.type === 'overnight_request' || item.service === 'overnight') && item.status !== 'confirmed') {
     actionBtn.textContent = 'Confirm Overnight'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => confirmOvernight(item.id, item);
+  } else if (item.type === 'walker_incident' && item.status !== 'resolved') {
+    actionBtn.textContent = 'Mark Resolved'; actionBtn.style.display = 'block';
+    actionBtn.onclick = async () => {
+      actionBtn.disabled = true; actionBtn.textContent = 'Resolving...';
+      await updateDoc(doc(db, 'submissions', item.id), { status: 'resolved', read: true });
+      closeModal('requestModal');
+    };
   } else {
     actionBtn.style.display = 'none';
   }
