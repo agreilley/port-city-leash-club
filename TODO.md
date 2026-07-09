@@ -159,3 +159,54 @@ firebase deploy --only functions
 - `Port_City_Leash_Club_Pricing_Quick_Reference.md` line 170: walker gets $3 → $5 for medication
 - `Port_City_Leash_Club_Pricing_Quick_Reference.md` line 48: walker gets $8 → $10 for extra dog
 - `Operations_Manual.md` and abbreviated version: medication admin $3 → $5, extra dog overnight $8 → $10
+
+## NEXT SESSION — Resume here (July 9, 2026)
+
+### What's left to finish the Gmail connection
+
+1. **Enable Secret Manager API** in Google Cloud Console (it needs enabling before secrets can be created):
+   - Go to: https://console.cloud.google.com/marketplace/product/google/secretmanager.googleapis.com?project=port-city-leash-club-839bc
+   - Click Enable
+
+2. **Create two secrets** in Secret Manager (https://console.cloud.google.com/security/secret-manager?authuser=2&project=port-city-leash-club-839bc):
+   - Name: `GOOGLE_CLIENT_ID`
+     Value: [paste from your notes — the Client ID from the OAuth credentials screen ending in .apps.googleusercontent.com]
+   - Name: `GOOGLE_CLIENT_SECRET`
+     Value: [paste from your notes — the GOCSPX-... value from the OAuth credentials screen]
+
+3. **Also need Twilio secrets** once Twilio account is set up:
+   - `TWILIO_ACCOUNT_SID`
+   - `TWILIO_AUTH_TOKEN`
+   - `TWILIO_PHONE_NUMBER`
+
+4. **Deploy Cloud Functions** — I can do this from my side once secrets are in place
+
+5. **Click "Connect Gmail"** in admin portal → Messages tab
+
+### Site status
+Site is currently non-functional — new Firebase project (839bc) has no data yet.
+DO NOT share the URL until next session is complete.
+Old project (827ab) is still intact under alison.reilley@gmail.com as a fallback.
+
+## NEXT SESSION — Resume here (July 9, 2026)
+
+### What's left to finish Gmail connection
+
+1. **Enable Secret Manager API**: https://console.cloud.google.com/marketplace/product/google/secretmanager.googleapis.com?project=port-city-leash-club-839bc
+
+2. **Create two secrets** in Secret Manager:
+   - `GOOGLE_CLIENT_ID` — from the OAuth credentials you created today
+   - `GOOGLE_CLIENT_SECRET` — from the OAuth credentials you created today
+   (Keep these in a safe place like 1Password — do not paste into any file)
+
+3. **Twilio secrets** once account is set up:
+   - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`
+
+4. **Deploy Cloud Functions** — Claude handles this once secrets are in place
+
+5. **Click "Connect Gmail"** in admin portal → Messages tab
+
+### Site status
+Site is non-functional until next session — new Firebase project (839bc) has no walk/member data yet.
+Old project (827ab) still intact under alison.reilley@gmail.com as fallback.
+DO NOT share the site URL with anyone until next session is complete.
