@@ -1393,7 +1393,11 @@ window.submitAddWalk = async () => {
   const walkerId = document.getElementById('wm-walker').value || null;
   const notes = document.getElementById('wm-notes').value;
   if (!memberId || !date) { alert('Please select a member and date.'); return; }
-  await addDoc(collection(db, 'walks'), { memberId, date: Timestamp.fromDate(new Date(date)), timeSlot, walkerId, notes, status: 'scheduled', createdAt: serverTimestamp() });
+  // Store as noon UTC so the date doesn't shift to the previous day in US
+  // timezones (new Date('2026-07-08') = midnight UTC = Jul 7 8pm EDT).
+  const [y, m, d] = date.split('-').map(Number);
+  const walkDate = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  await addDoc(collection(db, 'walks'), { memberId, date: Timestamp.fromDate(walkDate), timeSlot, walkerId, notes, status: 'scheduled', createdAt: serverTimestamp() });
   closeModal('addWalkModal');
 };
 

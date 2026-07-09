@@ -385,14 +385,38 @@ function getDogNames(member) {
   return dogs.map(d => d.name).filter(Boolean).join(' & ') || '–';
 }
 
+// Walk dates are stored as Firestore Timestamps set to midnight UTC, but
+// the walker's browser is in a local timezone. Comparing raw Date objects
+// causes a walk for "July 8" (stored as Jul 8 00:00 UTC = Jul 7 8pm EDT)
+// to appear as "past" on the actual July 8. These helpers compare only
+// the year/month/day the Firestore date represents — treating midnight
+// UTC as "the date the walk was scheduled for" rather than a precise
+// moment in time.
+function walkDateStr(d) {
+  // Use UTC components so a Timestamp stored as Jul 8 00:00Z always
+  // returns '2026-07-08' regardless of local timezone offset.
+  const dt = d?.toDate?.() || new Date(d);
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`;
+}
+function todayDateStr() {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+}
+function walkIsOnOrAfterToday(walkDate) {
+  return walkDateStr(walkDate) >= todayDateStr();
+}
+function walkIsToday(walkDate) {
+  return walkDateStr(walkDate) === todayDateStr();
+}
+function walkIsBeforeToday(walkDate) {
+  return walkDateStr(walkDate) < todayDateStr();
+}
+
 // ── UPCOMING ──────────────────────────────────────────────────────────────────
 function renderUpcoming() {
   const container = document.getElementById('upcomingList');
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const upcoming = myWalks.filter(w => {
-    const d = w.date?.toDate?.() || new Date(w.date);
-    return d >= todayStart && w.status !== 'completed';
+    return walkIsOnOrAfterToday(w.date) && w.status !== 'completed';
   }).slice(0, 15);
 
   if (!upcoming.length) {
@@ -401,11 +425,8 @@ function renderUpcoming() {
   }
 
   // Today's uncompleted walks get a prominent action card at the top
-  const today = new Date();
-  const todaysWalks = upcoming.filter(w => {
-    const d = w.date?.toDate?.() || new Date(w.date);
-    return d.toDateString() === today.toDateString();
-  });
+  const todaysWalks = upcoming.filter(w => walkIsToday(w.date));
+  const futureWalks = upcoming.filter(w => !walkIsToday(w.date));
 
   let html = '';
 
@@ -427,11 +448,6 @@ function renderUpcoming() {
   }
 
   // Remaining upcoming walks (excluding today's, which are already shown above)
-  const futureWalks = upcoming.filter(w => {
-    const d = w.date?.toDate?.() || new Date(w.date);
-    return d.toDateString() !== today.toDateString();
-  });
-
   if (futureWalks.length) {
     if (todaysWalks.length) html += '<div class="section-title" style="margin-top:8px;">Coming Up</div>';
     html += futureWalks.map(w => {
@@ -495,8 +511,7 @@ function renderCalendar() {
 function renderHistory() {
   const container = document.getElementById('historyList');
   const past = myWalks.filter(w => {
-    const d = w.date?.toDate?.() || new Date(w.date);
-    return d < new Date();
+    return walkIsBeforeToday(w.date) || w.status === 'completed';
   }).reverse();
 
   if (!past.length) { container.innerHTML = '<div class="empty-state"><div class="empty-state-title">No walk history yet</div></div>'; return; }
@@ -569,8 +584,8 @@ window.openWalkDetail = (walkId) => {
   const member = allMembers.find(m => m.id === walk.memberId);
   const date = walk.date?.toDate?.() || new Date(walk.date);
   const slotLabel = { morning: 'Morning (8–11am)', 'early-afternoon': 'Early Afternoon (11am–2pm)', 'late-afternoon': 'Late Afternoon (2–5pm)' }[walk.timeSlot] || walk.timeSlot;
-  const isToday = date.toDateString() === new Date().toDateString();
-  const isPastDay = date < new Date(new Date().setHours(0,0,0,0));
+  const isToday = walkIsToday(walk.date);
+  const isPastDay = walkIsBeforeToday(walk.date);
   const canComplete = isToday || isPastDay; // completable on the day of the walk or after
   const isCompleted = walk.status === 'completed';
 
