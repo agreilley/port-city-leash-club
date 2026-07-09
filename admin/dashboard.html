@@ -365,7 +365,7 @@
       </button>
       <div class="topbar-title" id="topbarTitle">Overview</div>
     </div>
-    <div class="topbar-actions">
+    <div class="topbar-actions" id="topbarActions">
       <button class="btn-secondary" onclick="openAddWalkModal()">+ Schedule Walk</button>
       <button class="btn-primary" onclick="openAddMemberModal()">+ Add Member</button>
     </div>
@@ -410,7 +410,6 @@
           <div class="calendar-title" id="calendarTitle"></div>
           <button onclick="nextMonth()">→</button>
         </div>
-        <button class="btn-secondary" onclick="openAddWalkModal()">+ Schedule Walk</button>
       </div>
       <div class="calendar-grid">
         <div class="calendar-weekdays">
@@ -427,7 +426,6 @@
         <div class="table-card">
           <div class="table-header">
             <div class="table-title">Walker Team</div>
-            <button class="btn-primary" onclick="openAddWalkerModal()">+ Add Walker</button>
           </div>
           <div class="table-scroll">
           <table>
@@ -1370,6 +1368,24 @@ window.createWalkerAccount = async () => {
 
 
 
+window.openAddWalkModal = () => {
+  // Populate member dropdown
+  const memberSel = document.getElementById('wm-member');
+  memberSel.innerHTML = '<option value="">Select member...</option>' +
+    allMembers.filter(m => m.status === 'active').map(m => {
+      const dogs = (Array.isArray(m.dogs) && m.dogs.length) ? m.dogs.map(d => d.name).filter(Boolean).join(' & ') : m.dogName || '';
+      return `<option value="${m.id}">${m.name}${dogs ? ' — ' + dogs : ''}</option>`;
+    }).join('');
+  // Populate walker dropdown
+  const walkerSel = document.getElementById('wm-walker');
+  walkerSel.innerHTML = '<option value="">Unassigned</option>' +
+    allWalkers.filter(w => w.status === 'active').map(w => `<option value="${w.id}">${w.name}</option>`).join('');
+  // Default date to today
+  document.getElementById('wm-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('wm-notes').value = '';
+  document.getElementById('addWalkModal').classList.add('open');
+};
+
 window.submitAddWalk = async () => {
   const memberId = document.getElementById('wm-member').value;
   const date = document.getElementById('wm-date').value;
@@ -1946,6 +1962,20 @@ window.switchView = (view) => {
   document.querySelector(`[data-view="${view}"]`).classList.add('active');
   document.getElementById('topbarTitle').textContent = viewTitles[view];
   toggleSidebar(false);
+
+  // Dynamic topbar action buttons — page-specific instead of always-visible
+  const actions = document.getElementById('topbarActions');
+  const btnSchedule = '<button class="btn-secondary" onclick="openAddWalkModal()">+ Schedule Walk</button>';
+  const btnMember = '<button class="btn-primary" onclick="openAddMemberModal()">+ Add Member</button>';
+  const btnWalker = '<button class="btn-primary" onclick="openAddWalkerModal()">+ Add Walker</button>';
+  const viewActions = {
+    overview: btnSchedule + btnMember,
+    calendar: btnSchedule,
+    walkers: btnWalker,
+    members: btnMember,
+  };
+  actions.innerHTML = viewActions[view] || '';
+
   // Init availability on first visit
   if (view === 'availability') {
     if (!window._avInit) {
