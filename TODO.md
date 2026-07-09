@@ -139,3 +139,23 @@ firebase deploy --only functions
 
 - [x] ~~Add password reset workflow to all three portals~~ — **Done.** Member portal already had a working reset flow (`portal-password-reset.html`); built matching versions for admin (`admin/reset-password.html`) and walker (`walker/reset-password.html`), each using the correct named Firebase app instance to match their login/dashboard pages. "Forgot password?" links added to both the admin and walker login pages.
 - [ ] Firebase Console: customize the password reset email template (Authentication → Templates) — the workflow is fully functional, but the actual email a user receives is still Firebase's generic default wording/branding unless customized. This is an account-level setting, not something fixable from code.
+
+## Pricing Change — Walker Payout (July 8, 2026)
+
+**Decision:** Extra Pet and Medication Admin walker payouts now go 50/50 (50% to the walker, 50% retained).
+
+| Service | Client Price | Old Walker Payout | New Walker Payout | Your Margin |
+|---------|-------------|-------------------|-------------------|-------------|
+| Extra Pet | $20 | $8 (40%) | **$10 (50%)** | $10 (50%) |
+| Medication Admin | $10 | $3 (30%) | **$5 (50%)** | $5 (50%) |
+
+**Updated in code:** Walker portal rate card (`walker/dashboard.html`).
+
+**Needs manual update in `PCLC_SOURCE_OF_TRUTH.md`** (project file, read-only from this session):
+- Line 60: `| Extra Pet | $8 | ~60% |` → `| Extra Pet | $10 | ~50% |`
+- Line 61: `| Medication Admin | $3 | ~70% |` → `| Medication Admin | $5 | ~50% |`
+
+**Also outdated in archived project files** (if anyone ever references them):
+- `Port_City_Leash_Club_Pricing_Quick_Reference.md` line 170: walker gets $3 → $5 for medication
+- `Port_City_Leash_Club_Pricing_Quick_Reference.md` line 48: walker gets $8 → $10 for extra dog
+- `Operations_Manual.md` and abbreviated version: medication admin $3 → $5, extra dog overnight $8 → $10
