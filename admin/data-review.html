@@ -55,7 +55,7 @@
 
 <main>
   <div class="intro">
-    <strong>What this page does:</strong> lists every member, walker, and form submission in the database so you can tell demo/test data apart from real data before launch. Records matching the <em>documented</em> seed data (the demo member account, the four sample walkers) are flagged automatically — everything else is shown as-is for you to judge. Deleting is permanent and can't be undone from here, so double-check before confirming.
+    <strong>What this page does:</strong> lists every member, walker, form submission, and scheduled walk in the database so you can tell demo/test data apart from real data before launch. Records matching the <em>documented</em> seed data (the demo member account, the four sample walkers) are flagged automatically, and walks pointing at a member that no longer exists are flagged as "Orphaned" — everything else is shown as-is for you to judge. Deleting is permanent and can't be undone from here, so double-check before confirming.
   </div>
 
   <div class="section-title">Members <span class="count-badge" id="memberCount">–</span> <button class="btn-delete-all" onclick="window.deleteAll('members')">Delete all members</button></div>
@@ -66,6 +66,9 @@
 
   <div class="section-title">Submissions <span class="count-badge" id="submissionCount">–</span> <button class="btn-delete-all" onclick="window.deleteAll('submissions')">Delete all submissions</button></div>
   <div id="submissionsList"><div class="loading-msg">Loading...</div></div>
+
+  <div class="section-title">Walks <span class="count-badge" id="walkCount">–</span> <button class="btn-delete-all" onclick="window.deleteAll('walks')">Delete all walks</button></div>
+  <div id="walksList"><div class="loading-msg">Loading...</div></div>
 </main>
 
 <div class="toast" id="toast"></div>
@@ -119,6 +122,7 @@
     await loadMembers();
     await loadWalkers();
     await loadSubmissions();
+    await loadWalks();
   }
 
   async function loadMembers() {
@@ -190,6 +194,47 @@
     }).join('');
   }
 
+  async function loadWalks() {
+    const snap = await getDocs(collection(db, 'walks'));
+    const list = document.getElementById('walksList');
+    document.getElementById('walkCount').textContent = snap.size;
+    if (snap.empty) { list.innerHTML = '<div class="empty-msg">No walks yet.</div>'; return; }
+
+    // Resolve member/walker names for display rather than showing raw IDs.
+    const [membersSnap, walkersSnap] = await Promise.all([
+      getDocs(collection(db, 'members')),
+      getDocs(collection(db, 'walkers')),
+    ]);
+    const memberNames = {};
+    membersSnap.docs.forEach(d => { memberNames[d.id] = d.data().name; });
+    const walkerNames = {};
+    walkersSnap.docs.forEach(d => { walkerNames[d.id] = d.data().name; });
+
+    const docs = snap.docs.sort((a, b) => {
+      const at = a.data().date?.toMillis?.() || 0;
+      const bt = b.data().date?.toMillis?.() || 0;
+      return bt - at;
+    });
+
+    list.innerHTML = docs.map(d => {
+      const w = d.data();
+      const memberName = w.memberId ? memberNames[w.memberId] : null;
+      // A walk whose memberId doesn't resolve to any current member is
+      // orphaned — almost always leftover seed/test data from before real
+      // members existed, since a real walk can't be booked without one.
+      const isOrphaned = w.memberId && !memberName;
+      return `
+        <div class="record-card">
+          <div class="record-main">
+            <div class="record-title">${fmtDate(w.date)} &middot; ${w.timeSlot || 'no time slot'} ${isOrphaned ? '<span class="demo-badge">Orphaned</span>' : ''}</div>
+            <div class="record-sub">${memberName || (w.memberId ? 'unknown member' : 'no member set')} &middot; walker: ${(w.walkerId && walkerNames[w.walkerId]) || 'unassigned'} &middot; ${w.status || 'scheduled'}</div>
+            <div class="record-meta">walks/${d.id}</div>
+          </div>
+          <button class="btn-delete" onclick="window.deleteRecord('walks', '${d.id}', this)">Delete</button>
+        </div>`;
+    }).join('');
+  }
+
   window.deleteAll = async (collectionName) => {
     const snap = await getDocs(collection(db, collectionName));
     if (snap.empty) { showToast('Nothing to delete.'); return; }
@@ -212,6 +257,7 @@
     if (collectionName === 'members') loadMembers();
     if (collectionName === 'walkers') loadWalkers();
     if (collectionName === 'submissions') loadSubmissions();
+    if (collectionName === 'walks') loadWalks();
   };
 
   window.deleteRecord = async (collectionName, id, btn) => {
@@ -225,7 +271,8 @@
       btn.closest('.record-card').remove();
       showToast('Deleted.');
       // Update count
-      const countEl = document.getElementById(collectionName === 'members' ? 'memberCount' : collectionName === 'walkers' ? 'walkerCount' : 'submissionCount');
+      const countIds = { members: 'memberCount', walkers: 'walkerCount', submissions: 'submissionCount', walks: 'walkCount' };
+      const countEl = document.getElementById(countIds[collectionName]);
       countEl.textContent = parseInt(countEl.textContent, 10) - 1;
     } catch (e) {
       alert('Failed to delete: ' + e.message);
