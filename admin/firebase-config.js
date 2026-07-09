@@ -1,12 +1,10 @@
-// REPLACE THIS WITH YOUR FIREBASE CONFIG
-// Get this from: Firebase Console → Project Settings → Your Apps → SDK setup and configuration
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyC9xuNrH15BOxVEpUzCD4mAJudUNXsUveY",
+  authDomain: "port-city-leash-club-839bc.firebaseapp.com",
+  projectId: "port-city-leash-club-839bc",
+  storageBucket: "port-city-leash-club-839bc.firebasestorage.app",
+  messagingSenderId: "877238974243",
+  appId: "1:877238974243:web:e0aeffa1306312ad67be96"
 };
 
 export default firebaseConfig;
