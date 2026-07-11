@@ -51,14 +51,16 @@ const WEEKDAY_NUMBERS = {
 };
 
 // How many times a member's scheduled walk days (["monday", "wednesday"])
-// fall within a given calendar month — this is the subscription quantity,
-// since each Price is unit-priced per walk, not a flat monthly fee.
-function countWalkDaysInMonth(walkDays, year, monthIndex) {
+// fall within a given calendar month, from fromDay through the end of the
+// month — this is the subscription quantity, since each Price is unit-priced
+// per walk, not a flat monthly fee. fromDay defaults to 1 (the whole month);
+// callers pass a later fromDay only to prorate a partial first month.
+function countWalkDaysInMonth(walkDays, year, monthIndex, fromDay = 1) {
   const targetDayNumbers = new Set((walkDays || []).map(d => WEEKDAY_NUMBERS[(d || '').toLowerCase()]).filter(n => n !== undefined));
   if (!targetDayNumbers.size) return 0;
   const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
   let count = 0;
-  for (let day = 1; day <= daysInMonth; day++) {
+  for (let day = Math.max(fromDay, 1); day <= daysInMonth; day++) {
     if (targetDayNumbers.has(new Date(Date.UTC(year, monthIndex, day)).getUTCDay())) count++;
   }
   return count;
@@ -205,7 +207,20 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
   const now = new Date();
   const nextFirst = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
   const billingCycleAnchor = Math.floor(nextFirst.getTime() / 1000);
-  const quantity = countWalkDaysInMonth(member.defaultWalkDays, nextFirst.getUTCFullYear(), nextFirst.getUTCMonth());
+
+  // If the member's requested start date (submission.startDate, "YYYY-MM-DD")
+  // falls inside the anchor month, that first invoice is a partial month —
+  // only count walk days from that date through month end. Any other case
+  // (no start date given, or it falls outside the anchor month entirely)
+  // bills the full month, same as every month after.
+  let fromDay = 1;
+  if (sub.startDate) {
+    const [startYear, startMonth, startDay] = sub.startDate.split('-').map(Number);
+    if (startYear === nextFirst.getUTCFullYear() && startMonth - 1 === nextFirst.getUTCMonth()) {
+      fromDay = startDay;
+    }
+  }
+  const quantity = countWalkDaysInMonth(member.defaultWalkDays, nextFirst.getUTCFullYear(), nextFirst.getUTCMonth(), fromDay);
 
   if (!quantity) {
     throw new HttpsError('failed-precondition', 'This member has no scheduled walk days next month — set defaultWalkDays before starting billing.');
