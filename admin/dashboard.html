@@ -1448,7 +1448,7 @@ window.openRequestItem = async (id) => {
   }
 
   // Build clean field list based on submission type
-  const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report', walker_schedule_request: 'Walker Schedule Request' };
+  const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report', walker_schedule_request: 'Walker Schedule Request', reschedule: 'Walk Reschedule Request' };
   const title = typeLabels[item.type] || 'Submission';
 
   let fields = [];
@@ -1486,6 +1486,16 @@ window.openRequestItem = async (id) => {
       { label: 'Details', value: item.message || '–' },
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
       { label: 'Submitted', value: fmtDate(item.createdAt) },
+    ];
+  } else if (item.type === 'reschedule') {
+    const walk = allWalks.find(w => w.id === item.walkId);
+    const slotLabel = { morning: 'Morning', 'early-afternoon': 'Early Afternoon', 'late-afternoon': 'Late Afternoon' };
+    fields = [
+      { label: 'Member', value: item.memberName || item.memberId || '–' },
+      { label: 'Currently Scheduled', value: walk ? `${fmtDate(walk.date)} · ${slotLabel[walk.timeSlot] || walk.timeSlot || '–'}` : 'Walk not found — may have been deleted' },
+      { label: 'Requested New Date', value: fmtDate(item.newDate) },
+      { label: 'Requested New Time', value: item.newTimeSlot || '–' },
+      { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
     ];
   } else {
     // Generic — show all fields, formatted
@@ -1528,6 +1538,9 @@ window.openRequestItem = async (id) => {
   } else if ((item.type === 'overnight_request' || item.service === 'overnight') && item.status !== 'confirmed') {
     actionBtn.textContent = 'Confirm Overnight'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => confirmOvernight(item.id, item);
+  } else if (item.type === 'reschedule' && item.status !== 'confirmed') {
+    actionBtn.textContent = 'Approve & Assign Walker'; actionBtn.style.display = 'block';
+    actionBtn.onclick = () => approveReschedule(item.id, item);
   } else if (item.type === 'walker_incident' && item.status !== 'resolved') {
     actionBtn.textContent = 'Mark Resolved'; actionBtn.style.display = 'block';
     actionBtn.onclick = async () => {
@@ -1654,6 +1667,55 @@ window.confirmOvernight = async (submissionId, item) => {
     setTimeout(() => msg.remove(), 3000);
   } catch(e) {
     btn.textContent = 'Confirm Overnight'; btn.disabled = false;
+    alert('Error: ' + e.message);
+  }
+};
+
+// The portal's reschedule picker offers three ranges (Early Morning, Late
+// Morning, Afternoon) that don't map one-to-one onto the walks.timeSlot
+// buckets used everywhere else (morning / early-afternoon / late-afternoon)
+// — this is a best-effort mapping. Afternoon (2-5pm) matches late-afternoon
+// exactly; both morning ranges collapse onto the single "morning" bucket,
+// since there's no early-afternoon (11am-2pm) option in that picker at all.
+const RESCHEDULE_TIME_SLOT_MAP = { 'early morning': 'morning', 'late morning': 'morning', 'afternoon': 'late-afternoon' };
+
+// Reschedule requests never touch the walk on their own — approving one is
+// a two-step admin action: apply the requested date/time here, then land
+// directly in the existing walker-assignment modal so a walker is always
+// explicitly (re)confirmed for the new slot, never left silently assigned
+// (or unassigned) from before the change.
+window.approveReschedule = async (submissionId, item) => {
+  const btn = document.getElementById('requestActionBtn');
+  btn.textContent = 'Approving…'; btn.disabled = true;
+  try {
+    const walk = allWalks.find(w => w.id === item.walkId);
+    if (!walk) {
+      alert('The original walk for this request no longer exists — nothing was changed.');
+      btn.textContent = 'Approve & Assign Walker'; btn.disabled = false;
+      return;
+    }
+
+    const updates = { status: 'scheduled', updatedAt: serverTimestamp() };
+    if (item.newDate?.toDate) {
+      // Noon UTC, same convention as submitAddWalk() — avoids the date
+      // shifting a day back when re-read in US timezones.
+      const d = item.newDate.toDate();
+      updates.date = Timestamp.fromDate(new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0)));
+    }
+    const mappedSlot = RESCHEDULE_TIME_SLOT_MAP[(item.newTimeSlot || '').toLowerCase()];
+    if (mappedSlot) updates.timeSlot = mappedSlot;
+
+    await updateDoc(doc(db, 'walks', item.walkId), updates);
+    await updateDoc(doc(db, 'submissions', submissionId), { status: 'confirmed', read: true });
+
+    if (!mappedSlot && item.newTimeSlot) {
+      alert(`Date updated, but "${item.newTimeSlot}" didn't map to a known time slot — set it manually on the walk.`);
+    }
+
+    closeModal('requestModal');
+    openWalkModal(item.walkId);
+  } catch (e) {
+    btn.textContent = 'Approve & Assign Walker'; btn.disabled = false;
     alert('Error: ' + e.message);
   }
 };

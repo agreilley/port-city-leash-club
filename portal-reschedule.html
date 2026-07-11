@@ -603,14 +603,14 @@
         <!-- Action Buttons -->
         <div class="action-buttons">
           <button class="btn btn-secondary" onclick="goBack()">Cancel</button>
-          <button class="btn btn-primary" id="confirmBtn" disabled onclick="submitReschedule(sessionStorage.getItem('activeWalkId'), document.getElementById('newDate')?.value, document.getElementById('newTimeSlot')?.value)">Confirm Reschedule</button>
+          <button class="btn btn-primary" id="confirmBtn" disabled onclick="submitReschedule(sessionStorage.getItem('activeWalkId'), selectedDate, selectedTime)">Confirm Reschedule</button>
         </div>
       </div>
     </div>
   </div>
 
   <script>
-    let currentDate = new Date(2026, 5, 20); // June 20, 2026
+    let currentDate = new Date();
     let selectedDate = null;
     let selectedTime = null;
     let selectedTimeDisplay = null;
@@ -629,7 +629,7 @@
       const daysInMonth = new Date(year, month + 1, 0).getDate();
 
       // Calculate 48-hour buffer (2 days from today)
-      const today = new Date(2026, 5, 20);
+      const today = new Date();
       const minDate = new Date(today.getTime() + (48 * 60 * 60 * 1000)); // Add 48 hours
 
       // Build calendar grid
@@ -798,7 +798,7 @@ window.submitReschedule = async (walkId, newDate, newTimeSlot) => {
   if (!userId) return;
   try {
     await addDoc(collection(db, 'submissions'), {
-      type: 'walkReschedule',
+      type: 'reschedule',
       walkId: walkId,
       memberId: userId,
       memberName: memberData?.name || '',
