@@ -1715,7 +1715,20 @@ window.openAddMemberModal = (prefill, submissionId) => {
   const walkDaysSel = document.getElementById('am-walkdays');
   const prefillDays = (typeof prefill?.days === 'string' ? prefill.days : '').split(',').map(d => d.trim().toLowerCase()).filter(Boolean);
   Array.from(walkDaysSel.options).forEach(o => { o.selected = prefillDays.includes(o.value.toLowerCase()); });
-  document.getElementById('am-timeslot').value = '';
+  // Pre-select the preferred time slot from the request (submission.timeWindow
+  // is Title Case, e.g. "Early Afternoon") — normalize to the dropdown's
+  // lowercase-hyphenated option values ("early-afternoon"). Warn loudly
+  // instead of failing silently if a normalized value ever doesn't match
+  // any option (e.g. a new time window added to the request form later
+  // without a matching <option> added here).
+  const timeslotSel = document.getElementById('am-timeslot');
+  const rawTimeWindow = typeof prefill?.timeWindow === 'string' ? prefill.timeWindow : '';
+  const normalizedTimeSlot = rawTimeWindow.trim().toLowerCase().replace(/\s+/g, '-');
+  const timeSlotMatches = Array.from(timeslotSel.options).some(o => o.value === normalizedTimeSlot);
+  if (normalizedTimeSlot && !timeSlotMatches) {
+    console.warn(`Add Member: submission timeWindow "${rawTimeWindow}" (normalized "${normalizedTimeSlot}") doesn't match any am-timeslot option — leaving "Not set".`);
+  }
+  timeslotSel.value = timeSlotMatches ? normalizedTimeSlot : '';
   document.getElementById('am-dogname').value = dog.name || prefill?.dogName || '';
   document.getElementById('am-breed').value = dog.breed || prefill?.breed || '';
   document.getElementById('am-age').value = dog.age || prefill?.age || '';
