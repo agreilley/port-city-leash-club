@@ -23,7 +23,7 @@ const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 const functions = getFunctions(app);
 
 // ─── PASTE YOUR STRIPE PUBLISHABLE KEY HERE ────────────────────────────────
-const STRIPE_PUBLISHABLE_KEY = 'pk_test_REPLACE_ME';
+const STRIPE_PUBLISHABLE_KEY = 'pk_test_51Ts2ntB7khvEldleO3mfHWzbY9akocRW64BmXZWd6gIxgHNJgTxiRh8xGd89F6y7YziP9Jngqg9q3yq5JIKYXRky00GoVNNpDO';
 // ─────────────────────────────────────────────────────────────────────────
 
 let stripe, elements, cardElement;
