@@ -732,6 +732,15 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const fns = getFunctions(app);
 
+// Stripe Price IDs (sandbox/test mode) for the three billed membership
+// tiers — must match TIER_PRICE_IDS in functions/index.js. Travel tier
+// is one-time/service-based and intentionally has no subscription price.
+const TIER_PRICE_IDS = {
+  Essential: 'price_1Ts2wUB7khvEldleeOdGkbJs',
+  Standard: 'price_1Ts2xxB7khvEldleNkMcgyEW',
+  Daily: 'price_1Ts2ylB7khvEldleWi4NnAfd',
+};
+
 // ── AUTH GUARD ──────────────────────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.href = 'index.html'; return; }
@@ -1580,15 +1589,29 @@ window.confirmServiceRequest = async (submissionId, item) => {
       read: true,
     });
 
+    // Charge the saved card for this one-time service. A card is only on
+    // file if the requester went through createSetupIntent at signup, so
+    // skip silently if there's nothing to charge. Amount is pre-filled
+    // from the client's on-screen estimate but admin confirms/adjusts it
+    // here — nothing gets charged without that explicit confirmation.
+    if (item.stripeCustomerId) {
+      const defaultAmount = item.estimatedTotal ? String(item.estimatedTotal) : '';
+      const amountStr = prompt('Charge the saved card for this service. Amount in dollars:', defaultAmount);
+      if (amountStr !== null) {
+        const amountInDollars = parseFloat(amountStr);
+        if (amountInDollars > 0) {
+          const chargeSavedCard = httpsCallable(fns, 'chargeSavedCard');
+          await chargeSavedCard({ submissionId, amountInDollars, description: item.service || 'Port City Leash Club service' });
+        }
+      }
+    }
+
     closeModal('requestModal');
     const msg = document.createElement('div');
     msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2D9E5E;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
     msg.textContent = 'Service request confirmed';
     document.body.appendChild(msg);
     setTimeout(() => msg.remove(), 3000);
-    // NOTE: charging the saved card (via the chargeSavedCard Cloud Function)
-    // happens as a separate step once that admin-side integration is built —
-    // see TODO.md.
   } catch (e) {
     btn.textContent = 'Confirm & Save as Client'; btn.disabled = false;
     alert('Error: ' + e.message);
@@ -1756,11 +1779,25 @@ window.saveMember = async () => {
       createdAt: serverTimestamp()
     });
 
-    // 4. Mark the source submission confirmed if this came from Convert to Member
+    // 4. Mark the source submission confirmed if this came from Convert to Member,
+    //    and — for billed membership tiers with a saved card — start the
+    //    recurring Stripe subscription (quantity is set server-side from
+    //    defaultWalkDays, so it reflects the schedule just saved above).
+    let subscriptionWarningText = '';
     if (window._addMemberSubmissionId) {
       await updateDoc(doc(db, 'submissions', window._addMemberSubmissionId), {
         status: 'confirmed', memberId: uid, read: true,
       });
+
+      const priceId = TIER_PRICE_IDS[tier];
+      if (priceId) {
+        try {
+          const createMembershipSubscription = httpsCallable(fns, 'createMembershipSubscription');
+          await createMembershipSubscription({ submissionId: window._addMemberSubmissionId, memberId: uid, priceId });
+        } catch (e) {
+          subscriptionWarningText = `Membership billing wasn't started: ${e.message}`;
+        }
+      }
     }
 
     // 5. Show success with login credentials
@@ -1772,9 +1809,16 @@ window.saveMember = async () => {
         <div style="font-size:13px;color:var(--text-light);margin-bottom:4px;">${name} can now log in at:</div>
         <div style="font-size:13px;font-weight:500;color:var(--navy);margin-bottom:4px;">${window.location.origin}/portal-login</div>
         <div style="font-size:12px;color:var(--text-light);margin-bottom:24px;">Email: ${email} · Temporary password: ${pass}</div>
+        <div id="am-subscription-warning" style="font-size:12px;color:#b45309;background:#fffbeb;border-radius:6px;padding:8px 12px;margin-bottom:16px;"></div>
         <button class="btn-primary" onclick="closeModal('addMemberModal');restoreAddMemberModal();" style="width:100%;">Done</button>
       </div>
     `;
+    const warningEl = document.getElementById('am-subscription-warning');
+    if (subscriptionWarningText) {
+      warningEl.textContent = subscriptionWarningText;
+    } else {
+      warningEl.style.display = 'none';
+    }
 
     // Clear state
     window._addMemberSubmissionId = null;

@@ -18,6 +18,7 @@
 // a human confirming the booking first.
 
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
@@ -34,6 +35,33 @@ function stripeClient(key) {
   // Lazy-require so the Stripe SDK is only loaded inside a function
   // invocation, once the secret is available.
   return require('stripe')(key);
+}
+
+// Per-walk Stripe Price IDs (sandbox/test mode) for the three billed
+// membership tiers. Travel-tier clients are one-time/service-based and
+// never get a subscription, so they're intentionally not in this map.
+const TIER_PRICE_IDS = {
+  Essential: 'price_1Ts2wUB7khvEldleeOdGkbJs',
+  Standard: 'price_1Ts2xxB7khvEldleNkMcgyEW',
+  Daily: 'price_1Ts2ylB7khvEldleWi4NnAfd',
+};
+
+const WEEKDAY_NUMBERS = {
+  Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6,
+};
+
+// How many times a member's scheduled walk days (["Monday", "Wednesday"])
+// fall within a given calendar month — this is the subscription quantity,
+// since each Price is unit-priced per walk, not a flat monthly fee.
+function countWalkDaysInMonth(walkDays, year, monthIndex) {
+  const targetDayNumbers = new Set((walkDays || []).map(d => WEEKDAY_NUMBERS[d]).filter(n => n !== undefined));
+  if (!targetDayNumbers.size) return 0;
+  const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+  let count = 0;
+  for (let day = 1; day <= daysInMonth; day++) {
+    if (targetDayNumbers.has(new Date(Date.UTC(year, monthIndex, day)).getUTCDay())) count++;
+  }
+  return count;
 }
 
 async function assertIsAdmin(auth) {
@@ -155,6 +183,12 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
     throw new HttpsError('failed-precondition', 'No saved card found for this submission.');
   }
 
+  const memberDoc = await db.collection('members').doc(memberId).get();
+  const member = memberDoc.data();
+  if (!member) {
+    throw new HttpsError('not-found', 'Member record not found.');
+  }
+
   const paymentMethods = await stripe.paymentMethods.list({ customer: sub.stripeCustomerId, type: 'card' });
   if (!paymentMethods.data.length) {
     throw new HttpsError('failed-precondition', 'Customer has no saved payment method.');
@@ -165,14 +199,21 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
     invoice_settings: { default_payment_method: paymentMethods.data[0].id },
   });
 
-  // Next 1st-of-month timestamp, in seconds (Stripe billing_cycle_anchor format).
+  // Next 1st-of-month timestamp, in seconds (Stripe billing_cycle_anchor format) —
+  // and the walk-day count for that same month, since that's the first period
+  // this subscription will actually be billed for.
   const now = new Date();
   const nextFirst = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
   const billingCycleAnchor = Math.floor(nextFirst.getTime() / 1000);
+  const quantity = countWalkDaysInMonth(member.defaultWalkDays, nextFirst.getUTCFullYear(), nextFirst.getUTCMonth());
+
+  if (!quantity) {
+    throw new HttpsError('failed-precondition', 'This member has no scheduled walk days next month — set defaultWalkDays before starting billing.');
+  }
 
   const subscription = await stripe.subscriptions.create({
     customer: sub.stripeCustomerId,
-    items: [{ price: priceId }],
+    items: [{ price: priceId, quantity }],
     billing_cycle_anchor: billingCycleAnchor,
     proration_behavior: 'none',
   });
@@ -180,10 +221,47 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
   await db.collection('members').doc(memberId).set({
     stripeCustomerId: sub.stripeCustomerId,
     stripeSubscriptionId: subscription.id,
+    stripeSubscriptionItemId: subscription.items.data[0].id,
     billingStatus: 'active',
   }, { merge: true });
 
-  return { success: true, subscriptionId: subscription.id };
+  return { success: true, subscriptionId: subscription.id, quantity };
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 3b. Recalculate every active member's walk-day count for the upcoming
+//    month and push it to their Stripe subscription item, a few days
+//    before the 1st (when Stripe generates that month's invoice off of
+//    whatever quantity is set at that moment).
+// ─────────────────────────────────────────────────────────────────────────
+exports.syncMonthlyWalkQuantities = onSchedule({
+  schedule: '0 6 25 * *',
+  timeZone: 'America/New_York',
+  secrets: [STRIPE_SECRET_KEY],
+}, async () => {
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+
+  const now = new Date();
+  const nextFirst = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const year = nextFirst.getUTCFullYear();
+  const month = nextFirst.getUTCMonth();
+
+  const membersSnap = await db.collection('members').where('status', '==', 'active').get();
+
+  for (const memberDoc of membersSnap.docs) {
+    const member = memberDoc.data();
+    if (!member.stripeSubscriptionItemId) continue; // no active subscription (e.g. Travel-tier / one-time clients)
+
+    const quantity = countWalkDaysInMonth(member.defaultWalkDays, year, month);
+    try {
+      await stripe.subscriptionItems.update(member.stripeSubscriptionItemId, {
+        quantity,
+        proration_behavior: 'none',
+      });
+    } catch (e) {
+      console.error(`Failed to sync walk quantity for member ${memberDoc.id}:`, e.message);
+    }
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -214,7 +292,6 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
 // ═══════════════════════════════════════════════════════════════════════════
 
 const { onDocumentUpdated, onDocumentCreated } = require('firebase-functions/v2/firestore');
-const { onSchedule } = require('firebase-functions/v2/scheduler');
 
 // Set via:
 //   firebase functions:secrets:set TWILIO_ACCOUNT_SID
