@@ -1709,9 +1709,12 @@ window.openAddMemberModal = (prefill, submissionId) => {
   document.getElementById('am-address').value = prefill?.address || '';
   document.getElementById('am-access').value = prefill?.accessNotes || '';
   document.getElementById('am-zone').value = '';
-  // Reset walk schedule fields
+  // Pre-check walk schedule fields from the request's days ("Monday, Wednesday")
+  // — same treatment as the dogs[] prefill above. Still editable before saving;
+  // saveMember() reads whatever's actually checked at that point.
   const walkDaysSel = document.getElementById('am-walkdays');
-  Array.from(walkDaysSel.options).forEach(o => o.selected = false);
+  const prefillDays = (typeof prefill?.days === 'string' ? prefill.days : '').split(',').map(d => d.trim().toLowerCase()).filter(Boolean);
+  Array.from(walkDaysSel.options).forEach(o => { o.selected = prefillDays.includes(o.value.toLowerCase()); });
   document.getElementById('am-timeslot').value = '';
   document.getElementById('am-dogname').value = dog.name || prefill?.dogName || '';
   document.getElementById('am-breed').value = dog.breed || prefill?.breed || '';
@@ -1730,7 +1733,11 @@ window.saveMember = async () => {
   const address = document.getElementById('am-address').value.trim();
   const access  = document.getElementById('am-access').value.trim();
   const zone    = document.getElementById('am-zone').value.trim();
-  const defaultWalkDays = Array.from(document.getElementById('am-walkdays').selectedOptions).map(o => o.value);
+  // Read whatever's currently checked — pre-checked from the source
+  // submission's days by openAddMemberModal(), but admin's edits here win.
+  // Always lowercase — this must match the casing countWalkDaysInMonth()
+  // expects in functions/index.js.
+  const defaultWalkDays = Array.from(document.getElementById('am-walkdays').selectedOptions).map(o => o.value.toLowerCase());
   const defaultTimeSlot = document.getElementById('am-timeslot').value || null;
   const dogName = document.getElementById('am-dogname').value.trim();
   const breed   = document.getElementById('am-breed').value.trim();

@@ -47,14 +47,14 @@ const TIER_PRICE_IDS = {
 };
 
 const WEEKDAY_NUMBERS = {
-  Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6,
+  sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
 };
 
-// How many times a member's scheduled walk days (["Monday", "Wednesday"])
+// How many times a member's scheduled walk days (["monday", "wednesday"])
 // fall within a given calendar month — this is the subscription quantity,
 // since each Price is unit-priced per walk, not a flat monthly fee.
 function countWalkDaysInMonth(walkDays, year, monthIndex) {
-  const targetDayNumbers = new Set((walkDays || []).map(d => WEEKDAY_NUMBERS[d]).filter(n => n !== undefined));
+  const targetDayNumbers = new Set((walkDays || []).map(d => WEEKDAY_NUMBERS[(d || '').toLowerCase()]).filter(n => n !== undefined));
   if (!targetDayNumbers.size) return 0;
   const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
   let count = 0;
