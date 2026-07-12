@@ -557,6 +557,15 @@
   </div>
 </div>
 
+<!-- MEMBER DETAIL MODAL (read-only) -->
+<div class="modal-overlay" id="memberDetailModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('memberDetailModal')">×</button>
+    <div class="modal-title" id="memberDetailModalTitle">Member Details</div>
+    <div id="memberDetailModalContent"></div>
+  </div>
+</div>
+
 <!-- ADD WALK MODAL -->
 <div class="modal-overlay" id="addWalkModal">
   <div class="modal">
@@ -2132,7 +2141,66 @@ window.openAddWalkerModal = (prefill, submissionId) => {
   document.getElementById('aw-zones').value = prefill?.neighborhood || '';
   document.getElementById('addWalkerModal').classList.add('open');
 };
-window.openMemberDetail = (id) => {};
+// Read-only — no save button, no editable fields. Corrections happen
+// directly in Firestore for now; this is a stopgap, not something to
+// build around.
+window.openMemberDetail = (id) => {
+  const member = allMembers.find(m => m.id === id);
+  if (!member) return;
+
+  function fmtDate(val) {
+    if (!val) return '–';
+    try {
+      const d = val.toDate ? val.toDate() : new Date(val);
+      return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+    } catch { return String(val); }
+  }
+
+  const walker = allWalkers.find(w => w.id === member.assignedWalkerId);
+  const slotLabel = { morning: 'Morning', 'early-afternoon': 'Early Afternoon', 'late-afternoon': 'Late Afternoon' };
+
+  const fields = [
+    { label: 'Name', value: member.name || '–' },
+    { label: 'Email', value: member.email || '–' },
+    { label: 'Phone', value: member.phone || '–' },
+    { label: 'Address', value: member.address || '–' },
+    { label: 'Tier', value: member.tier || '–' },
+    { label: 'Status', value: member.status ? member.status.charAt(0).toUpperCase() + member.status.slice(1) : '–' },
+    { label: 'Walk Days', value: (member.defaultWalkDays || []).join(', ') || '–' },
+    { label: 'Time Slot', value: slotLabel[member.defaultTimeSlot] || member.defaultTimeSlot || '–' },
+    { label: 'Assigned Walker', value: walker?.name || 'Unassigned' },
+    { label: 'Stripe Customer ID', value: member.stripeCustomerId || '–' },
+    { label: 'Stripe Subscription ID', value: member.stripeSubscriptionId || '–' },
+    { label: 'Billing Status', value: member.billingStatus || '–' },
+    { label: 'Member Since', value: fmtDate(member.createdAt) },
+  ];
+  const fieldHTML = fields.map(f =>
+    `<div class="modal-field"><div class="modal-label">${escapeHtml(f.label)}</div><div class="modal-value">${escapeHtml(f.value)}</div></div>`
+  ).join('');
+
+  const dogs = getMemberDogs(member);
+  const dogsHTML = dogs.length ? dogs.map((dog, i) => {
+    const dogFields = [
+      ['Name', dog.name], ['Breed', dog.breed], ['Age', dog.age], ['Weight', dog.weight],
+      ['Notes', dog.notes], ['Temperament', dog.temperament], ['Care Preferences', dog.walkingPrefs],
+      ['Known Triggers', dog.triggers], ['Medications', dog.medications], ['Allergies', dog.allergies],
+    ].filter(([, v]) => v);
+    return `
+      <div style="border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:12px;margin-bottom:10px;">
+        <div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:8px;">${dogs.length > 1 ? `Dog ${i + 1}` : 'Dog'}</div>
+        ${dogFields.length ? dogFields.map(([label, value]) => `<div style="font-size:13px;color:var(--text-mid);margin-bottom:4px;"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</div>`).join('') : '<div style="font-size:13px;color:var(--text-light);">No details on file.</div>'}
+      </div>`;
+  }).join('') : '<div style="font-size:13px;color:var(--text-light);">No dogs on file.</div>';
+
+  document.getElementById('memberDetailModalTitle').textContent = member.name || 'Member Details';
+  document.getElementById('memberDetailModalContent').innerHTML = `
+    <div class="form-grid">${fieldHTML}</div>
+    <hr class="modal-divider">
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Dogs</div>
+    ${dogsHTML}
+  `;
+  document.getElementById('memberDetailModal').classList.add('open');
+};
 window.openWalkerDetail = (id) => {};
 
 window.closeModal = (id) => {
