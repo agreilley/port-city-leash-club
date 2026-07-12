@@ -66,6 +66,21 @@ function countWalkDaysInMonth(walkDays, year, monthIndex, fromDay = 1) {
   return count;
 }
 
+// Convert a wall-clock date/time in America/New_York to the equivalent UTC
+// Date, accounting for EDT/EST automatically — Stripe's billing_cycle_anchor
+// is a literal UTC instant, not a timezone-aware "local" time, so a fixed
+// UTC offset would be wrong for half the year. Cloud Functions' Node.js
+// runtime ships full ICU data, so Intl.DateTimeFormat has real tz support.
+function easternTimeToUtc(year, monthIndex, day, hour, minute) {
+  const approx = new Date(Date.UTC(year, monthIndex, day, hour, minute, 0));
+  const offsetPart = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    timeZoneName: 'shortOffset',
+  }).formatToParts(approx).find(p => p.type === 'timeZoneName').value; // "GMT-4" or "GMT-5"
+  const offsetHours = parseInt(offsetPart.replace('GMT', ''), 10);
+  return new Date(Date.UTC(year, monthIndex, day, hour - offsetHours, minute, 0));
+}
+
 async function assertIsAdmin(auth) {
   if (!auth) {
     throw new HttpsError('unauthenticated', 'You must be signed in.');
@@ -201,12 +216,18 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
     invoice_settings: { default_payment_method: paymentMethods.data[0].id },
   });
 
-  // Next 1st-of-month timestamp, in seconds (Stripe billing_cycle_anchor format) —
-  // and the walk-day count for that same month, since that's the first period
-  // this subscription will actually be billed for.
+  // Target billing month: the 1st of next calendar month — used below both
+  // for the walk-day quantity (that first period this subscription is
+  // actually billed for) and as the date billing_cycle_anchor lands on.
   const now = new Date();
   const nextFirst = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-  const billingCycleAnchor = Math.floor(nextFirst.getTime() / 1000);
+
+  // 8:00 PM ET on the 1st, not midnight — gives syncMonthlyWalkQuantities
+  // (which runs at 12:05 AM ET that same day) a ~20-hour buffer to push the
+  // correct quantity before Stripe actually generates this invoice.
+  const billingCycleAnchor = Math.floor(
+    easternTimeToUtc(nextFirst.getUTCFullYear(), nextFirst.getUTCMonth(), 1, 20, 0).getTime() / 1000
+  );
 
   // If the member's requested start date (submission.startDate, "YYYY-MM-DD")
   // falls inside the anchor month, that first invoice is a partial month —
@@ -244,22 +265,25 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// 3b. Recalculate every active member's walk-day count for the upcoming
-//    month and push it to their Stripe subscription item, a few days
-//    before the 1st (when Stripe generates that month's invoice off of
-//    whatever quantity is set at that moment).
+// 3b. Recalculate every active member's walk-day count for the month that's
+//    just starting and push it to their Stripe subscription item. Runs at
+//    12:05 AM ET on the 1st — ~20 hours before Stripe actually generates
+//    that month's invoice, at the 8:00 PM ET billing_cycle_anchor set in
+//    createMembershipSubscription.
 // ─────────────────────────────────────────────────────────────────────────
 exports.syncMonthlyWalkQuantities = onSchedule({
-  schedule: '0 6 25 * *',
+  schedule: '5 0 1 * *',
   timeZone: 'America/New_York',
   secrets: [STRIPE_SECRET_KEY],
 }, async () => {
   const stripe = stripeClient(STRIPE_SECRET_KEY.value());
 
+  // "Now" already IS the 1st of the billed month at this point — unlike
+  // the old few-days-early schedule, there's no "next month" to look ahead
+  // to anymore.
   const now = new Date();
-  const nextFirst = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-  const year = nextFirst.getUTCFullYear();
-  const month = nextFirst.getUTCMonth();
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
 
   const membersSnap = await db.collection('members').where('status', '==', 'active').get();
 
