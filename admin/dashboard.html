@@ -1453,7 +1453,27 @@ window.openRequestItem = async (id) => {
   const title = typeLabels[item.type] || 'Submission';
 
   let fields = [];
-  if (item.type === 'overnight_request' || item.service === 'overnight' || item.service === 'checkin') {
+  if (item.type === 'membership_request') {
+    const dogsDisplay = Array.isArray(item.dogs) && item.dogs.length
+      ? item.dogs.map(d => `${d.name || 'Unnamed'} (${[d.breed, d.age, d.weight].filter(Boolean).join(', ') || 'no details'})`).join('; ')
+      : '–';
+    fields = [
+      { label: 'Owner Name', value: item.ownerName || '–' },
+      { label: 'Email', value: item.email || '–' },
+      { label: 'Phone', value: item.phone || '–' },
+      { label: 'Plan', value: item.plan || '–' },
+      { label: 'Days', value: item.days || '–' },
+      { label: 'Time Window', value: item.timeWindow || '–' },
+      { label: 'Start Date', value: fmtDate(item.startDate) },
+      { label: 'Dogs', value: dogsDisplay },
+      { label: 'Address', value: item.address || '–' },
+      { label: 'Access Notes', value: item.accessNotes || '–' },
+      { label: 'Meet Greet Date/Time', value: item.meetGreetDateTime || '–' },
+      { label: 'Created At', value: fmtDate(item.createdAt) },
+      { label: 'Stripe Customer ID', value: item.stripeCustomerId || '–' },
+      { label: 'Payment Method Status', value: item.paymentMethodStatus || '–' },
+    ];
+  } else if (item.type === 'overnight_request' || item.service === 'overnight' || item.service === 'checkin') {
     fields = [
       { label: 'Member', value: item.memberName || item.memberId || '–' },
       { label: 'Service', value: item.service === 'overnight' ? 'Overnight Stay' : item.service === 'checkin' ? 'Check-In Visit' : item.service },

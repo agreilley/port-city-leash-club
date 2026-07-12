@@ -587,7 +587,13 @@
       }
 
       showNotification('Request submitted! We\'ll be in touch within 24 hours.');
-      form.reset();
+      // form.reset() alone isn't enough — it won't undo the JS-driven
+      // .selected highlighting on plan/day/time cards, won't collapse
+      // extra dog cards back to one, and can't reset the meet-greet
+      // calendar widget's internal state. Reload for a guaranteed-clean
+      // form, timed to the notification's own visible duration.
+      setTimeout(() => window.location.reload(), 3000);
+      return;
     } catch(e) {
       console.error(e);
       showNotification('Something went wrong. Please email hello@portcityleashclub.com');
