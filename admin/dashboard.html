@@ -2081,8 +2081,11 @@ window.saveMember = async () => {
     // 4. Mark the source submission confirmed if this came from Convert to Member,
     //    and — for billed membership tiers with a saved card — start the
     //    recurring Stripe subscription (quantity is set server-side from
-    //    defaultWalkDays, so it reflects the schedule just saved above).
-    let subscriptionWarningText = '';
+    //    defaultWalkDays, so it reflects the schedule just saved above) and
+    //    generate this member's first month of walks. The two calls are
+    //    independent — a walk-generation failure shouldn't be reported as a
+    //    billing failure or vice versa, and one failing doesn't skip the other.
+    const warnings = [];
     if (window._addMemberSubmissionId) {
       await updateDoc(doc(db, 'submissions', window._addMemberSubmissionId), {
         status: 'confirmed', memberId: uid, read: true,
@@ -2094,10 +2097,18 @@ window.saveMember = async () => {
           const createMembershipSubscription = httpsCallable(fns, 'createMembershipSubscription');
           await createMembershipSubscription({ submissionId: window._addMemberSubmissionId, memberId: uid, priceId });
         } catch (e) {
-          subscriptionWarningText = `Membership billing wasn't started: ${e.message}`;
+          warnings.push(`Membership billing wasn't started: ${e.message}`);
+        }
+
+        try {
+          const generateInitialWalks = httpsCallable(fns, 'generateInitialWalks');
+          await generateInitialWalks({ submissionId: window._addMemberSubmissionId, memberId: uid });
+        } catch (e) {
+          warnings.push(`Initial walks weren't generated: ${e.message}`);
         }
       }
     }
+    const subscriptionWarningText = warnings.join(' ');
 
     // 5. Show success with login credentials
     document.querySelector('#addMemberModal .modal-box').innerHTML = `

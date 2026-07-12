@@ -21,7 +21,7 @@ const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https')
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const { initializeApp } = require('firebase-admin/app');
-const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue, Timestamp } = require('firebase-admin/firestore');
 
 initializeApp();
 const db = getFirestore();
@@ -50,20 +50,33 @@ const WEEKDAY_NUMBERS = {
   sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
 };
 
-// How many times a member's scheduled walk days (["monday", "wednesday"])
-// fall within a given calendar month, from fromDay through the end of the
-// month — this is the subscription quantity, since each Price is unit-priced
-// per walk, not a flat monthly fee. fromDay defaults to 1 (the whole month);
-// callers pass a later fromDay only to prorate a partial first month.
-function countWalkDaysInMonth(walkDays, year, monthIndex, fromDay = 1) {
+// Which day-numbers in a given calendar month land on one of a member's
+// scheduled walk days (["monday", "wednesday"]), from fromDay through the
+// end of the month. fromDay defaults to 1 (the whole month); callers pass
+// a later fromDay to prorate a partial period — the first billed month, or
+// the remainder of a month a paused member resumes into.
+//
+// Single source of truth for "which dates count this period" — both the
+// Stripe billing quantity (countWalkDaysInMonth, below) and walk-document
+// generation (generateWalksForMember) derive from this exact list, so they
+// can't drift out of sync with each other.
+function datesMatchingWeekdaysInMonth(walkDays, year, monthIndex, fromDay = 1) {
   const targetDayNumbers = new Set((walkDays || []).map(d => WEEKDAY_NUMBERS[(d || '').toLowerCase()]).filter(n => n !== undefined));
-  if (!targetDayNumbers.size) return 0;
+  if (!targetDayNumbers.size) return [];
   const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
-  let count = 0;
+  const days = [];
   for (let day = Math.max(fromDay, 1); day <= daysInMonth; day++) {
-    if (targetDayNumbers.has(new Date(Date.UTC(year, monthIndex, day)).getUTCDay())) count++;
+    if (targetDayNumbers.has(new Date(Date.UTC(year, monthIndex, day)).getUTCDay())) days.push(day);
   }
-  return count;
+  return days;
+}
+
+// How many times a member's scheduled walk days fall within a given
+// calendar month — this is the subscription quantity, since each Price is
+// unit-priced per walk, not a flat monthly fee. Thin wrapper so the two
+// existing billing callers see zero behavior change from the extraction.
+function countWalkDaysInMonth(walkDays, year, monthIndex, fromDay = 1) {
+  return datesMatchingWeekdaysInMonth(walkDays, year, monthIndex, fromDay).length;
 }
 
 // Convert a wall-clock date/time in America/New_York to the equivalent UTC
@@ -79,6 +92,53 @@ function easternTimeToUtc(year, monthIndex, day, hour, minute) {
   }).formatToParts(approx).find(p => p.type === 'timeZoneName').value; // "GMT-4" or "GMT-5"
   const offsetHours = parseInt(offsetPart.replace('GMT', ''), 10);
   return new Date(Date.UTC(year, monthIndex, day, hour - offsetHours, minute, 0));
+}
+
+// Create the actual walks/{memberId}_{date} documents for a member's
+// scheduled walk days in one month, from fromDay through month end.
+// Deterministic IDs (not addDoc-style random ones) make this naturally
+// idempotent — .create() throws ALREADY_EXISTS instead of overwriting a
+// walk that's since been reassigned, rescheduled, extended, or completed,
+// so it's always safe to re-run without a separate existence check *and*
+// without ever clobbering real operational state. Individual per-date
+// writes, not a single batch — a batch's create-if-not-exists would fail
+// the whole batch the moment one date already exists, which defeats the
+// point of being safe to re-run.
+async function generateWalksForMember(memberId, member, year, monthIndex, fromDay) {
+  if (!member.defaultTimeSlot) {
+    return { created: 0, skipped: 0, failed: 0, blocked: 'no-time-slot' };
+  }
+
+  const days = datesMatchingWeekdaysInMonth(member.defaultWalkDays, year, monthIndex, fromDay);
+  let created = 0, skipped = 0, failed = 0;
+
+  for (const day of days) {
+    const dateStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const docId = `${memberId}_${dateStr}`;
+    try {
+      await db.collection('walks').doc(docId).create({
+        memberId,
+        // Noon UTC, same convention as submitAddWalk() — avoids the date
+        // shifting a day back when re-read in US timezones.
+        date: Timestamp.fromDate(new Date(Date.UTC(year, monthIndex, day, 12, 0, 0))),
+        timeSlot: member.defaultTimeSlot,
+        walkerId: member.assignedWalkerId || null,
+        notes: '',
+        status: 'scheduled',
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      created++;
+    } catch (e) {
+      if (e.code === 6 /* ALREADY_EXISTS */) {
+        skipped++;
+      } else {
+        failed++;
+        console.error(`generateWalksForMember: ${docId} failed:`, e.message);
+      }
+    }
+  }
+
+  return { created, skipped, failed, blocked: null };
 }
 
 async function assertIsAdmin(auth) {
@@ -268,7 +328,64 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// 3b. Recalculate every active member's walk-day count for the month that's
+// 3b. Generate walk documents for a brand-new member's first (partial)
+//    billed month. Called as a separate follow-up step right after
+//    createMembershipSubscription succeeds — not folded into that
+//    function's body — so a bug here can never affect the billing path
+//    it's paired with. Records initialWalksGenerated on the member doc
+//    (true/false) so a failure is durable, checkable state rather than
+//    just a banner that disappears when the modal closes.
+// ─────────────────────────────────────────────────────────────────────────
+exports.generateInitialWalks = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+
+  const { submissionId, memberId } = request.data || {};
+  if (!submissionId || !memberId) {
+    throw new HttpsError('invalid-argument', 'submissionId and memberId are required.');
+  }
+
+  try {
+    const subDoc = await db.collection('submissions').doc(submissionId).get();
+    const sub = subDoc.data() || {};
+
+    const memberDoc = await db.collection('members').doc(memberId).get();
+    const member = memberDoc.data();
+    if (!member) {
+      throw new HttpsError('not-found', 'Member record not found.');
+    }
+
+    // Same target-month/fromDay derivation as createMembershipSubscription,
+    // so the walks generated here line up exactly with what was billed.
+    const now = new Date();
+    const nextFirst = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    let fromDay = 1;
+    if (sub.startDate) {
+      const [startYear, startMonth, startDay] = sub.startDate.split('-').map(Number);
+      if (startYear === nextFirst.getUTCFullYear() && startMonth - 1 === nextFirst.getUTCMonth()) {
+        fromDay = startDay;
+      }
+    }
+
+    const result = await generateWalksForMember(memberId, member, nextFirst.getUTCFullYear(), nextFirst.getUTCMonth(), fromDay);
+    if (result.blocked) {
+      throw new HttpsError('failed-precondition', 'This member has no preferred time slot set — set defaultTimeSlot before generating walks.');
+    }
+    if (result.failed > 0) {
+      throw new HttpsError('internal', `${result.failed} of ${result.created + result.failed} walk(s) failed to generate — check function logs.`);
+    }
+
+    await db.collection('members').doc(memberId).set({ initialWalksGenerated: true }, { merge: true });
+    return { success: true, ...result };
+  } catch (e) {
+    // Record the failure durably before re-throwing, so admin can see it
+    // without depending on this one-time error banner.
+    await db.collection('members').doc(memberId).set({ initialWalksGenerated: false }, { merge: true }).catch(() => {});
+    throw e;
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 3c. Recalculate every active member's walk-day count for the month that's
 //    just starting and push it to their Stripe subscription item. Runs at
 //    12:05 AM ET on the 1st — ~18 hours before Stripe actually generates
 //    that month's invoice, at the 6:00 PM ET billing_cycle_anchor set in
@@ -302,6 +419,76 @@ exports.syncMonthlyWalkQuantities = onSchedule({
       });
     } catch (e) {
       console.error(`Failed to sync walk quantity for member ${memberDoc.id}:`, e.message);
+    }
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 3d. Generate next month's walk documents for every active member with a
+//    subscription. Same schedule as syncMonthlyWalkQuantities, but a
+//    separate function — a bug in walk generation can't take down the
+//    Stripe quantity sync, or vice versa.
+// ─────────────────────────────────────────────────────────────────────────
+exports.generateMonthlyWalks = onSchedule({
+  schedule: '5 0 1 * *',
+  timeZone: 'America/New_York',
+}, async () => {
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+
+  const membersSnap = await db.collection('members').where('status', '==', 'active').get();
+
+  for (const memberDoc of membersSnap.docs) {
+    const member = memberDoc.data();
+    if (!member.stripeSubscriptionItemId) continue; // no active subscription (e.g. Travel-tier / one-time clients)
+
+    const result = await generateWalksForMember(memberDoc.id, member, year, month, 1);
+    if (result.blocked) {
+      console.error(`generateMonthlyWalks: member ${memberDoc.id} has no defaultTimeSlot — skipped`);
+    } else if (result.failed > 0) {
+      console.error(`generateMonthlyWalks: member ${memberDoc.id} had ${result.failed} failed walk(s)`);
+    }
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 3e. Resume memberships whose pause window has ended. Runs daily — doesn't
+//    need to be precise-to-the-minute — at midnight ET, 5 minutes before
+//    the monthly jobs above, so a hold ending on the 1st is reactivated in
+//    time to be picked up by that same morning's run. Backfills the rest
+//    of the resume month directly (generateMonthlyWalks already covers
+//    next month and beyond from its normal run).
+// ─────────────────────────────────────────────────────────────────────────
+exports.resumePausedMemberships = onSchedule({
+  schedule: '0 0 * * *',
+  timeZone: 'America/New_York',
+}, async () => {
+  const now = new Date();
+
+  // Filtered in JS after a single equality query rather than a Firestore
+  // range filter on pauseEndDate, to avoid needing a composite index —
+  // same approach syncMonthlyWalkQuantities already uses for its own
+  // date-window logic. Trivial at this business's scale.
+  const pausedSnap = await db.collection('members').where('status', '==', 'paused').get();
+
+  for (const memberDoc of pausedSnap.docs) {
+    const member = memberDoc.data();
+    const endDate = member.pauseEndDate?.toDate?.();
+    if (!endDate || endDate > now) continue;
+
+    await memberDoc.ref.update({ status: 'active' });
+
+    if (!member.stripeSubscriptionItemId) continue; // Travel-tier/no subscription — nothing to generate
+
+    const result = await generateWalksForMember(
+      memberDoc.id, { ...member, status: 'active' },
+      now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()
+    );
+    if (result.blocked) {
+      console.error(`resumePausedMemberships: member ${memberDoc.id} has no defaultTimeSlot — skipped supplemental generation`);
+    } else if (result.failed > 0) {
+      console.error(`resumePausedMemberships: member ${memberDoc.id} had ${result.failed} failed walk(s) in supplemental generation`);
     }
   }
 });
