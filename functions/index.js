@@ -222,11 +222,14 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
   const now = new Date();
   const nextFirst = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
-  // 8:00 PM ET on the 1st, not midnight — gives syncMonthlyWalkQuantities
-  // (which runs at 12:05 AM ET that same day) a ~20-hour buffer to push the
-  // correct quantity before Stripe actually generates this invoice.
+  // 6:00 PM ET on the 1st, not midnight — gives syncMonthlyWalkQuantities
+  // (which runs at 12:05 AM ET that same day) an ~18-hour buffer to push the
+  // correct quantity before Stripe actually generates this invoice. Deliberately
+  // kept under the UTC day boundary (18:00 ET is 22:00-23:00 UTC depending on
+  // DST) so Stripe's dashboard — which displays in UTC — also shows the 1st,
+  // not the 2nd, even though the underlying instant is what actually matters.
   const billingCycleAnchor = Math.floor(
-    easternTimeToUtc(nextFirst.getUTCFullYear(), nextFirst.getUTCMonth(), 1, 20, 0).getTime() / 1000
+    easternTimeToUtc(nextFirst.getUTCFullYear(), nextFirst.getUTCMonth(), 1, 18, 0).getTime() / 1000
   );
 
   // If the member's requested start date (submission.startDate, "YYYY-MM-DD")
@@ -267,8 +270,8 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
 // ─────────────────────────────────────────────────────────────────────────
 // 3b. Recalculate every active member's walk-day count for the month that's
 //    just starting and push it to their Stripe subscription item. Runs at
-//    12:05 AM ET on the 1st — ~20 hours before Stripe actually generates
-//    that month's invoice, at the 8:00 PM ET billing_cycle_anchor set in
+//    12:05 AM ET on the 1st — ~18 hours before Stripe actually generates
+//    that month's invoice, at the 6:00 PM ET billing_cycle_anchor set in
 //    createMembershipSubscription.
 // ─────────────────────────────────────────────────────────────────────────
 exports.syncMonthlyWalkQuantities = onSchedule({
