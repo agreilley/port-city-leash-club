@@ -594,13 +594,15 @@
       <div class="form-field"><label>Temporary password</label><input type="text" id="am-password" placeholder="Min 8 characters" value=""></div>
       <div class="form-field"><label>Membership tier</label>
         <select id="am-tier">
+          <option value="">Select a tier...</option>
           <option value="Essential">Essential — $26/walk</option>
-          <option value="Standard" selected>Standard — $25/walk</option>
+          <option value="Standard">Standard — $25/walk</option>
           <option value="Daily">Daily — $22/walk</option>
           <option value="Travel">Travel (pet sitting only, no membership rate)</option>
         </select>
       </div>
     </div>
+    <div id="am-tier-warning" style="display:none;font-size:12px;color:var(--amber);background:var(--amber-light);border-radius:6px;padding:8px 12px;margin-bottom:12px;">Member wasn't sure about a tier — confirm with them before converting.</div>
     <div class="form-field" style="margin-bottom:12px;"><label>Address</label><input type="text" id="am-address" placeholder="123 Forest Hills Dr, Wilmington NC"></div>
     <div class="form-field" style="margin-bottom:12px;"><label>Access notes</label><input type="text" id="am-access" placeholder="Key under mat, gate code 1234"></div>
     <div class="form-field" style="margin-bottom:12px;"><label>Zone / Neighborhood</label><input type="text" id="am-zone" placeholder="Forest Hills"></div>
@@ -1868,7 +1870,10 @@ window.openAddMemberModal = (prefill, submissionId) => {
   // Generate a simple default password — admin can change it before saving
   const defaultPass = 'PCLC' + Math.random().toString(36).slice(2, 8);
   document.getElementById('am-password').value = defaultPass;
-  document.getElementById('am-tier').value = ['Essential','Standard','Daily','Travel'].includes(prefill?.plan) ? prefill.plan : 'Standard';
+  const validTiers = ['Essential','Standard','Daily','Travel'];
+  const tierUnclear = !!prefill?.plan && !validTiers.includes(prefill.plan); // e.g. "Not sure yet"
+  document.getElementById('am-tier').value = tierUnclear ? '' : (validTiers.includes(prefill?.plan) ? prefill.plan : 'Standard');
+  document.getElementById('am-tier-warning').style.display = tierUnclear ? 'block' : 'none';
   document.getElementById('am-address').value = prefill?.address || '';
   document.getElementById('am-access').value = prefill?.accessNotes || '';
   document.getElementById('am-zone').value = '';
@@ -1925,6 +1930,7 @@ window.saveMember = async () => {
 
   if (!name || !email) { errEl.textContent = 'Owner name and email are required.'; errEl.style.display = 'block'; return; }
   if (!pass || pass.length < 8) { errEl.textContent = 'Password must be at least 8 characters.'; errEl.style.display = 'block'; return; }
+  if (!tier) { errEl.textContent = 'Select a membership tier before creating the account.'; errEl.style.display = 'block'; return; }
 
   const btn = document.querySelector('#addMemberModal .btn-primary');
   btn.textContent = 'Creating account...'; btn.disabled = true;
