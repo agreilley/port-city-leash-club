@@ -427,6 +427,13 @@
     });
   }
 
+  function clearTimeWindow() {
+    timeCards.forEach(card => {
+      card.classList.remove('selected');
+      card.querySelector('input').checked = false;
+    });
+  }
+
   function updateEstimate() {
     const selectedPlan = document.querySelector('.plan-card.selected');
     const plan = selectedPlan.dataset.plan;
@@ -435,7 +442,7 @@
     const walks = plan === 'daily' ? 5 : checkedDays;
     const monthly = rate * walks * 4;
     const label = selectedPlan.querySelector('.plan-name').textContent;
-    const selectedTime = document.querySelector('input[name="timeWindow"]:checked')?.value || 'Morning';
+    const selectedTime = document.querySelector('input[name="timeWindow"]:checked')?.value || 'TBD';
 
     summaryPlan.textContent = plan === 'unsure' ? 'Membership Fit Review' : label + ' Membership';
     summaryRate.textContent = rate ? '$' + rate + ' / walk' : 'TBD';
@@ -467,6 +474,7 @@
       if (plan === 'unsure') {
         setDays(0);
         enableDayPicker();
+        clearTimeWindow();
       }
       updateEstimate();
     });
