@@ -766,7 +766,7 @@ let allOvernights = [];
 // fields — old data is never rewritten, just displayed correctly.
 function getMemberDogs(member) {
   if (Array.isArray(member?.dogs) && member.dogs.length) return member.dogs;
-  if (member?.dogName) return [{ name: member.dogName, breed: member.dogBreed || '', age: member.dogAge || '', weight: '', notes: member.dogNotes || '' }];
+  if (member?.dogName) return [{ name: member.dogName, breed: member.dogBreed || '', age: member.dogAge || '', weight: '', notes: member.dogNotes || '', temperament: '', walkingPrefs: '', triggers: '', medications: '', allergies: '' }];
   return [];
 }
 function memberDogNames(member) {
@@ -1888,7 +1888,14 @@ function dogRowHTML(dog, i) {
         <div class="form-field"><label>Age</label><input type="text" id="am-dog-age-${i}" placeholder="3" value="${escapeHtml(dog.age)}"></div>
         <div class="form-field"><label>Weight</label><input type="text" id="am-dog-weight-${i}" placeholder="55 lbs" value="${escapeHtml(dog.weight)}"></div>
       </div>
-      <div class="form-field"><label>Notes</label><textarea id="am-dog-notes-${i}" placeholder="Temperament, special needs, commands, vet info..." style="height:60px;resize:vertical;">${escapeHtml(dog.notes)}</textarea></div>
+      <div class="form-field" style="margin-bottom:10px;"><label>Notes</label><textarea id="am-dog-notes-${i}" placeholder="Anything else worth knowing…" style="height:60px;resize:vertical;">${escapeHtml(dog.notes)}</textarea></div>
+      <div class="form-field" style="margin-bottom:10px;"><label>Temperament</label><textarea id="am-dog-temperament-${i}" placeholder="Friendly, energetic, shy…" style="height:60px;resize:vertical;">${escapeHtml(dog.temperament)}</textarea></div>
+      <div class="form-field" style="margin-bottom:10px;"><label>Care Preferences</label><textarea id="am-dog-walkingPrefs-${i}" placeholder="Routine, favorite spots, any habits…" style="height:60px;resize:vertical;">${escapeHtml(dog.walkingPrefs)}</textarea></div>
+      <div class="form-field" style="margin-bottom:10px;"><label>Known Triggers</label><textarea id="am-dog-triggers-${i}" placeholder="Loud noises, other animals, specific situations…" style="height:60px;resize:vertical;">${escapeHtml(dog.triggers)}</textarea></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-field"><label>Medications</label><input type="text" id="am-dog-medications-${i}" placeholder="Any medications?" value="${escapeHtml(dog.medications)}"></div>
+        <div class="form-field"><label>Allergies</label><input type="text" id="am-dog-allergies-${i}" placeholder="Any known allergies?" value="${escapeHtml(dog.allergies)}"></div>
+      </div>
     </div>
   `;
 }
@@ -1899,17 +1906,22 @@ function renderDogRows() {
 
 function collectAddMemberDogRows() {
   return _addMemberDogRows.map((_, i) => ({
-    name:   document.getElementById(`am-dog-name-${i}`)?.value.trim() || '',
-    breed:  document.getElementById(`am-dog-breed-${i}`)?.value.trim() || '',
-    age:    document.getElementById(`am-dog-age-${i}`)?.value.trim() || '',
-    weight: document.getElementById(`am-dog-weight-${i}`)?.value.trim() || '',
-    notes:  document.getElementById(`am-dog-notes-${i}`)?.value.trim() || '',
+    name:         document.getElementById(`am-dog-name-${i}`)?.value.trim() || '',
+    breed:        document.getElementById(`am-dog-breed-${i}`)?.value.trim() || '',
+    age:          document.getElementById(`am-dog-age-${i}`)?.value.trim() || '',
+    weight:       document.getElementById(`am-dog-weight-${i}`)?.value.trim() || '',
+    notes:        document.getElementById(`am-dog-notes-${i}`)?.value.trim() || '',
+    temperament:  document.getElementById(`am-dog-temperament-${i}`)?.value.trim() || '',
+    walkingPrefs: document.getElementById(`am-dog-walkingPrefs-${i}`)?.value.trim() || '',
+    triggers:     document.getElementById(`am-dog-triggers-${i}`)?.value.trim() || '',
+    medications:  document.getElementById(`am-dog-medications-${i}`)?.value.trim() || '',
+    allergies:    document.getElementById(`am-dog-allergies-${i}`)?.value.trim() || '',
   }));
 }
 
 window.addDogRow = () => {
   _addMemberDogRows = collectAddMemberDogRows();
-  _addMemberDogRows.push({ name: '', breed: '', age: '', weight: '', notes: '' });
+  _addMemberDogRows.push({ name: '', breed: '', age: '', weight: '', notes: '', temperament: '', walkingPrefs: '', triggers: '', medications: '', allergies: '' });
   renderDogRows();
 };
 
@@ -1987,8 +1999,11 @@ window.openAddMemberModal = (prefill, submissionId) => {
   // present; a bare legacy dogName (no dogs[] at all) seeds a single row;
   // otherwise start with one blank row.
   _addMemberDogRows = (Array.isArray(prefill?.dogs) && prefill.dogs.length)
-    ? prefill.dogs.map(d => ({ name: d.name || '', breed: d.breed || '', age: d.age || '', weight: d.weight || '', notes: d.notes || '' }))
-    : [{ name: prefill?.dogName || '', breed: '', age: '', weight: '', notes: '' }];
+    ? prefill.dogs.map(d => ({
+        name: d.name || '', breed: d.breed || '', age: d.age || '', weight: d.weight || '', notes: d.notes || '',
+        temperament: d.temperament || '', walkingPrefs: d.walkingPrefs || '', triggers: d.triggers || '', medications: d.medications || '', allergies: d.allergies || '',
+      }))
+    : [{ name: prefill?.dogName || '', breed: '', age: '', weight: '', notes: '', temperament: '', walkingPrefs: '', triggers: '', medications: '', allergies: '' }];
   renderDogRows();
 
   document.getElementById('addMemberModal').classList.add('open');

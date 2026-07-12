@@ -596,7 +596,7 @@ function renderDogProfiles(member) {
   const dogs = (Array.isArray(member?.dogs) && member.dogs.length)
     ? member.dogs
     : member?.dogName
-      ? [{ name: member.dogName, breed: member.dogBreed, age: member.dogAge, weight: '', temperament: member.dogNotes || '', walkingPrefs: '', triggers: '', medications: '', allergies: '' }]
+      ? [{ name: member.dogName, breed: member.dogBreed, age: member.dogAge, weight: '', notes: member.dogNotes || '', temperament: '', walkingPrefs: '', triggers: '', medications: '', allergies: '' }]
       : [];
 
   if (!dogs.length) return '<div style="font-size:13px;color:#7A7A7A;padding:8px 0;">No dog info on file.</div>';
@@ -621,6 +621,7 @@ function renderDogProfiles(member) {
       <div style="background:var(--sand);border-radius:8px;padding:14px 16px;margin-bottom:10px;">
         <div style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:2px;">${esc(dog.name || 'Unnamed dog')}${dogs.length > 1 ? ` <span style="font-weight:400;color:#7A7A7A;font-size:12px;">(${i+1} of ${dogs.length})</span>` : ''}</div>
         ${fields ? `<div style="font-size:13px;color:#4A4A4A;margin-bottom:4px;">${esc(fields)}</div>` : ''}
+        ${dog.notes ? `<div style="font-size:13px;color:#4A4A4A;margin-top:4px;"><strong>Notes:</strong> ${esc(dog.notes)}</div>` : ''}
         ${dog.temperament ? `<div style="font-size:13px;color:#4A4A4A;margin-top:4px;"><strong>Temperament:</strong> ${esc(dog.temperament)}</div>` : ''}
         ${dog.walkingPrefs ? `<div style="font-size:13px;color:#4A4A4A;margin-top:2px;"><strong>Preferences:</strong> ${esc(dog.walkingPrefs)}</div>` : ''}
         ${alerts}
@@ -628,7 +629,7 @@ function renderDogProfiles(member) {
   }).join('');
 }
 
-function esc(s) { return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 window.openWalkDetail = (walkId) => {
   const walk = myWalks.find(w => w.id === walkId);

@@ -524,7 +524,7 @@ onAuthStateChanged(auth, async (user) => {
       // Normalise to dogs array
       currentDogs = memberData.dogs?.length
         ? memberData.dogs.map(d => ({ ...d }))
-        : [{ name: memberData.dogName || '', breed: memberData.petBreed || '', age: memberData.petAge ? `${memberData.petAge} years` : '', weight: memberData.petWeight || '', temperament: memberData.temperament || '', walkingPrefs: memberData.walkingPrefs || '', triggers: memberData.triggers || '', medications: memberData.medications || '', allergies: memberData.allergies || '' }];
+        : [{ name: memberData.dogName || '', breed: memberData.petBreed || '', age: memberData.petAge ? `${memberData.petAge} years` : '', weight: memberData.petWeight || '', notes: memberData.dogNotes || '', temperament: memberData.temperament || '', walkingPrefs: memberData.walkingPrefs || '', triggers: memberData.triggers || '', medications: memberData.medications || '', allergies: memberData.allergies || '' }];
       renderPage();
     }
   } catch(e) {
@@ -611,6 +611,7 @@ function dogCardHTML(dog, i) {
         <div class="field-group"><label class="field-label">Age</label><div class="field-value"><input type="text" id="dog_age_${i}" value="${dog.age || ''}" placeholder="e.g. 4 years"></div></div>
         <div class="field-group"><label class="field-label">Weight</label><div class="field-value"><input type="text" id="dog_weight_${i}" value="${dog.weight || ''}" placeholder="e.g. 55 lbs"></div></div>
       </div>
+      <div class="field-row full"><div class="field-group"><label class="field-label">Notes</label><div class="field-value"><textarea id="dog_notes_${i}" placeholder="Anything else worth knowing…">${dog.notes || ''}</textarea></div></div></div>
       <div class="field-row full"><div class="field-group"><label class="field-label">Temperament</label><div class="field-value"><textarea id="dog_temperament_${i}" placeholder="Friendly, energetic, shy…">${dog.temperament || ''}</textarea></div></div></div>
       <div class="field-row full"><div class="field-group"><label class="field-label">Care Preferences</label><div class="field-value"><textarea id="dog_walkingPrefs_${i}" placeholder="Routine, favorite spots, any habits…">${dog.walkingPrefs || ''}</textarea></div></div></div>
       <div class="field-row full"><div class="field-group"><label class="field-label">Known Triggers</label><div class="field-value"><textarea id="dog_triggers_${i}" placeholder="Loud noises, other animals, specific situations…">${dog.triggers || ''}</textarea></div></div></div>
@@ -628,6 +629,7 @@ function collectCurrentFormValues() {
     breed:        document.getElementById(`dog_breed_${i}`)?.value || '',
     age:          document.getElementById(`dog_age_${i}`)?.value || '',
     weight:       document.getElementById(`dog_weight_${i}`)?.value || '',
+    notes:        document.getElementById(`dog_notes_${i}`)?.value || '',
     temperament:  document.getElementById(`dog_temperament_${i}`)?.value || '',
     walkingPrefs: document.getElementById(`dog_walkingPrefs_${i}`)?.value || '',
     triggers:     document.getElementById(`dog_triggers_${i}`)?.value || '',
@@ -639,7 +641,7 @@ function collectCurrentFormValues() {
 window.addDog = () => {
   // Snapshot current form values before re-render so nothing is lost
   currentDogs = collectCurrentFormValues();
-  currentDogs.push({ name: '', breed: '', age: '', weight: '', temperament: '', walkingPrefs: '', triggers: '', medications: '', allergies: '' });
+  currentDogs.push({ name: '', breed: '', age: '', weight: '', notes: '', temperament: '', walkingPrefs: '', triggers: '', medications: '', allergies: '' });
   renderDogCards();
   updateSidebar();
   updatePageHeader();
