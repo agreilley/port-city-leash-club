@@ -630,17 +630,13 @@
     </div>
     <hr class="modal-divider">
     <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:12px;">Dog Info</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-      <div class="form-field"><label>Dog's name</label><input type="text" id="am-dogname" placeholder="Scout"></div>
-      <div class="form-field"><label>Breed</label><input type="text" id="am-breed" placeholder="Golden Retriever"></div>
-      <div class="form-field"><label>Age</label><input type="text" id="am-age" placeholder="3"></div>
-      <div class="form-field"><label>Assigned walker</label>
-        <select id="am-walker">
-          <option value="">Unassigned</option>
-        </select>
-      </div>
+    <div id="am-dogs-container"></div>
+    <button type="button" class="btn-secondary" onclick="addDogRow()" style="margin-bottom:16px;">+ Add another dog</button>
+    <div class="form-field" style="margin-bottom:20px;"><label>Assigned walker</label>
+      <select id="am-walker">
+        <option value="">Unassigned</option>
+      </select>
     </div>
-    <div class="form-field" style="margin-bottom:20px;"><label>Dog notes</label><textarea id="am-dognotes" placeholder="Temperament, special needs, commands, vet info..." style="height:80px;resize:vertical;"></textarea></div>
     <div id="am-error" style="color:var(--rust);font-size:13px;margin-bottom:12px;display:none;"></div>
     <div style="display:flex;gap:8px;">
       <button class="btn-primary" style="flex:1;" onclick="saveMember()">Add Member</button>
@@ -763,6 +759,19 @@ let calendarYear = new Date().getFullYear();
 let calendarMonth = new Date().getMonth();
 let currentRequestFilter = 'all';
 let allOvernights = [];
+
+// dogs[] is the source of truth going forward; new member writes never
+// populate dogName/dogBreed/dogAge anymore. This is a read-only shim for
+// member docs that predate the migration and only have the old flat
+// fields — old data is never rewritten, just displayed correctly.
+function getMemberDogs(member) {
+  if (Array.isArray(member?.dogs) && member.dogs.length) return member.dogs;
+  if (member?.dogName) return [{ name: member.dogName, breed: member.dogBreed || '', age: member.dogAge || '', weight: '', notes: member.dogNotes || '' }];
+  return [];
+}
+function memberDogNames(member) {
+  return getMemberDogs(member).map(d => d.name).filter(Boolean).join(', ');
+}
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 function initDashboard() {
@@ -1050,7 +1059,7 @@ function renderUpcomingWalks() {
       <td data-label="Date">${date.toLocaleDateString('en-US', {month:'short',day:'numeric'})}</td>
       <td data-label="Time Slot">${slotLabel}</td>
       <td data-label="Member">${member?.name || '–'}</td>
-      <td data-label="Dog">${member?.dogName || '–'}</td>
+      <td data-label="Dog">${memberDogNames(member) || '–'}</td>
       <td data-label="Walker">${isUnassigned ? '<span style="color:var(--rust);">Unassigned</span>' : walker?.name || '–'}</td>
       <td data-label="Status"><span class="status-badge ${statusClass}">${statusLabel}</span></td>
       <td data-label="">${actionBtn}</td>
@@ -1108,7 +1117,7 @@ function renderCalendarDays() {
       const wkId = (w.walkerId||'').trim();
       const walker = allWalkers.find(k => k.id === wkId);
       const cls = !wkId ? 'unassigned' : (w.status === 'completed' ? 'completed' : w.timeSlot);
-      const dogName = member?.dogName || member?.name?.split(' ')[0] || 'Walk';
+      const dogName = getMemberDogs(member)[0]?.name || member?.name?.split(' ')[0] || 'Walk';
       const label = walker ? `${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`;
       return `<div class="walk-chip ${cls}" onclick="openWalkModal('${w.id}')" title="${label}">${label}</div>`;
     }).join('');
@@ -1175,14 +1184,14 @@ function renderAvailabilityGrid() {
 // ── MEMBERS TABLE ─────────────────────────────────────────────────────────────
 function renderMembersTable(filter = '') {
   const tbody = document.getElementById('membersTable');
-  const members = filter ? allMembers.filter(m => m.name?.toLowerCase().includes(filter.toLowerCase()) || m.dogName?.toLowerCase().includes(filter.toLowerCase())) : allMembers;
+  const members = filter ? allMembers.filter(m => m.name?.toLowerCase().includes(filter.toLowerCase()) || memberDogNames(m).toLowerCase().includes(filter.toLowerCase())) : allMembers;
   if (!members.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:24px;">No members yet.</td></tr>'; return; }
   tbody.innerHTML = members.map(m => {
     const walker = allWalkers.find(w => w.id === m.assignedWalkerId);
     const since = m.createdAt?.toDate?.() ? m.createdAt.toDate().toLocaleDateString('en-US', {month:'short', year:'numeric'}) : '–';
     return `<tr>
       <td data-label="Name"><strong>${m.name}</strong><br><span style="font-size:11px;color:var(--text-light);">${m.email}</span></td>
-      <td data-label="Dog">${m.dogName || '–'}</td>
+      <td data-label="Dog">${memberDogNames(m) || '–'}</td>
       <td data-label="Tier"><span class="status-badge active">${m.tier || 'Standard'}</span></td>
       <td data-label="Walks/Month">${m.walksThisMonth || 0}</td>
       <td data-label="Walker">${walker?.name || '–'}</td>
@@ -1236,7 +1245,7 @@ window.openOvernightModal = (overnightId) => {
 
   const member = allMembers.find(m => m.id === o.memberId);
   const memberName = member?.name || o.memberName || o.memberId || '–';
-  const dogNames = member?.dogs?.map(d => d.name).filter(Boolean).join(' & ') || member?.dogName || '–';
+  const dogNames = memberDogNames(member) || '–';
 
   document.getElementById('overnightModalTitle').textContent = `${memberName} · Overnight Stay`;
   document.getElementById('overnightModalContent').innerHTML = `
@@ -1310,11 +1319,11 @@ window.openWalkModal = async (walkId) => {
     <button class="btn-primary" style="width:100%;" onclick="assignWalkerManual('${walkId}')">Assign</button>` :
     '<div style="color:var(--text-light);font-size:13px;">No active walkers available.</div>';
 
-  document.getElementById('walkModalTitle').textContent = `${member?.dogName || 'Walk'} · ${date.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}`;
+  document.getElementById('walkModalTitle').textContent = `${memberDogNames(member) || 'Walk'} · ${date.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}`;
   document.getElementById('walkModalContent').innerHTML = `
     <div class="form-grid" style="margin-bottom:20px;">
       <div class="modal-field"><div class="modal-label">Member</div><div class="modal-value">${member?.name || '–'}</div></div>
-      <div class="modal-field"><div class="modal-label">Dog</div><div class="modal-value">${member?.dogName || '–'}</div></div>
+      <div class="modal-field"><div class="modal-label">Dog</div><div class="modal-value">${memberDogNames(member) || '–'}</div></div>
       <div class="modal-field"><div class="modal-label">Time Slot</div><div class="modal-value">${slotLabel}</div></div>
       <div class="modal-field"><div class="modal-label">Status</div><div class="modal-value">${walk.status || 'Scheduled'}</div></div>
     </div>
@@ -1409,7 +1418,7 @@ window.openAddWalkModal = () => {
   const memberSel = document.getElementById('wm-member');
   memberSel.innerHTML = '<option value="">Select member...</option>' +
     allMembers.filter(m => m.status === 'active').map(m => {
-      const dogs = (Array.isArray(m.dogs) && m.dogs.length) ? m.dogs.map(d => d.name).filter(Boolean).join(' & ') : m.dogName || '';
+      const dogs = memberDogNames(m);
       return `<option value="${m.id}">${m.name}${dogs ? ' — ' + dogs : ''}</option>`;
     }).join('');
   // Populate walker dropdown
@@ -1629,9 +1638,6 @@ window.confirmServiceRequest = async (submissionId, item) => {
           phone: item.phone || '',
           address: item.address || '',
           tier: 'Travel',
-          dogName: dogs[0]?.name || '',
-          dogBreed: dogs[0]?.breed || '',
-          dogAge: dogs[0]?.age || '',
           dogs: dogs,
           walksThisMonth: 0,
           status: 'active',
@@ -1828,7 +1834,10 @@ window.declineWalkExtension = async (submissionId, item) => {
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 function populateMemberSelect() {
   const sel = document.getElementById('wm-member');
-  sel.innerHTML = '<option value="">Select member...</option>' + allMembers.map(m => `<option value="${m.id}">${m.name} (${m.dogName})</option>`).join('');
+  sel.innerHTML = '<option value="">Select member...</option>' + allMembers.map(m => {
+    const dogs = memberDogNames(m);
+    return `<option value="${m.id}">${m.name}${dogs ? ' — ' + dogs : ''}</option>`;
+  }).join('');
 }
 function populateWalkerSelect() {
   const sel = document.getElementById('wm-walker');
@@ -1848,6 +1857,67 @@ window.restoreAddMemberModal = () => {
 };
 // Capture on load
 setTimeout(() => { _addMemberModalOriginalHTML = document.querySelector('#addMemberModal .modal-box')?.innerHTML; }, 100);
+
+// Dog values can originate from a public request form (membership-request.html,
+// service-request.html) — escape before interpolating into innerHTML so a
+// crafted breed/name field can't run script in the admin's authenticated session.
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Multi-dog editor for the Add Member modal — replaces the old single-dog
+// am-dogname/am-breed/am-age/am-dognotes fields (and the window._addMemberPrefillDogs
+// bypass that used to feed them) entirely. _addMemberDogRows is the working
+// array; every add/remove/save reads current input values back first via
+// collectAddMemberDogRows() so nothing typed is lost across a re-render.
+let _addMemberDogRows = [];
+
+function dogRowHTML(dog, i) {
+  const isOnly = _addMemberDogRows.length === 1;
+  return `
+    <div style="border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:12px;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="font-size:12px;font-weight:500;color:var(--text-light);">Dog ${i + 1}</div>
+        ${!isOnly ? `<button type="button" onclick="removeDogRow(${i})" style="background:none;border:none;color:var(--rust);font-size:12px;cursor:pointer;padding:0;">Remove</button>` : ''}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
+        <div class="form-field"><label>Name</label><input type="text" id="am-dog-name-${i}" placeholder="Scout" value="${escapeHtml(dog.name)}"></div>
+        <div class="form-field"><label>Breed</label><input type="text" id="am-dog-breed-${i}" placeholder="Golden Retriever" value="${escapeHtml(dog.breed)}"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
+        <div class="form-field"><label>Age</label><input type="text" id="am-dog-age-${i}" placeholder="3" value="${escapeHtml(dog.age)}"></div>
+        <div class="form-field"><label>Weight</label><input type="text" id="am-dog-weight-${i}" placeholder="55 lbs" value="${escapeHtml(dog.weight)}"></div>
+      </div>
+      <div class="form-field"><label>Notes</label><textarea id="am-dog-notes-${i}" placeholder="Temperament, special needs, commands, vet info..." style="height:60px;resize:vertical;">${escapeHtml(dog.notes)}</textarea></div>
+    </div>
+  `;
+}
+
+function renderDogRows() {
+  document.getElementById('am-dogs-container').innerHTML = _addMemberDogRows.map(dogRowHTML).join('');
+}
+
+function collectAddMemberDogRows() {
+  return _addMemberDogRows.map((_, i) => ({
+    name:   document.getElementById(`am-dog-name-${i}`)?.value.trim() || '',
+    breed:  document.getElementById(`am-dog-breed-${i}`)?.value.trim() || '',
+    age:    document.getElementById(`am-dog-age-${i}`)?.value.trim() || '',
+    weight: document.getElementById(`am-dog-weight-${i}`)?.value.trim() || '',
+    notes:  document.getElementById(`am-dog-notes-${i}`)?.value.trim() || '',
+  }));
+}
+
+window.addDogRow = () => {
+  _addMemberDogRows = collectAddMemberDogRows();
+  _addMemberDogRows.push({ name: '', breed: '', age: '', weight: '', notes: '' });
+  renderDogRows();
+};
+
+window.removeDogRow = (i) => {
+  _addMemberDogRows = collectAddMemberDogRows();
+  _addMemberDogRows.splice(i, 1);
+  renderDogRows();
+};
 
 // Daily tier's day-picker starts at Monday–Friday as a convenience default,
 // matching the preset membership-request.html applies for the same tier —
@@ -1871,12 +1941,9 @@ window.openAddMemberModal = (prefill, submissionId) => {
   }
 
   // Track the source submission (if converting from a request item) so saveMember()
-  // can mark it confirmed once the member record is created. Also keep the full
-  // dogs[] array from the request, since the form's own dog fields only capture one.
+  // can mark it confirmed once the member record is created.
   window._addMemberSubmissionId = submissionId || null;
-  window._addMemberPrefillDogs = (prefill && Array.isArray(prefill.dogs) && prefill.dogs.length) ? prefill.dogs : null;
 
-  const dog = prefill?.dogs?.[0] || {};
   document.getElementById('am-name').value = prefill?.ownerName || prefill?.name || '';
   document.getElementById('am-email').value = prefill?.email || '';
   document.getElementById('am-phone').value = prefill?.phone || '';
@@ -1916,10 +1983,13 @@ window.openAddMemberModal = (prefill, submissionId) => {
     console.warn(`Add Member: submission timeWindow "${rawTimeWindow}" (normalized "${normalizedTimeSlot}") doesn't match any am-timeslot option — leaving "Not set".`);
   }
   timeslotSel.value = timeSlotMatches ? normalizedTimeSlot : '';
-  document.getElementById('am-dogname').value = dog.name || prefill?.dogName || '';
-  document.getElementById('am-breed').value = dog.breed || prefill?.breed || '';
-  document.getElementById('am-age').value = dog.age || prefill?.age || '';
-  document.getElementById('am-dognotes').value = [dog.temperament, dog.walkingPrefs, dog.triggers, dog.medications].filter(Boolean).join(' · ');
+  // Seed the multi-dog editor from the request's full dogs[] array when
+  // present; a bare legacy dogName (no dogs[] at all) seeds a single row;
+  // otherwise start with one blank row.
+  _addMemberDogRows = (Array.isArray(prefill?.dogs) && prefill.dogs.length)
+    ? prefill.dogs.map(d => ({ name: d.name || '', breed: d.breed || '', age: d.age || '', weight: d.weight || '', notes: d.notes || '' }))
+    : [{ name: prefill?.dogName || '', breed: '', age: '', weight: '', notes: '' }];
+  renderDogRows();
 
   document.getElementById('addMemberModal').classList.add('open');
 };
@@ -1939,11 +2009,10 @@ window.saveMember = async () => {
   // expects in functions/index.js.
   const defaultWalkDays = Array.from(document.getElementById('am-walkdays').selectedOptions).map(o => o.value.toLowerCase());
   const defaultTimeSlot = document.getElementById('am-timeslot').value || null;
-  const dogName = document.getElementById('am-dogname').value.trim();
-  const breed   = document.getElementById('am-breed').value.trim();
-  const age     = document.getElementById('am-age').value.trim();
   const walker  = document.getElementById('am-walker').value;
-  const dogNotes= document.getElementById('am-dognotes').value.trim();
+  // Rows with no name typed are dropped — matches the old behavior where
+  // an empty am-dogname produced dogs: [] rather than a blocking error.
+  const dogs = collectAddMemberDogRows().filter(d => d.name);
   const errEl   = document.getElementById('am-error');
   errEl.style.display = 'none';
 
@@ -1970,7 +2039,6 @@ window.saveMember = async () => {
     const uid = authData.localId;
 
     // 2. Build the member document
-    const dogs = window._addMemberPrefillDogs || (dogName ? [{ name: dogName, breed, age, notes: dogNotes }] : []);
     const emailNormalized = email.toLowerCase();
     const phoneDigits = phone.replace(/\D/g, '').replace(/^1/, '');
 
@@ -1981,7 +2049,6 @@ window.saveMember = async () => {
       emailNormalized, phoneDigits,
       accessNotes: access, zone,
       defaultWalkDays, defaultTimeSlot,
-      dogName, dogBreed: breed, dogAge: age, dogNotes,
       dogs, assignedWalkerId: walker,
       walksThisMonth: 0, status: 'active',
       createdAt: serverTimestamp()
@@ -2030,7 +2097,7 @@ window.saveMember = async () => {
 
     // Clear state
     window._addMemberSubmissionId = null;
-    window._addMemberPrefillDogs = null;
+    _addMemberDogRows = [];
   } catch(e) {
     errEl.textContent = e.message;
     errEl.style.display = 'block';

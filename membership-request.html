@@ -557,11 +557,11 @@
         address: document.getElementById('address')?.value || '',
         accessNotes: document.getElementById('accessNotes')?.value || '',
         dogs: collectDogs(),
-        // legacy single-dog fields for backwards compat
+        // dogName kept as a legacy display field — the admin request-list
+        // preview reads it before a request is converted to a member.
+        // breed/age/weight dropped: dogs[] is the source of truth and
+        // nothing reads these flat mirrors anymore.
         dogName: collectDogs()[0]?.name || '',
-        breed: collectDogs()[0]?.breed || '',
-        age: collectDogs()[0]?.age || '',
-        weight: collectDogs()[0]?.weight || '',
         startDate: document.getElementById('startDate')?.value || '',
         timeWindow: document.querySelector('input[name=timeWindow]:checked')?.value || '',
         days: Array.from(document.querySelectorAll('input[name=days]:checked')).map(c=>c.value).join(', '),
