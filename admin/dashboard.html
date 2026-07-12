@@ -608,12 +608,14 @@
     <div class="form-field" style="margin-bottom:12px;"><label>Zone / Neighborhood</label><input type="text" id="am-zone" placeholder="Forest Hills"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
       <div class="form-field"><label>Walk days</label>
-        <select id="am-walkdays" multiple size="5" style="min-height:auto;">
+        <select id="am-walkdays" multiple size="7" style="min-height:auto;">
           <option value="Monday">Monday</option>
           <option value="Tuesday">Tuesday</option>
           <option value="Wednesday">Wednesday</option>
           <option value="Thursday">Thursday</option>
           <option value="Friday">Friday</option>
+          <option value="Saturday">Saturday</option>
+          <option value="Sunday">Sunday</option>
         </select>
         <div style="font-size:11px;color:var(--text-light);margin-top:3px;">Hold Ctrl/Cmd to select multiple</div>
       </div>
@@ -1847,6 +1849,17 @@ window.restoreAddMemberModal = () => {
 // Capture on load
 setTimeout(() => { _addMemberModalOriginalHTML = document.querySelector('#addMemberModal .modal-box')?.innerHTML; }, 100);
 
+// Daily tier's day-picker starts at Monday–Friday as a convenience default,
+// matching the preset membership-request.html applies for the same tier —
+// still individually editable afterward, not locked.
+function presetDailyWalkDays(e) {
+  if (e.target.value !== 'Daily') return;
+  const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  Array.from(document.getElementById('am-walkdays').options).forEach(o => {
+    o.selected = weekdays.includes(o.value);
+  });
+}
+
 window.openAddMemberModal = (prefill, submissionId) => {
   // Restore the form if it was replaced by the success screen
   restoreAddMemberModal();
@@ -1872,8 +1885,14 @@ window.openAddMemberModal = (prefill, submissionId) => {
   document.getElementById('am-password').value = defaultPass;
   const validTiers = ['Essential','Standard','Daily','Travel'];
   const tierUnclear = !!prefill?.plan && !validTiers.includes(prefill.plan); // e.g. "Not sure yet"
-  document.getElementById('am-tier').value = tierUnclear ? '' : (validTiers.includes(prefill?.plan) ? prefill.plan : 'Standard');
+  const tierSelect = document.getElementById('am-tier');
+  tierSelect.value = tierUnclear ? '' : (validTiers.includes(prefill?.plan) ? prefill.plan : 'Standard');
   document.getElementById('am-tier-warning').style.display = tierUnclear ? 'block' : 'none';
+  // am-tier's DOM node can be recreated by restoreAddMemberModal() between
+  // opens (innerHTML swap after a successful save) — remove+add guarantees
+  // exactly one listener on whatever node currently exists, no duplicates.
+  tierSelect.removeEventListener('change', presetDailyWalkDays);
+  tierSelect.addEventListener('change', presetDailyWalkDays);
   document.getElementById('am-address').value = prefill?.address || '';
   document.getElementById('am-access').value = prefill?.accessNotes || '';
   document.getElementById('am-zone').value = '';

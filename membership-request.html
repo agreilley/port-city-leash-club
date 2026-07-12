@@ -63,7 +63,7 @@
   input, select, textarea { width:100%; border:1px solid rgba(0,0,0,.14); background:#fff; border-radius:4px; padding:13px 14px; font-family:'DM Sans',sans-serif; font-size:14px; color:var(--text-dark); outline:none; }
   input:focus, select:focus, textarea:focus { border-color:var(--seafoam); box-shadow:0 0 0 3px rgba(143,168,162,.16); }
   textarea { min-height:110px; resize:vertical; }
-  .days-grid { display:grid; grid-template-columns: repeat(5,1fr); gap:10px; margin-bottom:20px; }
+  .days-grid { display:grid; grid-template-columns: repeat(7,1fr); gap:10px; margin-bottom:20px; }
   .day-chip { padding:13px 10px; text-align:center; font-size:13px; font-weight:500; color:var(--navy); }
   .time-grid { display:grid; grid-template-columns: repeat(3,1fr); gap:12px; }
   .time-card { padding:16px; }
@@ -250,6 +250,8 @@
             <label class="day-chip"><input type="checkbox" name="days" value="Wednesday">Wed</label>
             <label class="day-chip"><input type="checkbox" name="days" value="Thursday">Thu</label>
             <label class="day-chip"><input type="checkbox" name="days" value="Friday">Fri</label>
+            <label class="day-chip"><input type="checkbox" name="days" value="Saturday">Sat</label>
+            <label class="day-chip"><input type="checkbox" name="days" value="Sunday">Sun</label>
           </div>
         </div>
         <div>
@@ -404,13 +406,6 @@
     });
   }
 
-  function disableDayPicker() {
-    dayChips.forEach(chip => {
-      chip.style.opacity = '0.5';
-      chip.style.pointerEvents = 'none';
-    });
-  }
-
   // Set minimum start date to 8/17/2026 (launch), or 2 days from today once that's later
   const startDateInput = document.getElementById('startDate');
   const minDate = new Date();
@@ -439,7 +434,7 @@
     const plan = selectedPlan.dataset.plan;
     const rate = Number(selectedPlan.dataset.rate);
     const checkedDays = document.querySelectorAll('input[name="days"]:checked').length;
-    const walks = plan === 'daily' ? 5 : checkedDays;
+    const walks = checkedDays;
     const monthly = rate * walks * 4;
     const label = selectedPlan.querySelector('.plan-name').textContent;
     const selectedTime = document.querySelector('input[name="timeWindow"]:checked')?.value || 'TBD';
@@ -459,21 +454,12 @@
       card.querySelector('input').checked = true;
       const plan = card.dataset.plan;
 
-      if (plan === 'essential') {
-        setDays(2);
-        enableDayPicker();
-      }
-      if (plan === 'standard') {
-        setDays(3);
-        enableDayPicker();
-      }
-      if (plan === 'daily') {
-        setDays(5);
-        disableDayPicker();
-      }
+      enableDayPicker();
+      if (plan === 'essential') setDays(2);
+      if (plan === 'standard') setDays(3);
+      if (plan === 'daily') setDays(5); // Mon–Fri convenience default — still individually editable
       if (plan === 'unsure') {
         setDays(0);
-        enableDayPicker();
         clearTimeWindow();
       }
       updateEstimate();
