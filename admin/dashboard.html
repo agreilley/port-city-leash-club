@@ -679,6 +679,7 @@
     <hr class="modal-divider">
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button class="btn-secondary" onclick="closeModal('requestModal')">Close</button>
+      <button class="btn-secondary" id="requestDeclineBtn" style="display:none;color:var(--rust);">Decline</button>
       <button class="btn-primary" id="requestActionBtn">Convert to Member</button>
     </div>
   </div>
@@ -1448,7 +1449,7 @@ window.openRequestItem = async (id) => {
   }
 
   // Build clean field list based on submission type
-  const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report', walker_schedule_request: 'Walker Schedule Request', reschedule: 'Walk Reschedule Request' };
+  const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report', walker_schedule_request: 'Walker Schedule Request', reschedule: 'Walk Reschedule Request', walk_extension: 'Walk Extension Request' };
   const title = typeLabels[item.type] || 'Submission';
 
   let fields = [];
@@ -1497,6 +1498,19 @@ window.openRequestItem = async (id) => {
       { label: 'Requested New Time', value: item.newTimeSlot || '–' },
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
     ];
+  } else if (item.type === 'walk_extension') {
+    const walkDates = (item.walkIds || []).map(id => {
+      const w = allWalks.find(x => x.id === id);
+      return w ? fmtDate(w.date) : 'unknown walk';
+    }).join(', ');
+    const count = item.walkIds?.length ?? item.count ?? 0;
+    fields = [
+      { label: 'Member', value: item.memberName || item.memberId || '–' },
+      { label: 'Walks', value: walkDates || '–' },
+      { label: 'Count', value: `${count} walk${count === 1 ? '' : 's'}` },
+      { label: 'Requested Total', value: item.estimatedTotal ? `$${item.estimatedTotal}` : '–' },
+      { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
+    ];
   } else {
     // Generic — show all fields, formatted
     const hasDogsArray = Array.isArray(item.dogs) && item.dogs.length > 0;
@@ -1526,6 +1540,8 @@ window.openRequestItem = async (id) => {
   document.getElementById('requestModalContent').innerHTML = `<div class="form-grid">${fieldHTML}</div>`;
 
   const actionBtn = document.getElementById('requestActionBtn');
+  const declineBtn = document.getElementById('requestDeclineBtn');
+  declineBtn.style.display = 'none';
   if (item.type === 'membership_request' && !item.memberId) {
     actionBtn.textContent = 'Convert to Member'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => { closeModal('requestModal'); openAddMemberModal(item, item.id); };
@@ -1541,6 +1557,11 @@ window.openRequestItem = async (id) => {
   } else if (item.type === 'reschedule' && item.status !== 'confirmed') {
     actionBtn.textContent = 'Approve & Assign Walker'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => approveReschedule(item.id, item);
+  } else if (item.type === 'walk_extension' && item.status !== 'confirmed' && item.status !== 'declined') {
+    actionBtn.textContent = 'Confirm & Charge'; actionBtn.style.display = 'block';
+    actionBtn.onclick = () => confirmWalkExtension(item.id, item);
+    declineBtn.style.display = 'block';
+    declineBtn.onclick = () => declineWalkExtension(item.id, item);
   } else if (item.type === 'walker_incident' && item.status !== 'resolved') {
     actionBtn.textContent = 'Mark Resolved'; actionBtn.style.display = 'block';
     actionBtn.onclick = async () => {
@@ -1716,6 +1737,66 @@ window.approveReschedule = async (submissionId, item) => {
     openWalkModal(item.walkId);
   } catch (e) {
     btn.textContent = 'Approve & Assign Walker'; btn.disabled = false;
+    alert('Error: ' + e.message);
+  }
+};
+
+// Walk extensions are already showing 45 minutes on the member's calendar
+// (extendedStatus: 'pending') by the time this lands here — approving is
+// purely about the charge. chargeSavedCard looks up the card via
+// submissions/{id}.stripeCustomerId, which portal-extend-walk.html copies
+// from the member's own record when it creates this submission.
+window.confirmWalkExtension = async (submissionId, item) => {
+  const btn = document.getElementById('requestActionBtn');
+  const count = item.walkIds?.length ?? item.count ?? 0;
+  const defaultAmount = item.estimatedTotal || (item.pricePerWalk || 12) * count;
+  const amountStr = prompt(`Charge the saved card for ${count} extended walk${count === 1 ? '' : 's'}. Amount in dollars:`, defaultAmount ? String(defaultAmount) : '');
+  if (amountStr === null) return;
+  const amountInDollars = parseFloat(amountStr);
+  if (!(amountInDollars > 0)) return;
+
+  btn.textContent = 'Confirming…'; btn.disabled = true;
+  try {
+    const chargeSavedCard = httpsCallable(fns, 'chargeSavedCard');
+    await chargeSavedCard({ submissionId, amountInDollars, description: `${count} extended walk${count === 1 ? '' : 's'}` });
+
+    await Promise.all((item.walkIds || []).map(walkId =>
+      updateDoc(doc(db, 'walks', walkId), { extendedStatus: 'confirmed' })
+    ));
+    await updateDoc(doc(db, 'submissions', submissionId), { status: 'confirmed', read: true });
+
+    closeModal('requestModal');
+    const msg = document.createElement('div');
+    msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2D9E5E;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
+    msg.textContent = 'Walk extension charged and confirmed';
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 3000);
+  } catch (e) {
+    btn.textContent = 'Confirm & Charge'; btn.disabled = false;
+    alert('Error: ' + e.message);
+  }
+};
+
+// Declining reverts the walk(s) back to their original 30-minute state —
+// a walk_extension request should never leave a walk showing 45 minutes
+// on the member's calendar with no charge behind it.
+window.declineWalkExtension = async (submissionId, item) => {
+  const btn = document.getElementById('requestDeclineBtn');
+  btn.textContent = 'Declining…'; btn.disabled = true;
+  try {
+    await Promise.all((item.walkIds || []).map(walkId =>
+      updateDoc(doc(db, 'walks', walkId), { extended: false, extendedStatus: null })
+    ));
+    await updateDoc(doc(db, 'submissions', submissionId), { status: 'declined', read: true });
+
+    closeModal('requestModal');
+    const msg = document.createElement('div');
+    msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#C17B6F;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
+    msg.textContent = 'Walk extension declined';
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 3000);
+  } catch (e) {
+    btn.textContent = 'Decline'; btn.disabled = false;
     alert('Error: ' + e.message);
   }
 };

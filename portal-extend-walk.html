@@ -230,7 +230,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { getFirestore, doc, getDoc, collection, query, where, getDocs, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { getFirestore, doc, getDoc, collection, query, where, getDocs, updateDoc, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
@@ -249,9 +249,11 @@ const PRICE = 12;
 const selected = new Set(); // walk IDs selected for extension
 let upcomingWalks = [];
 let memberData = null;
+let userId = null;
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.href = 'portal-login.html'; return; }
+  userId = user.uid;
 
   try {
     const memberSnap = await getDoc(doc(db, 'members', user.uid));
@@ -381,18 +383,42 @@ window.confirmExtensions = async () => {
   btn.textContent = 'Saving…';
 
   try {
+    const walkIds = Array.from(selected);
+
+    // Show 45 minutes on the member's calendar right away — but as
+    // pending, not confirmed. The actual $12/walk charge and confirmation
+    // happen once admin reviews it (see confirmWalkExtension() in
+    // admin/dashboard.html), same as overnight/service requests.
     await Promise.all(
-      Array.from(selected).map(walkId =>
+      walkIds.map(walkId =>
         updateDoc(doc(db, 'walks', walkId), {
           extended: true,
+          extendedStatus: 'pending',
           duration: '45-minute walk',
         })
       )
     );
 
+    await addDoc(collection(db, 'submissions'), {
+      type: 'walk_extension',
+      memberId: userId,
+      memberName: memberData?.name || '',
+      // chargeSavedCard looks up the card via this submission doc's
+      // stripeCustomerId — copy it from the member's own record since,
+      // unlike a public request form, no createSetupIntent runs here.
+      stripeCustomerId: memberData?.stripeCustomerId || null,
+      walkIds,
+      count: walkIds.length,
+      pricePerWalk: PRICE,
+      estimatedTotal: walkIds.length * PRICE,
+      status: 'pending',
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+
     const n = document.createElement('div');
     n.className = 'notification';
-    n.textContent = `${selected.size} walk${selected.size > 1 ? 's' : ''} upgraded to 45 minutes.`;
+    n.textContent = `${walkIds.length} walk${walkIds.length > 1 ? 's' : ''} upgraded to 45 minutes — pending confirmation.`;
     document.body.appendChild(n);
     setTimeout(() => {
       n.style.opacity = '0';

@@ -499,7 +499,7 @@
       container.innerHTML = filtered.map(w => {
         const date = w.date?.toDate?.() || new Date(w.date);
         const dateStr = monthNames[date.getMonth()] + ' ' + date.getDate() + ', ' + date.getFullYear();
-        const duration = w.extended ? '45-minute walk' : (w.duration || '30-minute walk');
+        const duration = (w.extended ? '45-minute walk' : (w.duration || '30-minute walk')) + (w.extended && w.extendedStatus === 'pending' ? ' (pending confirmation)' : '');
         const slot = slotLabel[w.timeSlot] || w.timeSlot || '';
         return '<div class="visit-report" data-month="' + (date.getMonth()+1) + '" data-year="' + date.getFullYear() + '">' +
           '<div class="report-header">' +
