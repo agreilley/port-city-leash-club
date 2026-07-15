@@ -145,10 +145,10 @@
 
   /* ── WALKER AVAILABILITY GRID ── */
   .availability-grid { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; overflow: hidden; }
-  .availability-header { display: grid; grid-template-columns: 160px repeat(5, 1fr); background: var(--sand); border-bottom: 1px solid rgba(0,0,0,0.07); }
+  .availability-header { display: grid; grid-template-columns: 160px repeat(7, 1fr); background: var(--sand); border-bottom: 1px solid rgba(0,0,0,0.07); }
   .availability-header-cell { padding: 10px; font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-light); text-align: center; }
   .availability-header-cell:first-child { text-align: left; padding-left: 16px; }
-  .availability-row { display: grid; grid-template-columns: 160px repeat(5, 1fr); border-bottom: 1px solid rgba(0,0,0,0.05); }
+  .availability-row { display: grid; grid-template-columns: 160px repeat(7, 1fr); border-bottom: 1px solid rgba(0,0,0,0.05); }
   .availability-row:last-child { border-bottom: none; }
   .availability-walker { padding: 12px 16px; font-size: 13px; font-weight: 500; color: var(--navy); display: flex; align-items: center; gap: 8px; }
   .walker-dot { width: 10px; height: 10px; border-radius: 50%; }
@@ -446,6 +446,8 @@
               <div class="availability-header-cell">Wed</div>
               <div class="availability-header-cell">Thu</div>
               <div class="availability-header-cell">Fri</div>
+              <div class="availability-header-cell">Sat</div>
+              <div class="availability-header-cell">Sun</div>
             </div>
             <div id="availabilityGrid"><div style="padding:20px;text-align:center;color:var(--text-light);">Loading...</div></div>
           </div>
@@ -563,6 +565,15 @@
     <button class="modal-close" onclick="closeModal('memberDetailModal')">×</button>
     <div class="modal-title" id="memberDetailModalTitle">Member Details</div>
     <div id="memberDetailModalContent"></div>
+  </div>
+</div>
+
+<!-- WALKER DETAIL MODAL (read-only fields + editable availability/overnight) -->
+<div class="modal-overlay" id="walkerDetailModal">
+  <div class="modal" style="max-width:640px;">
+    <button class="modal-close" onclick="closeModal('walkerDetailModal')">×</button>
+    <div class="modal-title" id="walkerDetailModalTitle">Walker Details</div>
+    <div id="walkerDetailModalContent"></div>
   </div>
 </div>
 
@@ -722,7 +733,7 @@ import { getAuth, onAuthStateChanged, signOut as fbSignOut } from 'https://www.g
 import {
   getFirestore, collection, query, orderBy, onSnapshot,
   doc, getDoc, getDocs, addDoc, updateDoc, setDoc, where,
-  serverTimestamp, Timestamp
+  serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 
@@ -1174,8 +1185,8 @@ function renderWalkersTable() {
 function renderAvailabilityGrid() {
   const container = document.getElementById('availabilityGrid');
   if (!allWalkers.length) { container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-light);">No walkers yet.</div>'; return; }
-  const days = ['mon','tue','wed','thu','fri'];
-  const dayLabels = ['Mon','Tue','Wed','Thu','Fri'];
+  const days = ['mon','tue','wed','thu','fri','sat','sun'];
+  const dayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const slots = ['morning','early-afternoon','late-afternoon'];
   const dotColors = ['#C17B6F','#8FA8A2','#2D6A40','#3730A3','#92400E'];
 
@@ -1395,7 +1406,8 @@ window.createWalkerAccount = async () => {
     const walkerData = {
       name, email, phone, uid, walkerId,
       zones, status: 'active', weeklyTarget: 20,
-      availability: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] }
+      availability: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] },
+      availableForOvernights: false
     };
 
     // Save at human-readable ID (used by walks collection as walkerId)
@@ -2220,7 +2232,87 @@ window.openMemberDetail = (id) => {
   `;
   document.getElementById('memberDetailModal').classList.add('open');
 };
-window.openWalkerDetail = (id) => {};
+window.openWalkerDetail = (id) => {
+  const walker = allWalkers.find(w => w.id === id);
+  if (!walker) return;
+
+  const upcomingCount = allWalks.filter(w => w.walkerId === walker.id && w.status === 'scheduled').length;
+
+  const fields = [
+    { label: 'Name', value: walker.name || '–' },
+    { label: 'Email', value: walker.email || '–' },
+    { label: 'Phone', value: walker.phone || '–' },
+    { label: 'Zones', value: (walker.zones || []).join(', ') || '–' },
+    { label: 'Status', value: walker.status ? walker.status.charAt(0).toUpperCase() + walker.status.slice(1) : '–' },
+    { label: 'Weekly Target', value: walker.weeklyTarget != null ? `${walker.weeklyTarget} walks/week` : '–' },
+    { label: 'Upcoming Assigned Walks', value: String(upcomingCount) },
+  ];
+  const fieldHTML = fields.map(f =>
+    `<div class="modal-field"><div class="modal-label">${escapeHtml(f.label)}</div><div class="modal-value">${escapeHtml(f.value)}</div></div>`
+  ).join('');
+
+  const days = ['mon','tue','wed','thu','fri','sat','sun'];
+  const dayLabels = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
+  const slots = ['morning', 'early-afternoon', 'late-afternoon'];
+  const slotLabels = { morning: 'Morning', 'early-afternoon': 'Early Aft.', 'late-afternoon': 'Late Aft.' };
+  const avail = walker.availability || {};
+
+  const gridHTML = `
+    <div style="display:grid;grid-template-columns:90px repeat(3,1fr);gap:6px;align-items:center;">
+      <div></div>
+      ${slots.map(s => `<div style="font-size:11px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--text-light);text-align:center;">${slotLabels[s]}</div>`).join('')}
+      ${days.map(day => `
+        <div style="font-size:12px;color:var(--navy);">${dayLabels[day]}</div>
+        ${slots.map(slot => `
+          <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;">
+            <input type="checkbox" id="wd-${day}-${slot}" ${(avail[day] || []).includes(slot) ? 'checked' : ''} style="accent-color:var(--seafoam);">
+          </label>`).join('')}
+      `).join('')}
+    </div>`;
+
+  document.getElementById('walkerDetailModalTitle').textContent = walker.name || 'Walker Details';
+  document.getElementById('walkerDetailModalContent').innerHTML = `
+    <div class="form-grid">${fieldHTML}</div>
+    <hr class="modal-divider">
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Availability</div>
+    ${gridHTML}
+    <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:var(--navy);cursor:pointer;">
+      <input type="checkbox" id="wd-overnight" ${walker.availableForOvernights ? 'checked' : ''} style="accent-color:var(--seafoam);">
+      Available for overnight stays
+    </label>
+    <div id="wd-save-status" style="font-size:12px;color:var(--text-light);margin-top:10px;min-height:16px;"></div>
+    <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="saveWalkerSchedule('${walker.id}','${walker.uid}')">Save Schedule</button>
+  `;
+  document.getElementById('walkerDetailModal').classList.add('open');
+};
+
+window.saveWalkerSchedule = async (walkerId, uid) => {
+  const days = ['mon','tue','wed','thu','fri','sat','sun'];
+  const slots = ['morning', 'early-afternoon', 'late-afternoon'];
+  const availability = {};
+  days.forEach(day => {
+    availability[day] = slots.filter(slot => document.getElementById(`wd-${day}-${slot}`).checked);
+  });
+  const availableForOvernights = document.getElementById('wd-overnight').checked;
+
+  const statusEl = document.getElementById('wd-save-status');
+  statusEl.textContent = 'Saving...';
+  statusEl.style.color = 'var(--text-light)';
+
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'walkers', walkerId), { availability, availableForOvernights });
+    if (uid && uid !== walkerId && uid !== 'undefined') {
+      batch.update(doc(db, 'walkers', uid), { availability, availableForOvernights });
+    }
+    await batch.commit();
+    statusEl.textContent = 'Saved.';
+    statusEl.style.color = 'var(--green)';
+  } catch (e) {
+    statusEl.textContent = `Failed to save: ${e.message}`;
+    statusEl.style.color = '#991B1B';
+  }
+};
 
 window.closeModal = (id) => {
   document.getElementById(id).classList.remove('open');

@@ -780,6 +780,10 @@ function renderSchedule() {
       <div style="font-size:12px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);margin-bottom:4px;">Assigned Zones</div>
       <div style="font-size:14px;color:var(--navy);font-weight:500;">${zones.join(', ')}</div>
     </div>` : ''}
+    <div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:14px 18px;margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);margin-bottom:4px;">Overnight Stays</div>
+      <div style="font-size:14px;color:${walkerDoc.availableForOvernights ? 'var(--green)' : 'var(--text-light)'};font-weight:500;">${walkerDoc.availableForOvernights ? 'Available' : 'Not available'}</div>
+    </div>
     <div style="display:grid;gap:8px;">
       ${days.map(d => {
         const daySlots = avail[d.key] || [];
