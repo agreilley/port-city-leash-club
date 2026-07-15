@@ -409,10 +409,13 @@
 
     <!-- Pause Details -->
     <div id="pauseDetails" style="display: none;">
+      <div class="form-group">
+        <label>Pause starts</label>
+        <input type="date" id="pauseStart" onchange="updateResumeDate()" style="width: 100%; padding: 10px; border: 0.5px solid #ddd; border-radius: 8px; font-size: 14px;">
+      </div>
+      <input type="hidden" id="pauseEnd">
       <div class="date-info">
-        <p>Pause starts</p>
-        <div class="date-value" id="pauseStartDate">Today</div>
-        <p style="margin-top: 8px; margin-bottom: 0;">Walks resume</p>
+        <p>Walks resume</p>
         <div class="date-value" id="pauseResumeDate">N/A</div>
       </div>
 
@@ -460,7 +463,6 @@
 
   <script>
     let selectedDuration = null;
-    const today = new Date(2026, 5, 20); // June 20, 2026 (demo date)
 
     function selectDuration(weeks, element) {
       selectedDuration = weeks;
@@ -475,42 +477,29 @@
       document.getElementById('pauseDetails').style.display = 'block';
       document.getElementById('noDurationMessage').style.display = 'none';
 
-      // Calculate dates
-      const pauseStart = new Date(today);
-      const pauseResume = new Date(today);
-      pauseResume.setDate(pauseResume.getDate() + weeks * 7);
-
-      // Format dates
-      const startDateStr = pauseStart.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-      const resumeDateStr = pauseResume.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-
-      document.getElementById('pauseStartDate').textContent = startDateStr;
-      document.getElementById('pauseResumeDate').textContent = resumeDateStr;
-    }
-
-    function confirmPause() {
-      if (!selectedDuration) {
-        showNotification('Please select a duration', 'error');
-        return;
+      // Default the start date to today, but don't clobber a start date
+      // the member already picked when just switching duration cards.
+      const startInput = document.getElementById('pauseStart');
+      if (!startInput.value) {
+        startInput.value = new Date().toISOString().slice(0, 10);
       }
 
-      const reason = document.getElementById('pauseReason').value;
-      const pauseResume = new Date(today);
-      pauseResume.setDate(pauseResume.getDate() + selectedDuration * 7);
-      const resumeDateStr = pauseResume.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      updateResumeDate();
+    }
 
-      // Show success message
-      document.getElementById('resumeDate').textContent = resumeDateStr;
-      document.getElementById('successMessage').classList.add('show');
+    function updateResumeDate() {
+      if (!selectedDuration) return;
+      const startInput = document.getElementById('pauseStart');
+      if (!startInput.value) return;
 
-      // Hide form
-      document.getElementById('pauseDetails').style.display = 'none';
+      const [y, m, d] = startInput.value.split('-').map(Number);
+      const pauseResume = new Date(Date.UTC(y, m - 1, d));
+      pauseResume.setUTCDate(pauseResume.getUTCDate() + selectedDuration * 7);
 
-      // Show confirmation
-      setTimeout(() => {
-        showNotification(`Membership paused until ${resumeDateStr}`);
-        setTimeout(() => window.history.back(), 1500);
-      }, 2000);
+      const endStr = pauseResume.toISOString().slice(0, 10);
+      document.getElementById('pauseEnd').value = endStr;
+      document.getElementById('pauseResumeDate').textContent =
+        pauseResume.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
     }
 
     function cancelPause() {
@@ -521,6 +510,8 @@
       document.getElementById('pauseDetails').style.display = 'none';
       document.getElementById('noDurationMessage').style.display = 'block';
       document.getElementById('successMessage').classList.remove('show');
+      document.getElementById('pauseStart').value = '';
+      document.getElementById('pauseEnd').value = '';
     }
 
     // Custom notification function
@@ -548,11 +539,13 @@
 <script type="module">
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { getFirestore, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
 const app = getApps().find(a => a.name === 'member-app') || initializeApp(cfg, 'member-app');
 const auth = getAuth(app);
 const db = getFirestore(app);
+const fns = getFunctions(app);
 let userId = null, memberData = null;
 
 onAuthStateChanged(auth, async (user) => {
@@ -586,30 +579,21 @@ function loadPageData() {
 }
 
 window.submitPause = async (startDate, endDate) => {
-  if (!userId) return;
+  if (!userId || !startDate || !endDate) return;
+  const btn = document.getElementById('confirmButton');
+  btn.disabled = true; btn.textContent = 'Confirming...';
   try {
-    await addDoc(collection(db, 'submissions'), {
-      type: 'pauseMembership',
-      memberId: userId,
-      memberName: memberData?.name || '',
-      pauseStartDate: Timestamp.fromDate(new Date(startDate)),
-      pauseEndDate: Timestamp.fromDate(new Date(endDate)),
-      status: 'pending',
-      read: false,
-      createdAt: serverTimestamp(),
-    });
-    await updateDoc(doc(db, 'members', userId), {
-      status: 'paused',
-      pauseStartDate: Timestamp.fromDate(new Date(startDate)),
-      pauseEndDate: Timestamp.fromDate(new Date(endDate)),
-    });
+    const submitVacationHold = httpsCallable(fns, 'submitVacationHold');
+    await submitVacationHold({ pauseStartDate: startDate, pauseEndDate: endDate });
+
     const resumeEl = document.getElementById('resumeDate');
-    if (resumeEl) resumeEl.textContent = new Date(endDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-    const confirmation = document.getElementById('pauseConfirmation');
-    if (confirmation) confirmation.style.display = 'block';
-    const form = document.getElementById('pauseForm');
-    if (form) form.style.display = 'none';
-  } catch(e) { alert('Error: ' + e.message); }
+    if (resumeEl) resumeEl.textContent = new Date(endDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    document.getElementById('successMessage').classList.add('show');
+    document.getElementById('pauseDetails').style.display = 'none';
+  } catch(e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false; btn.textContent = 'Confirm Pause';
+  }
 };
 
 </script>

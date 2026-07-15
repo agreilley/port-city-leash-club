@@ -79,6 +79,43 @@ function countWalkDaysInMonth(walkDays, year, monthIndex, fromDay = 1) {
   return datesMatchingWeekdaysInMonth(walkDays, year, monthIndex, fromDay).length;
 }
 
+// Strict "YYYY-MM-DD" parser used for member-supplied dates (vacation hold).
+// Rejects anything that isn't that exact format AND rejects calendar dates
+// that don't actually exist (e.g. "2026-02-30") by round-tripping through
+// Date.UTC and checking the parts survived unchanged — new Date(str) alone
+// would silently normalize an invalid date instead of catching it. Returns
+// noon UTC (not midnight) for the same day-shift-avoidance reason
+// generateWalksForMember uses noon for its own dates.
+function parseIsoDateStrict(str) {
+  if (typeof str !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(str)) return null;
+  const [year, month, day] = str.split('-').map(Number);
+  const d = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return null;
+  return d;
+}
+
+// All (docId, dateStr, year, monthIndex) tuples for a member's scheduled
+// walk days falling within [startDate, endDate] inclusive, spanning month
+// boundaries if needed — used by submitVacationHold to find already-
+// generated walk docs to delete. Deliberately reuses the exact docId
+// scheme generateWalksForMember uses (${memberId}_${dateStr}) so the two
+// can never disagree about which document a given date maps to.
+function walkDocIdsInRange(memberId, walkDays, startDate, endDate) {
+  const targetDayNumbers = new Set((walkDays || []).map(d => WEEKDAY_NUMBERS[(d || '').toLowerCase()]).filter(n => n !== undefined));
+  const results = [];
+  if (!targetDayNumbers.size) return results;
+  const cur = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), startDate.getUTCDate()));
+  const end = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate()));
+  while (cur <= end) {
+    if (targetDayNumbers.has(cur.getUTCDay())) {
+      const dateStr = `${cur.getUTCFullYear()}-${String(cur.getUTCMonth() + 1).padStart(2, '0')}-${String(cur.getUTCDate()).padStart(2, '0')}`;
+      results.push({ docId: `${memberId}_${dateStr}`, dateStr, year: cur.getUTCFullYear(), monthIndex: cur.getUTCMonth() });
+    }
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return results;
+}
+
 // Convert a wall-clock date/time in America/New_York to the equivalent UTC
 // Date, accounting for EDT/EST automatically — Stripe's billing_cycle_anchor
 // is a literal UTC instant, not a timezone-aware "local" time, so a fixed
@@ -490,6 +527,224 @@ exports.resumePausedMemberships = onSchedule({
     } else if (result.failed > 0) {
       console.error(`resumePausedMemberships: member ${memberDoc.id} had ${result.failed} failed walk(s) in supplemental generation`);
     }
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VACATION HOLD — self-service, no admin approval gate (per business
+// decision, July 2026; no policy-limit enforcement yet either — that's a
+// deliberate later addition, not an oversight here). First member-facing
+// (non-admin) callable in this app, and the first code in this file that
+// issues a Stripe refund.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Called by portal-pause-membership.html instead of writing to Firestore
+// directly — the old direct-write version silently corrupted pauseEndDate
+// on bad input (see investigation notes) and never cleaned up already-
+// generated walks in the hold window. This does both in one place:
+//   1. Validates real dates, end after start.
+//   2. Pauses the member and deletes already-generated walk docs inside
+//      the hold window, atomically (one batch — never leaves the member
+//      paused with stale walks still sitting there, or vice versa).
+//   3. If any of those deleted walks were in the CURRENT, already-billed
+//      calendar month, flags a suggested refund for admin review — never
+//      auto-refunds.
+exports.submitVacationHold = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'You must be signed in.');
+  }
+  const memberId = request.auth.uid;
+
+  const { pauseStartDate, pauseEndDate } = request.data || {};
+  const startDate = parseIsoDateStrict(pauseStartDate);
+  const endDate = parseIsoDateStrict(pauseEndDate);
+  if (!startDate || !endDate) {
+    throw new HttpsError('invalid-argument', 'pauseStartDate and pauseEndDate must be valid dates in YYYY-MM-DD format.');
+  }
+  if (endDate <= startDate) {
+    throw new HttpsError('invalid-argument', 'pauseEndDate must be after pauseStartDate.');
+  }
+
+  const memberRef = db.collection('members').doc(memberId);
+  const memberSnap = await memberRef.get();
+  if (!memberSnap.exists) {
+    throw new HttpsError('not-found', 'Member record not found.');
+  }
+  const member = memberSnap.data();
+
+  const candidates = walkDocIdsInRange(memberId, member.defaultWalkDays, startDate, endDate);
+  const walkRefs = candidates.map(c => db.collection('walks').doc(c.docId));
+  const walkSnaps = walkRefs.length ? await db.getAll(...walkRefs) : [];
+
+  const now = new Date();
+  const currentYear = now.getUTCFullYear();
+  const currentMonth = now.getUTCMonth();
+
+  const batch = db.batch();
+  batch.update(memberRef, {
+    status: 'paused',
+    pauseStartDate: Timestamp.fromDate(startDate),
+    pauseEndDate: Timestamp.fromDate(endDate),
+  });
+
+  let cancelledCount = 0;
+  let currentPeriodCount = 0;
+  const currentPeriodDates = [];
+
+  walkSnaps.forEach((snap, i) => {
+    if (!snap.exists) return;
+    const walk = snap.data();
+    if (walk.status === 'completed') return; // never touch history
+    batch.delete(snap.ref);
+    cancelledCount++;
+    const c = candidates[i];
+    if (c.year === currentYear && c.monthIndex === currentMonth) {
+      currentPeriodCount++;
+      currentPeriodDates.push(c.dateStr);
+    }
+  });
+
+  await batch.commit();
+
+  // Suggest a refund only if some of the cancelled walks were already part
+  // of a month that's been synced/billed to Stripe, and only if this member
+  // actually has an active subscription (Travel-tier/no-subscription
+  // members have nothing to refund). Never auto-refunds — this only ever
+  // creates a submission for admin to review.
+  let suggestedRefundAmount = 0;
+  if (currentPeriodCount > 0 && member.stripeSubscriptionItemId && member.stripeSubscriptionId) {
+    const priceId = TIER_PRICE_IDS[member.tier];
+    if (priceId) {
+      const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+      const price = await stripe.prices.retrieve(priceId);
+      const perWalkRate = (price.unit_amount || 0) / 100;
+      suggestedRefundAmount = Math.round(currentPeriodCount * perWalkRate * 100) / 100;
+
+      await db.collection('submissions').add({
+        type: 'vacation_hold_refund',
+        memberId,
+        memberName: member.name || '',
+        status: 'pending',
+        read: false,
+        cancelledWalkCount: currentPeriodCount,
+        cancelledWalkDates: currentPeriodDates,
+        suggestedRefundAmount,
+        stripeCustomerId: member.stripeCustomerId || '',
+        stripeSubscriptionId: member.stripeSubscriptionId || '',
+        refundPeriodYear: currentYear,
+        refundPeriodMonth: currentMonth,
+        pauseStartDate: Timestamp.fromDate(startDate),
+        pauseEndDate: Timestamp.fromDate(endDate),
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
+  // Informational record only — already took effect above, nothing for
+  // admin to approve/decline. status: 'applied' (not 'pending') so it
+  // doesn't show up looking like it's awaiting action.
+  await db.collection('submissions').add({
+    type: 'pauseMembership',
+    memberId,
+    memberName: member.name || '',
+    pauseStartDate: Timestamp.fromDate(startDate),
+    pauseEndDate: Timestamp.fromDate(endDate),
+    status: 'applied',
+    read: false,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  return { success: true, cancelledWalkCount: cancelledCount, suggestedRefundAmount };
+});
+
+// Admin-triggered — refunds part of an already-paid invoice for walks
+// cancelled by a vacation hold. amountInDollars is always an admin-
+// confirmed value (see confirmVacationHoldRefund in admin/dashboard.html),
+// never the raw suggestedRefundAmount applied automatically.
+//
+// Double-refund guard: the status flip from 'pending' to 'processing'
+// happens inside a Firestore transaction before any Stripe call. Firestore
+// transactions serialize the read+write, so if "Confirm & Refund" is
+// clicked twice (double-click, two admin tabs), only one call ever
+// observes status === 'pending' — the other's transaction re-reads after
+// the first commits and sees 'processing', so it throws instead of
+// refunding twice. If the Stripe call itself fails after the claim
+// succeeds, the status is reverted to 'pending' so admin can retry rather
+// than the submission getting stuck forever.
+exports.issueRefund = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  await assertIsAdmin(request.auth);
+
+  const { submissionId, amountInDollars, description } = request.data || {};
+  if (!submissionId || !(amountInDollars > 0)) {
+    throw new HttpsError('invalid-argument', 'submissionId and a positive amountInDollars are required.');
+  }
+
+  const subRef = db.collection('submissions').doc(submissionId);
+
+  let sub;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(subRef);
+    if (!snap.exists) throw new HttpsError('not-found', 'Submission not found.');
+    sub = snap.data();
+    if (sub.status !== 'pending') {
+      throw new HttpsError('failed-precondition', 'This refund has already been processed or declined.');
+    }
+    tx.update(subRef, { status: 'processing' });
+  });
+
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+
+  try {
+    if (!sub.stripeSubscriptionId || sub.refundPeriodYear == null || sub.refundPeriodMonth == null) {
+      throw new HttpsError('failed-precondition', 'This submission is missing subscription/period data needed to locate a charge.');
+    }
+
+    // Match the invoice by its billing period, not by recency — "most
+    // recent paid invoice" would silently grab the WRONG invoice if admin
+    // doesn't confirm this until after the next month's invoice has fired.
+    // If nothing matches the stored period, this throws rather than
+    // falling back to any other invoice.
+    const periodStart = Math.floor(Date.UTC(sub.refundPeriodYear, sub.refundPeriodMonth, 1) / 1000);
+    const periodEnd = Math.floor(Date.UTC(sub.refundPeriodYear, sub.refundPeriodMonth + 1, 1) / 1000);
+
+    const invoices = await stripe.invoices.list({ subscription: sub.stripeSubscriptionId, status: 'paid', limit: 100 });
+    const invoice = invoices.data.find(inv => inv.period_start >= periodStart && inv.period_start < periodEnd);
+
+    if (!invoice) {
+      throw new HttpsError(
+        'failed-precondition',
+        `No paid invoice found for this member's ${sub.refundPeriodMonth + 1}/${sub.refundPeriodYear} billing period on subscription ${sub.stripeSubscriptionId} — cannot determine which charge to refund. Refund manually in Stripe if the charge exists under a different period.`
+      );
+    }
+
+    const chargeRef = invoice.payment_intent
+      ? { payment_intent: typeof invoice.payment_intent === 'string' ? invoice.payment_intent : invoice.payment_intent.id }
+      : invoice.charge
+        ? { charge: typeof invoice.charge === 'string' ? invoice.charge : invoice.charge.id }
+        : null;
+    if (!chargeRef) {
+      throw new HttpsError('failed-precondition', 'Matched invoice has no associated charge or payment intent to refund.');
+    }
+
+    const refund = await stripe.refunds.create({
+      ...chargeRef,
+      amount: Math.round(amountInDollars * 100),
+      reason: 'requested_by_customer',
+      metadata: { submissionId, description: description || 'Vacation hold refund' },
+    });
+
+    await subRef.update({
+      status: 'confirmed',
+      refundId: refund.id,
+      refundedAmount: amountInDollars,
+      refundedAt: FieldValue.serverTimestamp(),
+    });
+
+    return { success: true, refundId: refund.id };
+  } catch (e) {
+    await subRef.update({ status: 'pending' }).catch(() => {});
+    if (e instanceof HttpsError) throw e;
+    throw new HttpsError('internal', e.message);
   }
 });
 
