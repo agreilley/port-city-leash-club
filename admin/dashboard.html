@@ -104,7 +104,7 @@
   .status-badge.completed { background: var(--sand); color: var(--text-light); }
   .btn-sm { padding: 4px 10px; font-size: 12px; border-radius: 3px; cursor: pointer; font-family: 'DM Sans', sans-serif; border: none; font-weight: 500; }
   .btn-sm.assign { background: var(--navy); color: white; }
-  .btn-sm.view { background: transparent; border: 1px solid rgba(0,0,0,0.12); color: var(--text-mid); }
+  .btn-sm.view-btn { background: transparent; border: 1px solid rgba(0,0,0,0.12); color: var(--text-mid); }
 
   /* ── REQUESTS ── */
   .request-filters { display: flex; gap: 8px; margin-bottom: 20px; }
@@ -1158,7 +1158,7 @@ function renderWalkersTable() {
       <td data-label="Walks/Week Target">${w.weeklyTarget || '–'}</td>
       <td data-label="Walks This Week">${thisWeek}</td>
       <td data-label="Status"><span class="status-badge ${w.status === 'active' ? 'active' : 'pending'}">${w.status || 'active'}</span></td>
-      <td data-label=""><button class="btn-sm view" onclick="openWalkerDetail('${w.id}')">View</button></td>
+      <td data-label=""><button class="btn-sm view-btn" onclick="openWalkerDetail('${w.id}')">View</button></td>
     </tr>`;
   }).join('');
 }
@@ -1205,7 +1205,7 @@ function renderMembersTable(filter = '') {
       <td data-label="Walks/Month">${m.walksThisMonth || 0}</td>
       <td data-label="Walker">${walker?.name || '–'}</td>
       <td data-label="Member Since">${since}</td>
-      <td data-label=""><button class="btn-sm view" onclick="openMemberDetail('${m.id}')">View</button></td>
+      <td data-label=""><button class="btn-sm view-btn" onclick="openMemberDetail('${m.id}')">View</button></td>
     </tr>`;
   }).join('');
 }
