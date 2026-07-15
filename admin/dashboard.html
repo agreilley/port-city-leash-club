@@ -782,6 +782,13 @@ function memberDogNames(member) {
   return getMemberDogs(member).map(d => d.name).filter(Boolean).join(', ');
 }
 
+// Shared by openAddMemberModal and openAddWalkerModal — same auto-generated
+// starting point for a new account's temp password. Shown once on the
+// success screen, never written to Firestore, editable before saving.
+function generateTempPassword() {
+  return 'PCLC' + Math.random().toString(36).slice(2, 8);
+}
+
 // ── INIT ─────────────────────────────────────────────────────────────────────
 function initDashboard() {
   subscribeWalks();
@@ -1969,8 +1976,7 @@ window.openAddMemberModal = (prefill, submissionId) => {
   document.getElementById('am-email').value = prefill?.email || '';
   document.getElementById('am-phone').value = prefill?.phone || '';
   // Generate a simple default password — admin can change it before saving
-  const defaultPass = 'PCLC' + Math.random().toString(36).slice(2, 8);
-  document.getElementById('am-password').value = defaultPass;
+  document.getElementById('am-password').value = generateTempPassword();
   const validTiers = ['Essential','Standard','Daily','Travel'];
   const tierUnclear = !!prefill?.plan && !validTiers.includes(prefill.plan); // e.g. "Not sure yet"
   const tierSelect = document.getElementById('am-tier');
@@ -2148,7 +2154,9 @@ window.openAddWalkerModal = (prefill, submissionId) => {
   document.getElementById('aw-last').value = nameParts.slice(1).join(' ') || '';
   document.getElementById('aw-email').value = prefill?.email || '';
   document.getElementById('aw-phone').value = prefill?.phone || '';
-  document.getElementById('aw-password').value = '';
+  // Same auto-generated starting point as openAddMemberModal — admin can
+  // change it before saving.
+  document.getElementById('aw-password').value = generateTempPassword();
   document.getElementById('aw-zones').value = prefill?.neighborhood || '';
   document.getElementById('addWalkerModal').classList.add('open');
 };
