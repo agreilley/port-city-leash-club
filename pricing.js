@@ -40,11 +40,10 @@ export function getDaysBetween(start, end) {
 }
 
 // Computes the total for a one-time service (walk, drop-in visit, or
-// overnight stay). Covers both existing call shapes: service-request.html
-// knows a real pet count (petCount, from its dogs[] list); portal-request-
-// extras.html only has a member-checked boolean (extraPet) since it never
-// captured an actual pet count. Pass whichever one the caller has — extraPet
-// takes precedence if both are given.
+// overnight stay). Both service-request.html and portal-request-extras.html
+// use the same shape here: extraPet/medication are plain member-checked
+// booleans, not derived from pet count — a household's dogs[] list is
+// profile data, not a pricing input.
 //
 // Extra-pet and medication add-ons only apply to night-based services
 // (drop-in visits, overnight stays) — a plain walk doesn't involve watching
@@ -55,8 +54,7 @@ export function calculateServiceTotal({
   startDate = null,
   endDate = null,
   visitsPerDay = 1,
-  petCount = 1,
-  extraPet = null,
+  extraPet = false,
   medication = false,
 } = {}) {
   const key = resolveServiceKey(serviceKey);
@@ -69,7 +67,7 @@ export function calculateServiceTotal({
   const unitCount = isNightService ? (isDropIn ? days * Math.max(visitsPerDay, 1) : days) : 1;
   const serviceTotal = info.price * unitCount;
 
-  const hasExtraPet = isNightService && (extraPet != null ? extraPet : petCount > 1);
+  const hasExtraPet = isNightService && extraPet;
   const hasMedication = isNightService && medication;
   const multiplier = Math.max(days, 1);
   const extraPetTotal = hasExtraPet ? EXTRA_PET_FEE * multiplier : 0;

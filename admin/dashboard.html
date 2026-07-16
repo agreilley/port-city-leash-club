@@ -1702,7 +1702,6 @@ window.openRequestItem = async (id) => {
 // recalculating live via the shared pricing module (pricing.js), rather
 // than admin blindly overriding a single dollar figure with no context.
 
-let _reviewPets = [];       // service_request only — {name} rows
 let _reviewWalkIds = [];    // walk_extension only — the request's original walkIds
 let _reviewTotalTouched = false; // overnight_request only — has admin manually edited the override total?
 
@@ -1722,39 +1721,17 @@ function renderReviewBreakdown(breakdown, total) {
 }
 
 // ── service_request review ──
-function collectReviewPets() {
-  return _reviewPets.map((_, i) => ({ name: document.getElementById(`rev-pet-${i}`)?.value.trim() || '' }));
-}
-
-function renderReviewPetRows() {
-  document.getElementById('rev-pet-rows').innerHTML = _reviewPets.map((p, i) => `
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
-      <input type="text" id="rev-pet-${i}" value="${escapeHtml(p.name)}" placeholder="Pet name" oninput="reviewRecalcService()" style="flex:1;padding:8px 10px;border:1px solid rgba(0,0,0,0.14);border-radius:4px;font-size:13px;font-family:'DM Sans',sans-serif;">
-      ${_reviewPets.length > 1 ? `<button type="button" onclick="removeReviewPetRow(${i})" style="background:none;border:none;color:var(--rust);font-size:12px;cursor:pointer;">Remove</button>` : ''}
-    </div>
-  `).join('');
-}
-
-window.addReviewPetRow = () => {
-  _reviewPets = collectReviewPets();
-  _reviewPets.push({ name: '' });
-  renderReviewPetRows();
-  reviewRecalcService();
-};
-window.removeReviewPetRow = (i) => {
-  _reviewPets = collectReviewPets();
-  _reviewPets.splice(i, 1);
-  renderReviewPetRows();
-  reviewRecalcService();
-};
-
+// extraPet/medication are plain checkboxes here, matching
+// renderOvernightReview exactly — pet count doesn't drive pricing (see
+// pricing.js). dogs[] (item.dogs) is pet profile data carried through to
+// the new member record as originally submitted, not something this
+// review UI edits.
 function renderServiceRequestReview(item) {
-  _reviewPets = (Array.isArray(item.dogs) && item.dogs.length ? item.dogs : [{ name: '' }]).map(d => ({ name: d.name || '' }));
-
   document.getElementById('requestModalContent').innerHTML = `
     <div class="form-grid">
       <div class="modal-field"><div class="modal-label">Owner</div><div class="modal-value">${escapeHtml(item.ownerName || '–')}${item.email ? ' · ' + escapeHtml(item.email) : ''}</div></div>
       <div class="modal-field"><div class="modal-label">Phone</div><div class="modal-value">${escapeHtml(item.phone || '–')}</div></div>
+      <div class="modal-field"><div class="modal-label">Pets</div><div class="modal-value">${(item.dogs || []).map(d => escapeHtml(d.name || 'Unnamed')).join(', ') || '–'}</div></div>
       <div class="form-field"><label>Service</label>
         <select id="rev-service" onchange="reviewRecalcService()">
           ${Object.entries(SERVICE_PRICES).map(([key, info]) => `<option value="${key}" ${item.service === key ? 'selected' : ''}>${info.name}</option>`).join('')}
@@ -1764,10 +1741,13 @@ function renderServiceRequestReview(item) {
       <div class="form-field"><label>Start Date</label><input type="date" id="rev-start" value="${toDateInputValue(item.startDate)}" onchange="reviewRecalcService()"></div>
       <div class="form-field" id="rev-end-field"><label>End Date</label><input type="date" id="rev-end" value="${toDateInputValue(item.endDate)}" onchange="reviewRecalcService()"></div>
     </div>
-    <div style="margin-top:16px;">
-      <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Pets</div>
-      <div id="rev-pet-rows"></div>
-      <button type="button" class="btn-secondary" style="padding:6px 14px;font-size:12px;" onclick="addReviewPetRow()">+ Add pet</button>
+    <div style="display:flex;gap:20px;margin-top:14px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;">
+        <input type="checkbox" id="rev-extra-pet" ${item.extraPet ? 'checked' : ''} onchange="reviewRecalcService()" style="accent-color:var(--seafoam);"> Extra pet
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;">
+        <input type="checkbox" id="rev-medication" ${item.medication ? 'checked' : ''} onchange="reviewRecalcService()" style="accent-color:var(--seafoam);"> Medication admin
+      </label>
     </div>
     <hr class="modal-divider">
     <div id="rev-breakdown" style="margin-bottom:8px;"></div>
@@ -1775,7 +1755,6 @@ function renderServiceRequestReview(item) {
       <span>Total</span><span id="rev-total">$0</span>
     </div>
   `;
-  renderReviewPetRows();
   reviewRecalcService();
 }
 
@@ -1787,13 +1766,14 @@ window.reviewRecalcService = () => {
   document.getElementById('rev-end-field').style.display = isWalk ? 'none' : 'flex';
   document.getElementById('rev-visits-field').style.display = isDropIn ? 'flex' : 'none';
 
-  _reviewPets = collectReviewPets();
   const visitsPerDay = isDropIn ? (parseInt(document.getElementById('rev-visits')?.value, 10) || 1) : 1;
   const startDate = document.getElementById('rev-start').value;
   const endDate = document.getElementById('rev-end').value;
+  const extraPet = document.getElementById('rev-extra-pet').checked;
+  const medication = document.getElementById('rev-medication').checked;
 
   const { total, breakdown } = calculateServiceTotal({
-    serviceKey: service, startDate, endDate, visitsPerDay, petCount: _reviewPets.length,
+    serviceKey: service, startDate, endDate, visitsPerDay, extraPet, medication,
   });
   renderReviewBreakdown(breakdown, total);
 };
@@ -1923,9 +1903,10 @@ async function chargeAndTrackPayment(submissionId, amountInDollars, description)
 // a new Travel-tier client record — per the "first booking creates the
 // account" design. Existing members/clients just get the request confirmed
 // without touching their existing tier. Reads the admin-reviewed/corrected
-// service/dates/pets from the review UI (renderServiceRequestReview) rather
-// than trusting the original submitted values — the correction flows into
-// both the new member's dogs[] and the recalculated charge amount.
+// service/dates/addons from the review UI (renderServiceRequestReview)
+// rather than trusting the original submitted values, so a correction
+// flows into the recalculated charge amount. dogs[] is carried through as
+// originally submitted — this review UI doesn't edit pet profile data.
 window.confirmServiceRequest = async (submissionId, item) => {
   const btn = document.getElementById('requestActionBtn');
   btn.textContent = 'Confirming…'; btn.disabled = true;
@@ -1934,10 +1915,11 @@ window.confirmServiceRequest = async (submissionId, item) => {
     const startDate = document.getElementById('rev-start')?.value || item.startDate;
     const endDate = document.getElementById('rev-end')?.value || item.endDate;
     const visitsPerDay = parseInt(document.getElementById('rev-visits')?.value, 10) || 1;
-    const reviewedDogs = collectReviewPets().filter(d => d.name);
-    const dogs = reviewedDogs.length ? reviewedDogs : (item.dogs || []);
+    const extraPet = document.getElementById('rev-extra-pet')?.checked || false;
+    const medication = document.getElementById('rev-medication')?.checked || false;
+    const dogs = item.dogs || [];
     const { total: amountInDollars } = calculateServiceTotal({
-      serviceKey: service, startDate, endDate, visitsPerDay, petCount: dogs.length || 1,
+      serviceKey: service, startDate, endDate, visitsPerDay, extraPet, medication,
     });
 
     let memberId = item.memberId || '';
@@ -1967,7 +1949,8 @@ window.confirmServiceRequest = async (submissionId, item) => {
       service,
       startDate,
       endDate,
-      dogs,
+      extraPet,
+      medication,
       estimatedTotal: amountInDollars,
       read: true,
     });

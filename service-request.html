@@ -339,9 +339,9 @@
         <div class="field full" id="addons-field" style="display:none;">
           <label>Add-ons</label>
           <div class="checkbox-row">
+            <label class="checkbox-pill"><input type="checkbox" name="addon-extra-pet" id="addon-extra-pet" onchange="updateAddons()"> Extra pet <span style="color:var(--text-light);margin-left:4px;">+$10</span></label>
             <label class="checkbox-pill"><input type="checkbox" name="addon-medication" id="addon-medication" onchange="updateAddons()"> Medication administration <span style="color:var(--text-light);margin-left:4px;">+$10</span></label>
           </div>
-          <div style="font-size:12px;color:var(--text-light);margin-top:6px;">Extra pet (+$10) is added automatically based on how many pets you add below.</div>
         </div>
         <div class="field full">
           <label for="care-notes">Care Notes</label>
@@ -587,7 +587,7 @@
     const isWalk    = service === 'standard-walk' || service === 'extended-walk';
     const isDropIn  = service === 'drop-in-visit';
     const visits    = isDropIn ? (parseInt(document.getElementById('visits').value, 10) || 1) : 1;
-    const petCount  = typeof petCardCount === 'function' ? petCardCount() : 1;
+    const extraPet  = document.getElementById('addon-extra-pet')?.checked || false;
     const medication = document.getElementById('addon-medication')?.checked || false;
 
     const { total: grandTotal, breakdown, days } = calculateServiceTotal({
@@ -595,7 +595,7 @@
       startDate: startInput.value,
       endDate: endInput.value,
       visitsPerDay: visits,
-      petCount,
+      extraPet,
       medication,
     });
     const serviceTotal = breakdown[0]?.amount ?? info.price;
@@ -627,8 +627,15 @@
   }
 
   window.updateAddons = function updateAddons() { updateSummary(); };
+  // addDog()/removeDog() (Pet Details script, still non-module) probe for
+  // this via `typeof updateSummary === 'function'` in the global scope —
+  // module top-level declarations don't leak to window automatically, so
+  // without this the probe silently evaluated to false and pet-list changes
+  // never triggered a recalc at all.
+  window.updateSummary = updateSummary;
 
   serviceSelect.addEventListener('change', updateServiceFields);
+  document.getElementById('addon-extra-pet')?.addEventListener('change', updateSummary);
   document.getElementById('addon-medication')?.addEventListener('change', updateSummary);
 
   updateServiceFields();
@@ -662,7 +669,7 @@
         startDate: startInput.value,
         endDate: endInput.value,
         visitsPerDay: document.getElementById('visits')?.value || '',
-        extraPet: (typeof petCardCount === 'function' && petCardCount() > 1),
+        extraPet: document.getElementById('addon-extra-pet')?.checked || false,
         medication: document.getElementById('addon-medication')?.checked || false,
         dogs: collectDogs(),
         ownerName,
