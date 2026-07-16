@@ -454,6 +454,13 @@
   <script>
     let allWalks = [];
 
+    // Walk notes are free text written by a walker (completeWalk() in
+    // walker/dashboard.html) and rendered here via innerHTML — unescaped,
+    // this is a stored-XSS path into a member's own browser the moment
+    // they open Walk History. Same escaping convention as esc() in
+    // walker/dashboard.html.
+    function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
     function filterWalks(period, button) {
       document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
       button.classList.add('active');
@@ -511,7 +518,7 @@
           '<div class="report-date">' + dateStr + '</div>' +
           '</div>' +
           '<div class="report-content">' +
-          (w.notes ? '<div class="report-text">' + w.notes + '</div>' : '<div class="report-text" style="color:#aaa;font-style:italic;">No notes for this walk.</div>') +
+          (w.notes ? '<div class="report-text">' + esc(w.notes) + '</div>' : '<div class="report-text" style="color:#aaa;font-style:italic;">No notes for this walk.</div>') +
           '<div class="report-meta" style="margin-top:12px;font-size:13px;color:#7A7A7A;">' + duration + '</div>' +
           '</div>' +
           '</div>';

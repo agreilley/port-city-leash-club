@@ -1335,19 +1335,26 @@ function renderRequests() {
   const shortDate = (val) => val?.toDate ? val.toDate().toLocaleDateString('en-US', {month:'short',day:'numeric'}) : '–';
   container.innerHTML = filtered.map(item => {
     const time = item.createdAt?.toDate?.() ? item.createdAt.toDate().toLocaleDateString('en-US', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '–';
-    const typeClass = item.type?.replace('_request','').replace('_','') || 'contact';
+    // This list renders the instant admin opens the Requests tab — no
+    // click needed — so it's an even more exposed surface than the detail
+    // modal. typeClass lands in a class="..." attribute, everything else
+    // in text content; both need escaping since item.type/name/email/etc.
+    // can originate from unauthenticated public forms.
+    const typeClass = escapeHtml(item.type?.replace('_request','').replace('_','') || 'contact');
     let preview;
-    if (item.type === 'walker_incident') preview = (item.message || '').slice(0, 80);
-    else if (item.type === 'pauseMembership') preview = `${shortDate(item.pauseStartDate)} – ${shortDate(item.pauseEndDate)}`;
-    else if (item.type === 'vacation_hold_refund') preview = `${item.cancelledWalkCount || 0} walk${item.cancelledWalkCount === 1 ? '' : 's'} · suggested $${item.suggestedRefundAmount || 0}`;
-    else preview = (item.email || '') + (item.dogName ? ' · ' + item.dogName : item.dogNames ? ' · ' + item.dogNames : '');
+    if (item.type === 'walker_incident') preview = escapeHtml((item.message || '').slice(0, 80));
+    else if (item.type === 'pauseMembership') preview = `${shortDate(item.pauseStartDate)} – ${shortDate(item.pauseEndDate)}`; // shortDate() output is always a safe locale date string
+    else if (item.type === 'vacation_hold_refund') preview = `${escapeHtml(item.cancelledWalkCount || 0)} walk${item.cancelledWalkCount === 1 ? '' : 's'} · suggested $${escapeHtml(item.suggestedRefundAmount || 0)}`;
+    else preview = escapeHtml(item.email || '') + (item.dogName ? ' · ' + escapeHtml(item.dogName) : item.dogNames ? ' · ' + escapeHtml(item.dogNames) : '');
+    // paymentStatus is only ever written by chargeAndTrackPayment (a fixed
+    // 'charged'/'skipped'/'failed' enum) — never user-supplied, safe as-is.
     const paymentBadge = item.paymentStatus && item.paymentStatus !== 'charged'
       ? `<span class="status-badge ${item.paymentStatus === 'failed' ? 'unassigned' : 'pending'}" title="Payment status: ${item.paymentStatus}">${item.paymentStatus === 'failed' ? 'Charge Failed' : 'Unpaid'}</span>`
       : '';
     return `<div class="list-row ${item.read ? '' : 'unread'}" onclick="openRequestItem('${item.id}')">
       <div class="request-meta">
-        <span class="request-type ${typeClass}">${typeLabels[item.type] || item.type}</span>
-        <span class="request-name">${item.name || item.ownerName || item.walkerName || item.memberName || 'Unknown'}</span>
+        <span class="request-type ${typeClass}">${escapeHtml(typeLabels[item.type] || item.type)}</span>
+        <span class="request-name">${escapeHtml(item.name || item.ownerName || item.walkerName || item.memberName || 'Unknown')}</span>
         ${paymentBadge}
         <span class="request-time">${time}</span>
       </div>
@@ -1723,6 +1730,33 @@ window.openRequestItem = async (id) => {
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
       ...(item.refundId ? [{ label: 'Refund ID', value: item.refundId }, { label: 'Refunded Amount', value: item.refundedAmount != null ? `$${item.refundedAmount}` : '–' }] : []),
     ];
+  } else if (item.type === 'application') {
+    // availability is the same {mon:[...], tue:[...], ...} shape a real
+    // walker doc uses — formatted here as "Monday: Morning, Late
+    // Afternoon" lines rather than falling into the generic field dump,
+    // which would just print "[object Object]" for it.
+    const dayLabels = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
+    const slotLabels = { morning: 'Morning', 'early-afternoon': 'Early Afternoon', 'late-afternoon': 'Late Afternoon' };
+    const availabilityDisplay = item.availability && typeof item.availability === 'object'
+      ? Object.entries(item.availability)
+          .filter(([, slots]) => Array.isArray(slots) && slots.length)
+          .map(([day, slots]) => `${dayLabels[day] || day}: ${slots.map(s => slotLabels[s] || s).join(', ')}`)
+          .join('; ') || 'None selected'
+      : '–';
+    fields = [
+      { label: 'Name', value: item.name || '–' },
+      { label: 'Email', value: item.email || '–' },
+      { label: 'Phone', value: item.phone || '–' },
+      { label: 'Neighborhood', value: item.neighborhood || '–' },
+      { label: 'Dog Experience', value: item.dogExperience || '–' },
+      { label: 'Experience', value: item.experience || '–' },
+      { label: 'Availability', value: availabilityDisplay },
+      { label: 'Walks/Week Desired', value: item.walksPerWeek || '–' },
+      { label: 'Transportation', value: item.transportation || '–' },
+      { label: 'Additional Notes', value: item.additional || '–' },
+      { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
+      { label: 'Submitted', value: fmtDate(item.createdAt) },
+    ];
   } else {
     // Generic — show all fields, formatted
     const hasDogsArray = Array.isArray(item.dogs) && item.dogs.length > 0;
@@ -1744,8 +1778,14 @@ window.openRequestItem = async (id) => {
       });
   }
 
+  // Escaped once here rather than in each of the ~9 branches above — every
+  // field value in this modal ultimately flows through this one join point,
+  // so this is the single place that has to be correct. Several submission
+  // types (membership_request, service_request, application, etc.) come
+  // from unauthenticated public forms, so an unescaped value here is a
+  // stored-XSS path straight into admin's logged-in session.
   const fieldHTML = fields.map(f =>
-    `<div class="modal-field"><div class="modal-label">${f.label}</div><div class="modal-value">${f.value}</div></div>`
+    `<div class="modal-field"><div class="modal-label">${escapeHtml(f.label)}</div><div class="modal-value">${escapeHtml(f.value)}</div></div>`
   ).join('');
 
   document.getElementById('requestModalTitle').textContent = title;
@@ -1869,9 +1909,9 @@ function renderServiceRequestReview(item) {
           ${Object.entries(SERVICE_PRICES).map(([key, info]) => `<option value="${key}" ${item.service === key ? 'selected' : ''}>${info.name}</option>`).join('')}
         </select>
       </div>
-      <div class="form-field" id="rev-visits-field" style="display:none;"><label>Visits/Day</label><input type="number" min="1" id="rev-visits" value="${item.visitsPerDay || 1}" onchange="reviewRecalcService()"></div>
-      <div class="form-field"><label>Start Date</label><input type="date" id="rev-start" value="${toDateInputValue(item.startDate)}" onchange="reviewRecalcService()"></div>
-      <div class="form-field" id="rev-end-field"><label>End Date</label><input type="date" id="rev-end" value="${toDateInputValue(item.endDate)}" onchange="reviewRecalcService()"></div>
+      <div class="form-field" id="rev-visits-field" style="display:none;"><label>Visits/Day</label><input type="number" min="1" id="rev-visits" value="${escapeHtml(item.visitsPerDay || 1)}" onchange="reviewRecalcService()"></div>
+      <div class="form-field"><label>Start Date</label><input type="date" id="rev-start" value="${escapeHtml(toDateInputValue(item.startDate))}" onchange="reviewRecalcService()"></div>
+      <div class="form-field" id="rev-end-field"><label>End Date</label><input type="date" id="rev-end" value="${escapeHtml(toDateInputValue(item.endDate))}" onchange="reviewRecalcService()"></div>
     </div>
     <div style="display:flex;gap:20px;margin-top:14px;">
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;">
@@ -1926,8 +1966,8 @@ function renderOvernightReview(item) {
           <option value="checkin" ${item.service === 'checkin' ? 'selected' : ''}>Check-In Visit</option>
         </select>
       </div>
-      <div class="form-field"><label>Start Date</label><input type="date" id="rev-start" value="${toDateInputValue(item.startDate)}" onchange="reviewRecalcOvernight()"></div>
-      <div class="form-field"><label>End Date</label><input type="date" id="rev-end" value="${toDateInputValue(item.endDate)}" onchange="reviewRecalcOvernight()"></div>
+      <div class="form-field"><label>Start Date</label><input type="date" id="rev-start" value="${escapeHtml(toDateInputValue(item.startDate))}" onchange="reviewRecalcOvernight()"></div>
+      <div class="form-field"><label>End Date</label><input type="date" id="rev-end" value="${escapeHtml(toDateInputValue(item.endDate))}" onchange="reviewRecalcOvernight()"></div>
     </div>
     <div style="display:flex;gap:20px;margin-top:14px;">
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;">
@@ -1972,9 +2012,14 @@ function renderWalkExtensionReview(item) {
   const rows = _reviewWalkIds.map(id => {
     const w = allWalks.find(x => x.id === id);
     const label = w ? fmtReviewDate(w.date) : 'Walk not found — may have been deleted';
+    // escapeHtml only in the HTML attribute below — the raw id is what
+    // every later document.getElementById(`rev-walk-${id}`) lookup uses
+    // (in reviewRecalcWalkExtension, confirmWalkExtension, etc.), and the
+    // browser decodes HTML entities back to the literal string when
+    // parsing the attribute, so those lookups still match correctly.
     return `
       <label style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(0,0,0,0.05);cursor:pointer;">
-        <input type="checkbox" id="rev-walk-${id}" ${w ? 'checked' : ''} ${w ? '' : 'disabled'} onchange="reviewRecalcWalkExtension()" style="accent-color:var(--seafoam);">
+        <input type="checkbox" id="rev-walk-${escapeHtml(id)}" ${w ? 'checked' : ''} ${w ? '' : 'disabled'} onchange="reviewRecalcWalkExtension()" style="accent-color:var(--seafoam);">
         <span style="flex:1;font-size:13px;color:var(--navy);">${label}</span>
         <span style="font-size:13px;color:var(--text-light);">$${WALK_EXTENSION_PRICE}</span>
       </label>
