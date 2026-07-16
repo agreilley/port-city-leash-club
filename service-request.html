@@ -543,13 +543,8 @@
   </ul>
 </footer>
 
-<script>
-  const PRICES = {
-    'standard-walk':  { name: 'Standard Walk',  price: 29,  unit: 'walk' },
-    'extended-walk':  { name: 'Extended Walk',  price: 40,  unit: 'walk' },
-    'drop-in-visit':  { name: 'Drop-In Visit',  price: 25,  unit: 'night' },
-    'overnight-stay': { name: 'Overnight Stay', price: 115, unit: 'night' }
-  };
+<script type="module">
+  import { SERVICE_PRICES as PRICES, calculateServiceTotal } from './pricing.js';
 
   const startInput = document.getElementById('start-date');
   const endInput   = document.getElementById('end-date');
@@ -574,12 +569,6 @@
   const serviceSelect = document.getElementById('service');
   if (requested && PRICES[requested]) serviceSelect.value = requested;
 
-  function getDaysBetween(start, end) {
-    if (!start || !end) return 0;
-    const ms = new Date(end) - new Date(start);
-    return Math.max(0, Math.round(ms / 86400000));
-  }
-
   function updateServiceFields() {
     const service = serviceSelect.value;
     const isWalk      = service === 'standard-walk' || service === 'extended-walk';
@@ -597,17 +586,21 @@
 
     const isWalk    = service === 'standard-walk' || service === 'extended-walk';
     const isDropIn  = service === 'drop-in-visit';
-    const start     = startInput.value;
-    const end       = endInput.value;
-    const days      = isWalk ? 1 : getDaysBetween(start, end);
     const visits    = isDropIn ? (parseInt(document.getElementById('visits').value, 10) || 1) : 1;
-    const extraPet  = (typeof petCardCount === 'function' && petCardCount() > 1) ? 10 : 0;
-    const meds      = document.getElementById('addon-medication')?.checked ? 10 : 0;
+    const petCount  = typeof petCardCount === 'function' ? petCardCount() : 1;
+    const medication = document.getElementById('addon-medication')?.checked || false;
 
-    const unitCount    = isWalk ? 1 : (isDropIn ? days * visits : days);
-    const serviceTotal = info.price * unitCount;
-    const addonTotal   = (extraPet + meds) * (isWalk ? 1 : Math.max(days, 1));
-    const grandTotal   = serviceTotal + addonTotal;
+    const { total: grandTotal, breakdown, days } = calculateServiceTotal({
+      serviceKey: service,
+      startDate: startInput.value,
+      endDate: endInput.value,
+      visitsPerDay: visits,
+      petCount,
+      medication,
+    });
+    const serviceTotal = breakdown[0]?.amount ?? info.price;
+    const extraPetLine = breakdown.find(b => b.label === 'Extra pet');
+    const medsLine = breakdown.find(b => b.label === 'Medication admin');
 
     // Build lines
     let lines = '';
@@ -619,11 +612,11 @@
         : `${days} &times; $${info.price}/night`;
       lines += `<div class="order-line"><span style="font-size:11px;opacity:.6;">${detail}</span><strong></strong></div>`;
     }
-    if (extraPet) {
-      lines += `<div class="order-line"><span>Extra pet${!isWalk && days > 1 ? ` &times; ${days}` : ''}</span><strong>$${extraPet * (isWalk ? 1 : Math.max(days,1))}</strong></div>`;
+    if (extraPetLine) {
+      lines += `<div class="order-line"><span>Extra pet${!isWalk && days > 1 ? ` &times; ${days}` : ''}</span><strong>$${extraPetLine.amount}</strong></div>`;
     }
-    if (meds) {
-      lines += `<div class="order-line"><span>Medication admin${!isWalk && days > 1 ? ` &times; ${days}` : ''}</span><strong>$${meds * (isWalk ? 1 : Math.max(days,1))}</strong></div>`;
+    if (medsLine) {
+      lines += `<div class="order-line"><span>Medication admin${!isWalk && days > 1 ? ` &times; ${days}` : ''}</span><strong>$${medsLine.amount}</strong></div>`;
     }
 
     const totalEl = document.getElementById('orderTotal');
@@ -633,7 +626,7 @@
     window._lastEstimatedTotal = grandTotal;
   }
 
-  function updateAddons() { updateSummary(); }
+  window.updateAddons = function updateAddons() { updateSummary(); };
 
   serviceSelect.addEventListener('change', updateServiceFields);
   document.getElementById('addon-medication')?.addEventListener('change', updateSummary);

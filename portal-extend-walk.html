@@ -231,6 +231,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getFirestore, doc, getDoc, collection, query, where, getDocs, updateDoc, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { WALK_EXTENSION_PRICE, calculateWalkExtensionTotal } from './pricing.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
@@ -245,7 +246,7 @@ const app = initializeApp(firebaseConfig, 'member-app');
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const PRICE = 12;
+const PRICE = WALK_EXTENSION_PRICE;
 const selected = new Set(); // walk IDs selected for extension
 let upcomingWalks = [];
 let memberData = null;
@@ -355,7 +356,7 @@ window.toggleWalk = (walkId, row) => {
 
 function updateSummary() {
   const count = selected.size;
-  const total = count * PRICE;
+  const total = calculateWalkExtensionTotal(count);
   document.getElementById('summaryTotal').textContent = `$${total}`;
   document.getElementById('confirmBtn').disabled = count === 0;
 
@@ -410,7 +411,7 @@ window.confirmExtensions = async () => {
       walkIds,
       count: walkIds.length,
       pricePerWalk: PRICE,
-      estimatedTotal: walkIds.length * PRICE,
+      estimatedTotal: calculateWalkExtensionTotal(walkIds.length),
       status: 'pending',
       read: false,
       createdAt: serverTimestamp(),

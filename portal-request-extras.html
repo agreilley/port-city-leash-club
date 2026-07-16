@@ -283,16 +283,12 @@
 
 </div><!-- end portal-container -->
 
-<script>
-  const PRICES = {
-    overnight: { name: 'Overnight Stay', price: 115, unit: 'night' },
-    checkin:   { name: 'Check-In Visit', price: 25,  unit: 'visit' }
-  };
+<script type="module">
+  import { calculateServiceTotal } from './pricing.js';
 
-  function getDaysBetween(start, end) {
-    if (!start || !end) return 0;
-    return Math.max(0, Math.round((new Date(end) - new Date(start)) / 86400000));
-  }
+  // Display names only — actual pricing lives in pricing.js (SERVICE_PRICES,
+  // via the 'overnight'/'checkin' aliases), not duplicated here.
+  const SERVICE_NAMES = { overnight: 'Overnight Stay', checkin: 'Check-In Visit' };
 
   function updateServiceFields() {
     const service = document.getElementById('serviceSelect').value;
@@ -308,25 +304,29 @@
 
   function updateSummary() {
     const service = document.getElementById('serviceSelect').value;
-    const info    = PRICES[service];
+    const name    = SERVICE_NAMES[service];
     const start   = document.getElementById('startDate').value;
     const end     = document.getElementById('endDate').value;
-    const days    = getDaysBetween(start, end) || 1;
     const visitsEl = document.getElementById('visitsField')?.querySelector('select');
     const visitsPerDay = service === 'checkin' ? parseInt(visitsEl?.value || '1') : 1;
-    const qty     = service === 'checkin' ? days * visitsPerDay : days;
-    const base    = info.price * qty;
-    const extraPet = document.getElementById('addonExtraPet')?.checked ? 10 * days : 0;
-    const meds     = document.getElementById('addonMedication')?.checked ? 10 * days : 0;
-    const total    = base + extraPet + meds;
+    const extraPet = document.getElementById('addonExtraPet')?.checked || false;
+    const medication = document.getElementById('addonMedication')?.checked || false;
+
+    const { total, breakdown, days } = calculateServiceTotal({
+      serviceKey: service, startDate: start, endDate: end, visitsPerDay, extraPet, medication,
+    });
+    window._lastEstimatedTotal = total;
+    const base = breakdown[0]?.amount ?? 0;
+    const extraPetLine = breakdown.find(b => b.label === 'Extra pet');
+    const medsLine = breakdown.find(b => b.label === 'Medication admin');
 
     const qtyLabel = service === 'checkin'
       ? `${days} day${days > 1 ? 's' : ''} × ${visitsPerDay} visit${visitsPerDay > 1 ? 's' : ''}`
       : (days > 1 ? ` × ${days}` : '');
 
-    let lines = `<div class="summary-line"><span>${info.name}${qtyLabel ? ' · ' + qtyLabel : ''}</span><strong>$${base}</strong></div>`;
-    if (extraPet) lines += `<div class="summary-line"><span>Extra pet</span><strong>$${extraPet}</strong></div>`;
-    if (meds)     lines += `<div class="summary-line"><span>Medication admin</span><strong>$${meds}</strong></div>`;
+    let lines = `<div class="summary-line"><span>${name}${qtyLabel ? ' · ' + qtyLabel : ''}</span><strong>$${base}</strong></div>`;
+    if (extraPetLine) lines += `<div class="summary-line"><span>Extra pet</span><strong>$${extraPetLine.amount}</strong></div>`;
+    if (medsLine)     lines += `<div class="summary-line"><span>Medication admin</span><strong>$${medsLine.amount}</strong></div>`;
 
     const priceEl = document.getElementById('summaryPrice');
     const detailEl = document.getElementById('summaryDetails');
@@ -354,11 +354,15 @@
       const endStr    = document.getElementById('endDate')?.value || '';
       const isOvernight = service === 'overnight';
 
-      // Look up member name from Firestore
+      // Look up member name and Stripe customer ID from Firestore — the
+      // customer ID is copied onto the submission (same pattern
+      // portal-extend-walk.html already uses) so chargeSavedCard has
+      // something to charge against when admin confirms this request.
       const { getFirestore: getFS, doc: fsDoc, getDoc: fsGetDoc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
       const db2 = getFS(app);
       const memberSnap = await fsGetDoc(fsDoc(db2, 'members', user.uid));
       const memberName = memberSnap.exists() ? (memberSnap.data().name || '') : '';
+      const stripeCustomerId = memberSnap.exists() ? (memberSnap.data().stripeCustomerId || '') : '';
 
       // Parse date strings without timezone shift (treat as local dates)
       function localDateToTimestamp(str) {
@@ -377,6 +381,8 @@
         notes:      document.querySelector('textarea[name=notes]')?.value || '',
         addonExtraPet:   document.getElementById('addonExtraPet')?.checked  || false,
         addonMedication: document.getElementById('addonMedication')?.checked || false,
+        estimatedTotal: window._lastEstimatedTotal || 0,
+        stripeCustomerId,
         status: 'pending',
         read:   false,
         createdAt: serverTimestamp(),
@@ -397,7 +403,7 @@
   // Pre-select service from URL param
   const params = new URLSearchParams(window.location.search);
   const requested = params.get('service');
-  if (requested && PRICES[requested]) document.getElementById('serviceSelect').value = requested;
+  if (requested && SERVICE_NAMES[requested]) document.getElementById('serviceSelect').value = requested;
 
   // Grey out dates within 48 hours
   const startInput = document.getElementById('startDate');
@@ -419,6 +425,13 @@
   } else {
     updateServiceFields();
   }
+
+  // Referenced via inline onchange/onsubmit attributes above — module
+  // scripts don't leak top-level declarations onto window automatically,
+  // so these need explicit exposure (same pattern used in service-request.html).
+  window.updateServiceFields = updateServiceFields;
+  window.updateSummary = updateSummary;
+  window.submitExtrasRequest = submitExtrasRequest;
 </script>
 <script type="module">
   import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
