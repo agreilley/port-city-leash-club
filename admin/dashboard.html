@@ -108,8 +108,8 @@
 
   /* ── REQUESTS ── */
   .request-filters { display: flex; gap: 8px; margin-bottom: 20px; }
-  .request-filter { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
-  .request-filter.active { background: var(--navy); color: white; border-color: var(--navy); }
+  .request-filter, .request-status-filter { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
+  .request-filter.active, .request-status-filter.active { background: var(--navy); color: white; border-color: var(--navy); }
   .list-row { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 20px; margin-bottom: 12px; cursor: pointer; transition: box-shadow 0.15s; }
   .list-row:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
   .list-row.unread { border-left: 3px solid var(--rust); }
@@ -526,6 +526,10 @@
         <button class="request-filter" onclick="filterRequests('contact', this)">Contact</button>
         <button class="request-filter" onclick="filterRequests('walker_incident', this)">Incidents</button>
       </div>
+      <div class="request-filters" style="margin-top:-12px;">
+        <button class="request-status-filter active" onclick="filterRequestStatus('pending', this)">Pending</button>
+        <button class="request-status-filter" onclick="filterRequestStatus('completed', this)">Completed</button>
+      </div>
       <div id="requestsList"><div class="loading-spinner">Loading...</div></div>
     </div>
 
@@ -779,7 +783,18 @@ let allWalks = [], allMembers = [], allWalkers = [], allRequests = [];
 let calendarYear = new Date().getFullYear();
 let calendarMonth = new Date().getMonth();
 let currentRequestFilter = 'all';
+let currentStatusFilter = 'pending';
 let allOvernights = [];
+
+// A submission counts as resolved once it's reached any of these terminal
+// statuses — covers every type's own vocabulary ('confirmed'/'declined'
+// for most money/booking flows, 'resolved' for incidents, 'handled' for
+// walker schedule requests, 'applied' for the informational vacation-hold
+// record that never awaited a decision in the first place). Anything else
+// (undefined, 'pending', 'processing') is still actionable.
+function isRequestCompleted(item) {
+  return ['confirmed', 'declined', 'resolved', 'handled', 'applied'].includes(item.status);
+}
 
 // dogs[] is the source of truth going forward; new member writes never
 // populate dogName/dogBreed/dogAge anymore. This is a read-only shim for
@@ -792,6 +807,80 @@ function getMemberDogs(member) {
 }
 function memberDogNames(member) {
   return getMemberDogs(member).map(d => d.name).filter(Boolean).join(', ');
+}
+
+// Shared by openMemberDetail and the overnight_request/walk_extension
+// request views (both static and review) — a member's canonical dogs[]
+// profile (name/breed/age/weight/notes/temperament/walkingPrefs/triggers/
+// medications/allergies), rendered identically everywhere it's shown so
+// admin sees the same pet safety info regardless of which screen they're
+// looking at it from.
+function renderMemberDogCards(dogs) {
+  if (!dogs.length) return '<div style="font-size:13px;color:var(--text-light);">No dogs on file.</div>';
+  return dogs.map((dog, i) => {
+    const dogFields = [
+      ['Name', dog.name], ['Breed', dog.breed], ['Age', dog.age], ['Weight', dog.weight],
+      ['Notes', dog.notes], ['Temperament', dog.temperament], ['Care Preferences', dog.walkingPrefs],
+      ['Known Triggers', dog.triggers], ['Medications', dog.medications], ['Allergies', dog.allergies],
+    ].filter(([, v]) => v);
+    return `
+      <div style="border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:12px;margin-bottom:10px;">
+        <div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:8px;">${dogs.length > 1 ? `Dog ${i + 1}` : 'Dog'}</div>
+        ${dogFields.length ? dogFields.map(([label, value]) => `<div style="font-size:13px;color:var(--text-mid);margin-bottom:4px;"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</div>`).join('') : '<div style="font-size:13px;color:var(--text-light);">No details on file.</div>'}
+      </div>`;
+  }).join('');
+}
+
+// Address/phone + full dog profiles for an existing member, looked up by
+// memberId — used by overnight_request and walk_extension, neither of
+// which capture pet/contact details on the submission itself (those live
+// on the member record, unlike service_request's public one-time form).
+function renderMemberContextHTML(memberId) {
+  const member = allMembers.find(m => m.id === memberId);
+  if (!member) return '<div style="font-size:13px;color:var(--text-light);">Member record not found.</div>';
+  const infoFields = [
+    { label: 'Address', value: member.address || '–' },
+    { label: 'Phone', value: member.phone || '–' },
+  ];
+  const infoHTML = infoFields.map(f =>
+    `<div class="modal-field"><div class="modal-label">${escapeHtml(f.label)}</div><div class="modal-value">${escapeHtml(f.value)}</div></div>`
+  ).join('');
+  return `
+    <div class="form-grid">${infoHTML}</div>
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin:14px 0 8px;">Dogs on File</div>
+    ${renderMemberDogCards(getMemberDogs(member))}
+  `;
+}
+
+// service_request's public one-time form captures its own pet-profile
+// shape (species/spayed/friendlyWithPeople/takesMedication/notes, plus
+// friendlyWithDogs+pullsOnLeash for dogs OR indoorOnly+comfortableHandled
+// for cats — only one pair is ever present per pet) directly on the
+// submission — different from the member canonical shape above, since
+// the requester may not be an existing member yet. Shared between the
+// static resolved view and the live review UI so the two can't show
+// different info for the same pets.
+function renderPetDetailCards(dogs) {
+  if (!dogs || !dogs.length) return '<div style="font-size:13px;color:var(--text-light);">No pets on file.</div>';
+  return dogs.map((dog, i) => {
+    const bool = (v) => v != null ? (v ? 'Yes' : 'No') : null;
+    const rows = [
+      ['Species', dog.species], ['Breed', dog.breed], ['Age', dog.age], ['Weight', dog.weight],
+      ['Spayed/Neutered', dog.spayed], ['Temperament', dog.temperament],
+      ['Friendly with People', bool(dog.friendlyWithPeople)],
+      ['Friendly with Other Dogs', bool(dog.friendlyWithDogs)],
+      ['Pulls on Leash', bool(dog.pullsOnLeash)],
+      ['Indoor Only', bool(dog.indoorOnly)],
+      ['Comfortable Being Handled', bool(dog.comfortableHandled)],
+      ['Takes Medication', bool(dog.takesMedication)],
+      ['Behavioral/Medical Notes', dog.notes],
+    ].filter(([, v]) => v !== null && v !== undefined && v !== '');
+    return `
+      <div style="border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:12px;margin-bottom:10px;">
+        <div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:8px;">${escapeHtml(dog.name || (dogs.length > 1 ? `Pet ${i + 1}` : 'Pet'))}</div>
+        ${rows.length ? rows.map(([label, value]) => `<div style="font-size:13px;color:var(--text-mid);margin-bottom:4px;"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(String(value))}</div>`).join('') : '<div style="font-size:13px;color:var(--text-light);">No details on file.</div>'}
+      </div>`;
+  }).join('');
 }
 
 // Shared by openAddMemberModal and openAddWalkerModal — same auto-generated
@@ -1234,8 +1323,14 @@ window.filterMembers = (val) => renderMembersTable(val);
 // ── REQUESTS ─────────────────────────────────────────────────────────────────
 function renderRequests() {
   const container = document.getElementById('requestsList');
-  const filtered = currentRequestFilter === 'all' ? allRequests : allRequests.filter(i => i.type === currentRequestFilter);
-  if (!filtered.length) { container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📬</div><div class="empty-state-title">No submissions yet</div></div>'; return; }
+  const filtered = allRequests
+    .filter(i => currentRequestFilter === 'all' || i.type === currentRequestFilter)
+    .filter(i => currentStatusFilter === 'all' || isRequestCompleted(i) === (currentStatusFilter === 'completed'));
+  if (!filtered.length) {
+    const emptyMsg = currentStatusFilter === 'completed' ? 'No completed submissions yet' : 'No pending submissions — you\'re caught up';
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📬</div><div class="empty-state-title">${emptyMsg}</div></div>`;
+    return;
+  }
   const typeLabels = { membership_request: 'Membership', service_request: 'Service', application: 'Application', contact: 'Contact', dog_update: 'Dog Update', overnight_request: 'Overnight', walker_incident: 'Incident', walker_schedule_request: 'Schedule', pauseMembership: 'Vacation Hold', vacation_hold_refund: 'Hold Refund' };
   const shortDate = (val) => val?.toDate ? val.toDate().toLocaleDateString('en-US', {month:'short',day:'numeric'}) : '–';
   container.innerHTML = filtered.map(item => {
@@ -1264,6 +1359,13 @@ function renderRequests() {
 window.filterRequests = (type, btn) => {
   currentRequestFilter = type;
   document.querySelectorAll('.request-filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderRequests();
+};
+
+window.filterRequestStatus = (status, btn) => {
+  currentStatusFilter = status;
+  document.querySelectorAll('.request-status-filter').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderRequests();
 };
@@ -1525,6 +1627,25 @@ window.openRequestItem = async (id) => {
       { label: 'Stripe Customer ID', value: item.stripeCustomerId || '–' },
       { label: 'Payment Method Status', value: item.paymentMethodStatus || '–' },
     ];
+  } else if (item.type === 'service_request') {
+    const serviceInfo = SERVICE_PRICES[item.service];
+    fields = [
+      { label: 'Owner Name', value: item.ownerName || '–' },
+      { label: 'Email', value: item.email || '–' },
+      { label: 'Phone', value: item.phone || '–' },
+      { label: 'Address', value: item.address || '–' },
+      { label: 'Service', value: serviceInfo?.name || item.service || '–' },
+      { label: 'Start Date', value: fmtDate(item.startDate) },
+      { label: 'End Date', value: fmtDate(item.endDate) },
+      { label: 'Visits/Day', value: item.visitsPerDay || '–' },
+      { label: 'Multiple Pets', value: item.extraPet ? 'Yes' : 'No' },
+      { label: 'Medication Admin', value: item.medication ? 'Yes' : 'No' },
+      { label: 'Meet Greet Date/Time', value: item.meetGreetDateTime || '–' },
+      { label: 'Estimated Total', value: item.estimatedTotal ? `$${item.estimatedTotal}` : '–' },
+      { label: 'Payment', value: item.paymentStatus ? item.paymentStatus.charAt(0).toUpperCase() + item.paymentStatus.slice(1) : 'Not yet confirmed' },
+      { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
+      { label: 'Created At', value: fmtDate(item.createdAt) },
+    ];
   } else if (item.type === 'overnight_request' || item.service === 'overnight' || item.service === 'checkin') {
     fields = [
       { label: 'Member', value: item.memberName || item.memberId || '–' },
@@ -1640,7 +1761,18 @@ window.openRequestItem = async (id) => {
   } else if (isUnresolvedWalkExtension) {
     renderWalkExtensionReview(item);
   } else {
-    document.getElementById('requestModalContent').innerHTML = `<div class="form-grid">${fieldHTML}</div>`;
+    // Resolved (or non-review-eligible) items fall back to the static
+    // field list — but a resolved service_request/overnight_request/
+    // walk_extension still gets the same pet/member context the review UI
+    // showed while it was pending, so that detail isn't only visible
+    // before a decision gets made.
+    let extraHTML = '';
+    if (item.type === 'service_request') {
+      extraHTML = `<hr class="modal-divider"><div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Pets</div>${renderPetDetailCards(item.dogs)}`;
+    } else if ((item.type === 'overnight_request' || item.service === 'overnight' || item.service === 'checkin' || item.type === 'walk_extension') && item.memberId) {
+      extraHTML = `<hr class="modal-divider">${renderMemberContextHTML(item.memberId)}`;
+    }
+    document.getElementById('requestModalContent').innerHTML = `<div class="form-grid">${fieldHTML}</div>${extraHTML}`;
   }
 
   const actionBtn = document.getElementById('requestActionBtn');
@@ -1731,7 +1863,7 @@ function renderServiceRequestReview(item) {
     <div class="form-grid">
       <div class="modal-field"><div class="modal-label">Owner</div><div class="modal-value">${escapeHtml(item.ownerName || '–')}${item.email ? ' · ' + escapeHtml(item.email) : ''}</div></div>
       <div class="modal-field"><div class="modal-label">Phone</div><div class="modal-value">${escapeHtml(item.phone || '–')}</div></div>
-      <div class="modal-field"><div class="modal-label">Pets</div><div class="modal-value">${(item.dogs || []).map(d => escapeHtml(d.name || 'Unnamed')).join(', ') || '–'}</div></div>
+      <div class="modal-field"><div class="modal-label">Address</div><div class="modal-value">${escapeHtml(item.address || '–')}</div></div>
       <div class="form-field"><label>Service</label>
         <select id="rev-service" onchange="reviewRecalcService()">
           ${Object.entries(SERVICE_PRICES).map(([key, info]) => `<option value="${key}" ${item.service === key ? 'selected' : ''}>${info.name}</option>`).join('')}
@@ -1754,6 +1886,9 @@ function renderServiceRequestReview(item) {
     <div style="display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:17px;color:var(--navy);">
       <span>Total</span><span id="rev-total">$0</span>
     </div>
+    <hr class="modal-divider">
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Pets</div>
+    ${renderPetDetailCards(item.dogs)}
   `;
   reviewRecalcService();
 }
@@ -1808,6 +1943,8 @@ function renderOvernightReview(item) {
       <label>Final Total — auto-calculated above, but editable if the member under-reported (e.g. a pet not on file)</label>
       <input type="number" min="0" step="0.01" id="rev-total-override" oninput="reviewOverrideTotalTouched()" style="font-weight:600;font-size:16px;">
     </div>
+    <hr class="modal-divider">
+    ${renderMemberContextHTML(item.memberId)}
   `;
   reviewRecalcOvernight();
 }
@@ -1852,6 +1989,8 @@ function renderWalkExtensionReview(item) {
     <div style="display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:17px;color:var(--navy);">
       <span id="rev-walk-count">0 walks</span><span id="rev-total">$0</span>
     </div>
+    <hr class="modal-divider">
+    ${renderMemberContextHTML(item.memberId)}
   `;
   reviewRecalcWalkExtension();
 }
@@ -2603,19 +2742,7 @@ window.openMemberDetail = (id) => {
     `<div class="modal-field"><div class="modal-label">${escapeHtml(f.label)}</div><div class="modal-value">${escapeHtml(f.value)}</div></div>`
   ).join('');
 
-  const dogs = getMemberDogs(member);
-  const dogsHTML = dogs.length ? dogs.map((dog, i) => {
-    const dogFields = [
-      ['Name', dog.name], ['Breed', dog.breed], ['Age', dog.age], ['Weight', dog.weight],
-      ['Notes', dog.notes], ['Temperament', dog.temperament], ['Care Preferences', dog.walkingPrefs],
-      ['Known Triggers', dog.triggers], ['Medications', dog.medications], ['Allergies', dog.allergies],
-    ].filter(([, v]) => v);
-    return `
-      <div style="border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:12px;margin-bottom:10px;">
-        <div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:8px;">${dogs.length > 1 ? `Dog ${i + 1}` : 'Dog'}</div>
-        ${dogFields.length ? dogFields.map(([label, value]) => `<div style="font-size:13px;color:var(--text-mid);margin-bottom:4px;"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</div>`).join('') : '<div style="font-size:13px;color:var(--text-light);">No details on file.</div>'}
-      </div>`;
-  }).join('') : '<div style="font-size:13px;color:var(--text-light);">No dogs on file.</div>';
+  const dogsHTML = renderMemberDogCards(getMemberDogs(member));
 
   document.getElementById('memberDetailModalTitle').textContent = member.name || 'Member Details';
   document.getElementById('memberDetailModalContent').innerHTML = `

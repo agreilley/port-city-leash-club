@@ -385,7 +385,7 @@
             </div>
             <div class="form-grid-3">
               <div class="field"><label for="pet-name-${n}">Pet's Name</label><input id="pet-name-${n}" name="pet-name-${n}" type="text"></div>
-              <div class="field"><label for="species-${n}">Pet Type</label><select id="species-${n}" name="species-${n}"><option value="Dog" selected>Dog</option><option value="Cat">Cat</option></select></div>
+              <div class="field"><label for="species-${n}">Pet Type</label><select id="species-${n}" name="species-${n}" onchange="updateSpeciesFields(${n})"><option value="Dog" selected>Dog</option><option value="Cat">Cat</option></select></div>
               <div class="field"><label for="breed-${n}">Breed</label><input id="breed-${n}" name="breed-${n}" type="text"></div>
               <div class="field"><label for="age-${n}">Age</label><input id="age-${n}" name="age-${n}" type="text"></div>
               <div class="field"><label for="weight-${n}">Weight</label><input id="weight-${n}" name="weight-${n}" type="text"></div>
@@ -394,8 +394,10 @@
               <div class="field full"><label>Helpful Context</label>
                 <div class="checkbox-row">
                   <label class="checkbox-pill"><input type="checkbox" name="friendly-people-${n}"> Friendly with people</label>
-                  <label class="checkbox-pill"><input type="checkbox" name="friendly-dogs-${n}"> Friendly with other dogs</label>
-                  <label class="checkbox-pill"><input type="checkbox" name="pulls-leash-${n}"> Pulls on leash</label>
+                  <label class="checkbox-pill" id="friendly-dogs-wrap-${n}"><input type="checkbox" name="friendly-dogs-${n}"> Friendly with other dogs</label>
+                  <label class="checkbox-pill" id="pulls-leash-wrap-${n}"><input type="checkbox" name="pulls-leash-${n}"> Pulls on leash</label>
+                  <label class="checkbox-pill" id="indoor-only-wrap-${n}" style="display:none;"><input type="checkbox" name="indoor-only-${n}"> Indoor only (do not let outside)</label>
+                  <label class="checkbox-pill" id="comfortable-handled-wrap-${n}" style="display:none;"><input type="checkbox" name="comfortable-handled-${n}"> Comfortable being picked up/handled</label>
                   <label class="checkbox-pill"><input type="checkbox" name="takes-medication-${n}"> Takes medication</label>
                 </div>
               </div>
@@ -422,6 +424,20 @@
         if (typeof updateSummary === 'function') updateSummary();
       }
 
+      // "Friendly with other dogs" / "Pulls on leash" don't apply to cats;
+      // "Indoor only" / "Comfortable being picked up/handled" don't apply
+      // to dogs. Both pairs are always in the DOM (see dogCardHTML) — this
+      // just toggles which one is visible, so nothing already typed
+      // elsewhere on the card gets wiped by a species change.
+      function updateSpeciesFields(n) {
+        const isCat = document.getElementById(`species-${n}`)?.value === 'Cat';
+        document.getElementById(`friendly-dogs-wrap-${n}`).style.display = isCat ? 'none' : 'flex';
+        document.getElementById(`pulls-leash-wrap-${n}`).style.display = isCat ? 'none' : 'flex';
+        document.getElementById(`indoor-only-wrap-${n}`).style.display = isCat ? 'flex' : 'none';
+        document.getElementById(`comfortable-handled-wrap-${n}`).style.display = isCat ? 'flex' : 'none';
+      }
+      window.updateSpeciesFields = updateSpeciesFields;
+
       window.addDog = addDog;
       window.removeDog = removeDog;
       window.petCardCount = petCardCount;
@@ -431,20 +447,28 @@
         for (let i = 1; i <= dogCount; i++) {
           const card = document.getElementById(`dogCard${i}`);
           if (!card) continue;
-          dogs.push({
+          const species = card.querySelector(`#species-${i}`)?.value || 'Dog';
+          const isCat = species === 'Cat';
+          const dog = {
             name:        card.querySelector(`[name="pet-name-${i}"]`)?.value || '',
-            species:     card.querySelector(`#species-${i}`)?.value || 'Dog',
+            species,
             breed:       card.querySelector(`[name="breed-${i}"]`)?.value || '',
             age:         card.querySelector(`[name="age-${i}"]`)?.value || '',
             weight:      card.querySelector(`[name="weight-${i}"]`)?.value || '',
             spayed:      card.querySelector(`#spayed-${i}`)?.value || '',
             temperament: card.querySelector(`#temperament-${i}`)?.value || '',
             friendlyWithPeople: card.querySelector(`[name="friendly-people-${i}"]`)?.checked || false,
-            friendlyWithDogs:   card.querySelector(`[name="friendly-dogs-${i}"]`)?.checked || false,
-            pullsOnLeash:       card.querySelector(`[name="pulls-leash-${i}"]`)?.checked || false,
             takesMedication:    card.querySelector(`[name="takes-medication-${i}"]`)?.checked || false,
             notes:       card.querySelector(`[name="behavior-notes-${i}"]`)?.value || '',
-          });
+          };
+          if (isCat) {
+            dog.indoorOnly = card.querySelector(`[name="indoor-only-${i}"]`)?.checked || false;
+            dog.comfortableHandled = card.querySelector(`[name="comfortable-handled-${i}"]`)?.checked || false;
+          } else {
+            dog.friendlyWithDogs = card.querySelector(`[name="friendly-dogs-${i}"]`)?.checked || false;
+            dog.pullsOnLeash     = card.querySelector(`[name="pulls-leash-${i}"]`)?.checked || false;
+          }
+          dogs.push(dog);
         }
         return dogs;
       }
