@@ -94,28 +94,6 @@ function parseIsoDateStrict(str) {
   return d;
 }
 
-// All (docId, dateStr, year, monthIndex) tuples for a member's scheduled
-// walk days falling within [startDate, endDate] inclusive, spanning month
-// boundaries if needed — used by submitVacationHold to find already-
-// generated walk docs to delete. Deliberately reuses the exact docId
-// scheme generateWalksForMember uses (${memberId}_${dateStr}) so the two
-// can never disagree about which document a given date maps to.
-function walkDocIdsInRange(memberId, walkDays, startDate, endDate) {
-  const targetDayNumbers = new Set((walkDays || []).map(d => WEEKDAY_NUMBERS[(d || '').toLowerCase()]).filter(n => n !== undefined));
-  const results = [];
-  if (!targetDayNumbers.size) return results;
-  const cur = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), startDate.getUTCDate()));
-  const end = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate()));
-  while (cur <= end) {
-    if (targetDayNumbers.has(cur.getUTCDay())) {
-      const dateStr = `${cur.getUTCFullYear()}-${String(cur.getUTCMonth() + 1).padStart(2, '0')}-${String(cur.getUTCDate()).padStart(2, '0')}`;
-      results.push({ docId: `${memberId}_${dateStr}`, dateStr, year: cur.getUTCFullYear(), monthIndex: cur.getUTCMonth() });
-    }
-    cur.setUTCDate(cur.getUTCDate() + 1);
-  }
-  return results;
-}
-
 // Convert a wall-clock date/time in America/New_York to the equivalent UTC
 // Date, accounting for EDT/EST automatically — Stripe's billing_cycle_anchor
 // is a literal UTC instant, not a timezone-aware "local" time, so a fixed
@@ -572,9 +550,16 @@ exports.submitVacationHold = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
   }
   const member = memberSnap.data();
 
-  const candidates = walkDocIdsInRange(memberId, member.defaultWalkDays, startDate, endDate);
-  const walkRefs = candidates.map(c => db.collection('walks').doc(c.docId));
-  const walkSnaps = walkRefs.length ? await db.getAll(...walkRefs) : [];
+  // Single equality query on memberId (auto-indexed, no composite index
+  // needed) rather than looking up specific deterministic IDs — the old
+  // approach (walkDocIdsInRange, computing ${memberId}_${dateStr} from
+  // defaultWalkDays) only ever found walks generateWalksForMember created,
+  // silently missing any walk added manually via the admin "Add Walk"
+  // modal (random addDoc IDs). Querying by memberId and filtering the
+  // status/date window in JS — same pattern resumePausedMemberships
+  // already uses for the same reason — finds every scheduled walk that
+  // actually exists in the window, regardless of how it was created.
+  const memberWalksSnap = await db.collection('walks').where('memberId', '==', memberId).get();
 
   const now = new Date();
   const currentYear = now.getUTCFullYear();
@@ -591,16 +576,17 @@ exports.submitVacationHold = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
   let currentPeriodCount = 0;
   const currentPeriodDates = [];
 
-  walkSnaps.forEach((snap, i) => {
-    if (!snap.exists) return;
+  memberWalksSnap.forEach(snap => {
     const walk = snap.data();
     if (walk.status === 'completed') return; // never touch history
+    const walkDate = walk.date?.toDate?.();
+    if (!walkDate || walkDate < startDate || walkDate > endDate) return; // outside the hold window
     batch.delete(snap.ref);
     cancelledCount++;
-    const c = candidates[i];
-    if (c.year === currentYear && c.monthIndex === currentMonth) {
+    if (walkDate.getUTCFullYear() === currentYear && walkDate.getUTCMonth() === currentMonth) {
       currentPeriodCount++;
-      currentPeriodDates.push(c.dateStr);
+      const dateStr = `${walkDate.getUTCFullYear()}-${String(walkDate.getUTCMonth() + 1).padStart(2, '0')}-${String(walkDate.getUTCDate()).padStart(2, '0')}`;
+      currentPeriodDates.push(dateStr);
     }
   });
 
