@@ -339,7 +339,7 @@
         <div class="field full" id="addons-field" style="display:none;">
           <label>Add-ons</label>
           <div class="checkbox-row">
-            <label class="checkbox-pill"><input type="checkbox" name="addon-extra-pet" id="addon-extra-pet" onchange="updateAddons()"> Extra pet <span style="color:var(--text-light);margin-left:4px;">+$10</span></label>
+            <label class="checkbox-pill"><input type="checkbox" name="addon-extra-pet" id="addon-extra-pet" onchange="updateAddons()"> Multiple pets <span style="color:var(--text-light);margin-left:4px;">+$10</span></label>
             <label class="checkbox-pill"><input type="checkbox" name="addon-medication" id="addon-medication" onchange="updateAddons()"> Medication administration <span style="color:var(--text-light);margin-left:4px;">+$10</span></label>
           </div>
         </div>
@@ -599,7 +599,7 @@
       medication,
     });
     const serviceTotal = breakdown[0]?.amount ?? info.price;
-    const extraPetLine = breakdown.find(b => b.label === 'Extra pet');
+    const extraPetLine = breakdown.find(b => b.label === 'Multiple pets');
     const medsLine = breakdown.find(b => b.label === 'Medication admin');
 
     // Build lines
@@ -613,7 +613,7 @@
       lines += `<div class="order-line"><span style="font-size:11px;opacity:.6;">${detail}</span><strong></strong></div>`;
     }
     if (extraPetLine) {
-      lines += `<div class="order-line"><span>Extra pet${!isWalk && days > 1 ? ` &times; ${days}` : ''}</span><strong>$${extraPetLine.amount}</strong></div>`;
+      lines += `<div class="order-line"><span>Multiple pets${!isWalk && days > 1 ? ` &times; ${days}` : ''}</span><strong>$${extraPetLine.amount}</strong></div>`;
     }
     if (medsLine) {
       lines += `<div class="order-line"><span>Medication admin${!isWalk && days > 1 ? ` &times; ${days}` : ''}</span><strong>$${medsLine.amount}</strong></div>`;

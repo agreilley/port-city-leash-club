@@ -237,7 +237,7 @@
             <label>Add-ons</label>
             <div id="addonsGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
               <label style="display:flex;align-items:center;gap:10px;border:1px solid rgba(0,0,0,0.12);border-radius:6px;padding:12px 14px;font-size:13px;font-weight:400;color:var(--text-mid);cursor:pointer;background:white;">
-                <input type="checkbox" id="addonExtraPet" onchange="updateSummary()" style="width:auto;"> Extra pet <span style="color:var(--text-light);margin-left:4px;">+$10/night</span>
+                <input type="checkbox" id="addonExtraPet" onchange="updateSummary()" style="width:auto;"> Multiple pets <span style="color:var(--text-light);margin-left:4px;">+$10/night</span>
               </label>
               <label style="display:flex;align-items:center;gap:10px;border:1px solid rgba(0,0,0,0.12);border-radius:6px;padding:12px 14px;font-size:13px;font-weight:400;color:var(--text-mid);cursor:pointer;background:white;">
                 <input type="checkbox" id="addonMedication" onchange="updateSummary()" style="width:auto;"> Medication admin <span style="color:var(--text-light);margin-left:4px;">+$10/night</span>
@@ -317,7 +317,7 @@
     });
     window._lastEstimatedTotal = total;
     const base = breakdown[0]?.amount ?? 0;
-    const extraPetLine = breakdown.find(b => b.label === 'Extra pet');
+    const extraPetLine = breakdown.find(b => b.label === 'Multiple pets');
     const medsLine = breakdown.find(b => b.label === 'Medication admin');
 
     const qtyLabel = service === 'checkin'
@@ -325,7 +325,7 @@
       : (days > 1 ? ` × ${days}` : '');
 
     let lines = `<div class="summary-line"><span>${name}${qtyLabel ? ' · ' + qtyLabel : ''}</span><strong>$${base}</strong></div>`;
-    if (extraPetLine) lines += `<div class="summary-line"><span>Extra pet</span><strong>$${extraPetLine.amount}</strong></div>`;
+    if (extraPetLine) lines += `<div class="summary-line"><span>Multiple pets</span><strong>$${extraPetLine.amount}</strong></div>`;
     if (medsLine)     lines += `<div class="summary-line"><span>Medication admin</span><strong>$${medsLine.amount}</strong></div>`;
 
     const priceEl = document.getElementById('summaryPrice');

@@ -1532,7 +1532,7 @@ window.openRequestItem = async (id) => {
       { label: 'Start Date', value: fmtDate(item.startDate) },
       { label: 'End Date', value: fmtDate(item.endDate) },
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
-      { label: 'Extra Pet', value: item.addonExtraPet ? 'Yes' : 'No' },
+      { label: 'Multiple Pets', value: item.addonExtraPet ? 'Yes' : 'No' },
       { label: 'Medication Admin', value: item.addonMedication ? 'Yes' : 'No' },
       { label: 'Estimated Total', value: item.estimatedTotal ? `$${item.estimatedTotal}` : '–' },
       { label: 'Payment', value: item.paymentStatus ? item.paymentStatus.charAt(0).toUpperCase() + item.paymentStatus.slice(1) : 'Not yet confirmed' },
@@ -1743,7 +1743,7 @@ function renderServiceRequestReview(item) {
     </div>
     <div style="display:flex;gap:20px;margin-top:14px;">
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;">
-        <input type="checkbox" id="rev-extra-pet" ${item.extraPet ? 'checked' : ''} onchange="reviewRecalcService()" style="accent-color:var(--seafoam);"> Extra pet
+        <input type="checkbox" id="rev-extra-pet" ${item.extraPet ? 'checked' : ''} onchange="reviewRecalcService()" style="accent-color:var(--seafoam);"> Multiple pets
       </label>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;">
         <input type="checkbox" id="rev-medication" ${item.medication ? 'checked' : ''} onchange="reviewRecalcService()" style="accent-color:var(--seafoam);"> Medication admin
@@ -1796,7 +1796,7 @@ function renderOvernightReview(item) {
     </div>
     <div style="display:flex;gap:20px;margin-top:14px;">
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;">
-        <input type="checkbox" id="rev-extra-pet" ${item.addonExtraPet ? 'checked' : ''} onchange="reviewRecalcOvernight()" style="accent-color:var(--seafoam);"> Extra pet
+        <input type="checkbox" id="rev-extra-pet" ${item.addonExtraPet ? 'checked' : ''} onchange="reviewRecalcOvernight()" style="accent-color:var(--seafoam);"> Multiple pets
       </label>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;">
         <input type="checkbox" id="rev-medication" ${item.addonMedication ? 'checked' : ''} onchange="reviewRecalcOvernight()" style="accent-color:var(--seafoam);"> Medication admin

@@ -75,7 +75,7 @@ export function calculateServiceTotal({
 
   const breakdown = [
     { label: info.name, amount: serviceTotal },
-    ...(hasExtraPet ? [{ label: 'Extra pet', amount: extraPetTotal }] : []),
+    ...(hasExtraPet ? [{ label: 'Multiple pets', amount: extraPetTotal }] : []),
     ...(hasMedication ? [{ label: 'Medication admin', amount: medsTotal }] : []),
   ];
 
