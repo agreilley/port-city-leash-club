@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    function isWalker() {
+      return request.auth != null && exists(/databases/$(database)/documents/walkers/$(request.auth.uid));
+    }
+
+    match /admins/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    match /members/{id} {
+      allow read, write: if isAdmin();
+      allow read: if isWalker();
+      allow read: if request.auth != null && request.auth.uid == id;
+
+      allow update: if request.auth != null
+        && request.auth.uid == id
+        && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny([
+                'stripeCustomerId',
+                'stripeSubscriptionId',
+                'stripeSubscriptionItemId',
+                'billingStatus',
+                'lastPaymentAmount',
+                'lastPaymentDate',
+                'paymentMethodUpdatedAt'
+              ]);
+    }
+
+    match /walkers/{id} {
+      allow read, write: if isAdmin();
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    match /walks/{id} {
+      allow read, write: if isAdmin();
+      allow read, update: if isWalker();
+      allow read, update: if request.auth != null && resource.data.memberId == request.auth.uid;
+    }
+
+    match /submissions/{id} {
+      allow read, write: if isAdmin();
+      allow create: if true;
+      allow read: if request.auth != null && resource.data.memberId == request.auth.uid;
+    }
+
+    match /meet_greet_availability/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /overnights/{id} {
+      allow read, write: if isAdmin();
+      allow read: if request.auth != null && resource.data.memberId == request.auth.uid;
+    }
+  }
+}
