@@ -199,7 +199,7 @@
     My Schedule
   </a>
   <a class="nav-item" data-view="earnings" onclick="switchView('earnings')">
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v12M5 5c0-1.1.9-2 3-2s3 .9 3 2-1.5 2-3 2-3 .9-3 2 .9 2 3 2 3-.9 3-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v12M11 5c0 -1.1 -0.9 -2 -3 -2s-3 0.9 -3 2s1.5 2 3 2s3 0.9 3 2s-0.9 2 -3 2s-3 -0.9 -3 -2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     Earnings
   </a>
   <div class="sidebar-footer">
@@ -324,7 +324,7 @@
     <span>Schedule</span>
   </a>
   <a class="mobile-tab" data-view="earnings" onclick="switchView('earnings')">
-    <svg width="20" height="20" viewBox="0 0 16 16" fill="none"><path d="M8 2v12M5 5c0-1.1.9-2 3-2s3 .9 3 2-1.5 2-3 2-3 .9-3 2 .9 2 3 2 3-.9 3-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <svg width="20" height="20" viewBox="0 0 16 16" fill="none"><path d="M8 2v12M11 5c0 -1.1 -0.9 -2 -3 -2s-3 0.9 -3 2s1.5 2 3 2s3 0.9 3 2s-0.9 2 -3 2s-3 -0.9 -3 -2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     <span>Earnings</span>
   </a>
 </nav>
@@ -896,22 +896,22 @@ function renderEarnings() {
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:24px;">
       <div class="stat-card">
         <div class="stat-label">This Week</div>
-        <div class="stat-value" style="color:var(--green);">$${thisWeek.total}</div>
+        <div class="stat-value" style="color:var(--green);"><span style="font-family:'DM Sans',sans-serif;">$</span>${thisWeek.total}</div>
         <div class="stat-sub">${thisWeek.count} walk${thisWeek.count !== 1 ? 's' : ''}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">${monthName}</div>
-        <div class="stat-value" style="color:var(--green);">$${thisMonth.total}</div>
+        <div class="stat-value" style="color:var(--green);"><span style="font-family:'DM Sans',sans-serif;">$</span>${thisMonth.total}</div>
         <div class="stat-sub">${thisMonth.count} walk${thisMonth.count !== 1 ? 's' : ''}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">${lastMonthName}</div>
-        <div class="stat-value">$${lastMonth.total}</div>
+        <div class="stat-value"><span style="font-family:'DM Sans',sans-serif;">$</span>${lastMonth.total}</div>
         <div class="stat-sub">${lastMonth.count} walk${lastMonth.count !== 1 ? 's' : ''}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">All Time</div>
-        <div class="stat-value">$${allTime.total}</div>
+        <div class="stat-value"><span style="font-family:'DM Sans',sans-serif;">$</span>${allTime.total}</div>
         <div class="stat-sub">${allTime.count} walk${allTime.count !== 1 ? 's' : ''}</div>
       </div>
     </div>
