@@ -1431,16 +1431,19 @@ window.openWalkModal = async (walkId) => {
     return { ...w, score };
   }).sort((a, b) => b.score - a.score);
 
+  // member/dog/walker names and walk.timeSlot/status/notes all ultimately
+  // trace back to public-form or walker-app input — escaped throughout
+  // this modal for the same reason as the requests modal/list earlier.
   const walkerSelect = `<select id="manualWalkerSelect" style="width:100%;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:9px;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:10px;">
     <option value="">Select a walker...</option>
-    ${_walkers.map(w => `<option value="${w.id}" ${w.id === (walk.walkerId||'') ? 'selected' : ''}>${w.name}</option>`).join('')}
+    ${_walkers.map(w => `<option value="${w.id}" ${w.id === (walk.walkerId||'') ? 'selected' : ''}>${escapeHtml(w.name)}</option>`).join('')}
   </select>`;
 
   const assignmentHTML = isAssigned ? `
     <div class="modal-label" style="margin-bottom:10px;">Assigned Walker</div>
     <div class="suggestion-card best" style="margin-bottom:16px;">
       <div>
-        <div style="font-weight:500;font-size:14px;">${walker?.name || '–'}</div>
+        <div style="font-weight:500;font-size:14px;">${escapeHtml(walker?.name || '–')}</div>
         <div style="font-size:12px;color:var(--text-light);">${(walker?.zones||[]).join(', ')||'Any'} · ${_walks.filter(wk=>wk.walkerId===walker?.id).length} walks this week</div>
       </div>
       <span style="font-size:11px;color:var(--green);font-weight:500;">Assigned ✓</span>
@@ -1455,7 +1458,7 @@ window.openWalkModal = async (walkId) => {
     ${suggestions.slice(0,3).map((w,i) => `
       <div class="suggestion-card ${i===0?'best':''}" onclick="assignWalker('${walkId}', '${w.id}')">
         <div>
-          <div style="font-weight:500;font-size:14px;">${w.name}</div>
+          <div style="font-weight:500;font-size:14px;">${escapeHtml(w.name)}</div>
           <div style="font-size:12px;color:var(--text-light);">${(w.zones||[]).join(', ')||'Any'} · ${_walks.filter(wk=>wk.walkerId===w.id).length} walks</div>
         </div>
         <div class="suggestion-score ${i===0?'best':''}">${i===0?'Best fit':''} ${w.score}pts</div>
@@ -1469,11 +1472,12 @@ window.openWalkModal = async (walkId) => {
   document.getElementById('walkModalTitle').textContent = `${memberDogNames(member) || 'Walk'} · ${date.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}`;
   document.getElementById('walkModalContent').innerHTML = `
     <div class="form-grid" style="margin-bottom:20px;">
-      <div class="modal-field"><div class="modal-label">Member</div><div class="modal-value">${member?.name || '–'}</div></div>
-      <div class="modal-field"><div class="modal-label">Dog</div><div class="modal-value">${memberDogNames(member) || '–'}</div></div>
-      <div class="modal-field"><div class="modal-label">Time Slot</div><div class="modal-value">${slotLabel}</div></div>
-      <div class="modal-field"><div class="modal-label">Status</div><div class="modal-value">${walk.status || 'Scheduled'}</div></div>
+      <div class="modal-field"><div class="modal-label">Member</div><div class="modal-value">${escapeHtml(member?.name || '–')}</div></div>
+      <div class="modal-field"><div class="modal-label">Dog</div><div class="modal-value">${escapeHtml(memberDogNames(member) || '–')}</div></div>
+      <div class="modal-field"><div class="modal-label">Time Slot</div><div class="modal-value">${escapeHtml(slotLabel)}</div></div>
+      <div class="modal-field"><div class="modal-label">Status</div><div class="modal-value">${escapeHtml(walk.status || 'Scheduled')}</div></div>
     </div>
+    <div class="modal-field"><div class="modal-label">Completion Notes</div><div class="modal-value">${escapeHtml(walk.notes || '–')}</div></div>
     <hr class="modal-divider">
     ${assignmentHTML}
   `;
