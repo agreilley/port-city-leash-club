@@ -7,6 +7,12 @@ service cloud.firestore {
     function isWalker() {
       return request.auth != null && exists(/databases/$(database)/documents/walkers/$(request.auth.uid));
     }
+    // Walkers are stored at two doc IDs: a friendly one (used as walks.walkerId)
+    // and their Auth UID (used only for rule lookups, per admin/dashboard.html).
+    // This resolves auth.uid -> the friendly walkerId used to scope walk access.
+    function myWalkerId() {
+      return get(/databases/$(database)/documents/walkers/$(request.auth.uid)).data.get('walkerId', request.auth.uid);
+    }
 
     match /admins/{uid} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
@@ -38,13 +44,30 @@ service cloud.firestore {
 
     match /walks/{id} {
       allow read, write: if isAdmin();
-      allow read, update: if isWalker();
-      allow read, update: if request.auth != null && resource.data.memberId == request.auth.uid;
+
+      allow read, update: if isWalker() && resource.data.walkerId == myWalkerId();
+
+      allow read: if request.auth != null && resource.data.memberId == request.auth.uid;
+
+      // Members may flag their own walk for a 45-minute extension
+      // (portal-extend-walk.html) — the actual charge/confirmation happens
+      // via admin review (confirmWalkExtension() in admin/dashboard.html,
+      // which sets extendedStatus to 'confirmed' or resets it to null).
+      // hasOnly() only limits which fields change, not their values, so
+      // the values are pinned here too — otherwise a member could write
+      // extendedStatus: 'confirmed' directly and skip the review/charge.
+      allow update: if request.auth != null
+        && resource.data.memberId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['extended', 'extendedStatus', 'duration'])
+        && request.resource.data.extended == true
+        && request.resource.data.extendedStatus == 'pending'
+        && request.resource.data.duration == '45-minute walk';
     }
 
     match /submissions/{id} {
       allow read, write: if isAdmin();
-      allow create: if true;
+      allow create: if request.auth != null;
       allow read: if request.auth != null && resource.data.memberId == request.auth.uid;
     }
 
