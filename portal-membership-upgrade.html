@@ -226,6 +226,7 @@
   <a href="index.html" class="nav-logo">Port City Leash Club</a>
   <ul class="nav-links">
     <li><a href="portal-dashboard.html" class="btn-nav">Member Portal</a></li>
+    <li><a href="#" onclick="signOutMember(); return false;" style="color:var(--text-mid);text-decoration:none;">Log Out</a></li>
   </ul>
 </nav>
 
@@ -508,6 +509,7 @@
   <a class="mobile-tab " href="portal-extras.html"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 4v14M4 11h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>Care</span></a>
   <a class="mobile-tab " href="portal-pet-profile.html"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M3 20c0-4.418 3.582-7 8-7s8 2.582 8 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>Profile</span></a>
   <a class="mobile-tab active" href="portal-account.html"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>Account</span></a>
+  <a class="mobile-tab" href="#" onclick="signOutMember(); return false;"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M8.5 3H4.5a1 1 0 00-1 1v14a1 1 0 001 1h4M14 15l4-4-4-4M18 11H7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Log Out</span></a>
 </nav>
 <script type="module">
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
