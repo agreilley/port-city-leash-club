@@ -788,7 +788,8 @@ const TWILIO_WEBHOOK_URL = `${FUNCTIONS_BASE_URL}/twilioInboundWebhook`;
 
 // The address members will see mail arrive from. Update if the real
 // Workspace address ends up being something other than hello@.
-const BUSINESS_EMAIL_DISPLAY = 'Port City Leash Club <hello@portcityleashclub.com>';
+const BUSINESS_EMAIL_ADDRESS = 'hello@portcityleashclub.com';
+const BUSINESS_EMAIL_DISPLAY = `Port City Leash Club <${BUSINESS_EMAIL_ADDRESS}>`;
 const BUSINESS_EMAIL_DOMAIN = 'portcityleashclub.com';
 
 // ── Matching helpers ────────────────────────────────────────────────────
@@ -802,6 +803,22 @@ function normalizeEmail(email) {
 }
 function normalizePhoneDigits(phone) {
   return (phone || '').replace(/\D/g, '').replace(/^1/, '');
+}
+// Pulls the display name out of a raw "From" header, e.g. 'Jane Doe
+// <jane@example.com>' -> 'Jane Doe'. Returns null for headers with no name
+// portion (just a bare address). This is attacker-controlled input (it's
+// whatever a stranger's email client put in From) — never render it
+// unescaped.
+function parseFromDisplayName(fromHeader) {
+  const match = (fromHeader || '').match(/^"?([^"<]+)"?\s*<[^>]+>$/);
+  return match ? match[1].trim() : null;
+}
+// Firestore doc IDs can't contain '/' and have to be non-empty — this
+// gives every unrecognized email sender a stable, collision-safe pseudo-ID
+// in the same `conversations` collection real members use, mirroring the
+// unmatched_<digits> pattern twilioInboundWebhook already uses for texts.
+function pseudoIdForEmail(email) {
+  return `unmatched_${(email || 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
 }
 
 async function findMemberByEmail(email) {
@@ -856,6 +873,12 @@ async function logConversationMessage(memberId, msg, displayOverride) {
     memberName: member.name || null,
     memberEmail: member.email || null,
     memberPhone: member.phone || null,
+    // True whenever `memberId` isn't a real members/{id} doc — covers both
+    // the SMS unknown-number path and the email unmatched-sender path.
+    // Self-correcting on every write, so linking (which deletes this doc
+    // entirely) or a real member's own messages never need this touched
+    // manually.
+    unlinked: !memberSnap.exists,
     lastMessageAt: FieldValue.serverTimestamp(),
     lastMessagePreview: (msg.body || (msg.mediaUrl ? '📷 Photo' : '')).slice(0, 140),
     lastMessageChannel: msg.channel,
@@ -1009,8 +1032,13 @@ exports.getGmailStatus = onCall(async (request) => {
 // 6. Poll Gmail for anything new since the last check — both the inbox
 //    (member replies) and Sent (catches replies typed directly in Gmail,
 //    not just ones sent through the portal). Runs every 5 minutes.
-//    Only messages matching a known member's email get logged — random
-//    inbox traffic (newsletters, unrelated email) is ignored.
+//    Scoped to mail involving hello@ specifically — the connected mailbox
+//    is alison@ with hello@ as a "send mail as" alias, and alison@ likely
+//    has other business-admin traffic (vendors, filings, etc.) that has no
+//    business landing in a shared admin tool. Messages that don't match a
+//    known member's email still get logged (not dropped) as an unlinked
+//    conversation — an admin can identify and link it to a real member
+//    from the inbox.
 // ─────────────────────────────────────────────────────────────────────────
 exports.gmailSyncPoll = onSchedule({ schedule: 'every 5 minutes', secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET] }, async () => {
   const gmail = await getGmailClient();
@@ -1022,7 +1050,7 @@ exports.gmailSyncPoll = onSchedule({ schedule: 'every 5 minutes', secrets: [GOOG
 
   const listRes = await gmail.users.messages.list({
     userId: 'me',
-    q: `after:${afterUnix} (in:inbox OR in:sent)`,
+    q: `after:${afterUnix} (in:inbox OR in:sent) (to:${BUSINESS_EMAIL_ADDRESS} OR from:${BUSINESS_EMAIL_ADDRESS})`,
     maxResults: 50,
   });
   const messages = listRes.data.messages || [];
@@ -1039,9 +1067,9 @@ exports.gmailSyncPoll = onSchedule({ schedule: 'every 5 minutes', secrets: [GOOG
     const counterpartEmail = (counterpartRaw || '').match(/[\w.+-]+@[\w-]+\.[\w.-]+/)?.[0];
 
     const member = await findMemberByEmail(counterpartEmail);
-    if (!member) continue; // not a recognized member — skip
+    const targetId = member ? member.id : pseudoIdForEmail(counterpartEmail);
 
-    const alreadyLogged = await db.collection('conversations').doc(member.id)
+    const alreadyLogged = await db.collection('conversations').doc(targetId)
       .collection('messages').where('externalId', '==', m.id).limit(1).get();
     if (!alreadyLogged.empty) continue; // already have this one (e.g. sent through the portal)
 
@@ -1051,18 +1079,91 @@ exports.gmailSyncPoll = onSchedule({ schedule: 'every 5 minutes', secrets: [GOOG
       body = extractPlainTextBody(fullRes.data) || body;
     }
 
-    await logConversationMessage(member.id, {
+    await logConversationMessage(targetId, {
       channel: 'email',
       direction: isFromMe ? 'outbound' : 'inbound',
       body,
       subject: headers.subject || null,
-      sentBy: isFromMe ? 'admin_via_gmail' : 'member',
-      status: 'sent',
+      sentBy: isFromMe ? 'admin_via_gmail' : (member ? 'member' : counterpartEmail),
+      // 'unmatched' mirrors the SMS unknown-number status — reserved for a
+      // genuinely unrecognized inbound sender, not for admin proactively
+      // emailing someone new via hello@ (that's a normal 'sent').
+      status: (!isFromMe && !member) ? 'unmatched' : 'sent',
       externalId: m.id,
-    });
+    }, member ? undefined : { name: parseFromDisplayName(headers.from), email: counterpartEmail });
   }
 
   await db.collection('system').doc('gmailAuth').set({ lastSyncedAt: FieldValue.serverTimestamp() }, { merge: true });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 6b. Link an unlinked conversation (unrecognized email sender or SMS
+//     number) to a real member — merges its message history into
+//     conversations/{memberId} and deletes the pseudo-ID conversation, so
+//     it doesn't sit permanently miscategorized just because someone
+//     texted or emailed from an address that isn't on file.
+// ─────────────────────────────────────────────────────────────────────────
+exports.linkInquiryToMember = onCall(async (request) => {
+  await assertIsAdmin(request.auth);
+  const { inquiryId, memberId } = request.data || {};
+  if (!inquiryId || !memberId) {
+    throw new HttpsError('invalid-argument', 'inquiryId and memberId are required.');
+  }
+  if (inquiryId === memberId) {
+    throw new HttpsError('invalid-argument', 'That conversation is already linked to this member.');
+  }
+
+  const memberSnap = await db.collection('members').doc(memberId).get();
+  if (!memberSnap.exists) throw new HttpsError('not-found', 'Member not found.');
+  const member = memberSnap.data();
+
+  const inquiryRef = db.collection('conversations').doc(inquiryId);
+  const inquirySnap = await inquiryRef.get();
+  if (!inquirySnap.exists) throw new HttpsError('not-found', 'Conversation not found.');
+
+  const messagesSnap = await inquiryRef.collection('messages').orderBy('createdAt', 'asc').get();
+  if (messagesSnap.empty) throw new HttpsError('failed-precondition', 'Nothing to link — this conversation has no messages.');
+
+  const targetRef = db.collection('conversations').doc(memberId);
+  const targetSnap = await targetRef.get();
+  const inquiryData = inquirySnap.data();
+  const targetData = targetSnap.exists ? targetSnap.data() : {};
+
+  // Move every message across. Batched at 450 ops (well under Firestore's
+  // 500-per-batch cap) even though a real thread here is realistically a
+  // handful of messages, not hundreds.
+  let batch = db.batch();
+  let opCount = 0;
+  for (const msgDoc of messagesSnap.docs) {
+    batch.set(targetRef.collection('messages').doc(), msgDoc.data());
+    batch.delete(msgDoc.ref);
+    opCount += 2;
+    if (opCount >= 450) { await batch.commit(); batch = db.batch(); opCount = 0; }
+  }
+
+  // Recompute the target's summary from whichever thread has the more
+  // recent activity — the inquiry's messages might be older or newer than
+  // whatever's already in the target member's own conversation.
+  const inquiryLastAt = inquiryData.lastMessageAt?.toMillis?.() || 0;
+  const targetLastAt = targetData.lastMessageAt?.toMillis?.() || 0;
+  const inquiryIsNewer = inquiryLastAt > targetLastAt;
+
+  batch.set(targetRef, {
+    memberId,
+    memberName: member.name || null,
+    memberEmail: member.email || null,
+    memberPhone: member.phone || null,
+    unlinked: false,
+    lastMessageAt: inquiryIsNewer ? inquiryData.lastMessageAt : (targetData.lastMessageAt || inquiryData.lastMessageAt),
+    lastMessagePreview: inquiryIsNewer ? inquiryData.lastMessagePreview : (targetData.lastMessagePreview || inquiryData.lastMessagePreview),
+    lastMessageChannel: inquiryIsNewer ? inquiryData.lastMessageChannel : (targetData.lastMessageChannel || inquiryData.lastMessageChannel),
+    unreadByAdmin: !!(inquiryData.unreadByAdmin || targetData.unreadByAdmin),
+  }, { merge: true });
+
+  batch.delete(inquiryRef);
+  await batch.commit();
+
+  return { success: true, movedCount: messagesSnap.size };
 });
 
 // ─────────────────────────────────────────────────────────────────────────

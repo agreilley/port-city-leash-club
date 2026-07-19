@@ -108,8 +108,8 @@
 
   /* ── REQUESTS ── */
   .request-filters { display: flex; gap: 8px; margin-bottom: 20px; }
-  .request-filter, .request-status-filter, .conversation-filter { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
-  .request-filter.active, .request-status-filter.active, .conversation-filter.active { background: var(--navy); color: white; border-color: var(--navy); }
+  .request-filter, .request-status-filter, .conversation-filter, .conversation-category-filter { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
+  .request-filter.active, .request-status-filter.active, .conversation-filter.active, .conversation-category-filter.active { background: var(--navy); color: white; border-color: var(--navy); }
   .list-row { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 20px; margin-bottom: 12px; cursor: pointer; transition: box-shadow 0.15s; }
   .list-row:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
   .list-row.unread { border-left: 3px solid var(--rust); }
@@ -540,6 +540,10 @@
         <button class="btn-secondary" id="gmailConnectBtn" onclick="connectGmail()" style="white-space:nowrap;">Connect Gmail</button>
       </div>
       <div class="request-filters" style="padding:0 20px;">
+        <button class="conversation-category-filter active" onclick="filterConversationCategory('members', this)">Members</button>
+        <button class="conversation-category-filter" onclick="filterConversationCategory('inquiries', this)">Inquiries</button>
+      </div>
+      <div class="request-filters" style="padding:0 20px;margin-top:-12px;">
         <button class="conversation-filter active" onclick="filterConversations('all', this)">All</button>
         <button class="conversation-filter" onclick="filterConversations('unread', this)">Unread</button>
       </div>
@@ -718,6 +722,13 @@
   <div class="modal">
     <button class="modal-close" onclick="closeModal('conversationModal')">×</button>
     <div class="modal-title" id="conversationModalTitle"></div>
+    <div id="conversationLinkBar" style="display:none;background:#FDF3E0;border:1px solid #E8D5A8;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px;">
+      <div style="color:#8A6D1D;margin-bottom:8px;">Not a member — link this conversation to an existing member so it's not lost.</div>
+      <div style="display:flex;gap:8px;">
+        <select id="conversationLinkSelect" style="flex:1;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;"></select>
+        <button class="btn-secondary" id="conversationLinkBtn" onclick="doLinkInquiry()" style="white-space:nowrap;">Link</button>
+      </div>
+    </div>
     <div id="conversationThread" style="max-height:60vh;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px 2px;"></div>
     <hr class="modal-divider">
     <div id="conversationComposeError" style="color:#C17B6F;font-size:13px;margin-bottom:8px;display:none;"></div>
@@ -972,6 +983,13 @@ function subscribeRequests() {
 let allConversations = [];
 let convoUnsubscribeThread = null; // active thread listener, torn down when the modal closes
 let currentConversationFilter = 'all';
+let currentConversationCategory = 'members';
+
+// `unlinked` is self-derived server-side on every write, but fall back to
+// the ID pattern too in case a doc predates that field being added.
+function isUnlinkedConvo(c) {
+  return c.unlinked === true || (c.memberId || '').startsWith('unmatched_');
+}
 
 function subscribeConversations() {
   const q = query(collection(db, 'conversations'), orderBy('lastMessageAt', 'desc'));
@@ -1009,29 +1027,47 @@ window.filterConversations = (filter, btn) => {
   renderConversationsList();
 };
 
+window.filterConversationCategory = (category, btn) => {
+  currentConversationCategory = category;
+  document.querySelectorAll('.conversation-category-filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderConversationsList();
+};
+
 function renderConversationsList() {
   const el = document.getElementById('conversationsList');
   if (!el) return;
-  const filtered = currentConversationFilter === 'unread'
-    ? allConversations.filter(c => c.unreadByAdmin)
-    : allConversations;
+  let filtered = currentConversationCategory === 'inquiries'
+    ? allConversations.filter(isUnlinkedConvo)
+    : allConversations.filter(c => !isUnlinkedConvo(c));
+  if (currentConversationFilter === 'unread') filtered = filtered.filter(c => c.unreadByAdmin);
+
   if (!filtered.length) {
-    el.innerHTML = currentConversationFilter === 'unread'
-      ? '<div style="padding:30px 20px;color:var(--text-light);font-size:14px;">No unread conversations — you\'re all caught up.</div>'
-      : '<div style="padding:30px 20px;color:var(--text-light);font-size:14px;">No conversations yet. Once members start texting or emailing, they\'ll show up here.</div>';
+    const emptyMsg = currentConversationCategory === 'inquiries'
+      ? (currentConversationFilter === 'unread'
+          ? 'No unread inquiries.'
+          : 'No inquiries yet. Emails to hello@ that don\'t match a member on file will show up here instead of being lost.')
+      : (currentConversationFilter === 'unread'
+          ? 'No unread conversations — you\'re all caught up.'
+          : 'No conversations yet. Once members start texting or emailing, they\'ll show up here.');
+    el.innerHTML = `<div style="padding:30px 20px;color:var(--text-light);font-size:14px;">${emptyMsg}</div>`;
     return;
   }
-  el.innerHTML = filtered.map(c => `
+  el.innerHTML = filtered.map(c => {
+    const unlinked = isUnlinkedConvo(c);
+    const displayName = escapeHtml(c.memberName || c.memberPhone || c.memberEmail || 'Unknown');
+    return `
     <div class="list-row ${c.unreadByAdmin ? 'unread' : ''}" onclick="openConversation('${c.id}')" style="display:flex;align-items:center;gap:10px;">
-      <div style="flex-shrink:0;">${channelIcon(c.lastMessageChannel)}</div>
+      <div style="flex-shrink:0;">${unlinked ? '<span title="Not a member" style="color:#B8860B;">❔</span>' : channelIcon(c.lastMessageChannel)}</div>
       <div style="flex:1;min-width:0;">
-        <div style="font-weight:${c.unreadByAdmin ? '700' : '500'};font-size:14px;">${c.memberName || c.memberPhone || c.memberEmail || 'Unknown'}</div>
-        <div style="font-size:13px;color:var(--text-light);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${(c.lastMessagePreview || '').replace(/</g,'&lt;')}</div>
+        <div style="font-weight:${c.unreadByAdmin ? '700' : '500'};font-size:14px;">${displayName}${unlinked ? ' <span style="font-weight:500;font-size:11px;color:#8A6D1D;background:#FDF3E0;padding:2px 6px;border-radius:10px;margin-left:4px;">Not a member</span>' : ''}</div>
+        <div style="font-size:13px;color:var(--text-light);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.lastMessagePreview || '')}</div>
       </div>
       <div style="flex-shrink:0;font-size:12px;color:var(--text-light);">${timeAgo(c.lastMessageAt)}</div>
       ${c.unreadByAdmin ? '<div style="width:8px;height:8px;border-radius:50%;background:#C17B6F;flex-shrink:0;"></div>' : ''}
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 window.openConversation = async (memberId) => {
@@ -1063,6 +1099,18 @@ window.openConversation = async (memberId) => {
     updateDoc(doc(db, 'conversations', memberId), { unreadByAdmin: false }).catch(()=>{});
   }
 
+  // Unlinked (unrecognized sender) — offer to link it to a real member.
+  const linkBar = document.getElementById('conversationLinkBar');
+  if (isUnlinkedConvo(convo)) {
+    const sel = document.getElementById('conversationLinkSelect');
+    sel.innerHTML = '<option value="">Select member...</option>' +
+      [...allMembers].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .map(m => `<option value="${m.id}">${escapeHtml(m.name || m.id)}</option>`).join('');
+    linkBar.style.display = 'block';
+  } else {
+    linkBar.style.display = 'none';
+  }
+
   // Live thread listener
   if (convoUnsubscribeThread) convoUnsubscribeThread();
   let subjectPrefilled = false;
@@ -1085,6 +1133,26 @@ window.openConversation = async (memberId) => {
       subjectPrefilled = true;
     }
   });
+};
+
+window.doLinkInquiry = async () => {
+  const sel = document.getElementById('conversationLinkSelect');
+  const memberId = sel.value;
+  if (!memberId) { alert('Select a member to link to first.'); return; }
+  const inquiryId = window._activeConversationId;
+  const btn = document.getElementById('conversationLinkBtn');
+  btn.disabled = true; btn.textContent = 'Linking...';
+  try {
+    const linkInquiryToMember = httpsCallable(fns, 'linkInquiryToMember');
+    await linkInquiryToMember({ inquiryId, memberId });
+    // The inquiry doc is deleted server-side and its messages merged into
+    // the target member's conversation — the live listener picks both
+    // changes up on its own, so just close the now-gone conversation.
+    closeModal('conversationModal');
+  } catch (e) {
+    alert('Couldn\'t link this conversation: ' + (e.message || 'unknown error'));
+    btn.disabled = false; btn.textContent = 'Link';
+  }
 };
 
 function toggleConvoSubjectField() {
