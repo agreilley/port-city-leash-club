@@ -67,7 +67,15 @@ service cloud.firestore {
 
     match /submissions/{id} {
       allow read, write: if isAdmin();
-      allow create: if request.auth != null;
+
+      // Public lead-gen forms (contact, membership-request, service-request,
+      // careers) submit before the visitor has an account, so they can't be
+      // gated behind request.auth != null — but every other type (reschedule,
+      // walk_extension, dog_update, etc.) should still require a logged-in
+      // user, since those come from existing members/walkers only.
+      allow create: if request.auth != null
+        || request.resource.data.type in ['contact', 'membership_request', 'service_request', 'application'];
+
       allow read: if request.auth != null && resource.data.memberId == request.auth.uid;
     }
 
