@@ -756,6 +756,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { SERVICE_PRICES, calculateServiceTotal, calculateWalkExtensionTotal, WALK_EXTENSION_PRICE } from '../pricing.js';
+import { calculateEarnings } from '../walker-pricing.js';
 
 // ─── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────────────
 const firebaseConfig = {
@@ -3039,9 +3040,66 @@ window.openWalkerDetail = (id) => {
     </label>
     <div id="wd-save-status" style="font-size:12px;color:var(--text-light);margin-top:10px;min-height:16px;"></div>
     <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="saveWalkerSchedule('${walker.id}','${walker.uid}')">Save Schedule</button>
+    <hr class="modal-divider">
+    ${renderWalkerEarningsSection(walker)}
   `;
   document.getElementById('walkerDetailModal').classList.add('open');
 };
+
+// Uses the exact same calculateEarnings() from walker-pricing.js that
+// powers the walker's own Earnings page — deliberately not a second,
+// independently-derived calculation, so these numbers can't drift out
+// of sync with what the walker sees for themselves.
+function renderWalkerEarningsSection(walker) {
+  const completedWalks = allWalks.filter(w => w.walkerId === walker.id && w.status === 'completed');
+  const completedOvernights = (window.allOvernights || allOvernights || []).filter(o => o.walkerId === walker.id && o.status === 'completed');
+
+  if (!completedWalks.length && !completedOvernights.length) {
+    return `<div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Earnings</div>
+      <div style="color:var(--text-light);font-size:13px;">No completed work yet.</div>`;
+  }
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const monthName = now.toLocaleString('en-US', { month: 'long' });
+
+  function inMonth(d) { return d >= monthStart && d < monthEnd; }
+
+  const monthWalks = completedWalks.filter(w => inMonth(w.date?.toDate?.() || new Date(w.date)));
+  const monthOvernights = completedOvernights.filter(o => inMonth(o.startDate?.toDate?.() || new Date(o.startDate)));
+
+  const thisMonth = calculateEarnings(monthWalks, monthOvernights);
+  const allTime = calculateEarnings(completedWalks, completedOvernights);
+
+  const dollar = (n) => `<span style="font-family:'DM Sans',sans-serif;">$</span>${n}`;
+  const breakdownRows = Object.values(thisMonth.breakdown).filter(row => row.count > 0);
+
+  return `
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Earnings</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+      <div class="stat-card">
+        <div class="stat-label">${escapeHtml(monthName)}</div>
+        <div class="stat-value" style="color:var(--green);">${dollar(thisMonth.total)}</div>
+        <div class="stat-sub">${thisMonth.walkCount + thisMonth.overnightCount} item${thisMonth.walkCount + thisMonth.overnightCount !== 1 ? 's' : ''}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">All Time</div>
+        <div class="stat-value">${dollar(allTime.total)}</div>
+        <div class="stat-sub">${allTime.walkCount + allTime.overnightCount} item${allTime.walkCount + allTime.overnightCount !== 1 ? 's' : ''}</div>
+      </div>
+    </div>
+    ${breakdownRows.length ? `
+    <div style="font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--text-light);margin-bottom:6px;">${escapeHtml(monthName)} Breakdown</div>
+    <div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;overflow:hidden;">
+      ${breakdownRows.map((row, i) => `
+      <div style="display:flex;justify-content:space-between;padding:10px 14px;${i < breakdownRows.length - 1 ? 'border-bottom:1px solid rgba(0,0,0,0.05);' : ''}">
+        <span style="font-size:13px;color:var(--navy);">${escapeHtml(row.label)} <span style="color:var(--text-light);">×${row.count}</span></span>
+        <span style="font-size:13px;font-weight:600;color:var(--navy);">${dollar(row.total)}</span>
+      </div>`).join('')}
+    </div>` : `<div style="color:var(--text-light);font-size:13px;">No completed work in ${escapeHtml(monthName)} yet.</div>`}
+  `;
+}
 
 window.saveWalkerSchedule = async (walkerId, uid) => {
   const days = ['mon','tue','wed','thu','fri','sat','sun'];
