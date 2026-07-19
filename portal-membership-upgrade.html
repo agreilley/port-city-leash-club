@@ -561,7 +561,7 @@ window.submitUpgrade = async (newTier) => {
   if (!userId) return;
   try {
     await addDoc(collection(db, 'submissions'), {
-      type: 'tierChange',
+      type: 'tier_change',
       memberId: userId,
       memberName: memberData?.name || '',
       currentTier: memberData?.tier || '',

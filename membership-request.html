@@ -561,7 +561,7 @@
         // breed/age/weight dropped: dogs[] is the source of truth and
         // nothing reads these flat mirrors anymore.
         dogName: collectDogs()[0]?.name || '',
-        startDate: document.getElementById('startDate')?.value || '',
+        startDate: localDateToTimestamp(document.getElementById('startDate')?.value || ''),
         timeWindow: document.querySelector('input[name=timeWindow]:checked')?.value || '',
         days: Array.from(document.querySelectorAll('input[name=days]:checked')).map(c=>c.value).join(', '),
         meetGreetDateTime: document.getElementById('meetGreetDateTime')?.value || '',
@@ -645,6 +645,16 @@
     if (dogCount >= 4) document.getElementById('addDogBtn').style.display = 'block';
   }
 
+  // Parse a "YYYY-MM-DD" date-input string into a Firestore Timestamp
+  // without a timezone shift — noon local time keeps the calendar date
+  // stable regardless of which timezone later reads it back (same pattern
+  // portal-request-extras.html's booking flow already uses).
+  function localDateToTimestamp(str) {
+    if (!str) return null;
+    const [y, m, d] = str.split('-').map(Number);
+    return window._Timestamp.fromDate(new Date(y, m - 1, d, 12, 0, 0));
+  }
+
   function collectDogs() {
     const dogs = [];
     for (let i = 1; i <= dogCount; i++) {
@@ -686,7 +696,7 @@
 </footer>
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-  import { getFirestore, collection, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+  import { getFirestore, collection, addDoc, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
   const firebaseConfig = {
     apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
     authDomain: "port-city-leash-club-827ab.firebaseapp.com",
@@ -701,6 +711,7 @@
   window._addDoc = addDoc;
   window._collection = collection;
   window._serverTimestamp = serverTimestamp;
+  window._Timestamp = Timestamp;
 </script>
 <script src="https://js.stripe.com/v3/"></script>
 <script type="module">

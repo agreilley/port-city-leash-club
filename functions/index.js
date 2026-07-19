@@ -307,14 +307,20 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
     easternTimeToUtc(nextFirst.getUTCFullYear(), nextFirst.getUTCMonth(), 1, 18, 0).getTime() / 1000
   );
 
-  // If the member's requested start date (submission.startDate, "YYYY-MM-DD")
-  // falls inside the anchor month, that first invoice is a partial month —
-  // only count walk days from that date through month end. Any other case
-  // (no start date given, or it falls outside the anchor month entirely)
-  // bills the full month, same as every month after.
+  // If the member's requested start date (submission.startDate, a Firestore
+  // Timestamp — written as local noon so its UTC calendar-date components
+  // never roll over a day boundary) falls inside the anchor month, that
+  // first invoice is a partial month — only count walk days from that date
+  // through month end. Any other case (no start date given, or it falls
+  // outside the anchor month entirely) bills the full month, same as every
+  // month after. new Date(sub.startDate) below is a fallback for any
+  // pre-existing docs still stored as a "YYYY-MM-DD" string.
   let fromDay = 1;
   if (sub.startDate) {
-    const [startYear, startMonth, startDay] = sub.startDate.split('-').map(Number);
+    const startDateObj = sub.startDate.toDate ? sub.startDate.toDate() : new Date(sub.startDate);
+    const startYear = startDateObj.getUTCFullYear();
+    const startMonth = startDateObj.getUTCMonth() + 1;
+    const startDay = startDateObj.getUTCDate();
     if (startYear === nextFirst.getUTCFullYear() && startMonth - 1 === nextFirst.getUTCMonth()) {
       fromDay = startDay;
     }
@@ -371,11 +377,16 @@ exports.generateInitialWalks = onCall({}, async (request) => {
 
     // Same target-month/fromDay derivation as createMembershipSubscription,
     // so the walks generated here line up exactly with what was billed.
+    // sub.startDate is a Firestore Timestamp (new Date(sub.startDate) below
+    // is a fallback for any pre-existing docs still stored as a string).
     const now = new Date();
     const nextFirst = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
     let fromDay = 1;
     if (sub.startDate) {
-      const [startYear, startMonth, startDay] = sub.startDate.split('-').map(Number);
+      const startDateObj = sub.startDate.toDate ? sub.startDate.toDate() : new Date(sub.startDate);
+      const startYear = startDateObj.getUTCFullYear();
+      const startMonth = startDateObj.getUTCMonth() + 1;
+      const startDay = startDateObj.getUTCDate();
       if (startYear === nextFirst.getUTCFullYear() && startMonth - 1 === nextFirst.getUTCMonth()) {
         fromDay = startDay;
       }
@@ -630,7 +641,7 @@ exports.submitVacationHold = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
   // admin to approve/decline. status: 'applied' (not 'pending') so it
   // doesn't show up looking like it's awaiting action.
   await db.collection('submissions').add({
-    type: 'pauseMembership',
+    type: 'pause_membership',
     memberId,
     memberName: member.name || '',
     pauseStartDate: Timestamp.fromDate(startDate),
@@ -1324,7 +1335,8 @@ const REQUEST_TYPE_LABELS = {
   application: 'New walker application',
   contact: 'New contact form message',
   reschedule: 'Walk reschedule request',
-  pause_request: 'Membership pause request',
+  pause_membership: 'Membership pause request',
+  vacation_hold_refund: 'Vacation hold refund request',
   tier_change: 'Membership tier change request',
   dog_update: 'Dog roster update',
   overnight_request: 'Overnight / check-in request',
