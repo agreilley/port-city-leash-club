@@ -514,8 +514,8 @@ function renderUpcoming() {
           <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--rust);">Ready to complete</div>
           <span class="walk-status today">Today</span>
         </div>
-        <div style="font-size:18px;font-weight:600;color:var(--navy);margin-bottom:4px;">${getDogNames(member)}</div>
-        <div style="font-size:14px;color:var(--text-mid);margin-bottom:2px;">${member?.name || '–'}${member?.address ? ' · ' + member.address : ''}</div>
+        <div style="font-size:18px;font-weight:600;color:var(--navy);margin-bottom:4px;">${escapeHtml(getDogNames(member))}</div>
+        <div style="font-size:14px;color:var(--text-mid);margin-bottom:2px;">${escapeHtml(member?.name || '–')}${member?.address ? ' · ' + escapeHtml(member.address) : ''}</div>
         <div style="font-size:13px;color:var(--text-light);">${slotLabel}</div>
         <div style="margin-top:12px;background:var(--rust);color:white;text-align:center;padding:11px;border-radius:6px;font-size:14px;font-weight:500;">Complete This Walk →</div>
       </div>`;
@@ -536,8 +536,8 @@ function renderUpcoming() {
         </div>
         <div class="walk-divider"></div>
         <div class="walk-info">
-          <div class="walk-dog">${getDogNames(member)}</div>
-          <div class="walk-meta">${member?.name || '–'} · ${member?.address || ''}</div>
+          <div class="walk-dog">${escapeHtml(getDogNames(member))}</div>
+          <div class="walk-meta">${escapeHtml(member?.name || '–')} · ${escapeHtml(member?.address || '')}</div>
           <div class="walk-slot">${slotLabel}</div>
         </div>
         <span class="walk-status scheduled">Scheduled</span>
@@ -617,7 +617,7 @@ function renderCalendar() {
     });
     const chips = dayWalks.map(w => {
       const member = allMembers.find(m => m.id === w.memberId);
-      return `<div class="my-walk-chip ${w.timeSlot}" onclick="openWalkDetail('${w.id}')">${getDogNames(member)}</div>`;
+      return `<div class="my-walk-chip ${w.timeSlot}" onclick="openWalkDetail('${w.id}')">${escapeHtml(getDogNames(member))}</div>`;
     }).join('');
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}</div>`;
   }
@@ -647,8 +647,8 @@ function renderHistory() {
       </div>
       <div class="walk-divider"></div>
       <div class="walk-info">
-        <div class="walk-dog">${getDogNames(member)}</div>
-        <div class="walk-meta">${member?.name || '–'}</div>
+        <div class="walk-dog">${escapeHtml(getDogNames(member))}</div>
+        <div class="walk-meta">${escapeHtml(member?.name || '–')}</div>
         <div class="walk-slot">${slotLabel}</div>
       </div>
       <span class="walk-status completed">${w.status === 'completed' ? 'Completed' : 'Past'}</span>
@@ -680,24 +680,22 @@ function renderDogProfiles(member) {
     // a walker shouldn't have to scan a paragraph to find out if a dog
     // is reactive or on medication.
     const alerts = [
-      dog.triggers && `<div style="background:#FEF3C7;border-radius:6px;padding:8px 10px;font-size:13px;color:#92400E;margin-top:6px;">⚠️ <strong>Triggers:</strong> ${esc(dog.triggers)}</div>`,
-      dog.medications && `<div style="background:#EEF2FF;border-radius:6px;padding:8px 10px;font-size:13px;color:#3730A3;margin-top:6px;">💊 <strong>Medications:</strong> ${esc(dog.medications)}</div>`,
-      dog.allergies && `<div style="background:#FFF0EE;border-radius:6px;padding:8px 10px;font-size:13px;color:#8B2E22;margin-top:6px;">🚫 <strong>Allergies:</strong> ${esc(dog.allergies)}</div>`,
+      dog.triggers && `<div style="background:#FEF3C7;border-radius:6px;padding:8px 10px;font-size:13px;color:#92400E;margin-top:6px;">⚠️ <strong>Triggers:</strong> ${escapeHtml(dog.triggers)}</div>`,
+      dog.medications && `<div style="background:#EEF2FF;border-radius:6px;padding:8px 10px;font-size:13px;color:#3730A3;margin-top:6px;">💊 <strong>Medications:</strong> ${escapeHtml(dog.medications)}</div>`,
+      dog.allergies && `<div style="background:#FFF0EE;border-radius:6px;padding:8px 10px;font-size:13px;color:#8B2E22;margin-top:6px;">🚫 <strong>Allergies:</strong> ${escapeHtml(dog.allergies)}</div>`,
     ].filter(Boolean).join('');
 
     return `
       <div style="background:var(--sand);border-radius:8px;padding:14px 16px;margin-bottom:10px;">
-        <div style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:2px;">${esc(dog.name || 'Unnamed dog')}${dogs.length > 1 ? ` <span style="font-weight:400;color:#7A7A7A;font-size:12px;">(${i+1} of ${dogs.length})</span>` : ''}</div>
-        ${fields ? `<div style="font-size:13px;color:#4A4A4A;margin-bottom:4px;">${esc(fields)}</div>` : ''}
-        ${dog.notes ? `<div style="font-size:13px;color:#4A4A4A;margin-top:4px;"><strong>Notes:</strong> ${esc(dog.notes)}</div>` : ''}
-        ${dog.temperament ? `<div style="font-size:13px;color:#4A4A4A;margin-top:4px;"><strong>Temperament:</strong> ${esc(dog.temperament)}</div>` : ''}
-        ${dog.walkingPrefs ? `<div style="font-size:13px;color:#4A4A4A;margin-top:2px;"><strong>Preferences:</strong> ${esc(dog.walkingPrefs)}</div>` : ''}
+        <div style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:2px;">${escapeHtml(dog.name || 'Unnamed dog')}${dogs.length > 1 ? ` <span style="font-weight:400;color:#7A7A7A;font-size:12px;">(${i+1} of ${dogs.length})</span>` : ''}</div>
+        ${fields ? `<div style="font-size:13px;color:#4A4A4A;margin-bottom:4px;">${escapeHtml(fields)}</div>` : ''}
+        ${dog.notes ? `<div style="font-size:13px;color:#4A4A4A;margin-top:4px;"><strong>Notes:</strong> ${escapeHtml(dog.notes)}</div>` : ''}
+        ${dog.temperament ? `<div style="font-size:13px;color:#4A4A4A;margin-top:4px;"><strong>Temperament:</strong> ${escapeHtml(dog.temperament)}</div>` : ''}
+        ${dog.walkingPrefs ? `<div style="font-size:13px;color:#4A4A4A;margin-top:2px;"><strong>Preferences:</strong> ${escapeHtml(dog.walkingPrefs)}</div>` : ''}
         ${alerts}
       </div>`;
   }).join('');
 }
-
-function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 window.openWalkDetail = (walkId) => {
   const walk = myWalks.find(w => w.id === walkId);
@@ -717,13 +715,13 @@ window.openWalkDetail = (walkId) => {
   document.getElementById('walkModalTitle').textContent = `${dogNames} · ${date.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}`;
   document.getElementById('walkModalContent').innerHTML = `
     ${renderDogProfiles(member)}
-    <div class="detail-row"><span class="detail-label">Owner</span><span class="detail-value">${esc(member?.name) || '–'}</span></div>
-    <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${esc(member?.address) || '–'}</span></div>
-    <div class="detail-row"><span class="detail-label">Access</span><span class="detail-value">${esc(member?.accessNotes) || 'None'}</span></div>
+    <div class="detail-row"><span class="detail-label">Owner</span><span class="detail-value">${escapeHtml(member?.name) || '–'}</span></div>
+    <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${escapeHtml(member?.address) || '–'}</span></div>
+    <div class="detail-row"><span class="detail-label">Access</span><span class="detail-value">${escapeHtml(member?.accessNotes) || 'None'}</span></div>
     <div class="detail-row"><span class="detail-label">Time Slot</span><span class="detail-value">${slotLabel}</span></div>
     <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted ? '✓ Completed' : isToday ? 'Today' : isPastDay ? 'Past' : 'Scheduled'}</span></div>
     ${isCompleted ? `
-      <div class="detail-row"><span class="detail-label">Walk Notes</span><span class="detail-value">${esc(walk.notes) || 'None'}</span></div>
+      <div class="detail-row"><span class="detail-label">Walk Notes</span><span class="detail-value">${escapeHtml(walk.notes) || 'None'}</span></div>
       ${walk.photoUrl ? `<img src="${walk.photoUrl}" style="width:100%;border-radius:8px;margin-top:8px;" alt="Walk photo">` : ''}
     ` : !isCompleted && canComplete ? `
       <div style="margin-top:16px;">
@@ -846,7 +844,7 @@ function renderSchedule() {
   container.innerHTML = `
     ${zones.length ? `<div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:14px 18px;margin-bottom:16px;">
       <div style="font-size:12px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);margin-bottom:4px;">Assigned Zones</div>
-      <div style="font-size:14px;color:var(--navy);font-weight:500;">${zones.join(', ')}</div>
+      <div style="font-size:14px;color:var(--navy);font-weight:500;">${zones.map(z => escapeHtml(z)).join(', ')}</div>
     </div>` : ''}
     <div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:14px 18px;margin-bottom:16px;">
       <div style="font-size:12px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);margin-bottom:4px;">Overnight Stays</div>
