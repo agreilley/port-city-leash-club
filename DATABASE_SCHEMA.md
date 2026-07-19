@@ -239,7 +239,7 @@ Stores walker/staff profiles and assignments.
   standardWalkRate: number (USD, e.g., 16)
   extendedWalkRate: number (USD, e.g., 24)
   checkInRate: number (USD, e.g., 13)
-  overnightRate: number (USD, e.g., 45)
+  overnightRate: number (USD, e.g., 65 — composite: $45 overnight + $13 check-in + $7 top-up)
   
   // Performance
   assignedWalksThisMonth: number
