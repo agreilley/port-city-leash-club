@@ -1528,19 +1528,65 @@ window.openOvernightModal = (overnightId) => {
   const member = allMembers.find(m => m.id === o.memberId);
   const memberName = member?.name || o.memberName || o.memberId || '–';
   const dogNames = memberDogNames(member) || '–';
+  const _walkers = window.allWalkers || allWalkers;
+  const walker = _walkers.find(w => w.id === (o.walkerId || '').trim());
+  const isAssigned = !!(o.walkerId || '').trim();
+  const isCompleted = o.status === 'completed';
 
-  document.getElementById('overnightModalTitle').textContent = `${memberName} · Overnight Stay`;
+  const walkerSelect = `<select id="manualOvernightWalkerSelect" style="width:100%;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:9px;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:10px;">
+    <option value="">Select a walker...</option>
+    ${_walkers.map(w => `<option value="${w.id}" ${w.id === (o.walkerId||'') ? 'selected' : ''}>${escapeHtml(w.name)}</option>`).join('')}
+  </select>`;
+
+  const assignmentHTML = isAssigned ? `
+    <div class="modal-label" style="margin-bottom:10px;">Assigned Walker</div>
+    <div class="suggestion-card best" style="margin-bottom:16px;">
+      <div style="font-weight:500;font-size:14px;">${escapeHtml(walker?.name || '–')}</div>
+      <span style="font-size:11px;color:var(--green);font-weight:500;">Assigned ✓</span>
+    </div>
+    <div class="modal-label" style="margin-bottom:8px;">Change Walker</div>
+    ${walkerSelect}
+    <div style="display:flex;gap:8px;">
+      <button class="btn-primary" style="flex:1;" onclick="assignOvernightWalkerManual('${overnightId}')">Update Walker</button>
+      <button class="btn-secondary" onclick="assignOvernightWalker('${overnightId}', '')" style="color:var(--rust);">Unassign</button>
+    </div>` : `
+    <div class="modal-label" style="margin-bottom:8px;">Assign a walker</div>
+    ${walkerSelect}
+    <button class="btn-primary" style="width:100%;" onclick="assignOvernightWalkerManual('${overnightId}')">Assign</button>`;
+
+  document.getElementById('overnightModalTitle').textContent = `${escapeHtml(memberName)} · Overnight Stay`;
   document.getElementById('overnightModalContent').innerHTML = `
     <div class="form-grid">
-      <div class="modal-field"><div class="modal-label">Member</div><div class="modal-value">${memberName}</div></div>
-      <div class="modal-field"><div class="modal-label">Dog(s)</div><div class="modal-value">${dogNames}</div></div>
+      <div class="modal-field"><div class="modal-label">Member</div><div class="modal-value">${escapeHtml(memberName)}</div></div>
+      <div class="modal-field"><div class="modal-label">Dog(s)</div><div class="modal-value">${escapeHtml(dogNames)}</div></div>
       <div class="modal-field"><div class="modal-label">Start Date</div><div class="modal-value">${fmtDate(o.startDate)}</div></div>
       <div class="modal-field"><div class="modal-label">End Date</div><div class="modal-value">${fmtDate(o.endDate)}</div></div>
-      <div class="modal-field"><div class="modal-label">Status</div><div class="modal-value">${o.status === 'confirmed' ? '✓ Confirmed' : o.status || '–'}</div></div>
-      <div class="modal-field"><div class="modal-label">Notes</div><div class="modal-value">${o.notes || '–'}</div></div>
+      <div class="modal-field"><div class="modal-label">Status</div><div class="modal-value">${isCompleted ? '✓ Completed' : o.status === 'confirmed' ? '✓ Confirmed' : escapeHtml(o.status || '–')}</div></div>
+      <div class="modal-field"><div class="modal-label">Multiple Pets</div><div class="modal-value">${o.extraPet ? 'Yes' : 'No'}</div></div>
+      <div class="modal-field"><div class="modal-label">Medication Admin</div><div class="modal-value">${o.medication ? 'Yes' : 'No'}</div></div>
+      <div class="modal-field"><div class="modal-label">Notes</div><div class="modal-value">${escapeHtml(o.notes || '–')}</div></div>
     </div>
+    <hr class="modal-divider">
+    ${assignmentHTML}
+    ${isAssigned && !isCompleted ? `<hr class="modal-divider"><button class="btn-secondary" style="width:100%;" onclick="markOvernightComplete('${overnightId}')">Mark Complete</button>` : ''}
   `;
   document.getElementById('overnightModal').classList.add('open');
+};
+
+window.assignOvernightWalker = async (overnightId, walkerId) => {
+  await updateDoc(doc(db, 'overnights', overnightId), { walkerId, updatedAt: serverTimestamp() });
+  closeModal('overnightModal');
+};
+
+window.assignOvernightWalkerManual = async (overnightId) => {
+  const walkerId = document.getElementById('manualOvernightWalkerSelect').value;
+  if (!walkerId) return;
+  await assignOvernightWalker(overnightId, walkerId);
+};
+
+window.markOvernightComplete = async (overnightId) => {
+  await updateDoc(doc(db, 'overnights', overnightId), { status: 'completed', completedAt: serverTimestamp() });
+  closeModal('overnightModal');
 };
 
 // ── WALK MODAL (ASSIGN) ───────────────────────────────────────────────────────
@@ -2361,6 +2407,12 @@ window.confirmOvernight = async (submissionId, item) => {
       status:      'confirmed',
       confirmedAt: serverTimestamp(),
       submissionId: submissionId,
+      // Carried over from the submission's billing add-ons so walker payout
+      // (calculated from this doc, not the submission) can apply the same
+      // extra-pet/medication surcharges the member was charged for.
+      walkerId:    '',
+      extraPet:    addonExtraPet,
+      medication:  addonMedication,
     });
     // Mark submission as confirmed, with the admin-reviewed details
     await updateDoc(doc(db, 'submissions', submissionId), {
