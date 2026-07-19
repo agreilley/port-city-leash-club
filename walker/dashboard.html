@@ -223,6 +223,10 @@
       </div>
       <div class="section-title">Next Up</div>
       <div id="upcomingList"><div style="text-align:center;padding:40px;color:var(--text-light);">Loading...</div></div>
+      <div id="overnightAssignmentsSection" style="display:none;">
+        <div class="section-title" style="margin-top:24px;">Overnight &amp; Check-In Assignments</div>
+        <div id="overnightAssignmentsList"></div>
+      </div>
     </div>
 
     <!-- CALENDAR VIEW -->
@@ -353,7 +357,12 @@ const storage = getStorage(app);
 
 let walkerDoc = null;
 let myWalks = [];
+let myOvernights = [];
 let allMembers = [];
+
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
 let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth();
 
@@ -406,12 +415,25 @@ function loadData() {
     renderEarnings();
   });
 
+  // Subscribe to this walker's assigned overnight/check-in stays
+  const overnightsQ = query(collection(db, 'overnights'), where('walkerId', '==', walkerDoc.id));
+  onSnapshot(overnightsQ, snap => {
+    myOvernights = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => {
+      const da = a.startDate?.toDate?.() || new Date(a.startDate || 0);
+      const db_ = b.startDate?.toDate?.() || new Date(b.startDate || 0);
+      return da - db_;
+    });
+    renderOvernights();
+    renderEarnings();
+  });
+
   // Load members for dog/owner info
   onSnapshot(collection(db, 'members'), snap => {
     allMembers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderUpcoming();
     renderCalendar();
     renderHistory();
+    renderOvernights();
     renderEarnings();
   });
 
@@ -524,6 +546,51 @@ function renderUpcoming() {
 
   container.innerHTML = html;
 }
+
+// ── OVERNIGHT / CHECK-IN ASSIGNMENTS ────────────────────────────────────────────
+function renderOvernights() {
+  const section = document.getElementById('overnightAssignmentsSection');
+  const container = document.getElementById('overnightAssignmentsList');
+  if (!section || !container) return;
+
+  // Most walkers never do this kind of work — keep the section out of the
+  // way entirely rather than showing an empty state for it.
+  if (!myOvernights.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+
+  function fmtDate(val) {
+    if (!val) return '–';
+    try {
+      const d = val.toDate ? val.toDate() : new Date(val);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch { return '–'; }
+  }
+
+  container.innerHTML = myOvernights.map(o => {
+    const member = allMembers.find(m => m.id === o.memberId);
+    const memberName = escapeHtml(member?.name || o.memberName || '–');
+    const dogNames = escapeHtml(getDogNames(member) || o.dogName || '–');
+    const isCompleted = o.status === 'completed';
+    return `<div class="walk-card" style="flex-direction:column;align-items:stretch;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:16px;font-weight:600;color:var(--navy);">${dogNames}</div>
+          <div style="font-size:13px;color:var(--text-mid);">${memberName} · ${escapeHtml(o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin' ? 'Check-In' : 'Overnight')}</div>
+          <div style="font-size:13px;color:var(--text-light);">${fmtDate(o.startDate)} – ${fmtDate(o.endDate)}${o.extraPet ? ' · Multiple pets' : ''}${o.medication ? ' · Medication' : ''}</div>
+        </div>
+        <span class="walk-status ${isCompleted ? 'completed' : 'scheduled'}">${isCompleted ? 'Completed' : 'Assigned'}</span>
+      </div>
+      ${isCompleted ? '' : `<button class="btn-complete" style="margin-top:12px;" onclick="completeOvernight('${o.id}')">Mark as Completed</button>`}
+    </div>`;
+  }).join('');
+}
+
+window.completeOvernight = async (overnightId) => {
+  await updateDoc(doc(db, 'overnights', overnightId), {
+    status: 'completed',
+    completedAt: serverTimestamp(),
+  });
+};
 
 // ── CALENDAR ──────────────────────────────────────────────────────────────────
 window.prevMonth = () => { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } renderCalendar(); };

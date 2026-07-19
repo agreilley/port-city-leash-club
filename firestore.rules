@@ -87,6 +87,11 @@ service cloud.firestore {
     match /overnights/{id} {
       allow read, write: if isAdmin();
       allow read: if request.auth != null && resource.data.memberId == request.auth.uid;
+
+      // Same shape as the walks walker-scoping rule — unrestricted field
+      // access on their own assigned overnight, matching how completeWalk()
+      // already writes multiple fields freely on walks.
+      allow read, update: if isWalker() && resource.data.walkerId == myWalkerId();
     }
 
     match /conversations/{id} {
