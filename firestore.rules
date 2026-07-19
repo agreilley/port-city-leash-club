@@ -80,5 +80,12 @@ service cloud.firestore {
       allow read, write: if isAdmin();
       allow read: if request.auth != null && resource.data.memberId == request.auth.uid;
     }
+
+    match /conversations/{id} {
+      allow read, write: if isAdmin();
+      match /messages/{messageId} {
+        allow read, write: if isAdmin();
+      }
+    }
   }
 }

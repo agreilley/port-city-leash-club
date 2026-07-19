@@ -989,6 +989,23 @@ exports.gmailAuthCallback = onRequest({ secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIEN
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// 5b. Connection status for the admin portal's "Connect Gmail" button.
+//     Deliberately returns only a boolean + timestamps, never the refresh
+//     token — system/gmailAuth has no client-readable Firestore rule on
+//     purpose, so the token never leaves the server.
+// ─────────────────────────────────────────────────────────────────────────
+exports.getGmailStatus = onCall(async (request) => {
+  await assertIsAdmin(request.auth);
+  const authDoc = await db.collection('system').doc('gmailAuth').get();
+  const data = authDoc.data();
+  return {
+    connected: !!data?.refreshToken,
+    connectedAt: data?.connectedAt?.toDate?.().toISOString() || null,
+    lastSyncedAt: data?.lastSyncedAt?.toDate?.().toISOString() || null,
+  };
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // 6. Poll Gmail for anything new since the last check — both the inbox
 //    (member replies) and Sent (catches replies typed directly in Gmail,
 //    not just ones sent through the portal). Runs every 5 minutes.

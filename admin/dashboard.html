@@ -899,6 +899,11 @@ function initDashboard() {
   subscribeConversations();
   subscribeOvernights();
   renderCalendar();
+  refreshGmailStatus();
+  // Connect Gmail opens the OAuth consent screen in a new tab — re-check
+  // status when the admin comes back to this tab instead of requiring a
+  // manual refresh.
+  window.addEventListener('focus', refreshGmailStatus);
 }
 
 // ── SUBSCRIPTIONS ─────────────────────────────────────────────────────────────
@@ -1124,8 +1129,29 @@ window.connectGmail = async () => {
   } catch (e) {
     alert('Couldn\'t start the Gmail connection: ' + (e.message || 'unknown error'));
   }
-  btn.disabled = false; btn.textContent = 'Connect Gmail';
+  btn.disabled = false;
+  await refreshGmailStatus();
 };
+
+async function refreshGmailStatus() {
+  const btn = document.getElementById('gmailConnectBtn');
+  if (!btn) return;
+  try {
+    const getGmailStatus = httpsCallable(fns, 'getGmailStatus');
+    const result = await getGmailStatus();
+    if (result.data.connected) {
+      btn.textContent = 'Gmail Connected ✓ — Reconnect';
+      btn.title = result.data.lastSyncedAt
+        ? `Last synced ${new Date(result.data.lastSyncedAt).toLocaleString()}`
+        : 'Connected, waiting on first sync';
+    } else {
+      btn.textContent = 'Connect Gmail';
+      btn.title = '';
+    }
+  } catch (e) {
+    console.error('Gmail status check failed:', e.message);
+  }
+}
 
 // ── RENDER ALL ───────────────────────────────────────────────────────────────
 function renderAll() {
