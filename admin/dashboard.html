@@ -108,8 +108,8 @@
 
   /* ── REQUESTS ── */
   .request-filters { display: flex; gap: 8px; margin-bottom: 20px; }
-  .request-filter, .request-status-filter { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
-  .request-filter.active, .request-status-filter.active { background: var(--navy); color: white; border-color: var(--navy); }
+  .request-filter, .request-status-filter, .conversation-filter { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
+  .request-filter.active, .request-status-filter.active, .conversation-filter.active { background: var(--navy); color: white; border-color: var(--navy); }
   .list-row { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 20px; margin-bottom: 12px; cursor: pointer; transition: box-shadow 0.15s; }
   .list-row:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
   .list-row.unread { border-left: 3px solid var(--rust); }
@@ -539,6 +539,10 @@
         <p style="font-size:13px;color:var(--text-light);margin:0;">Texts and emails, all in one place. Members never see this screen — they just get real messages.</p>
         <button class="btn-secondary" id="gmailConnectBtn" onclick="connectGmail()" style="white-space:nowrap;">Connect Gmail</button>
       </div>
+      <div class="request-filters" style="padding:0 20px;">
+        <button class="conversation-filter active" onclick="filterConversations('all', this)">All</button>
+        <button class="conversation-filter" onclick="filterConversations('unread', this)">Unread</button>
+      </div>
       <div id="conversationsList"><div class="loading-spinner">Loading...</div></div>
     </div>
 
@@ -967,6 +971,7 @@ function subscribeRequests() {
 // ── CONVERSATIONS (unified email + text) ────────────────────────────────────
 let allConversations = [];
 let convoUnsubscribeThread = null; // active thread listener, torn down when the modal closes
+let currentConversationFilter = 'all';
 
 function subscribeConversations() {
   const q = query(collection(db, 'conversations'), orderBy('lastMessageAt', 'desc'));
@@ -997,14 +1002,26 @@ function timeAgo(ts) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+window.filterConversations = (filter, btn) => {
+  currentConversationFilter = filter;
+  document.querySelectorAll('.conversation-filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderConversationsList();
+};
+
 function renderConversationsList() {
   const el = document.getElementById('conversationsList');
   if (!el) return;
-  if (!allConversations.length) {
-    el.innerHTML = '<div style="padding:30px 20px;color:var(--text-light);font-size:14px;">No conversations yet. Once members start texting or emailing, they\'ll show up here.</div>';
+  const filtered = currentConversationFilter === 'unread'
+    ? allConversations.filter(c => c.unreadByAdmin)
+    : allConversations;
+  if (!filtered.length) {
+    el.innerHTML = currentConversationFilter === 'unread'
+      ? '<div style="padding:30px 20px;color:var(--text-light);font-size:14px;">No unread conversations — you\'re all caught up.</div>'
+      : '<div style="padding:30px 20px;color:var(--text-light);font-size:14px;">No conversations yet. Once members start texting or emailing, they\'ll show up here.</div>';
     return;
   }
-  el.innerHTML = allConversations.map(c => `
+  el.innerHTML = filtered.map(c => `
     <div class="list-row ${c.unreadByAdmin ? 'unread' : ''}" onclick="openConversation('${c.id}')" style="display:flex;align-items:center;gap:10px;">
       <div style="flex-shrink:0;">${channelIcon(c.lastMessageChannel)}</div>
       <div style="flex:1;min-width:0;">
