@@ -1160,6 +1160,15 @@ function toggleConvoSubjectField() {
   document.getElementById('convoSubject').style.display = isEmail ? 'block' : 'none';
 }
 
+// Plain-text email bodies can carry runs of 3+ blank lines (auto-generated
+// signatures, quoted reply chains) that white-space:pre-wrap renders as
+// literal dead vertical space. Collapse those down to a single blank line
+// (still preserving genuine paragraph breaks) without touching the stored
+// data — this is a display-only normalization.
+function normalizeMessageBody(text) {
+  return (text || '').replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function renderConversationThread(messages) {
   const el = document.getElementById('conversationThread');
   if (!messages.length) {
@@ -1176,10 +1185,10 @@ function renderConversationThread(messages) {
       ? '<div style="font-size:11px;color:#C17B6F;margin-top:2px;">From an unrecognized number</div>'
       : '';
     return `
-      <div style="align-self:${isOut ? 'flex-end' : 'flex-start'};max-width:75%;">
-        <div style="background:${isOut ? '#0D1B2A' : '#F1EEE8'};color:${isOut ? '#fff' : '#0D1B2A'};padding:8px 12px;border-radius:12px;font-size:14px;white-space:pre-wrap;">
+      <div style="display:flex;flex-direction:column;align-items:${isOut ? 'flex-end' : 'flex-start'};">
+        <div style="display:inline-block;max-width:75%;background:${isOut ? '#0D1B2A' : '#F1EEE8'};color:${isOut ? '#fff' : '#0D1B2A'};padding:8px 12px;border-radius:12px;font-size:14px;white-space:pre-wrap;overflow-wrap:break-word;">
           ${m.subject ? `<div style="font-weight:600;margin-bottom:3px;">${m.subject.replace(/</g,'&lt;')}</div>` : ''}
-          ${(m.body || '').replace(/</g,'&lt;')}
+          ${normalizeMessageBody(m.body).replace(/</g,'&lt;')}
           ${m.mediaUrl ? `<img src="${m.mediaUrl}" style="width:100%;border-radius:8px;margin-top:6px;display:block;">` : ''}
         </div>
         <div style="font-size:11px;color:#7A7A7A;margin-top:2px;">${channelIcon(m.channel)} ${timeAgo(m.createdAt)}${m.automated ? ' · automatic' : ''}</div>
