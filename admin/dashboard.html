@@ -714,7 +714,7 @@
   <div class="modal">
     <button class="modal-close" onclick="closeModal('conversationModal')">×</button>
     <div class="modal-title" id="conversationModalTitle"></div>
-    <div id="conversationThread" style="max-height:400px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px 2px;"></div>
+    <div id="conversationThread" style="max-height:60vh;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px 2px;"></div>
     <hr class="modal-divider">
     <div id="conversationComposeError" style="color:#C17B6F;font-size:13px;margin-bottom:8px;display:none;"></div>
     <div style="display:flex;gap:8px;align-items:flex-end;">
@@ -1048,10 +1048,25 @@ window.openConversation = async (memberId) => {
 
   // Live thread listener
   if (convoUnsubscribeThread) convoUnsubscribeThread();
+  let subjectPrefilled = false;
   const msgsQ = query(collection(db, 'conversations', memberId, 'messages'), orderBy('createdAt', 'asc'));
   convoUnsubscribeThread = onSnapshot(msgsQ, snap => {
     const messages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderConversationThread(messages);
+
+    // Pre-fill the reply subject with "Re: <original>", same as any normal
+    // reply — skipping this risks the reply not threading correctly in the
+    // recipient's inbox. Only do this once per modal-open (not on every
+    // snapshot update) so it doesn't overwrite an admin's in-progress edit
+    // if a new message arrives while they're typing.
+    if (!subjectPrefilled && messages.length) {
+      const lastWithSubject = [...messages].reverse().find(m => m.subject);
+      if (lastWithSubject) {
+        const subj = lastWithSubject.subject;
+        document.getElementById('convoSubject').value = /^re:/i.test(subj.trim()) ? subj : `Re: ${subj}`;
+      }
+      subjectPrefilled = true;
+    }
   });
 };
 
