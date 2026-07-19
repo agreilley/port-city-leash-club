@@ -204,32 +204,41 @@
 </footer>
 
 <script>
+  function showContactNotification(text, isError) {
+    const n = document.createElement('div');
+    n.className = 'notification';
+    if (isError) n.style.borderLeftColor = 'var(--rust)';
+    n.textContent = text;
+    document.body.appendChild(n);
+    setTimeout(() => { n.style.transition = 'opacity 0.3s'; n.style.opacity = '0'; setTimeout(() => n.remove(), 300); }, 4000);
+  }
+
   async function submitContact(e) {
     e.preventDefault();
     const btn = e.target.querySelector('.btn-submit');
     btn.textContent = 'Sending...'; btn.disabled = true;
-    // Show confirmation immediately
-    const n = document.createElement('div');
-    n.className = 'notification';
-    n.textContent = "Message sent! We'll be in touch within 24 hours.";
-    document.body.appendChild(n);
-    setTimeout(() => { n.style.transition = 'opacity 0.3s'; n.style.opacity = '0'; setTimeout(() => n.remove(), 300); }, 4000);
-    // Submit to Firestore in background
     try {
-      if (window._addDoc && window._collection && window._db) {
-        const data = {
-          type: 'contact',
-          name: document.querySelector('input[name=name]')?.value || '',
-          email: document.querySelector('input[name=email]')?.value || '',
-          topic: document.querySelector('select[name=topic]')?.value || '',
-          message: document.querySelector('textarea[name=message]')?.value || '',
-          read: false,
-          createdAt: window._serverTimestamp ? window._serverTimestamp() : new Date()
-        };
-        await window._addDoc(window._collection(window._db, 'submissions'), data);
+      if (!(window._addDoc && window._collection && window._db)) {
+        throw new Error('Firebase not ready');
       }
-    } catch(err) { console.error(err); }
-    e.target.reset();
+      const data = {
+        type: 'contact',
+        name: document.querySelector('input[name=name]')?.value || '',
+        email: document.querySelector('input[name=email]')?.value || '',
+        topic: document.querySelector('select[name=topic]')?.value || '',
+        message: document.querySelector('textarea[name=message]')?.value || '',
+        read: false,
+        createdAt: window._serverTimestamp ? window._serverTimestamp() : new Date()
+      };
+      await window._addDoc(window._collection(window._db, 'submissions'), data);
+      // Only show success — and only reset the form — once the write is confirmed.
+      showContactNotification("Message sent! We'll be in touch within 24 hours.", false);
+      e.target.reset();
+    } catch(err) {
+      console.error(err);
+      // Leave the form filled in so nothing typed gets lost on retry.
+      showContactNotification("Something went wrong sending your message. Please try again, or email hello@portcityleashclub.com directly.", true);
+    }
     btn.textContent = 'Send Message'; btn.disabled = false;
   }
 </script>

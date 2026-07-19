@@ -344,6 +344,15 @@
 </footer>
 
 <script>
+  function showApplicationNotification(text, isError) {
+    const n = document.createElement('div');
+    n.className = 'notification';
+    if (isError) n.style.borderLeftColor = 'var(--rust)';
+    n.textContent = text;
+    document.body.appendChild(n);
+    setTimeout(() => { n.style.opacity = '0'; setTimeout(() => n.remove(), 300); }, 4000);
+  }
+
   async function submitApplication(e) {
     e.preventDefault();
     const btn = e.target.querySelector('.btn-submit');
@@ -376,15 +385,12 @@
         createdAt: window._serverTimestamp()
       };
       await window._addDoc(window._collection(window._db, 'submissions'), data);
-      const n = document.createElement('div');
-      n.className = 'notification';
-      n.textContent = "Application submitted! We\'ll be in touch within one week.";
-      document.body.appendChild(n);
-      setTimeout(() => { n.style.opacity = '0'; setTimeout(() => n.remove(), 300); }, 4000);
+      showApplicationNotification("Application submitted! We'll be in touch within one week.", false);
       e.target.reset();
     } catch(err) {
       console.error(err);
-      alert('Something went wrong. Please email hello@portcityleashclub.com');
+      // Leave the form filled in so nothing typed gets lost on retry.
+      showApplicationNotification('Something went wrong submitting your application. Please try again, or email hello@portcityleashclub.com directly.', true);
     }
     btn.textContent = 'Submit Application'; btn.disabled = false;
   }
