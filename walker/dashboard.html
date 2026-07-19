@@ -338,6 +338,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { getAuth, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getFirestore, collection, query, where, onSnapshot, doc, getDoc, updateDoc, getDocs, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+import { calculateEarnings, WALKER_RATES, WALKER_EXTRA_PET_FEE, WALKER_MEDICATION_FEE } from '../walker-pricing.js';
 
 // ─── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────────────
 const firebaseConfig = {
@@ -901,17 +902,16 @@ window.submitScheduleRequest = async () => {
 };
 
 // ── EARNINGS ─────────────────────────────────────────────────────────────────
-const WALKER_RATES = {
-  standard: 16,
-  extended: 24,
-};
-
+// Calculation itself lives in walker-pricing.js, imported above, and is
+// shared with admin/dashboard.html's walker earnings view — this file only
+// handles date-range filtering and rendering.
 function renderEarnings() {
   const container = document.getElementById('earningsDisplay');
-  const completed = myWalks.filter(w => w.status === 'completed');
+  const completedWalks = myWalks.filter(w => w.status === 'completed');
+  const completedOvernights = myOvernights.filter(o => o.status === 'completed');
 
-  if (!completed.length) {
-    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-light);">No completed walks yet — earnings will show up here once you start.</div>';
+  if (!completedWalks.length && !completedOvernights.length) {
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-light);">No completed work yet — earnings will show up here once you start.</div>';
     return;
   }
 
@@ -931,88 +931,86 @@ function renderEarnings() {
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  function calcPeriod(walks) {
-    let total = 0;
-    let count = 0;
-    walks.forEach(w => {
-      const rate = w.extended ? WALKER_RATES.extended : WALKER_RATES.standard;
-      total += rate;
-      count++;
-    });
-    return { total, count };
-  }
+  function dateStr(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 
   function walksInRange(start, end) {
-    return completed.filter(w => {
+    const startStr = dateStr(start), endStr = dateStr(end);
+    return completedWalks.filter(w => {
       const ds = walkDateStr(w.date);
-      const startStr = `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}`;
-      const endStr = `${end.getFullYear()}-${String(end.getMonth()+1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}`;
       return ds >= startStr && ds < endStr;
     });
   }
 
-  const thisWeek = calcPeriod(walksInRange(thisWeekStart, thisWeekEnd));
-  const thisMonth = calcPeriod(walksInRange(thisMonthStart, thisMonthEnd));
-  const lastMonth = calcPeriod(walksInRange(lastMonthStart, lastMonthEnd));
-  const allTime = calcPeriod(completed);
+  // Overnights are attributed to the month/week their stay started in,
+  // even though a stay can run past that boundary — a defensible, simple
+  // convention given a booking has no single "the" date the way a walk does.
+  function overnightsInRange(start, end) {
+    const startStr = dateStr(start), endStr = dateStr(end);
+    return completedOvernights.filter(o => {
+      const d = o.startDate?.toDate?.() || new Date(o.startDate);
+      const ds = dateStr(d);
+      return ds >= startStr && ds < endStr;
+    });
+  }
+
+  function periodTotal(start, end) {
+    return calculateEarnings(walksInRange(start, end), overnightsInRange(start, end));
+  }
+
+  const thisWeek = periodTotal(thisWeekStart, thisWeekEnd);
+  const thisMonth = periodTotal(thisMonthStart, thisMonthEnd);
+  const lastMonth = periodTotal(lastMonthStart, lastMonthEnd);
+  const allTime = calculateEarnings(completedWalks, completedOvernights);
+
+  function countLabel(period) {
+    const count = period.walkCount + period.overnightCount;
+    const noun = period.overnightCount ? 'item' : 'walk';
+    return `${count} ${noun}${count !== 1 ? 's' : ''}`;
+  }
 
   const monthName = now.toLocaleString('en-US', { month: 'long' });
   const lastMonthName = lastMonthStart.toLocaleString('en-US', { month: 'long' });
+
+  const rateRows = [
+    ['Standard Walk (30 min)', WALKER_RATES.standard],
+    ['Extended Walk (45 min)', WALKER_RATES.extended],
+    ['Check-In Visit', WALKER_RATES.checkin],
+    ['Overnight Stay (per night)', WALKER_RATES.overnight],
+    ['Multiple Pets (per night)', WALKER_EXTRA_PET_FEE],
+    ['Medication Admin (per night)', WALKER_MEDICATION_FEE],
+  ];
 
   container.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:24px;">
       <div class="stat-card">
         <div class="stat-label">This Week</div>
         <div class="stat-value" style="color:var(--green);"><span style="font-family:'DM Sans',sans-serif;">$</span>${thisWeek.total}</div>
-        <div class="stat-sub">${thisWeek.count} walk${thisWeek.count !== 1 ? 's' : ''}</div>
+        <div class="stat-sub">${countLabel(thisWeek)}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">${monthName}</div>
         <div class="stat-value" style="color:var(--green);"><span style="font-family:'DM Sans',sans-serif;">$</span>${thisMonth.total}</div>
-        <div class="stat-sub">${thisMonth.count} walk${thisMonth.count !== 1 ? 's' : ''}</div>
+        <div class="stat-sub">${countLabel(thisMonth)}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">${lastMonthName}</div>
         <div class="stat-value"><span style="font-family:'DM Sans',sans-serif;">$</span>${lastMonth.total}</div>
-        <div class="stat-sub">${lastMonth.count} walk${lastMonth.count !== 1 ? 's' : ''}</div>
+        <div class="stat-sub">${countLabel(lastMonth)}</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">All Time</div>
         <div class="stat-value"><span style="font-family:'DM Sans',sans-serif;">$</span>${allTime.total}</div>
-        <div class="stat-sub">${allTime.count} walk${allTime.count !== 1 ? 's' : ''}</div>
+        <div class="stat-sub">${countLabel(allTime)}</div>
       </div>
     </div>
 
     <div class="section-title">Rate Card</div>
     <div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;overflow:hidden;">
-      <div style="display:flex;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(0,0,0,0.05);">
-        <span style="font-size:14px;color:var(--navy);">Standard Walk (30 min)</span>
-        <span style="font-size:14px;font-weight:600;color:var(--navy);">$16</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(0,0,0,0.05);">
-        <span style="font-size:14px;color:var(--navy);">Extended Walk (45 min)</span>
-        <span style="font-size:14px;font-weight:600;color:var(--navy);">$24</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(0,0,0,0.05);">
-        <span style="font-size:14px;color:var(--navy);">Check-In Visit (20 min)</span>
-        <span style="font-size:14px;font-weight:600;color:var(--navy);">$13</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(0,0,0,0.05);">
-        <span style="font-size:14px;color:var(--navy);">Overnight Stay</span>
-        <span style="font-size:14px;font-weight:600;color:var(--navy);">$45</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(0,0,0,0.05);">
-        <span style="font-size:14px;color:var(--navy);">Multiple Pets (overnight)</span>
-        <span style="font-size:14px;font-weight:600;color:var(--navy);">$5</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(0,0,0,0.05);">
-        <span style="font-size:14px;color:var(--navy);">Medication Admin</span>
-        <span style="font-size:14px;font-weight:600;color:var(--navy);">$5</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:14px 18px;background:rgba(0,0,0,0.02);">
-        <span style="font-size:14px;color:var(--navy);">Holiday Surcharge</span>
-        <span style="font-size:14px;font-weight:600;color:var(--navy);">+30%</span>
-      </div>
+      ${rateRows.map(([label, rate], i) => `
+      <div style="display:flex;justify-content:space-between;padding:14px 18px;${i < rateRows.length - 1 ? 'border-bottom:1px solid rgba(0,0,0,0.05);' : ''}">
+        <span style="font-size:14px;color:var(--navy);">${label}</span>
+        <span style="font-size:14px;font-weight:600;color:var(--navy);"><span style="font-family:'DM Sans',sans-serif;">$</span>${rate}</span>
+      </div>`).join('')}
     </div>
   `;
 }
