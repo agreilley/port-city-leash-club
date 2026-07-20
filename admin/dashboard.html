@@ -2852,11 +2852,15 @@ function presetDailyWalkDays(e) {
 window.openAddMemberModal = (prefill, submissionId) => {
   // Restore the form if it was replaced by the success screen
   restoreAddMemberModal();
-  // Populate walker dropdown with current walkers
+  // Populate walker dropdown with current walkers. Reads the module-scoped
+  // allWalkers directly — this used to read window.allWalkers, which is never
+  // assigned (the dashboard is a module, so its top-level `let` bindings are
+  // not properties of window), so the list silently fell back to [] and the
+  // dropdown only ever offered "Unassigned".
   const sel = document.getElementById('am-walker');
   if (sel) {
     sel.innerHTML = '<option value="">Unassigned</option>' +
-      (window.allWalkers||[]).map(w => `<option value="${w.id}">${w.name}</option>`).join('');
+      allWalkers.map(w => `<option value="${w.id}">${w.name}</option>`).join('');
   }
 
   // Track the source submission (if converting from a request item) so saveMember()
