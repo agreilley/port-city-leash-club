@@ -91,6 +91,32 @@ function countWalkDaysInMonth(walkDays, year, monthIndex, fromDay = 1) {
   return datesMatchingWeekdaysInMonth(walkDays, year, monthIndex, fromDay).length;
 }
 
+// Normalize a Firestore Timestamp / Date / "YYYY-MM-DD" string to a Date.
+// The string branch is a fallback for pre-existing docs written before
+// start dates were stored as Timestamps.
+function toDateOrNull(value) {
+  if (!value) return null;
+  const d = value.toDate ? value.toDate() : new Date(value);
+  return isNaN(d) ? null : d;
+}
+
+// The day of `year`/`monthIndex` a member's billing and walk generation
+// should start from. Normally 1 (the whole month), but a member whose
+// membership starts partway through THIS month is only billed for — and
+// only gets walks on — the days from their start date onward.
+//
+// Both scheduled jobs on the 1st and createMembershipSubscription derive
+// fromDay through this one function. They used to disagree: the
+// subscription honored the requested start date, then the two jobs on the
+// 1st both recomputed from day 1 and silently reverted it — re-billing the
+// full month and generating a walk before the member had agreed to start.
+function firstBilledMonthFromDay(startDateValue, year, monthIndex) {
+  const start = toDateOrNull(startDateValue);
+  if (!start) return 1;
+  if (start.getUTCFullYear() !== year || start.getUTCMonth() !== monthIndex) return 1;
+  return start.getUTCDate();
+}
+
 // Strict "YYYY-MM-DD" parser used for member-supplied dates (vacation hold).
 // Rejects anything that isn't that exact format AND rejects calendar dates
 // that don't actually exist (e.g. "2026-02-30") by round-tripping through
@@ -332,18 +358,8 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
   // first invoice is a partial month — only count walk days from that date
   // through month end. Any other case (no start date given, or it falls
   // outside the anchor month entirely) bills the full month, same as every
-  // month after. new Date(sub.startDate) below is a fallback for any
-  // pre-existing docs still stored as a "YYYY-MM-DD" string.
-  let fromDay = 1;
-  if (sub.startDate) {
-    const startDateObj = sub.startDate.toDate ? sub.startDate.toDate() : new Date(sub.startDate);
-    const startYear = startDateObj.getUTCFullYear();
-    const startMonth = startDateObj.getUTCMonth() + 1;
-    const startDay = startDateObj.getUTCDate();
-    if (startYear === nextFirst.getUTCFullYear() && startMonth - 1 === nextFirst.getUTCMonth()) {
-      fromDay = startDay;
-    }
-  }
+  // month after.
+  const fromDay = firstBilledMonthFromDay(sub.startDate, nextFirst.getUTCFullYear(), nextFirst.getUTCMonth());
   const quantity = countWalkDaysInMonth(member.defaultWalkDays, nextFirst.getUTCFullYear(), nextFirst.getUTCMonth(), fromDay);
 
   if (!quantity) {
@@ -357,11 +373,17 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
     proration_behavior: 'none',
   });
 
+  // membershipStartDate is copied onto the member so the scheduled jobs on
+  // the 1st can honor a mid-month start. It lived only on the submission
+  // before, which those jobs never read — which is exactly why they used to
+  // revert the proration set here.
+  const startDate = toDateOrNull(sub.startDate);
   await db.collection('members').doc(memberId).set({
     stripeCustomerId: sub.stripeCustomerId,
     stripeSubscriptionId: subscription.id,
     stripeSubscriptionItemId: subscription.items.data[0].id,
     billingStatus: 'active',
+    ...(startDate ? { membershipStartDate: Timestamp.fromDate(startDate) } : {}),
   }, { merge: true });
 
   return { success: true, subscriptionId: subscription.id, quantity };
@@ -456,7 +478,11 @@ exports.syncMonthlyWalkQuantities = onSchedule({
     const member = memberDoc.data();
     if (!member.stripeSubscriptionItemId) continue; // no active subscription (e.g. Travel-tier / one-time clients)
 
-    const quantity = countWalkDaysInMonth(member.defaultWalkDays, year, month);
+    // A member starting partway through THIS month is billed only from
+    // their start date; every later month bills in full (membershipStartDate
+    // is then in the past, so fromDay falls back to 1).
+    const fromDay = firstBilledMonthFromDay(member.membershipStartDate, year, month);
+    const quantity = countWalkDaysInMonth(member.defaultWalkDays, year, month, fromDay);
     try {
       await stripe.subscriptionItems.update(member.stripeSubscriptionItemId, {
         quantity,
@@ -488,7 +514,11 @@ exports.generateMonthlyWalks = onSchedule({
     const member = memberDoc.data();
     if (!member.stripeSubscriptionItemId) continue; // no active subscription (e.g. Travel-tier / one-time clients)
 
-    const result = await generateWalksForMember(memberDoc.id, member, year, month, 1);
+    // Same fromDay as syncMonthlyWalkQuantities computes for this member, so
+    // the walks generated match the quantity billed. Passing 1 unconditionally
+    // used to create a walk before a mid-month member's start date.
+    const fromDay = firstBilledMonthFromDay(member.membershipStartDate, year, month);
+    const result = await generateWalksForMember(memberDoc.id, member, year, month, fromDay);
     if (result.blocked) {
       console.error(`generateMonthlyWalks: member ${memberDoc.id} has no defaultTimeSlot — skipped`);
     } else if (result.failed > 0) {
