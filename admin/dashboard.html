@@ -774,14 +774,10 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const fns = getFunctions(app);
 
-// Stripe Price IDs (sandbox/test mode) for the three billed membership
-// tiers — must match TIER_PRICE_IDS in functions/index.js. Travel tier
-// is one-time/service-based and intentionally has no subscription price.
-const TIER_PRICE_IDS = {
-  Essential: 'price_1Ts2wUB7khvEldleeOdGkbJs',
-  Standard: 'price_1Ts2xxB7khvEldleNkMcgyEW',
-  Daily: 'price_1Ts2ylB7khvEldleWi4NnAfd',
-};
+// Stripe Price IDs deliberately do NOT live here. createMembershipSubscription
+// resolves the tier's price server-side from the member document — see
+// TIER_PRICE_IDS in functions/index.js, the single source of truth. This file
+// previously kept a duplicate copy that had to be updated in lockstep.
 
 // ── AUTH GUARD ──────────────────────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
@@ -2906,15 +2902,21 @@ window.saveMember = async () => {
         status: 'confirmed', memberId: uid, read: true,
       });
 
-      const priceId = TIER_PRICE_IDS[tier];
-      if (priceId) {
-        try {
-          const createMembershipSubscription = httpsCallable(fns, 'createMembershipSubscription');
-          await createMembershipSubscription({ submissionId: window._addMemberSubmissionId, memberId: uid, priceId });
-        } catch (e) {
-          warnings.push(`Membership billing wasn't started: ${e.message}`);
-        }
+      // The server resolves this member's tier to a Stripe price. A tier with
+      // no subscription price (Travel) comes back skipped:true rather than as
+      // an error, and gets no walks generated — same outcome as before, minus
+      // the client-side price table. A billing *failure* still generates walks:
+      // the two calls stay independent.
+      let subscriptionSkipped = false;
+      try {
+        const createMembershipSubscription = httpsCallable(fns, 'createMembershipSubscription');
+        const res = await createMembershipSubscription({ submissionId: window._addMemberSubmissionId, memberId: uid });
+        subscriptionSkipped = !!(res && res.data && res.data.skipped);
+      } catch (e) {
+        warnings.push(`Membership billing wasn't started: ${e.message}`);
+      }
 
+      if (!subscriptionSkipped) {
         try {
           const generateInitialWalks = httpsCallable(fns, 'generateInitialWalks');
           await generateInitialWalks({ submissionId: window._addMemberSubmissionId, memberId: uid });

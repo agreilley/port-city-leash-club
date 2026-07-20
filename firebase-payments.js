@@ -2,10 +2,10 @@
 // Shared utility — included on membership-request.html and service-request.html
 // Handles saving a card on file (zero charge) via Stripe Elements + Cloud Functions.
 //
-// SETUP NEEDED (see TODO.md / payments checklist):
-//   1. Replace STRIPE_PUBLISHABLE_KEY below with your real Stripe publishable key
-//      (starts with pk_test_... while testing, pk_live_... once live).
-//   2. Deploy the Cloud Functions in /functions before this will actually work.
+// LIVE as of 2026-07-20. The publishable key below is the live-mode key and
+// must stay paired with the live STRIPE_SECRET_KEY the Cloud Functions use —
+// a pk_test_ key here cannot confirm a SetupIntent created by a live secret
+// key, and vice versa. Change both together, and redeploy both halves.
 
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
@@ -22,8 +22,9 @@ const firebaseConfig = {
 const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 const functions = getFunctions(app);
 
-// ─── PASTE YOUR STRIPE PUBLISHABLE KEY HERE ────────────────────────────────
-const STRIPE_PUBLISHABLE_KEY = 'pk_test_51Ts2ntB7khvEldleO3mfHWzbY9akocRW64BmXZWd6gIxgHNJgTxiRh8xGd89F6y7YziP9Jngqg9q3yq5JIKYXRky00GoVNNpDO';
+// ─── STRIPE PUBLISHABLE KEY (LIVE MODE) ────────────────────────────────────
+// Publishable keys are designed to be public and ship in client-side JS.
+const STRIPE_PUBLISHABLE_KEY = 'pk_live_51Ts2njBYaaTA3vAvPIQWwppe0dXFMS1WxXJ67VR79b281wouy4dv0ePgcHT6oiZGKDjMnTj7n0vTuk3yBlDfuEQF006JgayvNW';
 // ─────────────────────────────────────────────────────────────────────────
 
 let stripe, elements, cardElement;

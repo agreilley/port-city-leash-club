@@ -37,13 +37,25 @@ function stripeClient(key) {
   return require('stripe')(key);
 }
 
-// Per-walk Stripe Price IDs (sandbox/test mode) for the three billed
-// membership tiers. Travel-tier clients are one-time/service-based and
-// never get a subscription, so they're intentionally not in this map.
+// Per-walk Stripe Price IDs (LIVE mode) for the three billed membership
+// tiers. Travel-tier clients are one-time/service-based and never get a
+// subscription, so they're intentionally not in this map.
+//
+// These are per-unit recurring monthly prices: the subscription is created
+// with an explicit quantity (walk days in the billed month) and
+// syncMonthlyWalkQuantities updates that quantity on the 1st. A metered
+// price would reject quantity and break both paths.
+//
+// This is the ONLY place Price IDs live. admin/dashboard.html used to keep a
+// duplicate copy and pass priceId in with the call, which meant a tier missing
+// or stale on the client silently skipped billing for that member. The client
+// now sends nothing but the member, and the tier is resolved from the member
+// document here. (A literal shared module isn't possible: Firebase uploads only
+// the functions/ directory, and the browser can't import from it.)
 const TIER_PRICE_IDS = {
-  Essential: 'price_1Ts2wUB7khvEldleeOdGkbJs',
-  Standard: 'price_1Ts2xxB7khvEldleNkMcgyEW',
-  Daily: 'price_1Ts2ylB7khvEldleWi4NnAfd',
+  Essential: 'price_1TvJRSBYaaTA3vAvg7vjywOj',
+  Standard: 'price_1TvJRPBYaaTA3vAvSePTuam0',
+  Daily: 'price_1TvJRJBYaaTA3vAvEokY5XJw',
 };
 
 const WEEKDAY_NUMBERS = {
@@ -258,14 +270,27 @@ exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (reques
 exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
   await assertIsAdmin(request.auth);
 
-  const { submissionId, memberId, priceId } = request.data || {};
-  if (!submissionId || !memberId || !priceId) {
-    throw new HttpsError('invalid-argument', 'submissionId, memberId, and priceId are required.');
+  const { submissionId, memberId } = request.data || {};
+  if (!submissionId || !memberId) {
+    throw new HttpsError('invalid-argument', 'submissionId and memberId are required.');
   }
-  // priceId = the Stripe Price ID for the chosen tier (Essential/Standard/Daily).
-  // Create these once in the Stripe Dashboard (Products > Add Product,
-  // one recurring monthly price per tier) and reference the IDs here —
-  // see the checklist for exact steps.
+
+  // Resolve the member and their tier BEFORE touching the submission or
+  // Stripe. Travel-tier (and any non-billed tier) has no subscription price,
+  // and such a member may legitimately have no card on file — so that case
+  // has to return before the card check below, not fall into it.
+  const memberDoc = await db.collection('members').doc(memberId).get();
+  const member = memberDoc.data();
+  if (!member) {
+    throw new HttpsError('not-found', 'Member record not found.');
+  }
+
+  const priceId = TIER_PRICE_IDS[member.tier];
+  if (!priceId) {
+    // Not an error: this is the normal path for Travel-tier members. The
+    // caller uses `skipped` to decide whether to generate walks.
+    return { success: true, skipped: true, tier: member.tier || null };
+  }
 
   const stripe = stripeClient(STRIPE_SECRET_KEY.value());
   const subDoc = await db.collection('submissions').doc(submissionId).get();
@@ -273,12 +298,6 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
 
   if (!sub || !sub.stripeCustomerId) {
     throw new HttpsError('failed-precondition', 'No saved card found for this submission.');
-  }
-
-  const memberDoc = await db.collection('members').doc(memberId).get();
-  const member = memberDoc.data();
-  if (!member) {
-    throw new HttpsError('not-found', 'Member record not found.');
   }
 
   const paymentMethods = await stripe.paymentMethods.list({ customer: sub.stripeCustomerId, type: 'card' });
