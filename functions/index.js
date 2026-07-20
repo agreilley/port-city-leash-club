@@ -994,6 +994,35 @@ function extractPlainTextBody(message) {
   return walk(message.payload);
 }
 
+// RFC 2047 encoded-words for a header value.
+//
+// `Content-Type: charset="UTF-8"` below declares the encoding of the BODY
+// only — RFC 5322 headers must be pure ASCII. Non-ASCII characters written
+// straight into a header go out as raw UTF-8 bytes, which mail clients then
+// read as Latin-1: an em dash arrives as "Ã¢Â€Â". Anything outside printable
+// ASCII therefore has to be encoded here.
+//
+// Split into multiple encoded-words so no single one exceeds RFC 2047's
+// 75-character limit, chunking by code point so a multi-byte character is
+// never cut in half.
+function encodeEmailHeader(value) {
+  const v = String(value == null ? '' : value);
+  if (/^[\x20-\x7E]*$/.test(v)) return v; // already safe, leave it readable
+  const words = [];
+  let buf = '';
+  for (const ch of Array.from(v)) {
+    const next = buf + ch;
+    if (Buffer.from(next, 'utf8').toString('base64').length > 45 && buf) {
+      words.push(buf);
+      buf = ch;
+    } else {
+      buf = next;
+    }
+  }
+  if (buf) words.push(buf);
+  return words.map((w) => `=?UTF-8?B?${Buffer.from(w, 'utf8').toString('base64')}?=`).join('\r\n ');
+}
+
 async function sendGmailMessage({ to, subject, body, threadId, inReplyTo, references, from }) {
   const gmail = await getGmailClient();
   if (!gmail) {
@@ -1001,8 +1030,11 @@ async function sendGmailMessage({ to, subject, body, threadId, inReplyTo, refere
   }
   const headers = [
     `To: ${to}`,
+    // From is deliberately NOT passed through encodeEmailHeader: it carries an
+    // address, and only the display-name part may be encoded. Both values used
+    // today (BUSINESS_EMAIL_DISPLAY and the connected Gmail address) are ASCII.
     `From: ${from || BUSINESS_EMAIL_DISPLAY}`,
-    `Subject: ${subject || '(no subject)'}`,
+    `Subject: ${encodeEmailHeader(subject || '(no subject)')}`,
     'Content-Type: text/plain; charset="UTF-8"',
     'MIME-Version: 1.0',
   ];
@@ -1393,12 +1425,47 @@ const REQUEST_TYPE_LABELS = {
   walker_schedule_request: 'Walker schedule request',
 };
 
+// Meet & greet slots are stored as one string on the submission, e.g.
+// "2026-08-14 5:30pm" — there is no separate meet-and-greet collection or
+// submission type. Returns null for anything unparseable; dateStr is used as
+// a Firestore document ID below, so the format is validated rather than
+// trusted.
+function parseMeetGreetDateTime(value) {
+  if (typeof value !== 'string') return null;
+  const [dateStr, ...rest] = value.trim().split(' ');
+  const slot = rest.join(' ').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || !slot) return null;
+  return { dateStr, slot };
+}
+
 exports.onNewSubmission = onDocumentCreated({
   document: 'submissions/{submissionId}',
   secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET],
 }, async (event) => {
   const sub = event.data?.data();
   if (!sub) return;
+
+  // Only meet & greet bookings notify. Everything else (membership requests
+  // without a booked slot, service requests, contact forms, portal-generated
+  // requests) is reviewed in the admin portal instead of paging anyone.
+  const meetGreet = parseMeetGreetDateTime(sub.meetGreetDateTime);
+  if (!meetGreet) return;
+
+  // Mirror the booked slot into meet_greet_availability BEFORE any email work.
+  // The public booking calendars can't read `submissions` (rules restrict it to
+  // admins and the owning member), so that collection — which is public-read —
+  // is the only place they can learn a slot is taken. Doing this first means a
+  // Gmail outage can't cost us the double-booking guard.
+  //
+  // arrayUnion is idempotent, so a retried trigger delivery can't double-add.
+  try {
+    await db.collection('meet_greet_availability').doc(meetGreet.dateStr).set(
+      { bookings: FieldValue.arrayUnion(meetGreet.slot) },
+      { merge: true }
+    );
+  } catch (e) {
+    console.error(`Failed to record meet & greet booking ${meetGreet.dateStr} ${meetGreet.slot}:`, e.message);
+  }
 
   const gmail = await getGmailClient();
   if (!gmail) return; // Gmail not connected yet — nothing to notify with, and nothing lost: it's still sitting in the Requests tab either way
@@ -1417,10 +1484,15 @@ exports.onNewSubmission = onDocumentCreated({
   const name = sub.name || sub.ownerName || sub.walkerName || 'Unknown';
   const emailAddr = sub.email || '';
   const dogName = sub.dogName || (Array.isArray(sub.dogs) && sub.dogs[0]?.name) || '';
+  const when = `${meetGreet.dateStr} at ${meetGreet.slot}`;
 
   const bodyLines = [
+    `Meet & greet booked for ${when}.`,
+    '',
     `${label} from ${name}${emailAddr ? ` (${emailAddr})` : ''}.`,
+    sub.phone ? `Phone: ${sub.phone}` : null,
     dogName ? `Dog: ${dogName}` : null,
+    sub.address ? `Address: ${sub.address}` : null,
     sub.message ? `Message: ${sub.message}` : null,
     '',
     'Review and act on it in the admin portal — Requests tab.',
@@ -1432,7 +1504,7 @@ exports.onNewSubmission = onDocumentCreated({
     await sendGmailMessage({
       to: notifyEmail,
       from: notifyEmail,
-      subject: `${label} — ${name}`,
+      subject: `Meet & greet ${when} — ${name}`,
       body: bodyLines.join('\n'),
     });
   } catch (e) {

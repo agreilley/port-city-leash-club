@@ -38,7 +38,11 @@ function getMgAvailableSlots(dateStr) {
   const date = new Date(dateStr + 'T00:00:00');
   const dow = date.getDay();
   const override = mgAvailability[dateStr];
-  const allSlots = override ? override.slots || [] : (WEEKLY_SCHEDULE[dow] || []);
+  // Only a doc that actually carries a slots array overrides the weekly
+  // schedule. A doc holding just `bookings` (written when a slot is booked)
+  // must not read as "no availability" — that would black out the whole day
+  // the moment anyone booked on it.
+  const allSlots = (override && Array.isArray(override.slots)) ? override.slots : (WEEKLY_SCHEDULE[dow] || []);
   const booked = (override?.bookings || []).concat(mgBookings[dateStr] || []);
   if (!booked.length) return allSlots;
   const bookedMins = booked.map(slotToMins);
@@ -86,7 +90,12 @@ function renderMgCalendar() {
   const firstDay = new Date(mgYear, mgMonth, 1).getDay();
   const daysInMonth = new Date(mgYear, mgMonth + 1, 0).getDate();
   const daysInPrev = new Date(mgYear, mgMonth, 0).getDate();
-  const today = new Date(); today.setHours(0,0,0,0);
+  // Earliest bookable day is tomorrow — no same-day meet & greets. This also
+  // removes the need to filter slots against the clock: today used to be
+  // selectable with its whole day of slots still showing, so at 9pm the
+  // calendar still offered this afternoon's 5:00pm.
+  const earliest = new Date(); earliest.setHours(0,0,0,0);
+  earliest.setDate(earliest.getDate() + 1);
   let html = '';
   for (let i = firstDay - 1; i >= 0; i--) {
     html += `<div style="padding:10px;text-align:center;font-size:13px;color:rgba(0,0,0,0.2);background:rgba(0,0,0,0.02);">${daysInPrev - i}</div>`;
@@ -94,14 +103,14 @@ function renderMgCalendar() {
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${mgYear}-${String(mgMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const dateObj = new Date(mgYear, mgMonth, d);
-    const isPast = dateObj < today;
+    const isTooSoon = dateObj < earliest;
     const available = getMgAvailableSlots(dateStr);
     const isSelected = mgSelected && mgSelected.startsWith(dateStr);
     let bg = 'white', color = 'rgba(0,0,0,0.3)', cursor = 'default';
-    if (!isPast && isSelected) { bg = 'var(--rust)'; color = 'white'; cursor = 'pointer'; }
-    else if (!isPast && available.length) { bg = '#EBF5EF'; color = '#1A5C30'; cursor = 'pointer'; }
-    else if (isPast) { bg = 'rgba(0,0,0,0.02)'; }
-    html += `<div onclick="${available.length && !isPast ? `mgSelectDate('${dateStr}')` : ''}" style="padding:10px;text-align:center;font-size:13px;font-weight:${available.length?'500':'400'};background:${bg};color:${color};cursor:${cursor};border-bottom:1px solid rgba(0,0,0,0.04);transition:all 0.15s;">${d}</div>`;
+    if (!isTooSoon && isSelected) { bg = 'var(--rust)'; color = 'white'; cursor = 'pointer'; }
+    else if (!isTooSoon && available.length) { bg = '#EBF5EF'; color = '#1A5C30'; cursor = 'pointer'; }
+    else if (isTooSoon) { bg = 'rgba(0,0,0,0.02)'; }
+    html += `<div onclick="${available.length && !isTooSoon ? `mgSelectDate('${dateStr}')` : ''}" style="padding:10px;text-align:center;font-size:13px;font-weight:${available.length?'500':'400'};background:${bg};color:${color};cursor:${cursor};border-bottom:1px solid rgba(0,0,0,0.04);transition:all 0.15s;">${d}</div>`;
   }
   const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
   for (let i = 1; i <= totalCells - firstDay - daysInMonth; i++) {

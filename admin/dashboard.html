@@ -3309,9 +3309,12 @@ function getAvailableSlots(dateStr) {
   const date = new Date(dateStr + 'T00:00:00');
   const dow = date.getDay();
   const base = WEEKLY_SCHEDULE[dow] || [];
-  // Override: if admin has manually set slots for this date, use those instead
+  // Override: if admin has manually set slots for this date, use those instead.
+  // Only a doc that actually carries a slots array counts — a doc holding just
+  // `bookings` (written when a slot is booked, or left behind by
+  // avClearOverride) must not read as "no availability" and black out the day.
   const override = avData[dateStr];
-  const allSlots = override ? override.slots || [] : base;
+  const allSlots = (override && Array.isArray(override.slots)) ? override.slots : base;
   const booked = (avData[dateStr]?.bookings || []).concat(avBookings[dateStr] || []);
   if (!booked.length) return allSlots;
 
