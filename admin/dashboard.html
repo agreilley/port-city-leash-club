@@ -1691,6 +1691,13 @@ window.createWalkerAccount = async () => {
   const btn = document.querySelector('#addWalkerModal .btn-primary');
   btn.textContent = 'Creating...'; btn.disabled = true;
 
+  // Set once the Auth account exists. The Firestore batch below is atomic,
+  // but the Auth account is created first and can't join that transaction —
+  // so if the batch fails, an orphaned Auth account is left behind and a
+  // plain retry would fail with EMAIL_EXISTS. The catch block says so
+  // explicitly rather than leaving the admin to work it out.
+  let createdUid = null;
+
   try {
     // Create Firebase Auth user via REST API (avoids signing out current admin)
     const apiKey = 'AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM';
@@ -1703,6 +1710,7 @@ window.createWalkerAccount = async () => {
     if (data.error) throw new Error(data.error.message);
 
     const uid = data.localId;
+    createdUid = uid;
     const name = `${first} ${last}`;
     const walkerId = `walker_${first.toLowerCase()}_${last.toLowerCase()}`.replace(/\s+/g, '_');
 
@@ -1713,10 +1721,20 @@ window.createWalkerAccount = async () => {
       availableForOvernights: false
     };
 
-    // Save at human-readable ID (used by walks collection as walkerId)
-    await setDoc(doc(db, 'walkers', walkerId), walkerData);
-    // Also save at uid so Firestore rules can find it via exists(/walkers/$(uid))
-    await setDoc(doc(db, 'walkers', uid), walkerData);
+    // Both docs are written in ONE atomic batch — same pattern as
+    // saveWalkerSchedule below. They must exist together or not at all:
+    // - walkers/{walkerId} is the human-readable ID that walks reference
+    // - walkers/{uid} is what the security rules look up via
+    //   exists(/walkers/$(request.auth.uid)) to grant walker access
+    //
+    // Written separately, a failure between them left a walker who could
+    // sign in (the login page falls back to a uid field query) but whose
+    // every Firestore read was denied for want of the uid doc — and who
+    // couldn't be re-created, since the Auth account already existed.
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'walkers', walkerId), walkerData);
+    batch.set(doc(db, 'walkers', uid), walkerData);
+    await batch.commit();
 
     if (window._addWalkerSubmissionId) {
       await updateDoc(doc(db, 'submissions', window._addWalkerSubmissionId), {
@@ -1736,7 +1754,17 @@ window.createWalkerAccount = async () => {
         <button class="btn-primary" onclick="closeModal('addWalkerModal');document.getElementById('addWalkerContent').innerHTML='';" style="width:100%;">Done</button>
       </div>`;
   } catch(e) {
-    errEl.textContent = e.message.includes('EMAIL_EXISTS') ? 'An account with this email already exists.' : e.message;
+    if (e.message.includes('EMAIL_EXISTS')) {
+      errEl.textContent = 'An account with this email already exists.';
+    } else if (createdUid) {
+      // Auth succeeded, Firestore didn't. Neither walkers doc was written
+      // (the batch is all-or-nothing), so the only leftover is the Auth
+      // account — which must be removed before this email can be retried.
+      errEl.textContent = `Login account was created but the walker record was not saved (${e.message}). `
+        + `Delete the Firebase Auth user for ${email} (uid ${createdUid}) in the Firebase console, then try again.`;
+    } else {
+      errEl.textContent = e.message;
+    }
     errEl.style.display = 'block';
     btn.textContent = 'Create Account'; btn.disabled = false;
   }
