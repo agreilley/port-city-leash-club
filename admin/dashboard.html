@@ -766,7 +766,7 @@ import {
   serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
-import { SERVICE_PRICES, calculateServiceTotal, calculateWalkExtensionTotal, WALK_EXTENSION_PRICE } from '../pricing.js';
+import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalkExtensionTotal, WALK_EXTENSION_PRICE } from '../pricing.js';
 import { calculateEarnings } from '../walker-pricing.js';
 
 // ─── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────────────
@@ -2343,6 +2343,25 @@ window.reviewRecalcWalkExtension = () => {
   document.getElementById('rev-total').textContent = `$${total}`;
 };
 
+// Builds the text a customer sees on their Stripe receipt. Call sites used to
+// pass the raw service key straight through, so receipts read "drop-in-visit"
+// or — worse, for requests submitted from the member portal, which uses the
+// alias keys — a bare "checkin". resolveServiceKey normalizes those aliases
+// first, then SERVICE_PRICES supplies the same display name shown everywhere
+// else on the site, so a receipt and the booking screen can't disagree.
+//
+// The dog's name is appended when known: a receipt arriving weeks after the
+// booking is much easier to place with it than without.
+function serviceChargeDescription(serviceKey, item) {
+  const info = SERVICE_PRICES[resolveServiceKey(serviceKey)];
+  const label = info ? info.name : 'Service';
+  const dogs = (Array.isArray(item?.dogs) ? item.dogs.map(d => d?.name).filter(Boolean) : [])
+    .concat(item?.dogName ? [item.dogName] : [])
+    .filter((n, i, a) => a.indexOf(n) === i);
+  const who = dogs.length ? ` (${dogs.join(', ')})` : '';
+  return `Port City Leash Club - ${label}${who}`;
+}
+
 // Shared by confirmServiceRequest / confirmOvernight / confirmWalkExtension.
 // Attempts to charge the saved card for a given amount and writes a durable
 // paymentStatus ('charged' | 'skipped' | 'failed') onto the submission
@@ -2438,7 +2457,7 @@ window.confirmServiceRequest = async (submissionId, item) => {
     // file if the requester went through createSetupIntent at signup —
     // chargeAndTrackPayment treats a non-positive amount as "nothing to
     // charge" and records paymentStatus: 'skipped' without calling Stripe.
-    await chargeAndTrackPayment(submissionId, item.stripeCustomerId ? amountInDollars : 0, service || 'Port City Leash Club service');
+    await chargeAndTrackPayment(submissionId, item.stripeCustomerId ? amountInDollars : 0, serviceChargeDescription(service, item));
 
     closeModal('requestModal');
     const msg = document.createElement('div');
@@ -2536,7 +2555,7 @@ window.confirmOvernight = async (submissionId, item) => {
       read: true,
     });
 
-    await chargeAndTrackPayment(submissionId, item.stripeCustomerId ? amountInDollars : 0, service || 'Overnight/check-in service');
+    await chargeAndTrackPayment(submissionId, item.stripeCustomerId ? amountInDollars : 0, serviceChargeDescription(service, item));
 
     closeModal('requestModal');
     // Show brief success message
@@ -2651,7 +2670,7 @@ window.confirmWalkExtension = async (submissionId, item) => {
       read: true,
     });
 
-    await chargeAndTrackPayment(submissionId, item.stripeCustomerId ? amountInDollars : 0, `${checkedIds.length} extended walk${checkedIds.length === 1 ? '' : 's'}`);
+    await chargeAndTrackPayment(submissionId, item.stripeCustomerId ? amountInDollars : 0, `Port City Leash Club - Walk Extension (${checkedIds.length} walk${checkedIds.length === 1 ? '' : 's'})`);
 
     closeModal('requestModal');
     const msg = document.createElement('div');
