@@ -709,6 +709,17 @@
     <div class="modal-title" id="requestModalTitle"></div>
     <div id="requestModalContent"></div>
     <hr class="modal-divider">
+    <!-- Membership requests only: converting starts real billing, so the
+         meet & greet has to be confirmed first. Shown/hidden in openRequestItem. -->
+    <div id="requestMeetGreetGate" style="display:none;background:var(--amber-light);border-radius:6px;padding:10px 12px;margin-bottom:12px;">
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;">
+        <input type="checkbox" id="requestMeetGreetCheck" style="margin-top:2px;cursor:pointer;">
+        <span>Meet &amp; greet completed</span>
+      </label>
+      <div id="requestMeetGreetHint" style="font-size:12px;color:var(--text-light);margin-top:6px;margin-left:24px;">
+        Converting creates the member's account and starts their recurring billing — confirm the meet &amp; greet happened first.
+      </div>
+    </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button class="btn-secondary" onclick="closeModal('requestModal')">Close</button>
       <button class="btn-secondary" id="requestDeclineBtn" style="display:none;color:var(--rust);">Decline</button>
@@ -1805,6 +1816,15 @@ window.submitAddWalk = async () => {
   closeModal('addWalkModal');
 };
 
+// Enable/disable the request modal's primary action. Sets the `disabled`
+// property as well as the styling — greying it out alone would still leave
+// it clickable, which is the opposite of what a gate is for.
+function setActionBtnEnabled(btn, enabled) {
+  btn.disabled = !enabled;
+  btn.style.opacity = enabled ? '' : '0.45';
+  btn.style.cursor = enabled ? '' : 'not-allowed';
+}
+
 // ── REQUEST MODAL ────────────────────────────────────────────────────────────
 window.openRequestItem = async (id) => {
   const item = allRequests.find(i => i.id === id);
@@ -2037,9 +2057,47 @@ window.openRequestItem = async (id) => {
   const actionBtn = document.getElementById('requestActionBtn');
   const declineBtn = document.getElementById('requestDeclineBtn');
   declineBtn.style.display = 'none';
+  // Reset the gate on every open — it only applies to membership requests,
+  // and a previously-opened request must not leave the button enabled here.
+  const mgGate = document.getElementById('requestMeetGreetGate');
+  const mgCheck = document.getElementById('requestMeetGreetCheck');
+  mgGate.style.display = 'none';
+  mgCheck.onchange = null;
+  setActionBtnEnabled(actionBtn, true);
   if (item.type === 'membership_request' && !item.memberId) {
     actionBtn.textContent = 'Convert to Member'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => { closeModal('requestModal'); openAddMemberModal(item, item.id); };
+
+    // Converting a membership request creates the account and starts real
+    // recurring billing, so it's gated on confirming the meet & greet
+    // actually happened. Nothing enforces this server-side — it's a
+    // deliberate speed bump for the admin, not a security control.
+    // A request already marked stays marked, so reopening it doesn't
+    // demand re-confirmation of something that already happened.
+    const alreadyConfirmed = !!item.meetGreetCompletedAt;
+    mgGate.style.display = 'block';
+    mgCheck.checked = alreadyConfirmed;
+    setActionBtnEnabled(actionBtn, alreadyConfirmed);
+    document.getElementById('requestMeetGreetHint').style.display = alreadyConfirmed ? 'none' : 'block';
+    mgCheck.onchange = async () => {
+      const on = mgCheck.checked;
+      setActionBtnEnabled(actionBtn, on);
+      document.getElementById('requestMeetGreetHint').style.display = on ? 'none' : 'block';
+      // Recorded for accountability — when the meet & greet was confirmed,
+      // relative to when billing started. Unchecking clears it. A write
+      // failure must not leave the button enabled on a false premise.
+      try {
+        await updateDoc(doc(db, 'submissions', item.id), {
+          meetGreetCompletedAt: on ? serverTimestamp() : null,
+        });
+        item.meetGreetCompletedAt = on ? new Date() : null;
+      } catch (e) {
+        mgCheck.checked = !on;
+        setActionBtnEnabled(actionBtn, !on);
+        document.getElementById('requestMeetGreetHint').style.display = !on ? 'none' : 'block';
+        alert(`Couldn't save that: ${e.message}`);
+      }
+    };
   } else if (item.type === 'application' && item.status !== 'confirmed') {
     actionBtn.textContent = 'Add as Walker'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => { closeModal('requestModal'); openAddWalkerModal(item, item.id); };
