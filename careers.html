@@ -422,10 +422,16 @@
           const path = `resumes/${uploadId}/${safeName}`;
           const fileRef = window._storageRef(window._storage, path);
           await window._uploadBytes(fileRef, resumeFile, { contentType: resumeFile.type });
+          // Only the path is stored — deliberately NOT a download URL.
+          // getDownloadURL() is a *read*, and storage.rules restricts reading
+          // resumes to admins so applicants can't fetch each other's files.
+          // Calling it here (as an unauthenticated applicant) fails with
+          // storage/unauthorized and takes the whole submission down with it.
+          // The admin dashboard resolves the URL at view time instead, where
+          // the caller actually has read permission.
           resumeFields = {
             resumePath: path,
             resumeName: resumeFile.name,
-            resumeUrl: await window._getDownloadURL(fileRef),
           };
         } catch (uploadErr) {
           console.error('Resume upload failed:', uploadErr);
@@ -440,7 +446,17 @@
     } catch(err) {
       console.error(err);
       // Leave the form filled in so nothing typed gets lost on retry.
-      showApplicationNotification('Something went wrong submitting your application. Please try again, or email hello@portcityleashclub.com directly.', true);
+      //
+      // Show the specific reason when there is one. The validation and upload
+      // failures above throw messages written for the applicant ("attach a PDF,
+      // DOC, or DOCX"), and flattening those into a generic "something went
+      // wrong" left people with no idea what to change — and hid a real bug
+      // where the resume upload failed silently for every applicant.
+      const detail = (err && typeof err.message === 'string') ? err.message.trim() : '';
+      showApplicationNotification(
+        detail || 'Something went wrong submitting your application. Please try again, or email hello@portcityleashclub.com directly.',
+        true
+      );
     }
     btn.textContent = 'Submit Application'; btn.disabled = false;
   }
@@ -448,7 +464,7 @@
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
   import { getFirestore, collection, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-  import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+  import { getStorage, ref as storageRef, uploadBytes } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
   const firebaseConfig = {
     apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
     authDomain: "port-city-leash-club-827ab.firebaseapp.com",
@@ -466,7 +482,6 @@
   window._storage = getStorage(app);
   window._storageRef = storageRef;
   window._uploadBytes = uploadBytes;
-  window._getDownloadURL = getDownloadURL;
 </script>
 <script>
   function toggleNav() {
