@@ -8,15 +8,23 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Cross-service lookups into Firestore, mirroring firestore.rules so a
-    // walker or admin is defined the same way in both places.
+    // NOTE: cross-service rules do NOT work here. An earlier version of this
+    // file defined isAdmin()/isWalker() with
+    // firestore.exists(/databases/(default)/documents/...), mirroring
+    // firestore.rules. It compiled and deployed cleanly, then failed at
+    // evaluation with "Function not found error: Name: [firestore.exists]" —
+    // confirmed with the Rules test API, and firestore.get() is equally
+    // unavailable. Every read and write was denied, including the admin's.
+    // Do not reintroduce firestore.* here without testing evaluation, not
+    // just compilation.
+    //
+    // Admin is therefore pinned to the one admin UID. There is exactly one
+    // admins document today; if that changes, move to a custom auth claim
+    // (request.auth.token.admin == true) rather than extending this list —
+    // custom claims are verified to work here.
     function isAdmin() {
       return request.auth != null
-        && firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid));
-    }
-    function isWalker() {
-      return request.auth != null
-        && firestore.exists(/databases/(default)/documents/walkers/$(request.auth.uid));
+        && request.auth.uid == 'SZNWwqHGPDYp8TOixmg1EOUZaBD2';
     }
 
     // Walk photos: a walker uploads one when completing a walk. Members see
@@ -27,9 +35,16 @@ service firebase.storage {
     // contentType is checked here rather than trusting the client: the walker
     // app validates size only, and an `accept` attribute is a UI hint, not a
     // control.
+    // Write is any signed-in user rather than specifically a walker, because
+    // proving "is a walker" needs a Firestore lookup and cross-service rules
+    // don't work here (see above). The signed-in population is admin, walkers
+    // and members — so a member could in principle upload a walk photo. That's
+    // bounded by the size and image-type checks, and walk photos aren't
+    // sensitive. Tightening this properly means custom claims
+    // (request.auth.token.walker == true), set when a walker account is created.
     match /walk-photos/{walkId}/{fileName} {
       allow read: if request.auth != null;
-      allow write: if isWalker()
+      allow write: if request.auth != null
         && request.resource.size < 8 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
