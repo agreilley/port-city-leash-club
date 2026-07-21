@@ -1,0 +1,59 @@
+rules_version = '2';
+
+// Cloud Storage rules for Port City Leash Club.
+//
+// Storage was enabled 2026-07-20; before that no bucket existed at all, so
+// there were no rules to inherit. Everything is denied by default at the
+// bottom — each path below has to opt in explicitly.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Cross-service lookups into Firestore, mirroring firestore.rules so a
+    // walker or admin is defined the same way in both places.
+    function isAdmin() {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid));
+    }
+    function isWalker() {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/walkers/$(request.auth.uid));
+    }
+
+    // Walk photos: a walker uploads one when completing a walk. Members see
+    // their own dog's photo in the portal, so any signed-in user may read —
+    // narrowing that to "the member on the walk" would need the walk doc's
+    // memberId, which isn't in the storage path.
+    //
+    // contentType is checked here rather than trusting the client: the walker
+    // app validates size only, and an `accept` attribute is a UI hint, not a
+    // control.
+    match /walk-photos/{walkId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if isWalker()
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Resumes from careers.html. Applicants are NOT signed in — they're
+    // strangers applying for a job — so create has to be open to
+    // unauthenticated callers for the feature to work at all. That's
+    // constrained to plausible resume files under 10MB.
+    //
+    // Read is admin-only and there is no list permission: an applicant can
+    // add a file but can never read anyone's, including their own. These are
+    // strangers' personal data and shouldn't be enumerable.
+    match /resumes/{submissionId}/{fileName} {
+      allow read: if isAdmin();
+      allow create: if request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches(
+             'application/pdf|application/msword|application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+           );
+      allow update, delete: if isAdmin();
+    }
+
+    // Anything not matched above is denied outright.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -2050,6 +2050,21 @@ window.openRequestItem = async (id) => {
       extraHTML = `<hr class="modal-divider"><div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Pets</div>${renderPetDetailCards(item.dogs)}`;
     } else if ((item.type === 'overnight_request' || item.service === 'overnight' || item.service === 'checkin' || item.type === 'walk_extension') && item.memberId) {
       extraHTML = `<hr class="modal-divider">${renderMemberContextHTML(item.memberId)}`;
+    } else if (item.type === 'application') {
+      // resumeUrl arrives on a doc created by an UNAUTHENTICATED applicant —
+      // submissions.create is open to the four public form types, so every
+      // field here is attacker-controlled. Putting it straight into an href
+      // would allow a javascript: URL to run in the admin's session, so only
+      // a real Firebase Storage download URL is ever rendered as a link.
+      const url = typeof item.resumeUrl === 'string' ? item.resumeUrl : '';
+      const isStorageUrl = /^https:\/\/firebasestorage\.googleapis\.com\//.test(url);
+      if (isStorageUrl) {
+        const label = escapeHtml(item.resumeName || 'Download resume');
+        extraHTML = `<hr class="modal-divider"><div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Resume</div>`
+          + `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="font-size:13px;color:var(--rust);">${label}</a>`;
+      } else if (url) {
+        extraHTML = `<hr class="modal-divider"><div style="font-size:13px;color:var(--rust);">A resume link was submitted but is not a valid Storage URL, so it is not shown. Check the submission in Firestore before opening anything.</div>`;
+      }
     }
     document.getElementById('requestModalContent').innerHTML = `<div class="form-grid">${fieldHTML}</div>${extraHTML}`;
   }

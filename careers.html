@@ -384,7 +384,57 @@
         read: false,
         createdAt: window._serverTimestamp()
       };
-      await window._addDoc(window._collection(window._db, 'submissions'), data);
+      // Validate the resume BEFORE writing anything, so a rejected file
+      // doesn't leave a submitted application the applicant thinks failed.
+      // Checked by MIME type, not filename: the input's accept=".pdf,.doc,.docx"
+      // is a UI hint and an extension is trivially renamed. Storage rules
+      // enforce the same list server-side — this check exists to give a useful
+      // message instead of an opaque permission error.
+      const ALLOWED = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      ];
+      const resumeFile = document.querySelector('input[name=resume]')?.files?.[0] || null;
+      if (resumeFile) {
+        if (!ALLOWED.includes(resumeFile.type)) {
+          throw new Error('Please attach your resume as a PDF, DOC, or DOCX file.');
+        }
+        if (resumeFile.size > 10 * 1024 * 1024) {
+          throw new Error('That resume is too large — please attach a file under 10MB.');
+        }
+      }
+
+      // Upload BEFORE creating the submission, so the resume fields go in with
+      // the initial write. firestore.rules lets an unauthenticated applicant
+      // *create* a submission but never *update* one, so writing the URL back
+      // afterwards would be denied — the upload would succeed and the link
+      // would still never reach the inbox.
+      //
+      // The id is generated here rather than reusing the submission id, which
+      // doesn't exist yet. An upload that fails before the create means the
+      // applicant is told, and no half-empty application is left behind.
+      let resumeFields = {};
+      if (resumeFile) {
+        try {
+          const uploadId = (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) + Math.random().toString(36).slice(2);
+          const safeName = resumeFile.name.replace(/[^\w.\- ]+/g, '_').slice(-80);
+          const path = `resumes/${uploadId}/${safeName}`;
+          const fileRef = window._storageRef(window._storage, path);
+          await window._uploadBytes(fileRef, resumeFile, { contentType: resumeFile.type });
+          resumeFields = {
+            resumePath: path,
+            resumeName: resumeFile.name,
+            resumeUrl: await window._getDownloadURL(fileRef),
+          };
+        } catch (uploadErr) {
+          console.error('Resume upload failed:', uploadErr);
+          throw new Error("We couldn't upload that resume. Please try again, or submit without it and email it to hello@portcityleashclub.com.");
+        }
+      }
+
+      await window._addDoc(window._collection(window._db, 'submissions'), { ...data, ...resumeFields });
+
       showApplicationNotification("Application submitted! We'll be in touch within one week.", false);
       e.target.reset();
     } catch(err) {
@@ -398,6 +448,7 @@
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
   import { getFirestore, collection, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+  import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
   const firebaseConfig = {
     apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
     authDomain: "port-city-leash-club-827ab.firebaseapp.com",
@@ -412,6 +463,10 @@
   window._addDoc = addDoc;
   window._collection = collection;
   window._serverTimestamp = serverTimestamp;
+  window._storage = getStorage(app);
+  window._storageRef = storageRef;
+  window._uploadBytes = uploadBytes;
+  window._getDownloadURL = getDownloadURL;
 </script>
 <script>
   function toggleNav() {
