@@ -451,6 +451,172 @@ exports.generateInitialWalks = onCall({}, async (request) => {
   }
 });
 
+// Today's calendar date in Eastern time, as UTC-style components.
+//
+// Deliberately not `new Date().getUTCDate()`: after 8pm ET the UTC date is
+// already tomorrow, so a member converted on a July evening would have their
+// partial month computed against July 21 when it's still July 20 locally.
+// Every other date in this system is a local calendar date, so this one has
+// to be too.
+function easternTodayParts() {
+  const [year, month, day] = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date()).split('-').map(Number);
+  return { year, monthIndex: month - 1, day };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 3b-ii. Charge for the remainder of the CURRENT month at conversion.
+//
+//    The subscription's first invoice is the 1st of next month, so without
+//    this a member converting mid-month gets no walks and no charge for the
+//    rest of the month they actually signed up in — and converting ON the 1st
+//    means a whole free month. This generates the remaining walks and charges
+//    for exactly those walks, once.
+//
+//    Deliberately a separate call from createMembershipSubscription and
+//    generateInitialWalks, same as those two are from each other: this is the
+//    only code path in the app that charges a card without an admin clicking
+//    a charge button, so it must not be able to take the conversion down
+//    with it.
+// ─────────────────────────────────────────────────────────────────────────
+exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  await assertIsAdmin(request.auth);
+
+  const { memberId } = request.data || {};
+  if (!memberId) throw new HttpsError('invalid-argument', 'memberId is required.');
+
+  const memberRef = db.collection('members').doc(memberId);
+  const memberDoc = await memberRef.get();
+  const member = memberDoc.data();
+  if (!member) throw new HttpsError('not-found', 'Member record not found.');
+
+  const priceId = TIER_PRICE_IDS[member.tier];
+  if (!priceId) {
+    return { success: true, skipped: true, reason: 'no-subscription-tier', tier: member.tier || null };
+  }
+
+  const { year, monthIndex, day: todayDay } = easternTodayParts();
+  const periodKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+
+  // Idempotency guard #1: never charge the same member twice for the same
+  // month, however this call is retried (double-click, retry after a partial
+  // failure, an admin re-running it).
+  if (member.currentMonthCharge && member.currentMonthCharge.periodKey === periodKey
+      && member.currentMonthCharge.status === 'charged') {
+    return {
+      success: true, alreadyCharged: true, periodKey,
+      walkCount: member.currentMonthCharge.walkCount || 0,
+      amount: member.currentMonthCharge.amount || 0,
+    };
+  }
+
+  // Earliest billable day is tomorrow — walks can't be scheduled into the
+  // past, and nothing in this system is scheduled same-day (the meet & greet
+  // calendar applies the same rule).
+  const tomorrow = new Date(Date.UTC(year, monthIndex, todayDay + 1));
+  if (tomorrow.getUTCFullYear() !== year || tomorrow.getUTCMonth() !== monthIndex) {
+    return { success: true, skipped: true, reason: 'month-already-over', periodKey };
+  }
+  let fromDay = tomorrow.getUTCDate();
+
+  // A start date later than this month means there's nothing to bill now —
+  // the subscription's first invoice already covers it.
+  const start = toDateOrNull(member.membershipStartDate);
+  if (start) {
+    const startsLaterMonth = start.getUTCFullYear() > year
+      || (start.getUTCFullYear() === year && start.getUTCMonth() > monthIndex);
+    if (startsLaterMonth) {
+      return { success: true, skipped: true, reason: 'starts-next-month', periodKey };
+    }
+    if (start.getUTCFullYear() === year && start.getUTCMonth() === monthIndex) {
+      fromDay = Math.max(fromDay, start.getUTCDate());
+    }
+  }
+
+  const days = datesMatchingWeekdaysInMonth(member.defaultWalkDays, year, monthIndex, fromDay);
+  if (!days.length) {
+    await memberRef.set({
+      currentMonthCharge: { periodKey, walkCount: 0, amount: 0, status: 'skipped', reason: 'no-walks-remaining' },
+    }, { merge: true });
+    return { success: true, skipped: true, reason: 'no-walks-remaining', periodKey, fromDay };
+  }
+
+  // Generate the walks BEFORE charging: charging for walks that then fail to
+  // appear is the one outcome worth avoiding outright. If they can't be
+  // generated, nothing is charged.
+  const walkResult = await generateWalksForMember(memberId, member, year, monthIndex, fromDay);
+  if (walkResult.blocked) {
+    throw new HttpsError('failed-precondition', 'This member has no preferred time slot set — set defaultTimeSlot before charging for this month.');
+  }
+  if (walkResult.failed > 0) {
+    throw new HttpsError('internal', `${walkResult.failed} of ${walkResult.created + walkResult.failed} walk(s) failed to generate — nothing was charged.`);
+  }
+
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+  if (!member.stripeCustomerId) {
+    throw new HttpsError('failed-precondition', 'No Stripe customer on this member — start the membership subscription first.');
+  }
+  const paymentMethods = await stripe.paymentMethods.list({ customer: member.stripeCustomerId, type: 'card' });
+  if (!paymentMethods.data.length) {
+    throw new HttpsError('failed-precondition', 'Customer has no saved payment method.');
+  }
+
+  // Per-walk rate comes from the tier's Stripe Price, never a hardcoded
+  // number — same source the subscription bills against.
+  const price = await stripe.prices.retrieve(priceId);
+  const unitAmount = price.unit_amount || 0;
+  const amountInCents = unitAmount * days.length;
+  if (amountInCents <= 0) {
+    throw new HttpsError('failed-precondition', `Price ${priceId} has no unit_amount — cannot charge for this month.`);
+  }
+
+  const monthName = new Date(Date.UTC(year, monthIndex, 1))
+    .toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
+  const description = `Port City Leash Club - ${member.tier} Membership (${monthName} ${days[0]}-${days[days.length - 1]}, ${days.length} walk${days.length === 1 ? '' : 's'})`;
+
+  let paymentIntent;
+  try {
+    paymentIntent = await stripe.paymentIntents.create({
+      amount: amountInCents,
+      currency: price.currency || 'usd',
+      customer: member.stripeCustomerId,
+      payment_method: paymentMethods.data[0].id,
+      off_session: true,
+      confirm: true,
+      description,
+      metadata: { memberId, periodKey, walkCount: String(days.length) },
+    }, {
+      // Idempotency guard #2, at Stripe itself: a retry that gets past the
+      // Firestore guard above (e.g. two clicks racing before the first write
+      // lands) resolves to the same PaymentIntent rather than a second charge.
+      idempotencyKey: `current-month-walks:${memberId}:${periodKey}`,
+    });
+  } catch (e) {
+    await memberRef.set({
+      currentMonthCharge: {
+        periodKey, walkCount: days.length, amount: amountInCents / 100,
+        status: 'failed', reason: e.message, failedAt: FieldValue.serverTimestamp(),
+      },
+    }, { merge: true }).catch(() => {});
+    throw new HttpsError('internal', `Card charge for this month failed: ${e.message}`);
+  }
+
+  await memberRef.set({
+    currentMonthCharge: {
+      periodKey, walkCount: days.length, amount: amountInCents / 100,
+      status: 'charged', paymentIntentId: paymentIntent.id,
+      chargedAt: FieldValue.serverTimestamp(),
+    },
+  }, { merge: true });
+
+  return {
+    success: true, periodKey, walkCount: days.length,
+    amount: amountInCents / 100, fromDay, dates: days,
+    paymentIntentId: paymentIntent.id,
+  };
+});
+
 // ─────────────────────────────────────────────────────────────────────────
 // 3c. Recalculate every active member's walk-day count for the month that's
 //    just starting and push it to their Stripe subscription item. Runs at

@@ -3005,7 +3005,12 @@ window.saveMember = async () => {
     //    generate this member's first month of walks. The two calls are
     //    independent — a walk-generation failure shouldn't be reported as a
     //    billing failure or vice versa, and one failing doesn't skip the other.
+    // warnings = something went wrong and needs your attention.
+    // notices  = something worked, or was deliberately skipped, and you should
+    //            still be told — particularly "nothing was charged", which must
+    //            never be silent now that conversion can charge a card.
     const warnings = [];
+    const notices = [];
     if (window._addMemberSubmissionId) {
       await updateDoc(doc(db, 'submissions', window._addMemberSubmissionId), {
         status: 'confirmed', memberId: uid, read: true,
@@ -3032,9 +3037,36 @@ window.saveMember = async () => {
         } catch (e) {
           warnings.push(`Initial walks weren't generated: ${e.message}`);
         }
+
+        // Charge for the rest of THIS month. The subscription's first invoice
+        // is the 1st of next month, so without this the remainder of the month
+        // the member actually signed up in is neither scheduled nor billed.
+        // A failure here never unwinds the conversion — it's reported and
+        // retried, same as the two calls above.
+        try {
+          const chargeCurrentMonthWalks = httpsCallable(fns, 'chargeCurrentMonthWalks');
+          const r = (await chargeCurrentMonthWalks({ memberId: uid }))?.data || {};
+          if (r.alreadyCharged) {
+            notices.push(`This month was already charged: ${r.walkCount} walk${r.walkCount === 1 ? '' : 's'}, $${r.amount}.`);
+          } else if (r.skipped) {
+            // Never silent — an admin should always know why nothing was charged.
+            const why = {
+              'no-walks-remaining': 'No walks remain this month, so nothing was charged for it.',
+              'month-already-over': 'No days remain this month, so nothing was charged for it.',
+              'starts-next-month': 'Their start date is next month, so nothing was charged for this month.',
+              'no-subscription-tier': 'This tier has no membership subscription, so nothing was charged for this month.',
+            }[r.reason] || `Nothing was charged for this month (${r.reason}).`;
+            notices.push(why);
+          } else {
+            notices.push(`Charged $${r.amount} for ${r.walkCount} walk${r.walkCount === 1 ? '' : 's'} remaining this month.`);
+          }
+        } catch (e) {
+          warnings.push(`This month's walks weren't charged: ${e.message}`);
+        }
       }
     }
     const subscriptionWarningText = warnings.join(' ');
+    const noticeText = notices.join(' ');
 
     // 5. Show success with login credentials
     document.querySelector('#addMemberModal .modal-box').innerHTML = `
@@ -3046,6 +3078,7 @@ window.saveMember = async () => {
         <div style="font-size:13px;font-weight:500;color:var(--navy);margin-bottom:4px;">${window.location.origin}/portal-login</div>
         <div style="font-size:12px;color:var(--text-light);margin-bottom:24px;">Email: ${email} · Temporary password: ${pass}</div>
         <div id="am-subscription-warning" style="font-size:12px;color:#b45309;background:#fffbeb;border-radius:6px;padding:8px 12px;margin-bottom:16px;"></div>
+        <div id="am-billing-notice" style="font-size:12px;color:var(--navy);background:var(--sand-light);border-radius:6px;padding:8px 12px;margin-bottom:16px;text-align:left;"></div>
         <button class="btn-primary" onclick="closeModal('addMemberModal');restoreAddMemberModal();" style="width:100%;">Done</button>
       </div>
     `;
@@ -3054,6 +3087,12 @@ window.saveMember = async () => {
       warningEl.textContent = subscriptionWarningText;
     } else {
       warningEl.style.display = 'none';
+    }
+    const noticeEl = document.getElementById('am-billing-notice');
+    if (noticeText) {
+      noticeEl.textContent = noticeText;
+    } else {
+      noticeEl.style.display = 'none';
     }
 
     // Clear state
