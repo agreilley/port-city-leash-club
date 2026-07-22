@@ -1301,33 +1301,65 @@ exports.sendOnboardingEmail = onCall({
   secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET],
 }, async (request) => {
   await assertIsAdmin(request.auth);
-  const { memberId, kind, serviceName, paymentCharged } = request.data || {};
-  if (!memberId || (kind !== 'member' && kind !== 'service')) {
-    throw new HttpsError('invalid-argument', "memberId and kind ('member' | 'service') are required.");
+  const { memberId, walkerUid, kind, serviceName, paymentCharged } = request.data || {};
+  if (!['member', 'service', 'walker'].includes(kind)) {
+    throw new HttpsError('invalid-argument', "kind must be 'member', 'service', or 'walker'.");
   }
 
-  const memberSnap = await db.collection('members').doc(memberId).get();
-  const member = memberSnap.data();
-  if (!member) throw new HttpsError('not-found', 'Member record not found.');
-  const email = member.email;
-  if (!email) throw new HttpsError('failed-precondition', 'This member has no email on file.');
+  // Resolve the recipient. Walkers live in their own collection with a
+  // different shape (no pet, no tier); members and one-time customers are
+  // member docs. Everything downstream works off email/firstName/petName.
+  let email, firstName, petName = null, memberTier = null;
+  if (kind === 'walker') {
+    if (!walkerUid) throw new HttpsError('invalid-argument', 'walkerUid is required for a walker email.');
+    const wSnap = await db.collection('walkers').doc(walkerUid).get();
+    const walker = wSnap.data();
+    if (!walker) throw new HttpsError('not-found', 'Walker record not found.');
+    email = walker.email;
+    firstName = (walker.name || '').trim().split(/\s+/)[0] || 'there';
+  } else {
+    if (!memberId) throw new HttpsError('invalid-argument', 'memberId is required.');
+    const memberSnap = await db.collection('members').doc(memberId).get();
+    const member = memberSnap.data();
+    if (!member) throw new HttpsError('not-found', 'Member record not found.');
+    email = member.email;
+    firstName = (member.name || '').trim().split(/\s+/)[0] || 'there';
+    petName = (Array.isArray(member.dogs) ? member.dogs.map((d) => d && d.name).find(Boolean) : null) || null;
+    memberTier = member.tier || null;
+  }
+  if (!email) throw new HttpsError('failed-precondition', 'This recipient has no email on file.');
 
-  const firstName = (member.name || '').trim().split(/\s+/)[0] || 'there';
-  const petName = (Array.isArray(member.dogs) ? member.dogs.map((d) => d && d.name).find(Boolean) : null) || null;
   // Capitalized for use at the start of a bullet; a real name is already
   // capitalized, the fallback needs it.
   const petProfileBullet = petName ? `${petName}'s profile` : "Your pet's profile";
-  const portalLogin = `${BUSINESS_PORTAL_ORIGIN}/portal-login`;
+  // Walkers land on the walker portal, everyone else on the member portal.
+  // Both are clean URLs (no .html) so Vercel serves them without a redirect.
+  const portalUrl = `${BUSINESS_PORTAL_ORIGIN}${kind === 'walker' ? '/walker' : '/portal-login'}`;
 
   // generatePasswordResetLink generates the link without sending it, so the
   // welcome text is ours (via Gmail) rather than Firebase's default template.
   const { getAuth } = require('firebase-admin/auth');
-  const link = await getAuth().generatePasswordResetLink(email, { url: portalLogin });
+  const link = await getAuth().generatePasswordResetLink(email, { url: portalUrl });
 
   let subject, lines;
-  if (kind === 'member') {
-    const tier = member.tier || 'membership';
-    const line2 = member.tier === 'Travel'
+  if (kind === 'walker') {
+    subject = `Welcome to the team, ${firstName}`;
+    lines = [
+      `Hi ${firstName},`, '',
+      `Welcome to the Port City Leash Club team. Your walker account is all set up, and we're glad to have you.`, '',
+      `Your account is ready in the walker portal. Log in to find:`, '',
+      `  - Your upcoming walks`,
+      `  - Your weekly schedule`,
+      `  - Your earnings`, '',
+      `Set your password to get in:`, '',
+      link, '',
+      `Link expired? Head to ${portalUrl} and choose "Forgot password?" for a new one.`, '',
+      `Questions? Just reply to this email or reach us at ${BUSINESS_EMAIL_ADDRESS}.`, '',
+      `The Port City Leash Club team`,
+    ];
+  } else if (kind === 'member') {
+    const tier = memberTier || 'membership';
+    const line2 = memberTier === 'Travel'
       ? `${petName ? petName + "'s" : 'Your'} membership is set up, and we can't wait to take care of ${petName || 'your pet'}.`
       : `${petName ? petName + "'s " + tier : 'Your ' + tier} membership is set up, and we can't wait to get started.`;
     subject = `Welcome to the Leash Club, ${firstName}`;
@@ -1340,7 +1372,7 @@ exports.sendOnboardingEmail = onCall({
       `  - Everything about your membership`, '',
       `Set your password to get in:`, '',
       link, '',
-      `Link expired? Head to ${portalLogin} and choose "Forgot password?" for a new one.`, '',
+      `Link expired? Head to ${portalUrl} and choose "Forgot password?" for a new one.`, '',
       `Questions? Just reply to this email or reach us at ${BUSINESS_EMAIL_ADDRESS}.`, '',
       `The Port City Leash Club team`,
     ];
@@ -1355,7 +1387,7 @@ exports.sendOnboardingEmail = onCall({
       `  - ${petProfileBullet}`, '',
       `Set your password to get in:`, '',
       link, '',
-      `Link expired? Head to ${portalLogin} and choose "Forgot password?" for a new one.`, '',
+      `Link expired? Head to ${portalUrl} and choose "Forgot password?" for a new one.`, '',
     ];
     if (paymentCharged) {
       lines.push('Payment has been processed. A separate receipt from Stripe is on its way.', '');

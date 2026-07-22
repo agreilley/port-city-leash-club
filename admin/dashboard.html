@@ -623,7 +623,6 @@
       <div class="form-field"><label>Owner name</label><input type="text" id="am-name" placeholder="Sarah Mitchell"></div>
       <div class="form-field"><label>Email</label><input type="email" id="am-email" placeholder="sarah@example.com"></div>
       <div class="form-field"><label>Phone</label><input type="tel" id="am-phone" placeholder="(000) 000-0000"></div>
-      <div class="form-field"><label>Temporary password</label><input type="text" id="am-password" placeholder="Min 8 characters" value=""></div>
       <div class="form-field"><label>Membership tier</label>
         <select id="am-tier">
           <option value="">Select a tier...</option>
@@ -690,7 +689,6 @@
       </div>
       <div class="form-field" style="margin-bottom:12px;"><label>Email</label><input type="email" id="aw-email" placeholder="marcus@example.com"></div>
       <div class="form-field" style="margin-bottom:12px;"><label>Phone</label><input type="tel" id="aw-phone" placeholder="(000) 000-0000"></div>
-      <div class="form-field" style="margin-bottom:12px;"><label>Temporary Password</label><input type="text" id="aw-password" placeholder="Min 8 characters — walker will be prompted to change"></div>
       <div class="form-field" style="margin-bottom:16px;"><label>Zones (comma separated)</label><input type="text" id="aw-zones" placeholder="Midtown, Forest Hills"></div>
       <div id="aw-error" style="color:var(--rust);font-size:13px;margin-bottom:12px;display:none;"></div>
       <div style="display:flex;gap:8px;">
@@ -908,11 +906,12 @@ function renderPetDetailCards(dogs) {
   }).join('');
 }
 
-// Shared by openAddMemberModal and openAddWalkerModal — same auto-generated
-// starting point for a new account's temp password. Shown once on the
-// success screen, never written to Firestore, editable before saving.
-function generateTempPassword() {
-  return 'PCLC' + Math.random().toString(36).slice(2, 8);
+// A strong random password for a newly created account. It is never shown to
+// anyone: the walker/member/customer sets their own via the onboarding email's
+// set-password link, with "Forgot password?" as the fallback. Used at account
+// creation only, so it exists purely to satisfy Firebase Auth's signUp.
+function randomAccountPassword() {
+  return 'PCLC-' + (crypto.randomUUID ? crypto.randomUUID() : (Date.now() + Math.random().toString(36).slice(2)));
 }
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
@@ -1693,13 +1692,14 @@ window.createWalkerAccount = async () => {
   const last  = document.getElementById('aw-last').value.trim();
   const email = document.getElementById('aw-email').value.trim();
   const phone = document.getElementById('aw-phone').value.trim();
-  const pass  = document.getElementById('aw-password').value.trim();
   const zones = document.getElementById('aw-zones').value.split(',').map(z => z.trim()).filter(Boolean);
   const errEl = document.getElementById('aw-error');
   errEl.style.display = 'none';
 
-  if (!first || !last || !email || !pass) { errEl.textContent = 'Please fill in all required fields.'; errEl.style.display = 'block'; return; }
-  if (pass.length < 8) { errEl.textContent = 'Password must be at least 8 characters.'; errEl.style.display = 'block'; return; }
+  if (!first || !last || !email) { errEl.textContent = 'Please fill in all required fields.'; errEl.style.display = 'block'; return; }
+
+  // Never shown; the walker sets their own via the onboarding email.
+  const pass = randomAccountPassword();
 
   const btn = document.querySelector('#addWalkerModal .btn-primary');
   btn.textContent = 'Creating...'; btn.disabled = true;
@@ -1756,14 +1756,25 @@ window.createWalkerAccount = async () => {
       window._addWalkerSubmissionId = null;
     }
 
+    // Onboarding email with a set-password link — same delivery the member and
+    // one-time-customer flows use. A failure never undoes the created walker;
+    // "Forgot password?" on the walker login page is the fallback either way.
+    let emailNote = `We've emailed ${name} a link to set their password and log in.`;
+    try {
+      const sendOnboardingEmail = httpsCallable(fns, 'sendOnboardingEmail');
+      await sendOnboardingEmail({ walkerUid: uid, kind: 'walker' });
+    } catch (mailErr) {
+      emailNote = `The walker account was created, but the welcome email didn't send (${mailErr.message}). Ask ${name} to use "Forgot password?" on the walker login page, or resend later.`;
+    }
+
     // Show success
     document.getElementById('addWalkerContent').innerHTML = `
       <div style="text-align:center;padding:24px 0;">
         <div style="font-size:40px;margin-bottom:16px;">✓</div>
         <div style="font-size:18px;font-weight:500;color:var(--navy);margin-bottom:8px;">Walker account created!</div>
-        <div style="font-size:13px;color:var(--text-light);margin-bottom:4px;">${name} can now log in at:</div>
-        <div style="font-size:13px;font-weight:500;color:var(--navy);margin-bottom:4px;">${window.location.origin}/walker/index.html</div>
-        <div style="font-size:12px;color:var(--text-light);margin-bottom:24px;">Email: ${email} · Temporary password: ${pass}</div>
+        <div style="font-size:13px;color:var(--text-light);margin-bottom:4px;">${name} can log in at:</div>
+        <div style="font-size:13px;font-weight:500;color:var(--navy);margin-bottom:12px;">${window.location.origin}/walker/index.html</div>
+        <div style="font-size:12px;color:var(--text-light);margin-bottom:24px;">${emailNote}</div>
         <button class="btn-primary" onclick="closeModal('addWalkerModal');document.getElementById('addWalkerContent').innerHTML='';" style="width:100%;">Done</button>
       </div>`;
   } catch(e) {
@@ -3028,8 +3039,6 @@ window.openAddMemberModal = (prefill, submissionId) => {
   document.getElementById('am-name').value = prefill?.ownerName || prefill?.name || '';
   document.getElementById('am-email').value = prefill?.email || '';
   document.getElementById('am-phone').value = prefill?.phone || '';
-  // Generate a simple default password — admin can change it before saving
-  document.getElementById('am-password').value = generateTempPassword();
   const validTiers = ['Essential','Standard','Daily','Travel'];
   const tierUnclear = !!prefill?.plan && !validTiers.includes(prefill.plan); // e.g. "Not sure yet"
   const tierSelect = document.getElementById('am-tier');
@@ -3081,7 +3090,6 @@ window.saveMember = async () => {
   const name    = document.getElementById('am-name').value.trim();
   const email   = document.getElementById('am-email').value.trim();
   const phone   = document.getElementById('am-phone').value.trim();
-  const pass    = document.getElementById('am-password').value.trim();
   const tier    = document.getElementById('am-tier').value;
   const address = document.getElementById('am-address').value.trim();
   const access  = document.getElementById('am-access').value.trim();
@@ -3100,8 +3108,10 @@ window.saveMember = async () => {
   errEl.style.display = 'none';
 
   if (!name || !email) { errEl.textContent = 'Owner name and email are required.'; errEl.style.display = 'block'; return; }
-  if (!pass || pass.length < 8) { errEl.textContent = 'Password must be at least 8 characters.'; errEl.style.display = 'block'; return; }
   if (!tier) { errEl.textContent = 'Select a membership tier before creating the account.'; errEl.style.display = 'block'; return; }
+
+  // Never shown; the member sets their own via the onboarding email.
+  const pass = randomAccountPassword();
 
   const btn = document.querySelector('#addMemberModal .btn-primary');
   btn.textContent = 'Creating account...'; btn.disabled = true;
@@ -3224,9 +3234,9 @@ window.saveMember = async () => {
       <div style="text-align:center;padding:24px 0;">
         <div style="font-size:40px;margin-bottom:16px;">✓</div>
         <div style="font-size:18px;font-weight:500;color:var(--navy);margin-bottom:8px;">Member account created!</div>
-        <div style="font-size:13px;color:var(--text-light);margin-bottom:4px;">${name} can now log in at:</div>
-        <div style="font-size:13px;font-weight:500;color:var(--navy);margin-bottom:4px;">${window.location.origin}/portal-login</div>
-        <div style="font-size:12px;color:var(--text-light);margin-bottom:24px;">Email: ${email} · Temporary password: ${pass}</div>
+        <div style="font-size:13px;color:var(--text-light);margin-bottom:4px;">${name} can log in at:</div>
+        <div style="font-size:13px;font-weight:500;color:var(--navy);margin-bottom:12px;">${window.location.origin}/portal-login</div>
+        <div style="font-size:12px;color:var(--text-light);margin-bottom:24px;">We've emailed ${email} a link to set their password and log in.</div>
         <div id="am-subscription-warning" style="font-size:12px;color:#b45309;background:#fffbeb;border-radius:6px;padding:8px 12px;margin-bottom:16px;"></div>
         <div id="am-billing-notice" style="font-size:12px;color:var(--navy);background:var(--sand-light);border-radius:6px;padding:8px 12px;margin-bottom:16px;text-align:left;"></div>
         <button class="btn-primary" onclick="closeModal('addMemberModal');restoreAddMemberModal();" style="width:100%;">Done</button>
@@ -3263,9 +3273,6 @@ window.openAddWalkerModal = (prefill, submissionId) => {
   document.getElementById('aw-last').value = nameParts.slice(1).join(' ') || '';
   document.getElementById('aw-email').value = prefill?.email || '';
   document.getElementById('aw-phone').value = prefill?.phone || '';
-  // Same auto-generated starting point as openAddMemberModal — admin can
-  // change it before saving.
-  document.getElementById('aw-password').value = generateTempPassword();
   document.getElementById('aw-zones').value = prefill?.neighborhood || '';
   document.getElementById('addWalkerModal').classList.add('open');
 };
