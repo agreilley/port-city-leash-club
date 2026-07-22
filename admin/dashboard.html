@@ -2468,23 +2468,62 @@ window.confirmServiceRequest = async (submissionId, item) => {
     const endDate = endDateStr ? Timestamp.fromDate(new Date(`${endDateStr}T12:00:00`)) : (item.endDate || null);
 
     let memberId = item.memberId || '';
+    let createdMemberUid = null; // set only when a fresh account is created, to gate the welcome email
+    let accountWarning = '';
     if (!memberId && item.email) {
       const existing = allMembers.find(m => (m.email || '').toLowerCase() === item.email.toLowerCase());
       if (existing) {
+        // Returning customer who already has a real member record (from a
+        // prior membership or a prior one-time service). Reuse it — no
+        // duplicate, no second welcome email.
         memberId = existing.id;
       } else {
-        const newMemberRef = await addDoc(collection(db, 'members'), {
-          name: item.ownerName || '',
-          email: item.email || '',
-          phone: item.phone || '',
-          address: item.address || '',
-          tier: 'Travel',
-          dogs: dogs,
-          walksThisMonth: 0,
-          status: 'active',
-          createdAt: serverTimestamp(),
-        });
-        memberId = newMemberRef.id;
+        // New one-time customer. Create a real Auth-backed member keyed by the
+        // Auth UID, mirroring saveMember. The old code used addDoc with a
+        // random ID and no Auth account, producing a member that could never
+        // be logged into: portal lookups are getDoc(members/{user.uid}) and
+        // rules check request.auth.uid == id, so a random id can never match,
+        // and creating an Auth account later wouldn't link to it either.
+        //
+        // The password is random and never shown — the onboarding email sends
+        // a set-password link, with "Forgot password?" as the fallback.
+        //
+        // Account creation is wrapped so it can NEVER block confirming and
+        // charging the service. The most likely failure is EMAIL_EXISTS (the
+        // email already has a walker or member Auth account); in that case we
+        // proceed without a member link rather than hijacking that account.
+        try {
+          const apiKey = 'AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM';
+          const randomPw = 'PCLC-' + (crypto.randomUUID ? crypto.randomUUID() : (Date.now() + Math.random().toString(36).slice(2)));
+          const authRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: item.email, password: randomPw, returnSecureToken: true }),
+          });
+          const authData = await authRes.json();
+          if (authData.error) throw new Error(authData.error.message);
+          const uid = authData.localId;
+          await setDoc(doc(db, 'members', uid), {
+            name: item.ownerName || '',
+            email: item.email || '',
+            phone: item.phone || '',
+            address: item.address || '',
+            uid,
+            emailNormalized: (item.email || '').toLowerCase(),
+            phoneDigits: (item.phone || '').replace(/\D/g, '').replace(/^1/, ''),
+            tier: 'Travel',
+            dogs: dogs,
+            walksThisMonth: 0,
+            status: 'active',
+            createdAt: serverTimestamp(),
+          });
+          memberId = uid;
+          createdMemberUid = uid;
+        } catch (acctErr) {
+          accountWarning = acctErr.message.includes('EMAIL_EXISTS')
+            ? 'An account with this email already exists, so no new portal account was created. Link it manually if the customer needs portal access.'
+            : `Portal account wasn't created (${acctErr.message}). The service was still confirmed and charged.`;
+        }
       }
     }
 
@@ -2504,7 +2543,25 @@ window.confirmServiceRequest = async (submissionId, item) => {
     // file if the requester went through createSetupIntent at signup —
     // chargeAndTrackPayment treats a non-positive amount as "nothing to
     // charge" and records paymentStatus: 'skipped' without calling Stripe.
-    await chargeAndTrackPayment(submissionId, item.stripeCustomerId ? amountInDollars : 0, serviceChargeDescription(service, item));
+    const paymentStatus = await chargeAndTrackPayment(submissionId, item.stripeCustomerId ? amountInDollars : 0, serviceChargeDescription(service, item));
+
+    // Welcome / confirmation email — only for a freshly created account (a
+    // returning customer already received one). Never blocks the confirmed,
+    // charged service; a failure is surfaced as a warning.
+    let emailWarning = '';
+    if (createdMemberUid) {
+      try {
+        const sendOnboardingEmail = httpsCallable(fns, 'sendOnboardingEmail');
+        await sendOnboardingEmail({
+          memberId: createdMemberUid,
+          kind: 'service',
+          serviceName: SERVICE_PRICES[resolveServiceKey(service)]?.name || 'booking',
+          paymentCharged: paymentStatus === 'charged',
+        });
+      } catch (e) {
+        emailWarning = `Confirmation email wasn't sent: ${e.message}`;
+      }
+    }
 
     closeModal('requestModal');
     const msg = document.createElement('div');
@@ -2512,6 +2569,11 @@ window.confirmServiceRequest = async (submissionId, item) => {
     msg.textContent = 'Service request confirmed';
     document.body.appendChild(msg);
     setTimeout(() => msg.remove(), 3000);
+
+    // Surface any non-fatal warnings (account not created, email not sent)
+    // after the success toast — the service itself is confirmed and charged.
+    const warns = [accountWarning, emailWarning].filter(Boolean);
+    if (warns.length) alert(warns.join('\n\n'));
   } catch (e) {
     btn.textContent = 'Confirm & Charge'; btn.disabled = false;
     alert('Error: ' + e.message);
@@ -3112,6 +3174,17 @@ window.saveMember = async () => {
         }
       }
     }
+
+    // Welcome email for every new member, whether converted from a request or
+    // added directly. Carries a set-password link; a failure is a warning and
+    // never undoes the member that was just created.
+    try {
+      const sendOnboardingEmail = httpsCallable(fns, 'sendOnboardingEmail');
+      await sendOnboardingEmail({ memberId: uid, kind: 'member' });
+    } catch (e) {
+      warnings.push(`Welcome email wasn't sent: ${e.message}`);
+    }
+
     const subscriptionWarningText = warnings.join(' ');
     const noticeText = notices.join(' ');
 

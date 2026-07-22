@@ -1222,6 +1222,97 @@ async function sendGmailMessage({ to, subject, body, threadId, inReplyTo, refere
 // 4. Generate the Google OAuth consent URL for connecting Gmail. Called
 //    from the admin portal's "Connect Gmail" button.
 // ─────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+// Onboarding email. Fires after a member is created (saveMember) or a
+// one-time service is confirmed for a new customer (confirmServiceRequest).
+// It welcomes them, confirms what they signed up for, and carries a
+// set-password link so they can reach the portal — no temp password is ever
+// relayed. The link is a Firebase password-reset link, which doubles as
+// first-time password setup; it lands on Firebase's hosted action page (the
+// Console Action URL isn't customized yet) and continues to the portal login.
+//
+// Defined here, after GOOGLE_CLIENT_ID/SECRET and BUSINESS_EMAIL_ADDRESS: the
+// secrets array in the options object is read at module load, not call time,
+// so this must sit below those definitions.
+//
+// Callers treat a failure here as a warning, never a rollback — a member or a
+// paid booking must not be undone because an email didn't send.
+// ─────────────────────────────────────────────────────────────────────────
+const BUSINESS_PORTAL_ORIGIN = 'https://www.portcityleashclub.com';
+
+exports.sendOnboardingEmail = onCall({
+  secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET],
+}, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { memberId, kind, serviceName, paymentCharged } = request.data || {};
+  if (!memberId || (kind !== 'member' && kind !== 'service')) {
+    throw new HttpsError('invalid-argument', "memberId and kind ('member' | 'service') are required.");
+  }
+
+  const memberSnap = await db.collection('members').doc(memberId).get();
+  const member = memberSnap.data();
+  if (!member) throw new HttpsError('not-found', 'Member record not found.');
+  const email = member.email;
+  if (!email) throw new HttpsError('failed-precondition', 'This member has no email on file.');
+
+  const firstName = (member.name || '').trim().split(/\s+/)[0] || 'there';
+  const petName = (Array.isArray(member.dogs) ? member.dogs.map((d) => d && d.name).find(Boolean) : null) || null;
+  const petPoss = petName ? `${petName}'s` : "your pet's";
+  const portalLogin = `${BUSINESS_PORTAL_ORIGIN}/portal-login`;
+
+  // generatePasswordResetLink generates the link without sending it, so the
+  // welcome text is ours (via Gmail) rather than Firebase's default template.
+  const { getAuth } = require('firebase-admin/auth');
+  const link = await getAuth().generatePasswordResetLink(email, { url: portalLogin });
+
+  let subject, lines;
+  if (kind === 'member') {
+    const tier = member.tier || 'membership';
+    const line2 = member.tier === 'Travel'
+      ? `${petName ? petName + "'s" : 'Your'} membership is set up, and we can't wait to take care of ${petName || 'your pet'}.`
+      : `${petName ? petName + "'s " + tier : 'Your ' + tier} membership is set up, and we can't wait to get started.`;
+    subject = `Welcome to the Leash Club, ${firstName}`;
+    lines = [
+      `Hi ${firstName},`, '',
+      `You're in. ${line2}`, '',
+      `Your account is ready in the member portal. That's where you'll find your upcoming visits, ${petPoss} profile, and everything about your membership.`, '',
+      `Set your password to get in:`, '',
+      link, '',
+      `Link expired? Head to ${portalLogin} and choose "Forgot password?" for a new one.`, '',
+      `Questions? Just reply to this email or reach us at ${BUSINESS_EMAIL_ADDRESS}.`, '',
+      `The Port City Leash Club team`,
+    ];
+  } else {
+    const svc = serviceName || 'booking';
+    subject = `Your booking is confirmed`;
+    lines = [
+      `Hi ${firstName},`, '',
+      `Thanks for booking with us. Your ${svc}${petName ? ' for ' + petName : ''} is confirmed.`, '',
+      `We've set up a portal account so you can keep track of it. You'll find your booking and ${petPoss} profile there.`, '',
+      `Set your password to get in:`, '',
+      link, '',
+      `Link expired? Head to ${portalLogin} and choose "Forgot password?" for a new one.`, '',
+    ];
+    if (paymentCharged) {
+      lines.push('Payment has been processed. A separate receipt from Stripe is on its way.', '');
+    }
+    lines.push(
+      `Questions? Just reply to this email or reach us at ${BUSINESS_EMAIL_ADDRESS}.`, '',
+      `The Port City Leash Club team`,
+    );
+  }
+
+  const gmail = await getGmailClient();
+  if (!gmail) throw new HttpsError('failed-precondition', 'Gmail is not connected — cannot send the onboarding email.');
+  // Send from the connected address (same as onNewSubmission), which avoids a
+  // From-alias mismatch. The signature text still points people at hello@.
+  const profile = await gmail.users.getProfile({ userId: 'me' });
+  const from = profile.data.emailAddress;
+
+  await sendGmailMessage({ to: email, from, subject, body: lines.join('\n') });
+  return { success: true, sentTo: email };
+});
+
 exports.gmailAuthUrl = onCall({ secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET] }, async (request) => {
   await assertIsAdmin(request.auth);
   const oauth2Client = gmailOAuthClient();
