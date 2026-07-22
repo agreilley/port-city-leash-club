@@ -798,6 +798,14 @@ window.completeWalk = async (walkId) => {
   try {
     let photoUrl = null;
     if (file) {
+      // Must be an image. This mirrors the Storage rule
+      // (contentType.matches('image/.*')) so a wrong file type produces a
+      // clear message here instead of an opaque permission error from the
+      // upload. The input's accept="image/*" is only a hint — some devices
+      // still let you pick other files — so this is the real guard.
+      if (!file.type.startsWith('image/')) {
+        throw new Error('That file isn\'t an image — please choose a photo (JPG, PNG, etc.).');
+      }
       // Cap upload size at 8MB — plenty for a phone photo, avoids someone
       // accidentally uploading a huge raw file over cell data.
       if (file.size > 8 * 1024 * 1024) {
