@@ -238,6 +238,63 @@ exports.createSetupIntent = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (requ
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// 1b. Decline a membership request. A membership_request saves a card at
+//    signup (createSetupIntent above), so declining has to clean up the
+//    Stripe customer too — deleting the submission alone would orphan a live
+//    customer with a saved card. Runs server-side because it needs the Stripe
+//    secret key, which never goes to the client.
+//
+//    The Stripe customer is deleted BEFORE the status is written: if the
+//    delete fails, this throws and the request stays pending for a retry,
+//    rather than being marked declined while the customer silently orphans.
+//    An already-deleted customer (resource_missing) is treated as success so
+//    a retry is safe.
+// ─────────────────────────────────────────────────────────────────────────
+exports.declineMembershipRequest = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { submissionId } = request.data || {};
+  if (!submissionId) throw new HttpsError('invalid-argument', 'submissionId is required.');
+
+  const subRef = db.collection('submissions').doc(submissionId);
+  const subSnap = await subRef.get();
+  const sub = subSnap.data();
+  if (!sub) throw new HttpsError('not-found', 'Submission not found.');
+  if (sub.type !== 'membership_request') {
+    throw new HttpsError('failed-precondition', `Expected a membership_request, got ${sub.type}.`);
+  }
+  if (sub.memberId) {
+    throw new HttpsError('failed-precondition', 'This request was already converted to a member — decline does not apply.');
+  }
+
+  let customerDeleted = false;
+  if (sub.stripeCustomerId) {
+    const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+    try {
+      const res = await stripe.customers.del(sub.stripeCustomerId);
+      customerDeleted = !!res.deleted;
+    } catch (e) {
+      // Already gone (from a prior partial decline) is fine — the goal is
+      // "no live customer", which is satisfied. Anything else is a real
+      // failure: do NOT mark declined, so no orphan is left behind silently.
+      if (e.code === 'resource_missing') {
+        customerDeleted = true;
+      } else {
+        throw new HttpsError('internal', `Could not delete the Stripe customer (${e.message}). The request was left pending — try again.`);
+      }
+    }
+  }
+
+  await subRef.set({
+    status: 'declined',
+    read: true,
+    stripeCustomerDeleted: customerDeleted,
+    declinedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  return { success: true, customerDeleted };
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // 2. Charge the saved card for a one-time service (drop-in visit,
 //    overnight stay, standard/extended walk). Admin-triggered only —
 //    call this from the admin dashboard's "Confirm" button, after the

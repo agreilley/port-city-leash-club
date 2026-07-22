@@ -2111,9 +2111,15 @@ window.openRequestItem = async (id) => {
   mgGate.style.display = 'none';
   mgCheck.onchange = null;
   setActionBtnEnabled(actionBtn, true);
-  if (item.type === 'membership_request' && !item.memberId) {
+  if (item.type === 'membership_request' && !item.memberId && item.status !== 'declined') {
     actionBtn.textContent = 'Convert to Member'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => { closeModal('requestModal'); openAddMemberModal(item, item.id); };
+
+    // Decline: sets status 'declined' AND deletes the Stripe customer saved at
+    // signup. Goes through a Cloud Function (not a direct updateDoc like the
+    // other decline handlers) because the Stripe cleanup needs the secret key.
+    declineBtn.style.display = 'block';
+    declineBtn.onclick = () => declineMembershipRequest(item.id);
 
     // Converting a membership request creates the account and starts real
     // recurring billing, so it's gated on confirming the meet & greet
@@ -2590,6 +2596,30 @@ window.declineServiceRequest = async (submissionId, item) => {
     const msg = document.createElement('div');
     msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#C17B6F;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
     msg.textContent = 'Service request declined';
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 3000);
+  } catch (e) {
+    btn.textContent = 'Decline'; btn.disabled = false;
+    alert('Error: ' + e.message);
+  }
+};
+
+// Membership requests decline through a Cloud Function rather than a direct
+// updateDoc: they carry a Stripe customer (card saved at signup), which the
+// function deletes so declining doesn't leave a live orphan. The function
+// deletes the customer before flipping status, so a Stripe failure leaves the
+// request pending to retry rather than declined-with-orphan.
+window.declineMembershipRequest = async (submissionId) => {
+  const btn = document.getElementById('requestDeclineBtn');
+  btn.textContent = 'Declining…'; btn.disabled = true;
+  try {
+    const fn = httpsCallable(fns, 'declineMembershipRequest');
+    await fn({ submissionId });
+
+    closeModal('requestModal');
+    const msg = document.createElement('div');
+    msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#C17B6F;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
+    msg.textContent = 'Membership request declined';
     document.body.appendChild(msg);
     setTimeout(() => msg.remove(), 3000);
   } catch (e) {
