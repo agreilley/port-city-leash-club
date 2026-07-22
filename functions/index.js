@@ -1257,7 +1257,9 @@ exports.sendOnboardingEmail = onCall({
 
   const firstName = (member.name || '').trim().split(/\s+/)[0] || 'there';
   const petName = (Array.isArray(member.dogs) ? member.dogs.map((d) => d && d.name).find(Boolean) : null) || null;
-  const petPoss = petName ? `${petName}'s` : "your pet's";
+  // Capitalized for use at the start of a bullet; a real name is already
+  // capitalized, the fallback needs it.
+  const petProfileBullet = petName ? `${petName}'s profile` : "Your pet's profile";
   const portalLogin = `${BUSINESS_PORTAL_ORIGIN}/portal-login`;
 
   // generatePasswordResetLink generates the link without sending it, so the
@@ -1275,7 +1277,10 @@ exports.sendOnboardingEmail = onCall({
     lines = [
       `Hi ${firstName},`, '',
       `You're in. ${line2}`, '',
-      `Your account is ready in the member portal. That's where you'll find your upcoming visits, ${petPoss} profile, and everything about your membership.`, '',
+      `Your account is ready in the member portal. Log in to find:`, '',
+      `  - Your upcoming visits`,
+      `  - ${petProfileBullet}`,
+      `  - Everything about your membership`, '',
       `Set your password to get in:`, '',
       link, '',
       `Link expired? Head to ${portalLogin} and choose "Forgot password?" for a new one.`, '',
@@ -1288,7 +1293,9 @@ exports.sendOnboardingEmail = onCall({
     lines = [
       `Hi ${firstName},`, '',
       `Thanks for booking with us. Your ${svc}${petName ? ' for ' + petName : ''} is confirmed.`, '',
-      `We've set up a portal account so you can keep track of it. You'll find your booking and ${petPoss} profile there.`, '',
+      `We've set up a portal account so you can keep track of everything. Log in to find:`, '',
+      `  - Your booking details`,
+      `  - ${petProfileBullet}`, '',
       `Set your password to get in:`, '',
       link, '',
       `Link expired? Head to ${portalLogin} and choose "Forgot password?" for a new one.`, '',
