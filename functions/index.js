@@ -1302,14 +1302,14 @@ exports.sendOnboardingEmail = onCall({
     );
   }
 
-  const gmail = await getGmailClient();
-  if (!gmail) throw new HttpsError('failed-precondition', 'Gmail is not connected — cannot send the onboarding email.');
-  // Send from the connected address (same as onNewSubmission), which avoids a
-  // From-alias mismatch. The signature text still points people at hello@.
-  const profile = await gmail.users.getProfile({ userId: 'me' });
-  const from = profile.data.emailAddress;
-
-  await sendGmailMessage({ to: email, from, subject, body: lines.join('\n') });
+  // No `from` is passed, so sendGmailMessage uses its default,
+  // BUSINESS_EMAIL_DISPLAY ("Port City Leash Club <hello@portcityleashclub.com>"),
+  // matching sendMemberMessage — the branded name and address a customer should
+  // see. This only shows as hello@ if hello@ is a verified "Send mail as" alias
+  // on the connected Gmail account; otherwise Gmail rewrites the From back to
+  // the connected address (it does not error). sendGmailMessage throws if Gmail
+  // isn't connected.
+  await sendGmailMessage({ to: email, subject, body: lines.join('\n') });
   return { success: true, sentTo: email };
 });
 
