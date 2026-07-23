@@ -8,9 +8,18 @@
 // three places a price change could be made in one and silently drift out
 // of sync with the others. Now there's exactly one place.
 
+// The base single-walk price and the extended-walk upcharge, each defined
+// once. A non-member extended walk is the base plus the upcharge, and a member
+// extending a walk pays the same upcharge on top of their per-walk rate — so
+// the $12 lives in exactly one place. (Extended-walk used to be a standalone
+// literal that had drifted: 29 + 12 = 41, but it was hardcoded 40. Deriving it
+// keeps them reconciled.)
+const STANDARD_WALK_PRICE = 30;
+export const WALK_EXTENSION_PRICE = 12;
+
 export const SERVICE_PRICES = {
-  'standard-walk':  { name: 'Standard Walk',  price: 29,  unit: 'walk' },
-  'extended-walk':  { name: 'Extended Walk',  price: 40,  unit: 'walk' },
+  'standard-walk':  { name: 'Standard Walk',  price: STANDARD_WALK_PRICE,                        unit: 'walk' },
+  'extended-walk':  { name: 'Extended Walk',  price: STANDARD_WALK_PRICE + WALK_EXTENSION_PRICE, unit: 'walk' },
   'drop-in-visit':  { name: 'Drop-In Visit',  price: 25,  unit: 'night' },
   'overnight-stay': { name: 'Overnight Stay', price: 115, unit: 'night' },
 };
@@ -26,7 +35,6 @@ export const SERVICE_KEY_ALIASES = {
 
 export const EXTRA_PET_FEE = 10;
 export const MEDICATION_FEE = 10;
-export const WALK_EXTENSION_PRICE = 12;
 
 export function resolveServiceKey(key) {
   return SERVICE_KEY_ALIASES[key] || key;

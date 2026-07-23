@@ -53,9 +53,9 @@ function stripeClient(key) {
 // document here. (A literal shared module isn't possible: Firebase uploads only
 // the functions/ directory, and the browser can't import from it.)
 const TIER_PRICE_IDS = {
-  Essential: 'price_1TvJRSBYaaTA3vAvg7vjywOj',
-  Standard: 'price_1TvJRPBYaaTA3vAvSePTuam0',
-  Daily: 'price_1TvJRJBYaaTA3vAvEokY5XJw',
+  Essential: 'price_1TvJRSBYaaTA3vAvg7vjywOj', // $28 (amount edited in place, ID unchanged)
+  Standard: 'price_1Tw2uxBYaaTA3vAvunoJ0NYv',  // $26 (new Price object, new ID)
+  Daily: 'price_1TvJRJBYaaTA3vAvEokY5XJw',     // $24 (amount edited in place, ID unchanged)
 };
 
 const WEEKDAY_NUMBERS = {
