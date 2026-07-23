@@ -513,8 +513,8 @@
         <div class="field-row">
           <div class="field-group">
             <label class="field-label">Payment Method</label>
-            <div style="padding: 10px 12px; background: white; border: 1px solid #E5E0D8; border-radius: 6px; font-size: 14px;">
-              Visa ending in 4521
+            <div id="paymentMethodDisplay" style="padding: 10px 12px; background: white; border: 1px solid #E5E0D8; border-radius: 6px; font-size: 14px;">
+              Loading…
             </div>
           </div>
         </div>
@@ -535,23 +535,30 @@
           </div>
           <div class="field-group">
             <label class="field-label">Last Name</label>
-            <input type="text" class="field-input" value="Chen" placeholder="Last name">
+            <input type="text" class="field-input" id="lastName" placeholder="Last name">
           </div>
         </div>
 
         <div class="field-row">
           <div class="field-group">
             <label class="field-label">Email</label>
-            <input type="email" class="field-input" value="sarah@email.com" placeholder="Email address">
+            <input type="email" class="field-input" id="email" placeholder="Email address" readonly title="Contact us to change your email">
           </div>
           <div class="field-group">
             <label class="field-label">Phone</label>
-            <input type="tel" class="field-input" value="" placeholder="Phone number" placeholder="Phone number">
+            <input type="tel" class="field-input" id="phone" placeholder="Phone number">
+          </div>
+        </div>
+
+        <div class="field-row full">
+          <div class="field-group">
+            <label class="field-label">Address</label>
+            <input type="text" class="field-input" id="address" placeholder="Home address">
           </div>
         </div>
 
         <div class="section-actions">
-          <button class="btn btn-primary">Save Changes</button>
+          <button class="btn btn-primary" onclick="saveAccount()">Save Changes</button>
           <button class="btn btn-secondary">Cancel</button>
         </div>
       </div>
@@ -739,6 +746,11 @@ function loadPageData() {
   if (el('email')) el('email').value = memberData.email || '';
   if (el('phone')) el('phone').value = memberData.phone || '';
   if (el('address')) el('address').value = memberData.address || '';
+  // The member doc carries a Stripe customer id (card saved at signup) but not
+  // the card number — a real last-4 would need a server call to Stripe. Until
+  // that exists, state honestly whether a card is on file rather than a fake one.
+  if (el('paymentMethodDisplay')) el('paymentMethodDisplay').textContent =
+    memberData.stripeCustomerId ? 'A card is securely saved on file.' : 'No card on file yet.';
   // Membership info
   if (el('membershipTier')) el('membershipTier').textContent = memberData.tier === 'Travel' ? 'Pet Sitting (no walk membership)' : (memberData.tier || 'Standard');
   if (el('memberStatus')) el('memberStatus').textContent = memberData.status || 'Active';
