@@ -15,7 +15,16 @@ service cloud.firestore {
     }
 
     match /admins/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      // Read-only to clients: a user may check whether their OWN uid is an
+      // admin (that's what isAdmin() and the portal auth guards rely on), but
+      // may never write here. Client write was a full privilege-escalation
+      // hole — `uid == request.auth.uid` let ANY signed-in user create their
+      // own admin doc and thereby pass isAdmin() everywhere (Firestore rules,
+      // storage.rules, and assertIsAdmin() in every privileged Cloud Function).
+      // Admin membership is now managed out-of-band only (Firebase console, or
+      // a future custom auth claim — storage.rules notes claims work there).
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
     }
 
     match /members/{id} {
@@ -23,17 +32,39 @@ service cloud.firestore {
       allow read: if isWalker();
       allow read: if request.auth != null && request.auth.uid == id;
 
+      // Allowlist, not denylist: a member may change ONLY these self-service
+      // profile fields on their own doc. The previous rule denied a fixed set
+      // of Stripe keys and allowed everything else, which left billing-adjacent
+      // fields member-writable — e.g. writing currentMonthCharge:{status:'charged'}
+      // to dodge the mid-month charge (chargeCurrentMonthWalks idempotency guard),
+      // changing `tier` to alter the per-walk price, or writing
+      // status/pauseStartDate/pauseEndDate/membershipStartDate directly to bypass
+      // the validated submitVacationHold flow. Anything not listed here (tier,
+      // billing state, membership status, walk schedule, assigned walker) is now
+      // rejected and can only change via admin or a Cloud Function.
+      // Fields written by the two self-service portal pages that touch the
+      // member doc directly: portal-account.html (name/phone/address) and
+      // portal-pet-profile.html (dogs + the denormalized dogName/petBreed and
+      // the home-access fields). All are non-billing profile/access data.
+      // emergencyContact is included for a planned profile field; harmless if
+      // unused. Deliberately EXCLUDED (admin- or Cloud-Function-only): tier,
+      // status, billingStatus, currentMonthCharge, membershipStartDate,
+      // pauseStartDate, pauseEndDate, defaultWalkDays, assignedWalkerId, and
+      // every stripe* key.
       allow update: if request.auth != null
         && request.auth.uid == id
-        && !request.resource.data.diff(resource.data).affectedKeys()
-              .hasAny([
-                'stripeCustomerId',
-                'stripeSubscriptionId',
-                'stripeSubscriptionItemId',
-                'billingStatus',
-                'lastPaymentAmount',
-                'lastPaymentDate',
-                'paymentMethodUpdatedAt'
+        && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly([
+                'name',
+                'phone',
+                'address',
+                'dogs',
+                'dogName',
+                'petBreed',
+                'parkingNotes',
+                'entryCode',
+                'accessNotes',
+                'emergencyContact'
               ]);
     }
 
