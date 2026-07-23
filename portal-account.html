@@ -462,25 +462,19 @@
           <label class="field-label">Preferred Days</label>
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 12px; margin-top: 8px;">
             <label style="display: flex; align-items: center; gap: 8px;  font-size: 14px;">
-              <input type="checkbox" checked> Monday
+              <input type="checkbox" id="day-monday" value="monday"> Monday
             </label>
             <label style="display: flex; align-items: center; gap: 8px;  font-size: 14px;">
-              <input type="checkbox"> Tuesday
+              <input type="checkbox" id="day-tuesday" value="tuesday"> Tuesday
             </label>
             <label style="display: flex; align-items: center; gap: 8px;  font-size: 14px;">
-              <input type="checkbox" checked> Wednesday
+              <input type="checkbox" id="day-wednesday" value="wednesday"> Wednesday
             </label>
             <label style="display: flex; align-items: center; gap: 8px;  font-size: 14px;">
-              <input type="checkbox"> Thursday
+              <input type="checkbox" id="day-thursday" value="thursday"> Thursday
             </label>
             <label style="display: flex; align-items: center; gap: 8px;  font-size: 14px;">
-              <input type="checkbox"> Friday
-            </label>
-            <label style="display: flex; align-items: center; gap: 8px;  font-size: 14px;">
-              <input type="checkbox"> Saturday
-            </label>
-            <label style="display: flex; align-items: center; gap: 8px;  font-size: 14px;">
-              <input type="checkbox"> Sunday
+              <input type="checkbox" id="day-friday" value="friday"> Friday
             </label>
           </div>
         </div>
@@ -489,19 +483,19 @@
           <label class="field-label">Preferred Time Slot</label>
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 8px;">
             <label style="display: flex; align-items: center; gap: 8px;  font-size: 14px;">
-              <input type="radio" name="timeSlot" value="early-morning" checked> Early Morning (7-10am)
+              <input type="radio" name="timeSlot" value="morning"> Morning (8-11am)
             </label>
             <label style="display: flex; align-items: center; gap: 8px;  font-size: 14px;">
-              <input type="radio" name="timeSlot" value="late-morning"> Late Morning (10am-12pm)
+              <input type="radio" name="timeSlot" value="early-afternoon"> Early Afternoon (11am-2pm)
             </label>
             <label style="display: flex; align-items: center; gap: 8px;  font-size: 14px;">
-              <input type="radio" name="timeSlot" value="afternoon"> Afternoon (2-5pm)
+              <input type="radio" name="timeSlot" value="late-afternoon"> Late Afternoon (2-5pm)
             </label>
           </div>
         </div>
 
         <div class="section-actions">
-          <button class="btn btn-primary">Save Schedule Changes</button>
+          <button class="btn btn-primary" onclick="saveAccount()">Save Schedule Changes</button>
           <button class="btn btn-secondary">Cancel</button>
         </div>
       </div>
@@ -628,19 +622,6 @@
         </div>
       </div>
 
-      <!-- Danger Zone -->
-      <div class="section-card" style="border-color: rgba(193, 123, 111, 0.2); background: rgba(193, 123, 111, 0.05);">
-        <h2 class="section-title">Danger Zone</h2>
-
-        <div style="margin-bottom: 20px;">
-          <h3 style="font-size: 14px; font-weight: 500; color: #0D1B2A; margin-bottom: 8px;">Delete Account</h3>
-          <p style="font-size: 13px; color: #7A7A7A; line-height: 1.5;">
-            Once you delete your account, all walk history will be permanently removed. This action cannot be undone.
-          </p>
-        </div>
-
-        <button class="btn btn-danger">Delete Account</button>
-      </div>
     </div>
   </div>
 <script>
@@ -706,10 +687,12 @@
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
 const app = getApps().find(a => a.name === 'member-app') || initializeApp(cfg, 'member-app');
 const auth = getAuth(app);
 const db = getFirestore(app);
+const functions = getFunctions(app);
 let userId = null, memberData = null;
 
 onAuthStateChanged(auth, async (user) => {
@@ -758,11 +741,50 @@ function loadPageData() {
   const days = (memberData.defaultWalkDays || []).join(', ');
   const slot = memberData.defaultTimeSlot || '';
   if (el('walkSchedule')) el('walkSchedule').textContent = days && slot ? days + ' · ' + slot : '–';
+  // Pre-check the day checkboxes + time-slot radio from the member's saved
+  // schedule so the editor reflects their current selection on load.
+  if (Array.isArray(memberData.defaultWalkDays)) {
+    memberData.defaultWalkDays.forEach(day => {
+      const cb = document.getElementById('day-' + day);
+      if (cb) cb.checked = true;
+    });
+  }
+  if (memberData.defaultTimeSlot) {
+    const radio = document.querySelector('input[name="timeSlot"][value="' + memberData.defaultTimeSlot + '"]');
+    if (radio) radio.checked = true;
+  }
 }
 
 window.saveAccount = async () => {
   if (!userId) return;
   const el = id => document.getElementById(id);
+
+  // 1. Walk schedule first. defaultWalkDays/defaultTimeSlot are billing-
+  //    affecting, so firestore.rules rejects a direct client write — they must
+  //    go through the updateWalkSchedule callable, which validates the day
+  //    count against the member's tier server-side. If the schedule is
+  //    rejected we stop here and do NOT touch the profile, so a bad schedule
+  //    never half-saves alongside otherwise-valid profile edits.
+  const selectedDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+    .filter(day => el('day-' + day)?.checked);
+  const timeSlot = document.querySelector('input[name="timeSlot"]:checked')?.value;
+  if (selectedDays.length > 0 && timeSlot) {
+    try {
+      const res = await httpsCallable(functions, 'updateWalkSchedule')({
+        defaultWalkDays: selectedDays,
+        defaultTimeSlot: timeSlot,
+      });
+      if (!res.data?.success) {
+        showNotif(res.data?.error || 'Could not save your walk schedule.', true);
+        return;
+      }
+    } catch(e) {
+      showNotif('Could not save your walk schedule: ' + e.message, true);
+      return;
+    }
+  }
+
+  // 2. Profile fields (name/phone/address) — member-writable per the rules.
   const first = el('firstName')?.value || '';
   const last = el('lastName')?.value || '';
   try {
