@@ -253,6 +253,7 @@ const PRICE = WALK_EXTENSION_PRICE;
 const selected = new Set(); // walk IDs selected for extension
 let upcomingWalks = [];
 let memberData = null;
+let billingData = null;
 let userId = null;
 
 window.signOutMember = () => signOut(auth).then(() => window.location.href = 'portal-login.html');
@@ -265,6 +266,9 @@ onAuthStateChanged(auth, async (user) => {
     const memberSnap = await getDoc(doc(db, 'members', user.uid));
     if (memberSnap.exists()) {
       memberData = memberSnap.data();
+      // Billing (M-1) lives in the member's private subdoc now.
+      const billingSnap = await getDoc(doc(db, 'members', user.uid, 'private', 'billing'));
+      billingData = billingSnap.exists() ? billingSnap.data() : {};
       const dogs = memberData.dogs?.map(d => d.name).filter(Boolean) || [memberData.dogName];
       const dogLabel = dogs.join(' & ');
       document.getElementById('summaryTitle').textContent = `${dogLabel}'s Extended Walks`;
@@ -412,7 +416,9 @@ window.confirmExtensions = async () => {
       // chargeSavedCard looks up the card via this submission doc's
       // stripeCustomerId — copy it from the member's own record since,
       // unlike a public request form, no createSetupIntent runs here.
-      stripeCustomerId: memberData?.stripeCustomerId || null,
+      // TODO(post-launch): resolve this server-side in chargeSavedCard from
+      // memberId instead of copying it client-side.
+      stripeCustomerId: billingData?.stripeCustomerId || null,
       walkIds,
       count: walkIds.length,
       pricePerWalk: PRICE,

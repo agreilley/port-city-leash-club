@@ -66,6 +66,29 @@ service cloud.firestore {
                 'accessNotes',
                 'emergencyContact'
               ]);
+
+      // ── Billing (M-1) ──────────────────────────────────────────────────
+      // The five sensitive billing fields live HERE, in a subcollection, not
+      // on the parent member doc — so the open `allow read: if isWalker()`
+      // above can never expose them. Firestore subcollection rules do NOT
+      // inherit the parent match's allows (rules never cascade without a
+      // {document=**} wildcard, and none exists in this file), so a walker
+      // gets nothing under /private. Holds: stripeCustomerId,
+      // stripeSubscriptionId, stripeSubscriptionItemId, billingStatus,
+      // currentMonthCharge. Written ONLY by Cloud Functions (admin SDK
+      // bypasses rules); a member may read their OWN copy for card-on-file.
+      //
+      // FOOTGUN WARNING: the {doc} wildcard means the member can read ANY doc
+      // under their own /private — not just `billing`. Do NOT store
+      // member-hidden data here expecting it to be admin-only; anything a
+      // member must never see needs a different location (or an owner-excluding
+      // rule). Today only `billing` lives here, and the member is allowed to
+      // read it.
+      match /private/{doc} {
+        allow read: if isAdmin()
+          || (request.auth != null && request.auth.uid == id);
+        allow write: if false;
+      }
     }
 
     match /walkers/{id} {

@@ -676,7 +676,7 @@ const app = getApps().find(a => a.name === 'member-app') || initializeApp(cfg, '
 const auth = getAuth(app);
 const db = getFirestore(app);
 const functions = getFunctions(app);
-let userId = null, memberData = null;
+let userId = null, memberData = null, billingData = null;
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.href = 'portal-login.html'; return; }
@@ -685,6 +685,10 @@ onAuthStateChanged(auth, async (user) => {
     const snap = await getDoc(doc(db, 'members', user.uid));
     if (!snap.exists()) return;
     memberData = { id: snap.id, ...snap.data() };
+    // Billing (M-1) moved to members/{uid}/private/billing; a member may read
+    // their OWN copy, for the card-on-file line in loadPageData().
+    const billingSnap = await getDoc(doc(db, 'members', user.uid, 'private', 'billing'));
+    billingData = billingSnap.exists() ? billingSnap.data() : {};
     loadPageData();
     updateSidebar();
   } catch(e) { console.error(e.message); }
@@ -716,7 +720,7 @@ function loadPageData() {
   // the card number — a real last-4 would need a server call to Stripe. Until
   // that exists, state honestly whether a card is on file rather than a fake one.
   if (el('paymentMethodDisplay')) el('paymentMethodDisplay').textContent =
-    memberData.stripeCustomerId ? 'A card is securely saved on file.' : 'No card on file yet.';
+    billingData?.stripeCustomerId ? 'A card is securely saved on file.' : 'No card on file yet.';
   // Membership info
   if (el('membershipTier')) el('membershipTier').textContent = memberData.tier === 'Travel' ? 'Pet Sitting (no walk membership)' : (memberData.tier || 'Standard');
   if (el('memberStatus')) el('memberStatus').textContent = memberData.status || 'Active';

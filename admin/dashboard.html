@@ -3279,9 +3279,12 @@ window.openAddWalkerModal = (prefill, submissionId) => {
 // Read-only — no save button, no editable fields. Corrections happen
 // directly in Firestore for now; this is a stopgap, not something to
 // build around.
-window.openMemberDetail = (id) => {
+window.openMemberDetail = async (id) => {
   const member = allMembers.find(m => m.id === id);
   if (!member) return;
+  // Billing (M-1) relocated to members/{id}/private/billing (admin-readable).
+  const billingSnap = await getDoc(doc(db, 'members', id, 'private', 'billing'));
+  const billing = billingSnap.exists() ? billingSnap.data() : {};
 
   function fmtDate(val) {
     if (!val) return '–';
@@ -3304,9 +3307,9 @@ window.openMemberDetail = (id) => {
     { label: 'Walk Days', value: (member.defaultWalkDays || []).join(', ') || '–' },
     { label: 'Time Slot', value: slotLabel[member.defaultTimeSlot] || member.defaultTimeSlot || '–' },
     { label: 'Assigned Walker', value: walker?.name || 'Unassigned' },
-    { label: 'Stripe Customer ID', value: member.stripeCustomerId || '–' },
-    { label: 'Stripe Subscription ID', value: member.stripeSubscriptionId || '–' },
-    { label: 'Billing Status', value: member.billingStatus || '–' },
+    { label: 'Stripe Customer ID', value: billing.stripeCustomerId || '–' },
+    { label: 'Stripe Subscription ID', value: billing.stripeSubscriptionId || '–' },
+    { label: 'Billing Status', value: billing.billingStatus || '–' },
     { label: 'Member Since', value: fmtDate(member.createdAt) },
   ];
   const fieldHTML = fields.map(f =>

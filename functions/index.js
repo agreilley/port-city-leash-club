@@ -26,6 +26,14 @@ const { getFirestore, FieldValue, Timestamp } = require('firebase-admin/firestor
 initializeApp();
 const db = getFirestore();
 
+// Billing (M-1): the five sensitive billing fields live in
+// members/{id}/private/billing, OFF the member doc, so walkers (who can read
+// member docs) never see them. Written ONLY here via the Admin SDK. This
+// helper is the single source of that path.
+function billingRef(memberId) {
+  return db.collection('members').doc(memberId).collection('private').doc('billing');
+}
+
 // Set this once via:
 //   firebase functions:secrets:set STRIPE_SECRET_KEY
 // Never hardcode the real key here or commit it to the repo.
@@ -435,13 +443,28 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
   // before, which those jobs never read — which is exactly why they used to
   // revert the proration set here.
   const startDate = toDateOrNull(sub.startDate);
-  await db.collection('members').doc(memberId).set({
+  // Atomic split write. The 4 billing fields go to the protected subdoc; the
+  // member doc keeps membershipStartDate (scheduled jobs read it) and gains
+  // hasActiveSubscription — a NON-sensitive boolean the crons filter on in
+  // place of the now-relocated stripeSubscriptionItemId.
+  const batch = db.batch();
+  batch.set(db.collection('members').doc(memberId), {
+    hasActiveSubscription: true,
+    ...(startDate ? { membershipStartDate: Timestamp.fromDate(startDate) } : {}),
+  }, { merge: true });
+  batch.set(billingRef(memberId), {
     stripeCustomerId: sub.stripeCustomerId,
     stripeSubscriptionId: subscription.id,
     stripeSubscriptionItemId: subscription.items.data[0].id,
     billingStatus: 'active',
-    ...(startDate ? { membershipStartDate: Timestamp.fromDate(startDate) } : {}),
   }, { merge: true });
+  await batch.commit();
+
+  // TODO(cancel): a future cancellation flow MUST do all three together:
+  //   (a) set hasActiveSubscription: false on the member doc
+  //   (b) delete or null the billing subdoc (members/{id}/private/billing)
+  //   (c) stripe.subscriptions.cancel(...)
+  // Missing (a) or (b) will leave crons trying to bill a cancelled member.
 
   return { success: true, subscriptionId: subscription.id, quantity };
 });
@@ -627,9 +650,14 @@ exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async
   if (!memberId) throw new HttpsError('invalid-argument', 'memberId is required.');
 
   const memberRef = db.collection('members').doc(memberId);
-  const memberDoc = await memberRef.get();
+  const billing = billingRef(memberId);
+  // Dual-read: member doc (tier, schedule, membershipStartDate) + billing
+  // subdoc (currentMonthCharge idempotency guard, stripeCustomerId). Both are
+  // needed before we can decide whether to charge.
+  const [memberDoc, billingDoc] = await Promise.all([memberRef.get(), billing.get()]);
   const member = memberDoc.data();
   if (!member) throw new HttpsError('not-found', 'Member record not found.');
+  const billingData = billingDoc.data() || {};
 
   const priceId = TIER_PRICE_IDS[member.tier];
   if (!priceId) {
@@ -641,13 +669,14 @@ exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async
 
   // Idempotency guard #1: never charge the same member twice for the same
   // month, however this call is retried (double-click, retry after a partial
-  // failure, an admin re-running it).
-  if (member.currentMonthCharge && member.currentMonthCharge.periodKey === periodKey
-      && member.currentMonthCharge.status === 'charged') {
+  // failure, an admin re-running it). currentMonthCharge lives in the billing subdoc.
+  const currentMonthCharge = billingData.currentMonthCharge;
+  if (currentMonthCharge && currentMonthCharge.periodKey === periodKey
+      && currentMonthCharge.status === 'charged') {
     return {
       success: true, alreadyCharged: true, periodKey,
-      walkCount: member.currentMonthCharge.walkCount || 0,
-      amount: member.currentMonthCharge.amount || 0,
+      walkCount: currentMonthCharge.walkCount || 0,
+      amount: currentMonthCharge.amount || 0,
     };
   }
 
@@ -676,7 +705,7 @@ exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async
 
   const days = datesMatchingWeekdaysInMonth(member.defaultWalkDays, year, monthIndex, fromDay);
   if (!days.length) {
-    await memberRef.set({
+    await billing.set({
       currentMonthCharge: { periodKey, walkCount: 0, amount: 0, status: 'skipped', reason: 'no-walks-remaining' },
     }, { merge: true });
     return { success: true, skipped: true, reason: 'no-walks-remaining', periodKey, fromDay };
@@ -694,10 +723,10 @@ exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async
   }
 
   const stripe = stripeClient(STRIPE_SECRET_KEY.value());
-  if (!member.stripeCustomerId) {
+  if (!billingData.stripeCustomerId) {
     throw new HttpsError('failed-precondition', 'No Stripe customer on this member — start the membership subscription first.');
   }
-  const paymentMethods = await stripe.paymentMethods.list({ customer: member.stripeCustomerId, type: 'card' });
+  const paymentMethods = await stripe.paymentMethods.list({ customer: billingData.stripeCustomerId, type: 'card' });
   if (!paymentMethods.data.length) {
     throw new HttpsError('failed-precondition', 'Customer has no saved payment method.');
   }
@@ -720,7 +749,7 @@ exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async
     paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
       currency: price.currency || 'usd',
-      customer: member.stripeCustomerId,
+      customer: billingData.stripeCustomerId,
       payment_method: paymentMethods.data[0].id,
       off_session: true,
       confirm: true,
@@ -733,7 +762,7 @@ exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async
       idempotencyKey: `current-month-walks:${memberId}:${periodKey}`,
     });
   } catch (e) {
-    await memberRef.set({
+    await billing.set({
       currentMonthCharge: {
         periodKey, walkCount: days.length, amount: amountInCents / 100,
         status: 'failed', reason: e.message, failedAt: FieldValue.serverTimestamp(),
@@ -742,7 +771,7 @@ exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async
     throw new HttpsError('internal', `Card charge for this month failed: ${e.message}`);
   }
 
-  await memberRef.set({
+  await billing.set({
     currentMonthCharge: {
       periodKey, walkCount: days.length, amount: amountInCents / 100,
       status: 'charged', paymentIntentId: paymentIntent.id,
@@ -782,7 +811,11 @@ exports.syncMonthlyWalkQuantities = onSchedule({
 
   for (const memberDoc of membersSnap.docs) {
     const member = memberDoc.data();
-    if (!member.stripeSubscriptionItemId) continue; // no active subscription (e.g. Travel-tier / one-time clients)
+    if (!member.hasActiveSubscription) continue; // Travel-tier / one-time clients
+
+    // The Stripe subscription-item id now lives in the billing subdoc.
+    const billingData = (await billingRef(memberDoc.id).get()).data() || {};
+    if (!billingData.stripeSubscriptionItemId) continue; // flag set but subdoc absent — skip, don't throw
 
     // A member starting partway through THIS month is billed only from
     // their start date; every later month bills in full (membershipStartDate
@@ -790,7 +823,7 @@ exports.syncMonthlyWalkQuantities = onSchedule({
     const fromDay = firstBilledMonthFromDay(member.membershipStartDate, year, month);
     const quantity = countWalkDaysInMonth(member.defaultWalkDays, year, month, fromDay);
     try {
-      await stripe.subscriptionItems.update(member.stripeSubscriptionItemId, {
+      await stripe.subscriptionItems.update(billingData.stripeSubscriptionItemId, {
         quantity,
         proration_behavior: 'none',
       });
@@ -818,7 +851,7 @@ exports.generateMonthlyWalks = onSchedule({
 
   for (const memberDoc of membersSnap.docs) {
     const member = memberDoc.data();
-    if (!member.stripeSubscriptionItemId) continue; // no active subscription (e.g. Travel-tier / one-time clients)
+    if (!member.hasActiveSubscription) continue; // Travel-tier / one-time clients
 
     // Same fromDay as syncMonthlyWalkQuantities computes for this member, so
     // the walks generated match the quantity billed. Passing 1 unconditionally
@@ -860,7 +893,10 @@ exports.resumePausedMemberships = onSchedule({
 
     await memberDoc.ref.update({ status: 'active' });
 
-    if (!member.stripeSubscriptionItemId) continue; // Travel-tier/no subscription — nothing to generate
+    // Option 1 flag semantics: a paused subscribed member still has
+    // hasActiveSubscription === true (pause is expressed by status alone), so
+    // this correctly proceeds to regenerate their walks on resume.
+    if (!member.hasActiveSubscription) continue; // Travel-tier/no subscription — nothing to generate
 
     const result = await generateWalksForMember(
       memberDoc.id, { ...member, status: 'active' },
@@ -915,6 +951,10 @@ exports.submitVacationHold = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
     throw new HttpsError('not-found', 'Member record not found.');
   }
   const member = memberSnap.data();
+  // Billing fields (for the refund suggestion below) now live in the subdoc.
+  // Pause does NOT touch hasActiveSubscription — status:'paused' alone expresses
+  // the hold (Option 1 flag semantics), so the flag stays accurate for resume.
+  const billingData = (await billingRef(memberId).get()).data() || {};
 
   // Single equality query on memberId (auto-indexed, no composite index
   // needed) rather than looking up specific deterministic IDs — the old
@@ -964,7 +1004,7 @@ exports.submitVacationHold = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
   // members have nothing to refund). Never auto-refunds — this only ever
   // creates a submission for admin to review.
   let suggestedRefundAmount = 0;
-  if (currentPeriodCount > 0 && member.stripeSubscriptionItemId && member.stripeSubscriptionId) {
+  if (currentPeriodCount > 0 && billingData.stripeSubscriptionItemId && billingData.stripeSubscriptionId) {
     const priceId = TIER_PRICE_IDS[member.tier];
     if (priceId) {
       const stripe = stripeClient(STRIPE_SECRET_KEY.value());
@@ -981,8 +1021,8 @@ exports.submitVacationHold = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
         cancelledWalkCount: currentPeriodCount,
         cancelledWalkDates: currentPeriodDates,
         suggestedRefundAmount,
-        stripeCustomerId: member.stripeCustomerId || '',
-        stripeSubscriptionId: member.stripeSubscriptionId || '',
+        stripeCustomerId: billingData.stripeCustomerId || '',
+        stripeSubscriptionId: billingData.stripeSubscriptionId || '',
         refundPeriodYear: currentYear,
         refundPeriodMonth: currentMonth,
         pauseStartDate: Timestamp.fromDate(startDate),

@@ -379,7 +379,10 @@
       const db2 = getFS(app);
       const memberSnap = await fsGetDoc(fsDoc(db2, 'members', user.uid));
       const memberName = memberSnap.exists() ? (memberSnap.data().name || '') : '';
-      const stripeCustomerId = memberSnap.exists() ? (memberSnap.data().stripeCustomerId || '') : '';
+      // Billing (M-1) lives in members/{uid}/private/billing now.
+      // TODO(post-launch): resolve server-side in the charge path from memberId.
+      const billingSnap = await fsGetDoc(fsDoc(db2, 'members', user.uid, 'private', 'billing'));
+      const stripeCustomerId = billingSnap.exists() ? (billingSnap.data().stripeCustomerId || '') : '';
 
       // Parse date strings without timezone shift (treat as local dates)
       function localDateToTimestamp(str) {
