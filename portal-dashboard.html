@@ -726,6 +726,8 @@ async function loadOvernights(uid) {
 window.signOutMember = () => signOut(auth).then(() => window.location.href = 'portal-login.html');
 
 // ── POPULATE STATIC UI FROM MEMBER DOC ───────────────────────────────────────
+// esc() — HTML-escape user-controlled dog fields before innerHTML (L-1)
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function populateMemberUI() {
   if (!memberData) return;
   const firstName = (memberData.name || '').split(' ')[0] || 'back';
@@ -737,9 +739,9 @@ function populateMemberUI() {
   const sidebarPets = document.getElementById('sidebarPets');
   if (sidebarPets) {
     sidebarPets.innerHTML = dogs.map(d => {
-      const info = [d.breed, d.age ? `${d.age} old` : ''].filter(Boolean).join(' • ');
+      const info = [esc(d.breed), d.age ? `${esc(d.age)} old` : ''].filter(Boolean).join(' • ');
       return `<div style="margin-bottom:10px;">
-        <div class="pet-name">${d.name || ''}</div>
+        <div class="pet-name">${esc(d.name || '')}</div>
         <div class="pet-info">${info || ''}</div>
       </div>`;
     }).join('');

@@ -1575,7 +1575,10 @@ exports.gmailAuthCallback = onRequest({ secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIEN
       '</body></html>'
     );
   } catch (e) {
-    res.status(500).send('Something went wrong connecting Gmail: ' + e.message);
+    // Log the real error server-side for debugging; return a generic message
+    // to the browser so raw error text isn't reflected back (L-2).
+    console.error('Gmail OAuth callback failed:', e);
+    res.status(500).send('Authorization failed. Please try again or check the logs.');
   }
 });
 

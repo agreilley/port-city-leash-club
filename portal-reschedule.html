@@ -801,10 +801,12 @@ onAuthStateChanged(auth, async (user) => {
 function updateSidebar() {
   if (!memberData) return;
   const dogs = memberData.dogs?.length ? memberData.dogs : [{ name: memberData.dogName, breed: memberData.petBreed, age: memberData.petAge ? memberData.petAge + ' years' : '' }];
+  // esc() — HTML-escape user-controlled dog fields before innerHTML (L-1)
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const el = document.getElementById('sidebarPets');
   if (el) el.innerHTML = dogs.map(d => {
-    const info = [d.breed, d.age ? d.age + ' old' : ''].filter(Boolean).join(' • ');
-    return '<div style="margin-bottom:10px;"><div class="pet-name">' + (d.name||'') + '</div><div class="pet-info">' + info + '</div></div>';
+    const info = [esc(d.breed), d.age ? esc(d.age) + ' old' : ''].filter(Boolean).join(' • ');
+    return '<div style="margin-bottom:10px;"><div class="pet-name">' + esc(d.name||'') + '</div><div class="pet-info">' + info + '</div></div>';
   }).join('');
 }
 

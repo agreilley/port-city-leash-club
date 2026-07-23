@@ -561,8 +561,8 @@ onAuthStateChanged(auth, async (user) => {
     const sidebarEl = document.getElementById('sidebarPets');
     if (sidebarEl) {
       sidebarEl.innerHTML = dogs.map(d => {
-        const info = [d.breed, d.age ? d.age + ' old' : ''].filter(Boolean).join(' • ');
-        return '<div style="margin-bottom:10px;"><div class="pet-name">' + d.name + '</div><div class="pet-info">' + info + '</div></div>';
+        const info = [esc(d.breed), d.age ? esc(d.age) + ' old' : ''].filter(Boolean).join(' • ');
+        return '<div style="margin-bottom:10px;"><div class="pet-name">' + esc(d.name) + '</div><div class="pet-info">' + info + '</div></div>';
       }).join('');
     }
     const titleEl = document.getElementById('pageTitle');

@@ -664,9 +664,11 @@ onAuthStateChanged(auth, async (user) => {
     const names = dogs.map(d => d.name).filter(Boolean);
     const sidebarEl = document.getElementById('sidebarPets');
     if (sidebarEl) {
+      // esc() — HTML-escape user-controlled dog fields before innerHTML (L-1)
+      const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
       sidebarEl.innerHTML = dogs.map(d => {
-        const info = [d.breed, d.age ? d.age + ' old' : ''].filter(Boolean).join(' • ');
-        return '<div style="margin-bottom:10px;"><div class="pet-name">' + d.name + '</div><div class="pet-info">' + info + '</div></div>';
+        const info = [esc(d.breed), d.age ? esc(d.age) + ' old' : ''].filter(Boolean).join(' • ');
+        return '<div style="margin-bottom:10px;"><div class="pet-name">' + esc(d.name) + '</div><div class="pet-info">' + info + '</div></div>';
       }).join('');
     } else {
       const nameEl = document.getElementById('sidebarPetName');

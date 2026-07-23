@@ -562,12 +562,15 @@ function renderPage() {
   document.getElementById('formActions').style.display = '';
 }
 
+// esc() — HTML-escape user-controlled dog fields before innerHTML (L-1)
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
 function updateSidebar() {
   const sidebarPets = document.getElementById('sidebarPets');
   sidebarPets.innerHTML = currentDogs.map(d => {
-    const info = [d.breed, d.age ? `${d.age} old` : ''].filter(Boolean).join(' • ');
+    const info = [esc(d.breed), d.age ? `${esc(d.age)} old` : ''].filter(Boolean).join(' • ');
     return `<div style="margin-bottom:10px;">
-      <div class="pet-name">${d.name || ''}</div>
+      <div class="pet-name">${esc(d.name || '')}</div>
       <div class="pet-info">${info || ''}</div>
     </div>`;
   }).join('');
@@ -613,7 +616,7 @@ function renderDogCards() {
 
 function dogCardHTML(dog, i) {
   const isOnly = currentDogs.length === 1;
-  const label = isOnly ? 'Your Pet' : `Pet ${i + 1}${dog.name ? `: ${dog.name}` : ''}`;
+  const label = isOnly ? 'Your Pet' : `Pet ${i + 1}${dog.name ? `: ${esc(dog.name)}` : ''}`;
   return `
     <div class="section-card" id="dogCard${i}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
@@ -621,20 +624,20 @@ function dogCardHTML(dog, i) {
         ${!isOnly ? `<button type="button" onclick="removeDog(${i})" style="background:none;border:none;font-size:13px;color:#7A7A7A;cursor:pointer;padding:4px 8px;border-radius:4px;font-family:inherit;" onmouseover="this.style.color='#C17B6F'" onmouseout="this.style.color='#7A7A7A'">Remove</button>` : ''}
       </div>
       <div class="field-row">
-        <div class="field-group"><label class="field-label">Name</label><div class="field-value"><input type="text" id="dog_name_${i}" value="${dog.name || ''}" placeholder="Pet's name"></div></div>
-        <div class="field-group"><label class="field-label">Breed</label><div class="field-value"><input type="text" id="dog_breed_${i}" value="${dog.breed || ''}" placeholder="Breed"></div></div>
+        <div class="field-group"><label class="field-label">Name</label><div class="field-value"><input type="text" id="dog_name_${i}" value="${esc(dog.name || '')}" placeholder="Pet's name"></div></div>
+        <div class="field-group"><label class="field-label">Breed</label><div class="field-value"><input type="text" id="dog_breed_${i}" value="${esc(dog.breed || '')}" placeholder="Breed"></div></div>
       </div>
       <div class="field-row">
-        <div class="field-group"><label class="field-label">Age</label><div class="field-value"><input type="text" id="dog_age_${i}" value="${dog.age || ''}" placeholder="e.g. 4 years"></div></div>
-        <div class="field-group"><label class="field-label">Weight</label><div class="field-value"><input type="text" id="dog_weight_${i}" value="${dog.weight || ''}" placeholder="e.g. 55 lbs"></div></div>
+        <div class="field-group"><label class="field-label">Age</label><div class="field-value"><input type="text" id="dog_age_${i}" value="${esc(dog.age || '')}" placeholder="e.g. 4 years"></div></div>
+        <div class="field-group"><label class="field-label">Weight</label><div class="field-value"><input type="text" id="dog_weight_${i}" value="${esc(dog.weight || '')}" placeholder="e.g. 55 lbs"></div></div>
       </div>
-      <div class="field-row full"><div class="field-group"><label class="field-label">Notes</label><div class="field-value"><textarea id="dog_notes_${i}" placeholder="Anything else worth knowing…">${dog.notes || ''}</textarea></div></div></div>
-      <div class="field-row full"><div class="field-group"><label class="field-label">Temperament</label><div class="field-value"><textarea id="dog_temperament_${i}" placeholder="Friendly, energetic, shy…">${dog.temperament || ''}</textarea></div></div></div>
-      <div class="field-row full"><div class="field-group"><label class="field-label">Care Preferences</label><div class="field-value"><textarea id="dog_walkingPrefs_${i}" placeholder="Routine, favorite spots, any habits…">${dog.walkingPrefs || ''}</textarea></div></div></div>
-      <div class="field-row full"><div class="field-group"><label class="field-label">Known Triggers</label><div class="field-value"><textarea id="dog_triggers_${i}" placeholder="Loud noises, other animals, specific situations…">${dog.triggers || ''}</textarea></div></div></div>
+      <div class="field-row full"><div class="field-group"><label class="field-label">Notes</label><div class="field-value"><textarea id="dog_notes_${i}" placeholder="Anything else worth knowing…">${esc(dog.notes || '')}</textarea></div></div></div>
+      <div class="field-row full"><div class="field-group"><label class="field-label">Temperament</label><div class="field-value"><textarea id="dog_temperament_${i}" placeholder="Friendly, energetic, shy…">${esc(dog.temperament || '')}</textarea></div></div></div>
+      <div class="field-row full"><div class="field-group"><label class="field-label">Care Preferences</label><div class="field-value"><textarea id="dog_walkingPrefs_${i}" placeholder="Routine, favorite spots, any habits…">${esc(dog.walkingPrefs || '')}</textarea></div></div></div>
+      <div class="field-row full"><div class="field-group"><label class="field-label">Known Triggers</label><div class="field-value"><textarea id="dog_triggers_${i}" placeholder="Loud noises, other animals, specific situations…">${esc(dog.triggers || '')}</textarea></div></div></div>
       <div class="field-row">
-        <div class="field-group"><label class="field-label">Medications</label><div class="field-value"><input type="text" id="dog_medications_${i}" value="${dog.medications || ''}" placeholder="Any medications?"></div></div>
-        <div class="field-group"><label class="field-label">Allergies</label><div class="field-value"><input type="text" id="dog_allergies_${i}" value="${dog.allergies || ''}" placeholder="Any known allergies?"></div></div>
+        <div class="field-group"><label class="field-label">Medications</label><div class="field-value"><input type="text" id="dog_medications_${i}" value="${esc(dog.medications || '')}" placeholder="Any medications?"></div></div>
+        <div class="field-group"><label class="field-label">Allergies</label><div class="field-value"><input type="text" id="dog_allergies_${i}" value="${esc(dog.allergies || '')}" placeholder="Any known allergies?"></div></div>
       </div>
     </div>
   `;
