@@ -508,6 +508,89 @@ exports.generateInitialWalks = onCall({}, async (request) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────
+// Member self-service: change preferred walk days / time slot.
+//
+// defaultWalkDays drives the Stripe billing quantity (countWalkDaysInMonth)
+// AND walk generation (datesMatchingWeekdaysInMonth), so it is deliberately
+// EXCLUDED from the member-writable allowlist in firestore.rules — a direct
+// client write is rejected. This callable is the only path a member has to
+// change it, and it validates the day-count against the member's tier so a
+// member can't quietly inflate their walk quantity (e.g. an Essential member
+// jumping to 5 days) without the billing tier to match. Only defaultWalkDays
+// and defaultTimeSlot are ever written here — nothing billing-adjacent.
+//
+// Returns { success:false, error } for the expected member-facing outcomes
+// (not a member, invalid input, tier violation) so the portal can show the
+// reason inline. Throws HttpsError only for no-auth and infrastructure faults.
+const VALID_WALK_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+const VALID_TIME_SLOTS = ['morning', 'early-afternoon', 'late-afternoon'];
+// Allowed day-count per tier. Daily is fixed at the full weekday set.
+const TIER_DAY_RULES = {
+  Essential: { min: 1, max: 2, label: 'Essential tier is limited to 2 days per week' },
+  Standard:  { min: 3, max: 4, label: 'Standard tier requires 3 to 4 days per week' },
+  Daily:     { min: 5, max: 5, label: 'Daily members are scheduled every weekday and cannot change their days' },
+};
+
+exports.updateWalkSchedule = onCall({}, async (request) => {
+  // No auth context at all — callable convention is to throw (the client's
+  // try/catch surfaces it). Everything else is a returned {success:false}.
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'You must be signed in.');
+  }
+  const uid = request.auth.uid;
+
+  const memberDoc = await db.collection('members').doc(uid).get();
+  if (!memberDoc.exists) {
+    return { success: false, error: 'Not a member.' };
+  }
+  const member = memberDoc.data() || {};
+
+  const rule = TIER_DAY_RULES[member.tier];
+  if (!rule) {
+    return { success: false, error: `Your account tier (${member.tier || 'none'}) does not support schedule changes here. Please contact us.` };
+  }
+
+  const { defaultWalkDays, defaultTimeSlot } = request.data || {};
+
+  // Normalize days: lowercase + trim, drop blanks, dedupe. Reject anything
+  // that isn't a Monday–Friday name (weekends aren't part of any tier).
+  if (!Array.isArray(defaultWalkDays)) {
+    return { success: false, error: 'Please select your walk days.' };
+  }
+  const days = [...new Set(defaultWalkDays.map(d => String(d || '').toLowerCase().trim()).filter(Boolean))];
+  const invalidDay = days.find(d => !VALID_WALK_DAYS.includes(d));
+  if (invalidDay) {
+    return { success: false, error: `"${invalidDay}" is not a valid walk day. Choose Monday through Friday.` };
+  }
+
+  // Time slot must be one of the canonical values the walk generator understands.
+  if (!VALID_TIME_SLOTS.includes(defaultTimeSlot)) {
+    return { success: false, error: 'Please choose a valid time slot (morning, early afternoon, or late afternoon).' };
+  }
+
+  // Day-count must fit the member's tier.
+  if (days.length < rule.min || days.length > rule.max) {
+    return { success: false, error: `${rule.label}. You selected ${days.length}.` };
+  }
+
+  // Store days in canonical weekday order so the record is stable regardless
+  // of the order the member checked them.
+  const orderedDays = VALID_WALK_DAYS.filter(d => days.includes(d));
+
+  try {
+    await db.collection('members').doc(uid).set(
+      { defaultWalkDays: orderedDays, defaultTimeSlot },
+      { merge: true }
+    );
+  } catch (e) {
+    console.error('updateWalkSchedule write failed:', e);
+    throw new HttpsError('internal', 'Could not save schedule.');
+  }
+
+  return { success: true, message: 'Walk schedule updated' };
+});
+
 // Today's calendar date in Eastern time, as UTC-style components.
 //
 // Deliberately not `new Date().getUTCDate()`: after 8pm ET the UTC date is
