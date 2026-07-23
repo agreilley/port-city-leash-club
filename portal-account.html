@@ -568,60 +568,43 @@
       <div class="section-card">
         <h2 class="section-title">Password & Security</h2>
 
-        <div class="field-row full">
-          <div class="field-group">
-            <label class="field-label">Current Password</label>
-            <input type="password" class="field-input" placeholder="Enter your current password">
-          </div>
-        </div>
-
-        <div class="field-row full">
-          <div class="field-group">
-            <label class="field-label">New Password</label>
-            <input type="password" class="field-input" placeholder="Enter a new password">
-          </div>
-        </div>
-
-        <div class="field-row full">
-          <div class="field-group">
-            <label class="field-label">Confirm Password</label>
-            <input type="password" class="field-input" placeholder="Confirm your new password">
-          </div>
-        </div>
+        <p style="font-size: 13px; color: #7A7A7A; margin-bottom: 16px;">Change the password you use to sign in to your member portal.</p>
 
         <div class="section-actions">
-          <button class="btn btn-primary">Update Password</button>
+          <button class="btn btn-primary" id="changePasswordBtn">Change Password</button>
         </div>
       </div>
 
-      <!-- Preferences -->
-      <div class="section-card">
-        <h2 class="section-title">Notification Preferences</h2>
+      <!-- Notification Preferences (deferred): removed from the live page until a
+           backend actually consumes these toggles (email/SMS delivery prefs).
+           Nothing reads them today, so showing them would be a promise we don't
+           keep. Restore the previous markup from git history when building it. -->
 
-        <div style="margin-bottom: 20px;">
-          <label style="display: flex; align-items: center; gap: 10px;  margin-bottom: 12px;">
-            <input type="checkbox" checked>
-            <span style="font-size: 14px;">Email me walk summaries</span>
-          </label>
-          <label style="display: flex; align-items: center; gap: 10px;  margin-bottom: 12px;">
-            <input type="checkbox" checked>
-            <span style="font-size: 14px;">Email me upcoming walk reminders</span>
-          </label>
-          <label style="display: flex; align-items: center; gap: 10px;  margin-bottom: 12px;">
-            <input type="checkbox" checked>
-            <span style="font-size: 14px;">Email me special offers and promotions</span>
-          </label>
-          <label style="display: flex; align-items: center; gap: 10px; ">
-            <input type="checkbox">
-            <span style="font-size: 14px;">Text me urgent updates (e.g., walker running late)</span>
-          </label>
-        </div>
+    </div>
+  </div>
 
-        <div class="section-actions">
-          <button class="btn btn-primary">Save Preferences</button>
-        </div>
+  <!-- Change Password modal -->
+  <div id="passwordModal" style="display:none; position:fixed; inset:0; background:rgba(13,27,42,0.5); z-index:10000; align-items:center; justify-content:center; padding:20px;">
+    <div style="background:#fff; border-radius:16px; padding:28px; width:100%; max-width:420px; box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+      <h2 style="font-size:18px; font-weight:600; color:#0D1B2A; margin-bottom:20px;">Change Password</h2>
+
+      <div class="field-group" style="margin-bottom:16px;">
+        <label class="field-label">Current Password</label>
+        <input type="password" class="field-input" id="currentPassword" placeholder="Enter your current password" autocomplete="current-password">
+      </div>
+      <div class="field-group" style="margin-bottom:16px;">
+        <label class="field-label">New Password</label>
+        <input type="password" class="field-input" id="newPassword" placeholder="At least 8 characters" autocomplete="new-password">
+      </div>
+      <div class="field-group" style="margin-bottom:24px;">
+        <label class="field-label">Confirm New Password</label>
+        <input type="password" class="field-input" id="confirmNewPassword" placeholder="Re-enter your new password" autocomplete="new-password">
       </div>
 
+      <div style="display:flex; gap:12px; justify-content:flex-end;">
+        <button class="btn btn-secondary" id="cancelPasswordBtn">Cancel</button>
+        <button class="btn btn-primary" id="updatePasswordBtn">Update Password</button>
+      </div>
     </div>
   </div>
 <script>
@@ -685,7 +668,7 @@
 </nav>
 <script type="module">
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getAuth, onAuthStateChanged, signOut, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
@@ -804,6 +787,66 @@ function showNotif(msg, error) {
   document.body.appendChild(n);
   setTimeout(() => n.remove(), 3000);
 }
+
+// ─── Change Password ─────────────────────────────────────────────────────
+// Firebase requires a recent login to change a password, so we reauthenticate
+// with the current password first, then updatePassword. All errors surface
+// through the same showNotif toast the rest of the page uses.
+const passwordModal = document.getElementById('passwordModal');
+const openPasswordModal = () => {
+  ['currentPassword', 'newPassword', 'confirmNewPassword'].forEach(id => {
+    const inp = document.getElementById(id);
+    if (inp) inp.value = '';
+  });
+  passwordModal.style.display = 'flex';
+};
+const closePasswordModal = () => { passwordModal.style.display = 'none'; };
+
+document.getElementById('changePasswordBtn')?.addEventListener('click', openPasswordModal);
+document.getElementById('cancelPasswordBtn')?.addEventListener('click', closePasswordModal);
+// Click the dimmed backdrop (but not the dialog itself) to dismiss.
+passwordModal?.addEventListener('click', (e) => { if (e.target === passwordModal) closePasswordModal(); });
+
+document.getElementById('updatePasswordBtn')?.addEventListener('click', async () => {
+  const current = document.getElementById('currentPassword').value;
+  const next = document.getElementById('newPassword').value;
+  const confirm = document.getElementById('confirmNewPassword').value;
+
+  // Validate locally before touching Firebase.
+  if (next.length < 8) { showNotif('Password must be at least 8 characters', true); return; }
+  if (next !== confirm) { showNotif("New passwords don't match", true); return; }
+  if (next === current) { showNotif('New password must be different from your current one', true); return; }
+
+  const user = auth.currentUser;
+  if (!user || !user.email) { showNotif('You must be signed in to change your password', true); return; }
+
+  const btn = document.getElementById('updatePasswordBtn');
+  btn.disabled = true;
+  try {
+    const cred = EmailAuthProvider.credential(user.email, current);
+    await reauthenticateWithCredential(user, cred);
+    await updatePassword(user, next);
+    closePasswordModal();
+    showNotif('Password updated successfully');
+  } catch (e) {
+    const code = e.code || '';
+    let msg;
+    if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+      msg = 'Current password is incorrect';
+    } else if (code === 'auth/weak-password') {
+      msg = 'Password must be at least 8 characters';
+    } else if (code === 'auth/too-many-requests') {
+      msg = 'Too many attempts. Please wait a few minutes and try again.';
+    } else if (code === 'auth/requires-recent-login') {
+      msg = 'For your security, please log out and back in, then try again.';
+    } else {
+      msg = 'Could not update password. Please try again.';
+    }
+    showNotif(msg, true);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 </script>
 </body>
