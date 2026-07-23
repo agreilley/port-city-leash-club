@@ -122,13 +122,145 @@ service cloud.firestore {
     match /submissions/{id} {
       allow read, write: if isAdmin();
 
-      // Public lead-gen forms (contact, membership-request, service-request,
-      // careers) submit before the visitor has an account, so they can't be
-      // gated behind request.auth != null — but every other type (reschedule,
-      // walk_extension, dog_update, etc.) should still require a logged-in
-      // user, since those come from existing members/walkers only.
+      // ── Public create hardening (M-2) ──────────────────────────────────
+      // The four public lead-gen forms submit before the visitor has an
+      // account, so they can't be gated behind request.auth != null. The old
+      // rule accepted the anonymous branch on `type` alone — arbitrary fields,
+      // arbitrary types, arbitrary size. That let an anonymous writer spoof
+      // sensitive fields (memberId, estimatedTotal, stripeCustomerId, …) and
+      // send giant payloads, and every create fires onNewSubmission (function
+      // invocation + a possible Gmail send when meetGreetDateTime parses).
+      //
+      // SCOPE: only the ANONYMOUS branch is constrained here. The
+      // request.auth != null branch stays permissive — authenticated portal /
+      // member / walker submissions cover ~8 other types (reschedule,
+      // dog_update, pause_membership, tier_change, overnight_request,
+      // walker_incident, walker_schedule_request, vacation_hold_refund) with
+      // their own shapes, and M-2 is the unauthenticated vector. Tightening
+      // that branch would risk breaking those forms for no in-scope benefit.
+      //
+      // Each validator is a strict hasOnly() allowlist derived from the exact
+      // client payload of one form. hasOnly() rejects any field not listed —
+      // so memberId / stripeCustomerId / paymentMethodStatus / billingStatus /
+      // tier / currentMonthCharge are all rejected automatically (the Stripe
+      // fields are written server-side by createSetupIntent via the admin SDK
+      // AFTER create, so rejecting them here does not break card-on-file).
+      //
+      // FIELD-DRIFT WARNING: these allowlists mirror the current form payloads.
+      // If a form's fields change, update the matching validator in lockstep or
+      // that form's submissions will start being rejected. Each validator names
+      // its source form + line.
+      //
+      // SIZE CAPS: the four forms carry NO maxlength attributes (verified), so
+      // these .size() caps are the ONLY length enforcement. They are set well
+      // above any realistic human input (free-text up to 10k chars) so a
+      // legitimate max-length submission can never hit them; the real backstop
+      // is Firestore's 1 MB document limit.
+
+      // Shared by all four public types: system fields + email (all four write
+      // a string email, possibly '').
+      function subBase() {
+        return request.resource.data.read == false
+          && request.resource.data.createdAt is timestamp
+          && request.resource.data.type is string
+          && request.resource.data.email is string
+          && request.resource.data.email.size() <= 320;
+      }
+
+      // Source: contact.html:224 (submitContact)
+      function validContact() {
+        return request.resource.data.keys().hasOnly(
+            ['type', 'name', 'email', 'topic', 'message', 'read', 'createdAt'])
+          && request.resource.data.name is string && request.resource.data.name.size() <= 200
+          && request.resource.data.topic is string && request.resource.data.topic.size() <= 100
+          && request.resource.data.message is string && request.resource.data.message.size() <= 10000;
+      }
+
+      // Source: membership-request.html:551 (membershipForm submit).
+      // startDate is localDateToTimestamp() → timestamp OR null (empty input),
+      // so it must be null-tolerant. dogs is collectDogs() → list of maps with
+      // variable per-species keys; type-checked as a list and size-capped only.
+      function validMembership() {
+        return request.resource.data.keys().hasOnly(
+            ['type', 'plan', 'ownerName', 'email', 'phone', 'address', 'accessNotes',
+             'dogs', 'dogName', 'startDate', 'timeWindow', 'days', 'meetGreetDateTime',
+             'read', 'createdAt'])
+          && request.resource.data.ownerName is string && request.resource.data.ownerName.size() <= 200
+          && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
+          && request.resource.data.address is string && request.resource.data.address.size() <= 1000
+          && request.resource.data.accessNotes is string && request.resource.data.accessNotes.size() <= 5000
+          && request.resource.data.plan is string && request.resource.data.plan.size() <= 100
+          && request.resource.data.timeWindow is string && request.resource.data.timeWindow.size() <= 100
+          && request.resource.data.days is string && request.resource.data.days.size() <= 200
+          && request.resource.data.dogName is string && request.resource.data.dogName.size() <= 200
+          && request.resource.data.meetGreetDateTime is string && request.resource.data.meetGreetDateTime.size() <= 100
+          && (request.resource.data.startDate == null || request.resource.data.startDate is timestamp)
+          && request.resource.data.dogs is list && request.resource.data.dogs.size() <= 10;
+      }
+
+      // Source: service-request.html:700 (serviceForm submit).
+      // startDate AND endDate are both localDateToTimestamp() → timestamp OR
+      // null; a one-time service legitimately has endDate: null, so both must
+      // be null-tolerant. estimatedTotal is a client-computed DISPLAY estimate
+      // (grandTotal), not the authoritative charge — the real charge is
+      // computed server-side in chargeSavedCard — so it's allowed but pinned to
+      // a non-negative capped number.
+      function validService() {
+        return request.resource.data.keys().hasOnly(
+            ['type', 'service', 'startDate', 'endDate', 'visitsPerDay', 'extraPet',
+             'medication', 'dogs', 'ownerName', 'email', 'phone', 'address',
+             'meetGreetDateTime', 'estimatedTotal', 'read', 'createdAt'])
+          && request.resource.data.ownerName is string && request.resource.data.ownerName.size() <= 200
+          && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
+          && request.resource.data.address is string && request.resource.data.address.size() <= 1000
+          // 'service' is a reserved word in the rules language (`service
+          // cloud.firestore`), so this field MUST be read via bracket access —
+          // dot access (request.resource.data.service) fails to compile.
+          && request.resource.data['service'] is string && request.resource.data['service'].size() <= 100
+          && request.resource.data.visitsPerDay is string && request.resource.data.visitsPerDay.size() <= 50
+          && request.resource.data.meetGreetDateTime is string && request.resource.data.meetGreetDateTime.size() <= 100
+          && request.resource.data.extraPet is bool
+          && request.resource.data.medication is bool
+          && request.resource.data.estimatedTotal is number
+          && request.resource.data.estimatedTotal >= 0
+          && request.resource.data.estimatedTotal <= 100000
+          && (request.resource.data.startDate == null || request.resource.data.startDate is timestamp)
+          && (request.resource.data.endDate == null || request.resource.data.endDate is timestamp)
+          && request.resource.data.dogs is list && request.resource.data.dogs.size() <= 10;
+      }
+
+      // Source: careers.html:361 (submitApplication) + :442 resume spread.
+      // resumePath / resumeName are OPTIONAL (present only when a resume is
+      // attached) — hasOnly() permits their absence, and each is guarded with
+      // an `in` check before size validation. availability is a map
+      // ({mon:[...], ...}). experience / days are comma-joined strings.
+      function validApplication() {
+        return request.resource.data.keys().hasOnly(
+            ['type', 'name', 'email', 'phone', 'neighborhood', 'dogExperience',
+             'experience', 'availability', 'walksPerWeek', 'transportation',
+             'additional', 'read', 'createdAt', 'resumePath', 'resumeName'])
+          && request.resource.data.name is string && request.resource.data.name.size() <= 200
+          && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
+          && request.resource.data.neighborhood is string && request.resource.data.neighborhood.size() <= 200
+          && request.resource.data.dogExperience is string && request.resource.data.dogExperience.size() <= 10000
+          && request.resource.data.experience is string && request.resource.data.experience.size() <= 500
+          && request.resource.data.walksPerWeek is string && request.resource.data.walksPerWeek.size() <= 50
+          && request.resource.data.transportation is string && request.resource.data.transportation.size() <= 100
+          && request.resource.data.additional is string && request.resource.data.additional.size() <= 10000
+          && request.resource.data.availability is map
+          && (!('resumePath' in request.resource.data)
+              || (request.resource.data.resumePath is string && request.resource.data.resumePath.size() <= 500))
+          && (!('resumeName' in request.resource.data)
+              || (request.resource.data.resumeName is string && request.resource.data.resumeName.size() <= 500));
+      }
+
       allow create: if request.auth != null
-        || request.resource.data.type in ['contact', 'membership_request', 'service_request', 'application'];
+        || (subBase() && (
+              (request.resource.data.type == 'contact' && validContact())
+           || (request.resource.data.type == 'membership_request' && validMembership())
+           || (request.resource.data.type == 'service_request' && validService())
+           || (request.resource.data.type == 'application' && validApplication())
+        ));
 
       allow read: if request.auth != null && resource.data.memberId == request.auth.uid;
     }
