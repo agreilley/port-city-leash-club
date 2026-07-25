@@ -406,11 +406,11 @@
     });
   }
 
-  // Set minimum start date to 8/17/2026 (launch), or 2 days from today once that's later
+  // Set minimum start date to 9/1/2026 (launch), or 2 days from today once that's later
   const startDateInput = document.getElementById('startDate');
   const minDate = new Date();
   minDate.setDate(minDate.getDate() + 2);
-  const launchDate = new Date('2026-08-17');
+  const launchDate = new Date('2026-09-01');
   const effectiveMin = minDate > launchDate ? minDate : launchDate;
   startDateInput.min = effectiveMin.toISOString().split('T')[0];
 

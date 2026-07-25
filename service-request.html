@@ -584,7 +584,7 @@
   const endInput   = document.getElementById('end-date');
   const minDate    = new Date();
   minDate.setDate(minDate.getDate() + 2);
-  const launchDate = new Date('2026-08-17');
+  const launchDate = new Date('2026-09-01');
   const effectiveMin = minDate > launchDate ? minDate : launchDate;
   const minDateStr = effectiveMin.toISOString().split('T')[0];
   startInput.min = minDateStr;
