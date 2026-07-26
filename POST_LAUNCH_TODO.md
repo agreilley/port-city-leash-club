@@ -86,3 +86,23 @@ in the code.
   resolve `stripeCustomerId` **server-side** in the charge path (from `memberId`,
   in `chargeSavedCard`) instead of copying it client-side into the request.
   Not a security issue — just cleaner.
+
+---
+
+## Maintenance
+
+- **Node 20 / firebase-functions upgrade** — the Cloud Functions runtime **Node 20
+  is deprecated** and scheduled for decommission on **2026-10-30**. Upgrade the
+  runtime and the outdated `firebase-functions` version before late October.
+  Deferred: not launch-day work, but has a hard external deadline.
+
+---
+
+## Verify (waiting on external)
+
+- **Password-reset end-to-end test** — the confirmation page and handlers are
+  live, but the full email-link test is **blocked on Firebase support** setting
+  the Action URL to `https://portcityleashclub.com/portal-password-reset`. Once
+  set: trigger a reset → click the email link → land on
+  `/password-reset-complete` → confirm the password actually changed → log in with
+  the new password.
