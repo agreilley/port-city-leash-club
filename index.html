@@ -620,11 +620,15 @@
   // Simple whole-zip service areas (a match on any of these = served).
   const SIMPLE_ZIPS = ['28403', '28405', '28480'];
 
-  // Downtown Wilmington is covered by a radius around Thalian Hall
-  // (310 Chestnut St) rather than the whole of zip 28401 — 28401 sprawls
-  // well past the walkable historic district, so we gate on distance.
-  const DOWNTOWN_CENTER = { lat: 34.2372, lng: -77.9456 }; // Thalian Hall, 310 Chestnut St
-  const DOWNTOWN_RADIUS_MI = 1.0;
+  // Radius-based service zones. Some areas are covered by distance from a
+  // center point rather than by a blanket zip (e.g. downtown, where zip 28401
+  // sprawls well past the walkable historic district; or Porters Neck, where
+  // 28411 is too large and mixed to serve as a whole). A point is served if
+  // it falls within ANY zone's radius. Add new zones to this list.
+  const RADIUS_ZONES = [
+    { name: 'downtown',     center: { lat: 34.2372, lng: -77.9456 }, radiusMi: 1.0 }, // Thalian Hall, 310 Chestnut St
+    { name: 'porters-neck', center: { lat: 34.2942, lng: -77.7694 }, radiusMi: 3.0 }  // Porters Neck CDP centroid
+  ];
 
   // Haversine great-circle distance between two points, in miles.
   function milesBetween(lat1, lng1, lat2, lng2) {
@@ -637,12 +641,12 @@
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
-  // Served if the zip is a simple-match zip OR the point falls within the
-  // downtown radius. lat/lng may be null/undefined when only a zip is known.
+  // Served if the zip is a simple-match zip OR the point falls within any
+  // radius zone. lat/lng may be null/undefined when only a zip is known.
   function isServed(zipCode, lat, lng) {
     if (zipCode && SIMPLE_ZIPS.includes(zipCode)) return true;
     if (typeof lat === 'number' && typeof lng === 'number') {
-      return milesBetween(lat, lng, DOWNTOWN_CENTER.lat, DOWNTOWN_CENTER.lng) <= DOWNTOWN_RADIUS_MI;
+      return RADIUS_ZONES.some(z => milesBetween(lat, lng, z.center.lat, z.center.lng) <= z.radiusMi);
     }
     return false;
   }
