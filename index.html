@@ -270,9 +270,13 @@
     .founder-copy { padding: 28px 20px; order: 1; }
     .founder-quote-mark { font-size: 90px; top: -28px; left: 20px; }
     .founder-layout { display: flex; flex-direction: column; }
+    /* With .why-section hidden on mobile, restore bg alternation via a 2-section
+       cascade: founder warm-white -> sand-light, and map sand-light -> warm-white.
+       Result: services(sand) membership(warm) founder(sand) map(warm) cta(navy). */
+    .founder-section { background: var(--sand-light); }
 
     /* Map */
-    .map-section { padding: 48px 20px; }
+    .map-section { padding: 48px 20px; background: var(--warm-white); }
     .address-search-row { grid-template-columns: 1fr !important; }
     .search-btn { width: 100%; }
 
