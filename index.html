@@ -70,6 +70,7 @@
   .tier-features li { font-size: 13px; color: var(--text-mid); padding: 6px 0; display: flex; align-items: flex-start; gap: 8px; line-height: 1.4; border-bottom: 1px solid rgba(0,0,0,0.05); }
   .tier-features li:last-child { border-bottom: none; }
   .tier-features li::before { content: '·'; color: var(--seafoam); font-size: 18px; line-height: 1; flex-shrink: 0; }
+  .tier-features li.feature-inherited { opacity: 0.65; }
   .btn-tier { width: 100%; padding: 12px; border-radius: 4px; font-size: 14px; font-family: 'DM Sans', sans-serif; cursor: pointer; font-weight: 500; margin-top: auto; }
   .btn-tier-outline { background: white; color: var(--navy); border: 1px solid var(--navy); }
   .btn-tier-solid { background: var(--rust); color: white; border: none; }
@@ -430,9 +431,9 @@
         <div class="tier-name">Standard</div>
         <div class="tier-walks">3–4 walks / week</div>
         <ul class="tier-features">
-          <li>30-minute walks</li>
-          <li>Walk photos &amp; notes</li>
-          <li>Adjust dates anytime</li>
+          <li class="feature-inherited">30-minute walks</li>
+          <li class="feature-inherited">Walk photos &amp; notes</li>
+          <li class="feature-inherited">Adjust dates anytime</li>
           <li>Welcome gift</li>
         </ul>
         <div class="tier-price"><div class="tier-price-amount">$26</div><div class="tier-price-walk">/walk</div></div>
@@ -443,10 +444,10 @@
         <div class="tier-name">Daily</div>
         <div class="tier-walks">Every weekday</div>
         <ul class="tier-features">
-          <li>30-minute walks</li>
-          <li>Walk photos &amp; notes</li>
-          <li>Adjust dates anytime</li>
-          <li>Welcome gift</li>
+          <li class="feature-inherited">30-minute walks</li>
+          <li class="feature-inherited">Walk photos &amp; notes</li>
+          <li class="feature-inherited">Adjust dates anytime</li>
+          <li class="feature-inherited">Welcome gift</li>
           <li>10% off all other services</li>
           <li>Priority scheduling</li>
         </ul>
