@@ -104,10 +104,20 @@
   .submit-row { display:flex; align-items:center; justify-content:space-between; gap:18px; }
   .submit-note { font-size:12px; color:var(--text-light); line-height:1.5; max-width:440px; }
 
+  /* Mobile sticky price bar — hidden by default (desktop never shows it);
+     turned on only inside the mobile media query below. */
+  .mobile-price-bar { display:none; justify-content:space-between; align-items:center; position:fixed; left:0; right:0; bottom:0; padding:14px 20px calc(14px + env(safe-area-inset-bottom)); background:var(--navy); color:#fff; z-index:200; box-shadow:0 -4px 20px rgba(0,0,0,0.18); }
+  .mobile-price-bar.is-hidden { transform: translateY(120%); }
+  .mpb-label { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--seafoam-light); }
+  .mpb-amount { font-family:'Cormorant Garamond',serif; font-size:26px; line-height:1; }
+
   @media (max-width: 940px) {
     nav { padding:0 24px; }
     .hero-inner, .form-shell, .calendar-shell { grid-template-columns:1fr; }
-    .sidebar { position:static; order:-1; }
+    .sidebar { position:static; }
+    .summary-card { display:none; }
+    .mobile-price-bar { display:flex; }
+    body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
     .membership-grid { grid-template-columns: repeat(2,1fr); }
     h1 { font-size:52px; }
   }
@@ -386,6 +396,12 @@
       </div>
     </aside>
   </div>
+
+  <!-- Mobile-only sticky price bar (Stage 1: markup, wired in Stage 2) -->
+  <div class="mobile-price-bar" id="mobilePriceBar" aria-hidden="true">
+    <span class="mpb-label">Est. monthly</span>
+    <span class="mpb-amount" id="barAmount">$224</span>
+  </div>
 </main>
 
 <script>
@@ -398,6 +414,7 @@
   const summaryRate = document.getElementById('summaryRate');
   const summaryWalks = document.getElementById('summaryWalks');
   const summaryWindow = document.getElementById('summaryWindow');
+  const barAmount = document.getElementById('barAmount');
 
   function enableDayPicker() {
     dayChips.forEach(chip => {
@@ -444,6 +461,7 @@
     summaryWalks.textContent = walks || 'TBD';
     summaryWindow.textContent = selectedTime;
     investmentAmount.textContent = monthly ? '$' + monthly : 'TBD';
+    if (barAmount) barAmount.textContent = monthly ? '$' + monthly + '/mo' : 'Est. —';
   }
 
   planCards.forEach(card => {
@@ -680,6 +698,15 @@
 
   setDays(2);
   updateEstimate();
+
+  // Mobile: slide the sticky price bar out of the way while a text/select/date
+  // field is focused, so it doesn't fight the on-screen keyboard. Chips are
+  // labels/buttons (no keyboard), so the bar stays visible while selecting.
+  const priceBar = document.getElementById('mobilePriceBar');
+  if (priceBar) {
+    document.addEventListener('focusin',  e => { if (e.target.matches('input, select, textarea')) priceBar.classList.add('is-hidden'); });
+    document.addEventListener('focusout', e => { if (e.target.matches('input, select, textarea')) priceBar.classList.remove('is-hidden'); });
+  }
 </script>
 <footer>
   <div>
