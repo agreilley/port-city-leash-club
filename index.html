@@ -246,7 +246,9 @@
     /* Pet Sitting Services: stack cards on mobile */
     .sitting-cards-grid { grid-template-columns: 1fr !important; gap: 16px; }
 
-    /* Why section: hide photo, show cards full width */
+    /* Why section: hidden on mobile (content covered elsewhere; reduces text density).
+       Desktop unchanged. Faint membership/founder warm-white seam accepted. */
+    .why-section { display: none; }
     .why-layout { grid-template-columns: 1fr !important; margin-top: 24px !important; }
     .why-photo { display: none !important; }
     .why-cards { margin-top: 0 !important; gap: 0 !important; }
