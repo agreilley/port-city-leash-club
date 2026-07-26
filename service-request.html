@@ -248,6 +248,7 @@
     .form-shell { grid-template-columns: 1fr; }
     .order-sidebar { position: static; }
     .order-card { display:none; }
+    #howItWorksNote { display:none; }
     .mobile-price-bar { display:flex; }
     body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
     nav { padding: 0 24px; }
@@ -566,7 +567,7 @@
         <div class="order-empty">Select a service and dates to see your estimate.</div>
       </div>
     </div>
-    <div class="order-note">
+    <div class="order-note" id="howItWorksNote">
       <p><strong>How it works:</strong> Submit your request and we'll confirm availability within 24 hours. Payment is collected at confirmation, not now.</p>
     </div>
   </div>
@@ -675,7 +676,7 @@
     const barTotal = document.getElementById('barTotal');
     totalEl.textContent = grandTotal > 0 ? `$${grandTotal}` : '$0';
     linesEl.innerHTML   = lines || '<div class="order-empty">Select a service and dates to see your estimate.</div>';
-    if (barTotal) barTotal.textContent = grandTotal > 0 ? `$${grandTotal}` : 'Select a service';
+    if (barTotal) barTotal.textContent = grandTotal > 0 ? `$${grandTotal}` : '$—';
     window._lastEstimatedTotal = grandTotal;
   }
 
