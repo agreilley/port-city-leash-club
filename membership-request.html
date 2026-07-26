@@ -374,7 +374,7 @@
         </div>
         <div class="submit-row">
           <p class="submit-note">Submitting this request does not create a paid membership yet. We'll confirm details with you before recurring care begins.</p>
-          <button type="submit" class="btn-primary">Request Your Meet & Greet</button>
+          <button type="submit" class="btn-primary">Submit Request</button>
         </div>
       </section>
     </form>
@@ -611,7 +611,7 @@
         const cardResult = await window._saveCardOnFile({ name: data.ownerName, email: data.email, submissionId: docRef.id });
         if (!cardResult.success) {
           showNotification('Request submitted, but we had trouble saving your card: ' + cardResult.error);
-          btn.textContent = 'Request Your Meet & Greet'; btn.disabled = false;
+          btn.textContent = 'Submit Request'; btn.disabled = false;
           return;
         }
       }
@@ -628,7 +628,7 @@
       console.error(e);
       showNotification('Something went wrong. Please email hello@portcityleashclub.com');
     }
-    btn.textContent = 'Request Your Meet & Greet'; btn.disabled = false;
+    btn.textContent = 'Submit Request'; btn.disabled = false;
   });
 
   // ── MULTI-DOG ─────────────────────────────────────────────────────────────
