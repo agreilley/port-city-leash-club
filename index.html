@@ -708,6 +708,10 @@
         service.getPlacePredictions(
           {
             input: query,
+            // Restrict predictions to street-address level. Broad
+            // neighborhood/locality results (e.g. "Landfall") carry no
+            // postal_code, which defeats the zip-based service check.
+            types: ['address'],
             componentRestrictions: { country: 'us' },
             bounds: new google.maps.LatLngBounds(
               new google.maps.LatLng(34.15, -77.95),
@@ -838,8 +842,44 @@
     // downtown radius check runs on real coordinates — not just a zip match.
     if (typeof google !== 'undefined' && google.maps) {
       const geocoder = new google.maps.Geocoder();
+
+      // Decide service for a geocoded point. When the result carries no
+      // postal_code (a bare neighborhood/locality typed directly, like
+      // "Landfall" or "Wrightsville Beach"), reverse-geocode its coordinates
+      // to recover a real street address + zip before running isServed().
+      const decide = (loc, zipCode) => {
+        if (map) { map.setCenter(loc); map.setZoom(14); }
+        if (zipCode) {
+          showResult(isServed(zipCode, loc.lat(), loc.lng()));
+          return;
+        }
+        geocoder.geocode({ location: loc }, (revResults, revStatus) => {
+          if (revStatus === 'OK' && revResults && revResults[0]) {
+            const revLoc = revResults[0].geometry.location;
+            let revZip = null;
+            (revResults[0].address_components || []).forEach(c => {
+              if (c.types.includes('postal_code')) revZip = c.long_name;
+            });
+            showResult(isServed(revZip, revLoc.lat(), revLoc.lng()));
+          } else {
+            // Reverse lookup failed — decide on the radius alone.
+            showResult(isServed(null, loc.lat(), loc.lng()));
+          }
+        });
+      };
+
       geocoder.geocode(
-        { address, componentRestrictions: { country: 'us' } },
+        {
+          address,
+          componentRestrictions: { country: 'us' },
+          // Bias ambiguous names toward the Wilmington area — a bare
+          // "Landfall" otherwise matches a town in Minnesota. Same box the
+          // autocomplete predictions use; biasing never hijacks a fully
+          // specified out-of-area address.
+          bounds: new google.maps.LatLngBounds(
+            new google.maps.LatLng(34.15, -77.95),
+            new google.maps.LatLng(34.35, -77.75))
+        },
         (results, status) => {
           if (status === 'OK' && results && results[0]) {
             const loc = results[0].geometry.location;
@@ -847,8 +887,7 @@
             (results[0].address_components || []).forEach(c => {
               if (c.types.includes('postal_code')) zipCode = c.long_name;
             });
-            if (map) { map.setCenter(loc); map.setZoom(14); }
-            showResult(isServed(zipCode, loc.lat(), loc.lng()));
+            decide(loc, zipCode);
           } else {
             // Geocode failed — fall back to a plain zip substring match.
             showResult(SIMPLE_ZIPS.some(zip => address.includes(zip)));
