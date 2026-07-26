@@ -222,6 +222,7 @@
   .field.full { grid-column: 1 / -1; }
   label { font-size: 12px; color: var(--navy); font-weight: 500; letter-spacing: 0.04em; }
   input, select, textarea { width: 100%; padding: 13px 14px; border: 1px solid rgba(0,0,0,0.15); border-radius: 4px; font-size: 16px; font-family: 'DM Sans', sans-serif; color: var(--text-dark); background: var(--warm-white); outline: none; }
+  .date-error { display:none; font-size:12px; color:var(--rust); line-height:1.5; }
   textarea { min-height: 110px; resize: vertical; line-height: 1.6; }
   .checkbox-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .checkbox-pill { border: 1px solid rgba(0,0,0,0.12); border-radius: 6px; padding: 12px 14px; font-size: 13px; color: var(--text-mid); display:flex; gap:10px; align-items:center; background: var(--warm-white); }
@@ -342,12 +343,13 @@
         </div>
         <div class="field">
           <label for="start-date">Start Date</label>
-          <input id="start-date" name="start-date" type="date">
+          <input id="start-date" name="start-date" type="date" required>
         </div>
         <div class="field" id="end-date-field">
           <label for="end-date">End Date</label>
           <input id="end-date" name="end-date" type="date">
         </div>
+        <div class="field full"><span class="date-error" id="dateError"></span></div>
         <div class="field" id="visits-field">
           <label for="visits">Visits Per Day</label>
           <select id="visits" name="visits">
@@ -615,10 +617,19 @@
   const minDateStr = effectiveMin.toISOString().split('T')[0];
   startInput.min = minDateStr;
   endInput.min   = minDateStr;
+  startInput.value = minDateStr;                 // A: picker opens on Sept 1 (end left blank)
+  const dateError = document.getElementById('dateError');
 
   startInput.addEventListener('change', () => {
     endInput.min = startInput.value || minDateStr;
     if (endInput.value && endInput.value < startInput.value) endInput.value = '';
+    // B: immediate feedback on start-date validity
+    if (!startInput.value || startInput.value < minDateStr) {
+      dateError.textContent = 'We begin September 1 — please choose a date on or after September 1.';
+      dateError.style.display = 'block';
+    } else {
+      dateError.style.display = 'none';
+    }
     updateSummary();
   });
   endInput.addEventListener('change', updateSummary);
@@ -636,6 +647,8 @@
     document.getElementById('end-date-field').style.display  = isWalk ? 'none' : 'flex';
     document.getElementById('visits-field').style.display    = service === 'drop-in-visit' ? 'flex' : 'none';
     document.getElementById('addons-field').style.display    = isPetSitting ? 'flex' : 'none';
+    // Clear any stale date error (e.g. an end-date message when switching to a walk)
+    dateError.style.display = 'none';
     updateSummary();
   }
 
@@ -729,6 +742,30 @@
     event.preventDefault();
     const form = event.target;
     const btn = form.querySelector('[type=submit]');
+    // B: validate dates BEFORE any Firestore write
+    if (!startInput.value || startInput.value < minDateStr) {
+      dateError.textContent = 'We begin September 1 — please choose a date on or after September 1.';
+      dateError.style.display = 'block';
+      startInput.focus(); startInput.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+    // Multi-day services (drop-in / overnight) show the end-date field and require a valid range
+    const endRequired = document.getElementById('end-date-field').style.display !== 'none';
+    if (endRequired) {
+      if (!endInput.value) {
+        dateError.textContent = 'Please choose an end date on or after your start date.';
+        dateError.style.display = 'block';
+        endInput.focus(); endInput.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        return;
+      }
+      if (endInput.value < startInput.value) {
+        dateError.textContent = 'End date must be on or after the start date.';
+        dateError.style.display = 'block';
+        endInput.focus(); endInput.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        return;
+      }
+    }
+    dateError.style.display = 'none';
     btn.textContent = 'Sending...'; btn.disabled = true;
     try {
       const ownerName = document.getElementById('name')?.value || '';
