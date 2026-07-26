@@ -617,8 +617,35 @@
 </footer>
 
 <script>
-  // Service zip codes
-  const SERVICE_ZIPS = ['28403', '28480'];
+  // Simple whole-zip service areas (a match on any of these = served).
+  const SIMPLE_ZIPS = ['28403', '28405', '28480'];
+
+  // Downtown Wilmington is covered by a radius around Thalian Hall
+  // (310 Chestnut St) rather than the whole of zip 28401 — 28401 sprawls
+  // well past the walkable historic district, so we gate on distance.
+  const DOWNTOWN_CENTER = { lat: 34.2372, lng: -77.9456 }; // Thalian Hall, 310 Chestnut St
+  const DOWNTOWN_RADIUS_MI = 1.0;
+
+  // Haversine great-circle distance between two points, in miles.
+  function milesBetween(lat1, lng1, lat2, lng2) {
+    const toRad = d => d * Math.PI / 180;
+    const R = 3958.8; // Earth radius, miles
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  // Served if the zip is a simple-match zip OR the point falls within the
+  // downtown radius. lat/lng may be null/undefined when only a zip is known.
+  function isServed(zipCode, lat, lng) {
+    if (zipCode && SIMPLE_ZIPS.includes(zipCode)) return true;
+    if (typeof lat === 'number' && typeof lng === 'number') {
+      return milesBetween(lat, lng, DOWNTOWN_CENTER.lat, DOWNTOWN_CENTER.lng) <= DOWNTOWN_RADIUS_MI;
+    }
+    return false;
+  }
   
   // Initialize Google Map (called by API callback)
   function initMap() {
@@ -728,24 +755,34 @@
                           });
                         }
                         
-                        // Check if in service area
-                        const isInServiceArea = zipCode && SERVICE_ZIPS.includes(zipCode);
+                        // Check if in service area: simple-zip match OR
+                        // within the downtown radius, using the lat/lng Places
+                        // already returned (no extra geocode call needed here).
+                        const loc = place.geometry.location;
+                        const isInServiceArea = isServed(zipCode, loc.lat(), loc.lng());
                         const resultIn = document.getElementById('result-in');
                         const resultOut = document.getElementById('result-out');
                         
                         if (isInServiceArea) {
-                          resultIn.style.display = 'block';
+                          resultIn.style.display = 'flex';
                           resultOut.style.display = 'none';
                         } else {
                           resultIn.style.display = 'none';
                           resultOut.style.display = 'block';
                         }
+                      } else {
+                        // Place lookup failed — fall back to a plain zip
+                        // substring match so the user still gets an answer.
+                        const inArea = SIMPLE_ZIPS.some(zip => addressInput.value.includes(zip));
+                        document.getElementById('result-in').style.display = inArea ? 'flex' : 'none';
+                        document.getElementById('result-out').style.display = inArea ? 'none' : 'block';
                       }
                     });
                   }
                   
-                  // Auto-check the address
-                  document.getElementById('check-address-btn').click();
+                  // The getDetails callback above sets the in/out result on
+                  // its own. No manual re-check here — that would now fire a
+                  // second, racing geocode against the Places lookup.
                 });
                 li.addEventListener('mouseover', () => {
                   li.style.background = 'rgba(0,0,0,0.05)';
@@ -786,20 +823,41 @@
       return;
     }
 
-    // Check if address contains any service zip code
-    const isInServiceArea = SERVICE_ZIPS.some(zip => address.includes(zip));
+    const showResult = (inArea) => {
+      resultIn.style.display = inArea ? 'flex' : 'none';
+      resultOut.style.display = inArea ? 'none' : 'block';
+    };
 
-    // Hide both results first
+    // Hide both results while we geocode the address
     resultIn.style.display = 'none';
     resultOut.style.display = 'none';
     notifyConfirm.style.display = 'none';
     notifyEmail.value = '';
 
-    // Show appropriate result
-    if (isInServiceArea) {
-      resultIn.style.display = 'flex';
+    // Geocode the typed address (same Maps key, via the JS Geocoder) so the
+    // downtown radius check runs on real coordinates — not just a zip match.
+    if (typeof google !== 'undefined' && google.maps) {
+      const geocoder = new google.maps.Geocoder();
+      geocoder.geocode(
+        { address, componentRestrictions: { country: 'us' } },
+        (results, status) => {
+          if (status === 'OK' && results && results[0]) {
+            const loc = results[0].geometry.location;
+            let zipCode = null;
+            (results[0].address_components || []).forEach(c => {
+              if (c.types.includes('postal_code')) zipCode = c.long_name;
+            });
+            if (map) { map.setCenter(loc); map.setZoom(14); }
+            showResult(isServed(zipCode, loc.lat(), loc.lng()));
+          } else {
+            // Geocode failed — fall back to a plain zip substring match.
+            showResult(SIMPLE_ZIPS.some(zip => address.includes(zip)));
+          }
+        }
+      );
     } else {
-      resultOut.style.display = 'block';
+      // Maps JS not loaded — zip substring match only.
+      showResult(SIMPLE_ZIPS.some(zip => address.includes(zip)));
     }
   });
 
