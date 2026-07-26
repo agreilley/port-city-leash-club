@@ -248,7 +248,15 @@
     /* Why section: hide photo, show cards full width */
     .why-layout { grid-template-columns: 1fr !important; margin-top: 24px !important; }
     .why-photo { display: none !important; }
-    .why-cards { margin-top: 0 !important; }
+    .why-cards { margin-top: 0 !important; gap: 0 !important; }
+    /* Editorial stack: strip card boxes, separate points with a short seafoam hairline */
+    .why-card { background: none; border: none; border-radius: 0; padding: 0; }
+    .why-card + .why-card::before {
+      content: ''; display: block;
+      width: 44px; height: 1px;
+      background: rgba(143,168,162,0.45);
+      margin: 28px 0;
+    }
     .tier-card { padding: 28px 24px; }
 
     /* Why PCLC */
