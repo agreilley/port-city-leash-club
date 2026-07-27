@@ -234,11 +234,17 @@ service cloud.firestore {
       // attached) — hasOnly() permits their absence, and each is guarded with
       // an `in` check before size validation. availability is a map
       // ({mon:[...], ...}). experience / days are comma-joined strings.
+      // availableForOvernights is a bool mirroring walkers/{id}. The careers
+      // select is required client-side, so real submissions always include it —
+      // but it is OPTIONAL here (present ⇒ must be bool), same pattern as
+      // resumePath, so rules can deploy before the new careers.html without
+      // rejecting the still-live old form (which omits the field).
       function validApplication() {
         return request.resource.data.keys().hasOnly(
             ['type', 'name', 'email', 'phone', 'neighborhood', 'dogExperience',
              'experience', 'availability', 'walksPerWeek', 'transportation',
-             'additional', 'read', 'createdAt', 'resumePath', 'resumeName'])
+             'availableForOvernights', 'additional', 'read', 'createdAt',
+             'resumePath', 'resumeName'])
           && request.resource.data.name is string && request.resource.data.name.size() <= 200
           && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
           && request.resource.data.neighborhood is string && request.resource.data.neighborhood.size() <= 200
@@ -247,6 +253,8 @@ service cloud.firestore {
           && request.resource.data.walksPerWeek is string && request.resource.data.walksPerWeek.size() <= 50
           && request.resource.data.transportation is string && request.resource.data.transportation.size() <= 100
           && request.resource.data.additional is string && request.resource.data.additional.size() <= 10000
+          && (!('availableForOvernights' in request.resource.data)
+              || request.resource.data.availableForOvernights is bool)
           && request.resource.data.availability is map
           && (!('resumePath' in request.resource.data)
               || (request.resource.data.resumePath is string && request.resource.data.resumePath.size() <= 500))

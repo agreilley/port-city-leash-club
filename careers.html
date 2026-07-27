@@ -282,6 +282,14 @@
               <option>No</option>
             </select>
           </div>
+          <div class="field">
+            <label>Available for overnight stays (12+ hours)?</label>
+            <select name="overnights" required>
+              <option value="">Select</option>
+              <option>Yes</option>
+              <option>No</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -380,6 +388,10 @@
         })(),
         walksPerWeek: document.querySelector('select[name=walks-per-week]')?.value || '',
         transportation: document.querySelector('select[name=transportation]')?.value || '',
+        // Stored as a boolean to match the walkers/{id}.availableForOvernights
+        // field, so a hired application seeds the walker record cleanly. The
+        // select is required, so its value is always 'Yes' or 'No' here.
+        availableForOvernights: document.querySelector('select[name=overnights]')?.value === 'Yes',
         additional: document.querySelector('textarea[name=additional]')?.value || '',
         read: false,
         createdAt: window._serverTimestamp()

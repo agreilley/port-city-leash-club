@@ -1853,11 +1853,71 @@ window.openRequestItem = async (id) => {
     } catch { return String(val); }
   }
 
+  // Render a walker application's availability as a Mon→Sun × slot grid.
+  // Normalizes to canonical {mon:[...]} keys first so it tolerates: the
+  // structured object the careers form actually stores, a legacy flattened
+  // display string ("Monday: Morning; ..."), missing days, and unknown slot
+  // names (silently dropped). All content here is from a fixed label set —
+  // no attacker string is interpolated raw — so it is XSS-safe without escaping.
+  function buildApplicationAvailabilityGrid(raw) {
+    const dayKeys = ['mon','tue','wed','thu','fri','sat','sun'];
+    const dayLabels = { mon:'Monday', tue:'Tuesday', wed:'Wednesday', thu:'Thursday', fri:'Friday', sat:'Saturday', sun:'Sunday' };
+    const slotKeys = ['morning','early-afternoon','late-afternoon'];
+    const slotLabels = { 'morning':'Morning', 'early-afternoon':'Early Afternoon', 'late-afternoon':'Late Afternoon' };
+
+    const norm = {};
+    dayKeys.forEach(d => norm[d] = []);
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      dayKeys.forEach(d => {
+        const slots = Array.isArray(raw[d]) ? raw[d] : [];
+        norm[d] = slotKeys.filter(s => slots.includes(s));
+      });
+    } else if (typeof raw === 'string' && raw.trim()) {
+      const dayNameToKey = { monday:'mon', tuesday:'tue', wednesday:'wed', thursday:'thu', friday:'fri', saturday:'sat', sunday:'sun' };
+      const slotNameToKey = { 'morning':'morning', 'early afternoon':'early-afternoon', 'late afternoon':'late-afternoon' };
+      raw.split(';').forEach(part => {
+        const [dayPart, slotPart] = part.split(':');
+        if (!dayPart || !slotPart) return;
+        const dk = dayNameToKey[dayPart.trim().toLowerCase()];
+        if (!dk) return;
+        slotPart.split(',').forEach(s => {
+          const sk = slotNameToKey[s.trim().toLowerCase()];
+          if (sk && !norm[dk].includes(sk)) norm[dk].push(sk);
+        });
+      });
+    }
+
+    const anySelected = dayKeys.some(d => norm[d].length);
+    const header = `<div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Availability</div>`;
+    if (!anySelected) {
+      return `<hr class="modal-divider">${header}<div style="font-size:13px;color:var(--text-light);">None selected.</div>`;
+    }
+
+    const th = s => `<th style="padding:8px 6px;font-size:11px;font-weight:600;color:var(--navy);text-align:center;border-bottom:1px solid rgba(0,0,0,0.08);">${s}</th>`;
+    const headRow = `<tr style="background:var(--sand);"><th style="padding:8px 12px;font-size:11px;font-weight:600;color:var(--navy);text-align:left;border-bottom:1px solid rgba(0,0,0,0.08);">Day</th>${slotKeys.map(s => th(slotLabels[s])).join('')}</tr>`;
+    const bodyRows = dayKeys.map(d => {
+      const cells = slotKeys.map(s => {
+        const on = norm[d].includes(s);
+        return on
+          ? `<td style="padding:8px;text-align:center;background:var(--seafoam);color:#fff;font-weight:600;">✓</td>`
+          : `<td style="padding:8px;text-align:center;color:#C9C9C9;">·</td>`;
+      }).join('');
+      return `<tr style="border-top:1px solid rgba(0,0,0,0.05);"><td style="padding:8px 12px;font-size:13px;font-weight:500;color:var(--navy);">${dayLabels[d]}</td>${cells}</tr>`;
+    }).join('');
+
+    return `<hr class="modal-divider">${header}`
+      + `<table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid rgba(0,0,0,0.08);border-radius:8px;overflow:hidden;">`
+      + `<thead>${headRow}</thead><tbody>${bodyRows}</tbody></table>`;
+  }
+
   // Build clean field list based on submission type
   const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report', walker_schedule_request: 'Walker Schedule Request', reschedule: 'Walk Reschedule Request', walk_extension: 'Walk Extension Request', tier_change: 'Membership Tier Change', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Vacation Hold Refund' };
   const title = typeLabels[item.type] || 'Submission';
 
   let fields = [];
+  // Applications render availability as a grid (set in the application branch);
+  // stays '' for every other submission type.
+  let availabilityGridHTML = '';
   if (item.type === 'membership_request') {
     const dogsDisplay = Array.isArray(item.dogs) && item.dogs.length
       ? item.dogs.map(d => `${d.name || 'Unnamed'} (${[d.breed, d.age, d.weight].filter(Boolean).join(', ') || 'no details'})`).join('; ')
@@ -1983,18 +2043,11 @@ window.openRequestItem = async (id) => {
       ...(item.refundId ? [{ label: 'Refund ID', value: item.refundId }, { label: 'Refunded Amount', value: item.refundedAmount != null ? `$${item.refundedAmount}` : '–' }] : []),
     ];
   } else if (item.type === 'application') {
-    // availability is the same {mon:[...], tue:[...], ...} shape a real
-    // walker doc uses — formatted here as "Monday: Morning, Late
-    // Afternoon" lines rather than falling into the generic field dump,
-    // which would just print "[object Object]" for it.
-    const dayLabels = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
-    const slotLabels = { morning: 'Morning', 'early-afternoon': 'Early Afternoon', 'late-afternoon': 'Late Afternoon' };
-    const availabilityDisplay = item.availability && typeof item.availability === 'object'
-      ? Object.entries(item.availability)
-          .filter(([, slots]) => Array.isArray(slots) && slots.length)
-          .map(([day, slots]) => `${dayLabels[day] || day}: ${slots.map(s => slotLabels[s] || s).join(', ')}`)
-          .join('; ') || 'None selected'
-      : '–';
+    // availability is the same {mon:[...], tue:[...], ...} shape a real walker
+    // doc uses. It renders below the fields as a Mon→Sun × slot grid instead
+    // of a field row, so it isn't dumped as a long semicolon string (or
+    // "[object Object]").
+    availabilityGridHTML = buildApplicationAvailabilityGrid(item.availability);
     fields = [
       { label: 'Name', value: item.name || '–' },
       { label: 'Email', value: item.email || '–' },
@@ -2002,9 +2055,13 @@ window.openRequestItem = async (id) => {
       { label: 'Neighborhood', value: item.neighborhood || '–' },
       { label: 'Dog Experience', value: item.dogExperience || '–' },
       { label: 'Experience', value: item.experience || '–' },
-      { label: 'Availability', value: availabilityDisplay },
       { label: 'Walks/Week Desired', value: item.walksPerWeek || '–' },
       { label: 'Transportation', value: item.transportation || '–' },
+      // Boolean on the submission (careers.html), mirrors walkers/{id}.
+      // Applications submitted before this field existed have it missing/
+      // undefined → show 'Not specified' (never a misleading 'No' or a blank),
+      // and don't infer a value.
+      { label: 'Available for Overnights', value: typeof item.availableForOvernights === 'boolean' ? (item.availableForOvernights ? 'Yes' : 'No') : 'Not specified' },
       { label: 'Additional Notes', value: item.additional || '–' },
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
       { label: 'Submitted', value: fmtDate(item.createdAt) },
@@ -2092,7 +2149,7 @@ window.openRequestItem = async (id) => {
         extraHTML = `<hr class="modal-divider"><div style="font-size:13px;color:var(--rust);">A resume reference was submitted but isn't a valid Storage path, so it isn't shown. Inspect the submission in Firestore before opening anything.</div>`;
       }
     }
-    document.getElementById('requestModalContent').innerHTML = `<div class="form-grid">${fieldHTML}</div>${extraHTML}`;
+    document.getElementById('requestModalContent').innerHTML = `<div class="form-grid">${fieldHTML}</div>${availabilityGridHTML}${extraHTML}`;
 
     if (pendingResumePath) {
       const holder = document.getElementById('am-resume-link');
