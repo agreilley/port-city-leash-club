@@ -618,16 +618,19 @@
 
 <script>
   // Simple whole-zip service areas (a match on any of these = served).
-  const SIMPLE_ZIPS = ['28403', '28405', '28480'];
+  const SIMPLE_ZIPS = ['28403', '28480'];
 
   // Radius-based service zones. Some areas are covered by distance from a
-  // center point rather than by a blanket zip (e.g. downtown, where zip 28401
-  // sprawls well past the walkable historic district; or Porters Neck, where
-  // 28411 is too large and mixed to serve as a whole). A point is served if
-  // it falls within ANY zone's radius. Add new zones to this list.
+  // center point rather than by a blanket zip, because the zip sprawls well
+  // past what we actually serve: downtown (28401 runs past the walkable
+  // historic district), Porters Neck (28411 is too large and mixed), and
+  // Landfall (28405 stretches west past the airport through Kings Grant,
+  // Blue Clay Farms, and Northchase). A point is served if it falls within
+  // ANY zone's radius. Add new zones to this list.
   const RADIUS_ZONES = [
-    { name: 'downtown',     center: { lat: 34.2372, lng: -77.9456 }, radiusMi: 1.0 }, // Thalian Hall, 310 Chestnut St
-    { name: 'porters-neck', center: { lat: 34.2942, lng: -77.7694 }, radiusMi: 3.0 }  // Porters Neck CDP centroid
+    { name: 'downtown',     center: { lat: 34.2372, lng: -77.9456 },   radiusMi: 1.0 }, // Thalian Hall, 310 Chestnut St
+    { name: 'porters-neck', center: { lat: 34.2942, lng: -77.7694 },   radiusMi: 3.0 }, // Porters Neck CDP centroid
+    { name: 'landfall',     center: { lat: 34.245244, lng: -77.806513 }, radiusMi: 1.5 } // Country Club of Landfall (800 Sun Runner Pl)
   ];
 
   // Haversine great-circle distance between two points, in miles.
