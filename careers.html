@@ -131,6 +131,12 @@
     .sidebar { position: static; }
     .form-card { padding: 24px 20px; }
     .form-grid { grid-template-columns: 1fr; }
+    /* The availability day-grid is min-width:520px inside an overflow-x:auto
+       wrapper (intentional horizontal scroll). Default min-width:auto on these
+       grid/flex items lets that 520px min-content blow the whole form-card past
+       the viewport, clipping every field on the right. min-width:0 lets them
+       shrink so the grid scrolls in its wrapper instead. */
+    .form-card, .field { min-width: 0; }
     .checkbox-grid { grid-template-columns: 1fr; }
     * { max-width: 100%; }
     .page-hero, main { padding-left: 20px !important; padding-right: 20px !important; }
