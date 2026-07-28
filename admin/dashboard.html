@@ -1943,14 +1943,55 @@ window.openRequestItem = async (id) => {
       + `<thead>${headRow}</thead><tbody>${bodyRows}</tbody></table>`;
   }
 
+  // Walker-screening comfort matrix as a compact full-width table: one row per
+  // comfort item (label left, rating right), looping over the submission's
+  // comfortLevels in a stable canonical order. Ratings are tinted for scanning.
+  // Values are attacker-controlled (public form) so they're escapeHtml'd.
+  function buildScreeningComfortGrid(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return '';
+    const LABELS = {
+      cats: 'Cats', oralMedication: 'Administering oral medication',
+      injections: 'Administering injections', multipleDogs: 'Multiple dogs at once',
+      puppies: 'Puppies (under 1 year)', seniorSpecialNeeds: 'Senior or special-needs dogs',
+      largeHighEnergy: 'Large or high-energy breeds', overnightStays: 'Overnight stays (12+ hours)'
+    };
+    const order = Object.keys(LABELS);
+    const entries = Object.entries(raw).sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
+    const header = `<div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Comfort &amp; Experience</div>`;
+    if (!entries.length) {
+      return `<hr class="modal-divider">${header}<div style="font-size:13px;color:var(--text-light);">None provided.</div>`;
+    }
+    // "Not comfortable" muted coral, "Comfortable" neutral, "Very experienced"
+    // strong green — a quick low→high scan using the brand palette.
+    const ratingStyle = v =>
+      v === 'Not comfortable' ? 'color:var(--rust);' :
+      v === 'Very experienced' ? 'color:var(--green);font-weight:600;' :
+      v === 'Comfortable' ? 'color:var(--text-mid);' :
+      'color:var(--text-light);';
+    const rows = entries.map(([k, v]) =>
+      `<tr style="border-top:1px solid rgba(0,0,0,0.05);">`
+      + `<td style="padding:8px 12px;color:var(--navy);">${escapeHtml(LABELS[k] || k)}</td>`
+      + `<td style="padding:8px 12px;text-align:right;${ratingStyle(v)}">${escapeHtml(v || '–')}</td>`
+      + `</tr>`
+    ).join('');
+    return `<hr class="modal-divider">${header}`
+      + `<table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid rgba(0,0,0,0.08);border-radius:8px;overflow:hidden;">`
+      + `<thead><tr style="background:var(--sand);">`
+      + `<th style="text-align:left;padding:8px 12px;font-size:11px;font-weight:600;color:var(--navy);border-bottom:1px solid rgba(0,0,0,0.08);">Situation</th>`
+      + `<th style="text-align:right;padding:8px 12px;font-size:11px;font-weight:600;color:var(--navy);border-bottom:1px solid rgba(0,0,0,0.08);">Rating</th>`
+      + `</tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
   // Build clean field list based on submission type
   const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', walker_screening: 'Walker Screening', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report', walker_schedule_request: 'Walker Schedule Request', reschedule: 'Walk Reschedule Request', walk_extension: 'Walk Extension Request', tier_change: 'Membership Tier Change', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Vacation Hold Refund' };
   const title = typeLabels[item.type] || 'Submission';
 
   let fields = [];
   // Applications render availability as a grid (set in the application branch);
-  // stays '' for every other submission type.
+  // stays '' for every other submission type. Screening also renders its comfort
+  // matrix as its own full-width table (comfortGridHTML).
   let availabilityGridHTML = '';
+  let comfortGridHTML = '';
   if (item.type === 'membership_request') {
     const dogsDisplay = Array.isArray(item.dogs) && item.dogs.length
       ? item.dogs.map(d => `${d.name || 'Unnamed'} (${[d.breed, d.age, d.weight].filter(Boolean).join(', ') || 'no details'})`).join('; ')
@@ -2100,20 +2141,12 @@ window.openRequestItem = async (id) => {
       { label: 'Submitted', value: fmtDate(item.createdAt) },
     ];
   } else if (item.type === 'walker_screening') {
-    // Shortlist screening (walker-screening.html). Availability uses the
-    // screening-specific grid (4 slots incl. Overnight); comfortLevels +
-    // references are looped (not hardcoded) so the renderer follows whatever
-    // the submission actually stored.
+    // Shortlist screening (walker-screening.html). Availability and the comfort
+    // matrix each render as their own full-width tables below the fields
+    // (buildScreeningAvailabilityGrid / buildScreeningComfortGrid, both looping
+    // over the stored data); references are looped into the field list.
     availabilityGridHTML = buildScreeningAvailabilityGrid(item.availability);
-    const COMFORT_LABELS = {
-      cats: 'Cats', oralMedication: 'Administering oral medication',
-      injections: 'Administering injections', multipleDogs: 'Multiple dogs at once',
-      puppies: 'Puppies (under 1 year)', seniorSpecialNeeds: 'Senior or special-needs dogs',
-      largeHighEnergy: 'Large or high-energy breeds', overnightStays: 'Overnight stays (12+ hours)'
-    };
-    const comfortRows = (item.comfortLevels && typeof item.comfortLevels === 'object' && !Array.isArray(item.comfortLevels))
-      ? Object.entries(item.comfortLevels).map(([k, v]) => ({ label: 'Comfort · ' + (COMFORT_LABELS[k] || k), value: v || '–' }))
-      : [];
+    comfortGridHTML = buildScreeningComfortGrid(item.comfortLevels);
     const refRows = (Array.isArray(item.references) ? item.references : []).map((r, i) => ({
       label: 'Reference ' + (i + 1),
       value: [r && r.name, r && r.contact].filter(Boolean).join(' · ') || '–'
@@ -2123,7 +2156,6 @@ window.openRequestItem = async (id) => {
       { label: 'Email', value: item.email || '–' },
       { label: 'Phone', value: item.phone || '–' },
       { label: 'Background Check Consent', value: item.backgroundCheckConsent || '–' },
-      ...comfortRows,
       { label: 'Scenario · Aggressive dog', value: item.scenarioAggressive || '–' },
       { label: 'Scenario · Running late', value: item.scenarioTimeWindow || '–' },
       { label: 'Scenario · Access problem', value: item.scenarioAccess || '–' },
@@ -2215,7 +2247,7 @@ window.openRequestItem = async (id) => {
         extraHTML = `<hr class="modal-divider"><div style="font-size:13px;color:var(--rust);">A resume reference was submitted but isn't a valid Storage path, so it isn't shown. Inspect the submission in Firestore before opening anything.</div>`;
       }
     }
-    document.getElementById('requestModalContent').innerHTML = `<div class="form-grid">${fieldHTML}</div>${availabilityGridHTML}${extraHTML}`;
+    document.getElementById('requestModalContent').innerHTML = `<div class="form-grid">${fieldHTML}</div>${availabilityGridHTML}${comfortGridHTML}${extraHTML}`;
 
     if (pendingResumePath) {
       const holder = document.getElementById('am-resume-link');
