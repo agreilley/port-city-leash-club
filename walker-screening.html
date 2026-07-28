@@ -148,7 +148,7 @@
   <div class="hero-inner">
     <div class="eyebrow">Walker Screening</div>
     <h1>A few more questions.</h1>
-    <p class="hero-sub">Thanks for moving forward with us. This short screening helps us understand how you'd handle real situations on the job. Please answer as thoroughly as you can — there are no trick questions.</p>
+    <p class="hero-sub">Thanks for moving forward with us. This short screening helps us understand how you'd handle real situations on the job. Please answer as thoroughly as you can. There are no trick questions.</p>
   </div>
 </div>
 
@@ -156,7 +156,7 @@
 <main>
   <div class="form-intro" style="max-width:1100px;margin:0 auto 40px;">
     <h2>Walker screening</h2>
-    <p>For shortlisted applicants. Your answers go straight to our team — we'll follow up with next steps.</p>
+    <p>For shortlisted applicants. Your answers go straight to our team, and we'll follow up with next steps.</p>
   </div>
   <div class="form-shell">
     <form class="form-card" onsubmit="submitScreening(event)">
@@ -239,10 +239,10 @@
         <div class="section-label">References</div>
         <p class="field-hint">Please provide two references we can contact.</p>
         <div class="form-grid">
-          <div class="field"><label>Reference 1 — name</label><input type="text" name="ref1-name" placeholder="Name"></div>
-          <div class="field"><label>Reference 1 — phone or email</label><input type="text" name="ref1-contact" placeholder="Phone or email"></div>
-          <div class="field"><label>Reference 2 — name</label><input type="text" name="ref2-name" placeholder="Name"></div>
-          <div class="field"><label>Reference 2 — phone or email</label><input type="text" name="ref2-contact" placeholder="Phone or email"></div>
+          <div class="field"><label>Reference 1 name</label><input type="text" name="ref1-name" placeholder="Name"></div>
+          <div class="field"><label>Reference 1 phone or email</label><input type="text" name="ref1-contact" placeholder="Phone or email"></div>
+          <div class="field"><label>Reference 2 name</label><input type="text" name="ref2-name" placeholder="Name"></div>
+          <div class="field"><label>Reference 2 phone or email</label><input type="text" name="ref2-contact" placeholder="Phone or email"></div>
         </div>
       </div>
 
@@ -270,7 +270,7 @@
     <div class="sidebar">
       <div class="sidebar-card">
         <h3>What happens next</h3>
-        <p>We review every screening carefully. If it's a good fit, we'll reach out to schedule an interview and a test walk — you'll hear back within a week.</p>
+        <p>We review every screening carefully. If it's a good fit, we'll reach out to schedule an interview and a test walk. You'll hear back within a week.</p>
       </div>
       <div class="navy-card">
         <h3>Questions?</h3>
@@ -296,7 +296,7 @@
 </footer>
 
 <script>
-  // Availability grid — walker-screening's OWN local day/slot lists, kept
+  // Availability grid: walker-screening's OWN local day/slot lists, kept
   // deliberately separate from careers.html's application grid so adding the
   // "overnight" slot here can never silently affect that grid (or its admin
   // renderer). The admin side has its own matching buildScreeningAvailabilityGrid.
@@ -318,7 +318,7 @@
       ).join('');
   })();
 
-  // Canonical comfort items — keys MUST match firestore.rules validWalkerScreening()
+  // Canonical comfort items. Keys MUST match firestore.rules validWalkerScreening()
   // and the admin/dashboard.html renderer's COMFORT_LABELS. Order drives display.
   const COMFORT_ITEMS = [
     { key: 'cats', label: 'Cats' },
@@ -390,7 +390,7 @@
           { name: val('input[name=ref1-name]'), contact: val('input[name=ref1-contact]') },
           { name: val('input[name=ref2-name]'), contact: val('input[name=ref2-contact]') },
         ],
-        // Required Yes/No radio — value is always 'Yes' or 'No' here.
+        // Required Yes/No radio; value is always 'Yes' or 'No' here.
         backgroundCheckConsent: document.querySelector('input[name="background-check"]:checked')?.value || '',
         read: false,
         createdAt: window._serverTimestamp(),
@@ -398,7 +398,7 @@
 
       await window._addDoc(window._collection(window._db, 'submissions'), data);
 
-      showScreeningNotification('Thank you! Your screening has been submitted — we\'ll be in touch within a week.', false);
+      showScreeningNotification('Thank you! Your screening has been submitted. We\'ll be in touch within a week.', false);
       e.target.reset();
     } catch (err) {
       console.error(err);
