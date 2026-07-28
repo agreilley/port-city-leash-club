@@ -262,12 +262,70 @@ service cloud.firestore {
               || (request.resource.data.resumeName is string && request.resource.data.resumeName.size() <= 500));
       }
 
+      // Comfort-matrix cells are REQUIRED radios on the form, so every row must
+      // be one of the three levels — no '' allowed. Server-side backstop to the
+      // client `required`. Single source of truth for the allowed values.
+      function isComfortLevel(v) {
+        return v in ['Not comfortable', 'Comfortable', 'Very experienced'];
+      }
+
+      // Source: walker-screening.html (submitScreening). An unlinked, shortlist-
+      // only form — same anonymous-create posture as the four public forms.
+      // availability is the careers-shaped map; comfortLevels is a map whose
+      // keys are the fixed screening items (listed explicitly below, matching
+      // COMFORT_ITEMS in the page); references is a list of {name, contact}.
+      function validWalkerScreening() {
+        return request.resource.data.keys().hasOnly(
+            ['type', 'name', 'email', 'phone', 'availability', 'transportation',
+             'alreadyApplied', 'dogExperience', 'comfortLevels',
+             'scenarioAggressive', 'scenarioTimeWindow', 'scenarioAccess',
+             'writingSample', 'references', 'read', 'createdAt'])
+          && request.resource.data.name is string && request.resource.data.name.size() <= 200
+          && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
+          && request.resource.data.availability is map
+          && request.resource.data.transportation is string && request.resource.data.transportation.size() <= 100
+          && request.resource.data.alreadyApplied is string && request.resource.data.alreadyApplied.size() <= 10
+          && request.resource.data.dogExperience is string && request.resource.data.dogExperience.size() <= 10000
+          && request.resource.data.comfortLevels is map
+          && request.resource.data.comfortLevels.keys().hasOnly(
+              ['cats', 'oralMedication', 'injections', 'multipleDogs', 'puppies',
+               'seniorSpecialNeeds', 'largeHighEnergy', 'overnightStays'])
+          // Validate VALUES, not just keys: each cell must be a known comfort
+          // level. Accessing a missing key denies, so this also requires all 8.
+          && isComfortLevel(request.resource.data.comfortLevels.cats)
+          && isComfortLevel(request.resource.data.comfortLevels.oralMedication)
+          && isComfortLevel(request.resource.data.comfortLevels.injections)
+          && isComfortLevel(request.resource.data.comfortLevels.multipleDogs)
+          && isComfortLevel(request.resource.data.comfortLevels.puppies)
+          && isComfortLevel(request.resource.data.comfortLevels.seniorSpecialNeeds)
+          && isComfortLevel(request.resource.data.comfortLevels.largeHighEnergy)
+          && isComfortLevel(request.resource.data.comfortLevels.overnightStays)
+          && request.resource.data.scenarioAggressive is string && request.resource.data.scenarioAggressive.size() <= 10000
+          && request.resource.data.scenarioTimeWindow is string && request.resource.data.scenarioTimeWindow.size() <= 10000
+          && request.resource.data.scenarioAccess is string && request.resource.data.scenarioAccess.size() <= 10000
+          && request.resource.data.writingSample is string && request.resource.data.writingSample.size() <= 10000
+          // References: exactly 2 entries, each a map with only {name, contact}
+          // (both strings). Indexed access is safe because size() == 2 is checked
+          // first and && short-circuits.
+          && request.resource.data.references is list
+          && request.resource.data.references.size() == 2
+          && request.resource.data.references[0] is map
+          && request.resource.data.references[0].keys().hasOnly(['name', 'contact'])
+          && request.resource.data.references[0].name is string && request.resource.data.references[0].name.size() <= 200
+          && request.resource.data.references[0].contact is string && request.resource.data.references[0].contact.size() <= 200
+          && request.resource.data.references[1] is map
+          && request.resource.data.references[1].keys().hasOnly(['name', 'contact'])
+          && request.resource.data.references[1].name is string && request.resource.data.references[1].name.size() <= 200
+          && request.resource.data.references[1].contact is string && request.resource.data.references[1].contact.size() <= 200;
+      }
+
       allow create: if request.auth != null
         || (subBase() && (
               (request.resource.data.type == 'contact' && validContact())
            || (request.resource.data.type == 'membership_request' && validMembership())
            || (request.resource.data.type == 'service_request' && validService())
            || (request.resource.data.type == 'application' && validApplication())
+           || (request.resource.data.type == 'walker_screening' && validWalkerScreening())
         ));
 
       allow read: if request.auth != null && resource.data.memberId == request.auth.uid;

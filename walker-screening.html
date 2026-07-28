@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="apple-touch-icon" href="images/favicon.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="icon" type="image/png" href="images/favicon.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Unlinked, shortlist-only screening page: keep it out of search indexes. -->
+<meta name="robots" content="noindex, nofollow">
+<title>Walker Screening | Port City Leash Club</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow-x: hidden; max-width: 100%; }
+  :root {
+    --navy: #0D1B2A; --navy-mid: #1C2F42;
+    --seafoam: #8FA8A2; --seafoam-light: #C5D5D1;
+    --sand: #E9E1D3; --sand-light: #F4F0EA;
+    --warm-white: #FAFAF8; --text-dark: #1A1A1A;
+    --text-mid: #4A4A4A; --text-light: #7A7A7A;
+    --rust: #C17B6F; --rust-dark: #A36358;
+  }
+  body { font-family: 'DM Sans', sans-serif; background: var(--warm-white); color: var(--text-dark); line-height: 1.6; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: var(--warm-white); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 0 48px; display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .nav-logo { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--navy); line-height: 1.3; text-decoration: none; }
+  .nav-links { display: flex; align-items: center; gap: 32px; list-style: none; }
+  .nav-links a:not(.btn-nav) { font-size: 13px; color: var(--text-mid); text-decoration: none; letter-spacing: 0.04em; }
+  .btn-nav { background: var(--rust); color: white !important; border: none; border-radius: 4px; padding: 10px 20px; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; text-decoration: none; display: inline-block; transition: background 0.2s; }
+  .btn-nav:hover { background: var(--rust-dark); }
+
+  /* HERO */
+  .page-hero { background: var(--sand-light); padding: 80px 48px 72px; border-bottom: 1px solid rgba(0,0,0,0.06); }
+  .hero-inner { max-width: 1100px; margin: 0 auto; }
+  .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 16px; }
+  h1 { font-family: 'Cormorant Garamond', serif; font-size: 48px; font-weight: 300; line-height: 1.04; color: var(--navy); margin-bottom: 20px; }
+  .hero-sub { font-size: 16px; color: var(--text-mid); line-height: 1.8; max-width: 620px; }
+
+  /* FORM SECTION */
+  main { padding: 72px 48px 90px; }
+  .form-shell { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 300px; gap: 32px; align-items: start; }
+  .form-intro { margin-bottom: 32px; }
+  .form-intro h2 { font-family: 'Cormorant Garamond', serif; font-size: 40px; font-weight: 300; color: var(--navy); margin-bottom: 10px; }
+  .form-intro p { font-size: 15px; color: var(--text-mid); line-height: 1.7; max-width: 540px; }
+
+  .form-card { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 40px; }
+  .form-section { border-top: 1px solid rgba(0,0,0,0.07); padding-top: 28px; margin-top: 28px; }
+  .form-section:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+  .section-label { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 18px; }
+  .field-hint { font-size: 12px; color: var(--text-light); margin: -6px 0 14px; line-height: 1.5; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field.full { grid-column: 1 / -1; }
+  label { font-size: 12px; font-weight: 500; color: var(--navy); letter-spacing: 0.02em; }
+  input, select, textarea { border: 1px solid rgba(0,0,0,0.14); background: var(--warm-white); border-radius: 4px; padding: 11px 13px; font-size: 14px; font-family: 'DM Sans', sans-serif; color: var(--text-dark); width: 100%; transition: border-color 0.15s, box-shadow 0.15s; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--seafoam); box-shadow: 0 0 0 3px rgba(143,168,162,0.16); }
+  textarea { min-height: 100px; resize: vertical; line-height: 1.6; }
+  .radio-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .radio-pill { display: flex; align-items: center; gap: 8px; border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; padding: 10px 16px; font-size: 13px; color: var(--text-mid); cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+  .radio-pill:hover { border-color: var(--seafoam); background: rgba(143,168,162,0.05); }
+  .radio-pill input { width: auto; }
+
+  /* Comfort matrix */
+  .comfort-table { border-collapse: collapse; width: 100%; min-width: 560px; }
+  .comfort-table th { font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-light); padding: 8px 10px; text-align: center; border-bottom: 1px solid rgba(0,0,0,0.08); }
+  .comfort-table th:first-child { text-align: left; }
+  .comfort-table td { padding: 10px; border-bottom: 1px solid rgba(0,0,0,0.05); text-align: center; }
+  .comfort-table td:first-child { text-align: left; font-size: 13px; color: var(--navy); }
+  .comfort-table tr:last-child td { border-bottom: none; }
+  .comfort-table input { width: auto; accent-color: var(--seafoam); cursor: pointer; }
+
+  .form-actions { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 32px; }
+  .microcopy { font-size: 12px; color: var(--text-light); line-height: 1.6; max-width: 360px; }
+  .btn-submit { background: var(--rust); color: white; border: none; border-radius: 4px; padding: 14px 32px; font-size: 15px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: background 0.2s, transform 0.1s; white-space: nowrap; }
+  .btn-submit:hover { background: var(--rust-dark); }
+  .btn-submit:active { transform: scale(0.98); }
+
+  /* SIDEBAR */
+  .sidebar { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 88px; }
+  .sidebar-card { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 28px; }
+  .sidebar-card h3 { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 300; color: var(--navy); margin-bottom: 12px; }
+  .sidebar-card p { font-size: 13px; color: var(--text-mid); line-height: 1.7; }
+  .navy-card { background: var(--navy); color: white; border-radius: 10px; padding: 28px; }
+  .navy-card h3 { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 300; margin-bottom: 10px; }
+  .navy-card p { font-size: 13px; color: rgba(255,255,255,0.65); line-height: 1.7; }
+
+  /* FOOTER */
+  footer { background: var(--navy); border-top: 1px solid rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); padding: 48px; display: flex; justify-content: space-between; align-items: center; }
+  .footer-brand { font-family: 'Cormorant Garamond', serif; font-size: 18px; font-weight: 400; color: white; line-height: 1.4; }
+  .footer-sub { font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+  .footer-links { display: flex; gap: 32px; list-style: none; }
+  .footer-links a { font-size: 13px; color: rgba(255,255,255,0.5); text-decoration: none; transition: color 0.2s; }
+  .footer-links a:hover { color: white; }
+
+  .notification { position: fixed; top: 20px; right: 20px; background: white; border: 1px solid #E5E0D8; border-left: 4px solid #8FA8A2; border-radius: 12px; padding: 20px 24px; box-shadow: 0 4px 20px rgba(13,27,42,0.15); font-size: 15px; color: #0D1B2A; max-width: 400px; z-index: 10000; animation: slideIn 0.3s ease-out; }
+  @keyframes slideIn { from { opacity:0; transform:translateX(400px); } to { opacity:1; transform:translateX(0); } }
+
+  @media (max-width: 1000px) {
+    .form-shell { grid-template-columns: 1fr; }
+    .sidebar { position: static; }
+  }
+  @media (max-width: 768px) {
+    nav { padding: 0 20px; height: 56px; }
+    .nav-links { display: none; flex-direction: column; position: fixed; top: 56px; left: 0; right: 0; background: var(--warm-white); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 16px 20px 24px; gap: 0; z-index: 99; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    .nav-links.open { display: flex; }
+    .nav-links li { padding: 12px 0; border-bottom: 1px solid rgba(0,0,0,0.06); }
+    .nav-links li:last-child { border-bottom: none; padding-top: 16px; }
+    .nav-links a:not(.btn-nav) { font-size: 15px; }
+    .btn-nav { display: block; text-align: center; padding: 12px; width: 100%; }
+    .hamburger { display: flex; flex-direction: column; gap: 5px; cursor: pointer; padding: 8px; }
+    .hamburger span { display: block; width: 22px; height: 2px; background: var(--navy); border-radius: 2px; transition: all 0.2s; }
+    .hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+    .hamburger.open span:nth-child(2) { opacity: 0; }
+    .hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+    .page-hero { padding: 48px 20px; }
+    h1 { font-size: 40px; }
+    main { padding: 48px 20px 64px; }
+    .form-shell { grid-template-columns: 1fr !important; margin: 0 !important; }
+    .form-intro h2 { font-size: 30px; }
+    .form-card { padding: 24px 20px; max-width: 100%; }
+    .form-grid { grid-template-columns: 1fr; }
+    /* Same min-content guard as careers.html: the comfort/availability tables
+       are min-width'd inside overflow-x:auto wrappers, so let grid/flex items
+       shrink below that width instead of blowing the card past the viewport. */
+    .form-card, .field { min-width: 0; }
+    footer { flex-direction: column; gap: 28px; padding: 40px 20px; align-items: flex-start; }
+    .footer-links { flex-wrap: wrap; gap: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-logo" href="index.html" style="text-decoration:none;display:flex;align-items:center;"><img src="images/logo-horizontal.png" alt="Port City Leash Club" style="height:72px;width:auto;"></a>
+  <ul class="nav-links" id="navLinks">
+    <li><a href="faq.html">FAQ</a></li>
+    <li><a href="portal-login.html">Login</a></li>
+    <li><a class="btn-nav" href="membership-request.html">Join The Leash Club</a></li>
+  </ul>
+  <div class="hamburger" id="hamburger" onclick="toggleNav()" style="display:none;">
+    <span></span><span></span><span></span>
+  </div>
+</nav>
+
+<!-- Hero -->
+<div class="page-hero">
+  <div class="hero-inner">
+    <div class="eyebrow">Walker Screening</div>
+    <h1>A few more questions.</h1>
+    <p class="hero-sub">Thanks for moving forward with us. This short screening helps us understand how you'd handle real situations on the job. Please answer as thoroughly as you can — there are no trick questions.</p>
+  </div>
+</div>
+
+<!-- Screening Form -->
+<main>
+  <div class="form-intro" style="max-width:1100px;margin:0 auto 40px;">
+    <h2>Walker screening</h2>
+    <p>For shortlisted applicants. Your answers go straight to our team — we'll follow up with next steps.</p>
+  </div>
+  <div class="form-shell">
+    <form class="form-card" onsubmit="submitScreening(event)">
+
+      <!-- About You -->
+      <div class="form-section">
+        <div class="section-label">About You</div>
+        <div class="form-grid">
+          <div class="field full"><label>Full name</label><input type="text" name="name" placeholder="First and last name" required></div>
+          <div class="field"><label>Email</label><input type="email" name="email" placeholder="you@email.com" required></div>
+          <div class="field"><label>Phone</label><input type="tel" name="phone" placeholder="(000) 000-0000" required></div>
+        </div>
+      </div>
+
+      <!-- Availability -->
+      <div class="form-section">
+        <div class="section-label">Availability</div>
+        <div class="form-grid">
+          <div class="field full">
+            <label>Which days and times are you available? (select all that apply)</label>
+            <div style="overflow-x:auto;">
+              <div id="availGrid" style="display:grid;grid-template-columns:110px repeat(3,1fr);gap:6px;min-width:520px;">
+                <div></div>
+                <div style="font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">Morning<br><span style="text-transform:none;letter-spacing:0;font-weight:400;">8–11am</span></div>
+                <div style="font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">Early Afternoon<br><span style="text-transform:none;letter-spacing:0;font-weight:400;">11am–2pm</span></div>
+                <div style="font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">Late Afternoon<br><span style="text-transform:none;letter-spacing:0;font-weight:400;">2–5pm</span></div>
+
+                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Monday</div>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-mon-morning" style="accent-color:var(--seafoam);"></label>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-mon-early-afternoon" style="accent-color:var(--seafoam);"></label>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-mon-late-afternoon" style="accent-color:var(--seafoam);"></label>
+
+                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Tuesday</div>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-tue-morning" style="accent-color:var(--seafoam);"></label>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-tue-early-afternoon" style="accent-color:var(--seafoam);"></label>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-tue-late-afternoon" style="accent-color:var(--seafoam);"></label>
+
+                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Wednesday</div>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-wed-morning" style="accent-color:var(--seafoam);"></label>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-wed-early-afternoon" style="accent-color:var(--seafoam);"></label>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-wed-late-afternoon" style="accent-color:var(--seafoam);"></label>
+
+                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Thursday</div>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-thu-morning" style="accent-color:var(--seafoam);"></label>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-thu-early-afternoon" style="accent-color:var(--seafoam);"></label>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-thu-late-afternoon" style="accent-color:var(--seafoam);"></label>
+
+                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Friday</div>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-fri-morning" style="accent-color:var(--seafoam);"></label>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-fri-early-afternoon" style="accent-color:var(--seafoam);"></label>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-fri-late-afternoon" style="accent-color:var(--seafoam);"></label>
+
+                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Saturday</div>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sat-morning" style="accent-color:var(--seafoam);"></label>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sat-early-afternoon" style="accent-color:var(--seafoam);"></label>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sat-late-afternoon" style="accent-color:var(--seafoam);"></label>
+
+                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Sunday</div>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sun-morning" style="accent-color:var(--seafoam);"></label>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sun-early-afternoon" style="accent-color:var(--seafoam);"></label>
+                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sun-late-afternoon" style="accent-color:var(--seafoam);"></label>
+              </div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Do you have reliable transportation?</label>
+            <select name="transportation">
+              <option value="">Select</option>
+              <option>Yes</option>
+              <option>No</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Prior application -->
+      <div class="form-section">
+        <div class="section-label">Your Background</div>
+        <div class="form-grid">
+          <div class="field full">
+            <label>Did you already apply through our website?</label>
+            <div class="radio-row">
+              <label class="radio-pill"><input type="radio" name="already-applied" value="Yes" onchange="toggleDogExp()" required> Yes</label>
+              <label class="radio-pill"><input type="radio" name="already-applied" value="No" onchange="toggleDogExp()"> No</label>
+            </div>
+          </div>
+          <div class="field full" id="dogExpField" style="display:none;">
+            <label>Tell us about your experience with dogs</label>
+            <textarea name="dog-experience" placeholder="E.g. I grew up with dogs, worked at a vet clinic, have walked dogs for neighbors..."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Comfort matrix -->
+      <div class="form-section">
+        <div class="section-label">Comfort &amp; Experience</div>
+        <p class="field-hint">How comfortable are you with each of the following?</p>
+        <div style="overflow-x:auto;">
+          <table class="comfort-table">
+            <thead>
+              <tr>
+                <th>Situation</th>
+                <th>Not comfortable</th>
+                <th>Comfortable</th>
+                <th>Very experienced</th>
+              </tr>
+            </thead>
+            <tbody id="comfortBody"><!-- rows injected by JS from COMFORT_ITEMS --></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Scenarios -->
+      <div class="form-section">
+        <div class="section-label">Scenarios</div>
+        <div class="form-grid">
+          <div class="field full">
+            <label>You're walking a dog and it suddenly becomes aggressive toward another dog. What do you do?</label>
+            <textarea name="scenario-aggressive" placeholder="Walk us through your steps..."></textarea>
+          </div>
+          <div class="field full">
+            <label>Your assigned walks fall within a time window (e.g., Morning 7–10am). If something comes up and you might not make it within your window, what do you do?</label>
+            <textarea name="scenario-timewindow" placeholder="Walk us through your steps..."></textarea>
+          </div>
+          <div class="field full">
+            <label>You arrive for a walk and the key doesn't work, or you can't get into the building. What do you do?</label>
+            <textarea name="scenario-access" placeholder="Walk us through your steps..."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Writing sample -->
+      <div class="form-section">
+        <div class="section-label">Writing Sample</div>
+        <div class="form-grid">
+          <div class="field full">
+            <label>Write a sample text update as if you just finished a great 30-minute walk with a client's dog named Bailey.</label>
+            <textarea name="writing-sample" placeholder="Hi! Just wrapped up with Bailey..."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- References -->
+      <div class="form-section">
+        <div class="section-label">References</div>
+        <p class="field-hint">Please provide two references we can contact.</p>
+        <div class="form-grid">
+          <div class="field"><label>Reference 1 — name</label><input type="text" name="ref1-name" placeholder="Name"></div>
+          <div class="field"><label>Reference 1 — phone or email</label><input type="text" name="ref1-contact" placeholder="Phone or email"></div>
+          <div class="field"><label>Reference 2 — name</label><input type="text" name="ref2-name" placeholder="Name"></div>
+          <div class="field"><label>Reference 2 — phone or email</label><input type="text" name="ref2-contact" placeholder="Phone or email"></div>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <p class="microcopy">Your answers are reviewed by our team only.</p>
+        <button type="submit" class="btn-submit">Submit Screening</button>
+      </div>
+    </form>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-card">
+        <h3>What happens next</h3>
+        <p>We review every screening carefully. If it's a good fit, we'll reach out to schedule an interview and a test walk — you'll hear back within a week.</p>
+      </div>
+      <div class="navy-card">
+        <h3>Questions?</h3>
+        <p>Email us at <a href="mailto:hello@portcityleashclub.com" style="color:var(--seafoam-light);">hello@portcityleashclub.com</a> and we'll get back to you within 24 hours.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div>
+    <div class="footer-brand">Port City Leash Club</div>
+    <div class="footer-sub">Wilmington, NC · portcityleashclub.com</div>
+    <div class="footer-sub" style="margin-top:4px;">hello@portcityleashclub.com</div>
+  </div>
+  <ul class="footer-links">
+    <li><a href="index.html#services">Services</a></li>
+    <li><a href="index.html#membership">Membership</a></li>
+    <li><a href="faq.html">FAQ</a></li>
+    <li><a href="careers.html">Careers</a></li>
+    <li><a href="contact.html">Contact</a></li>
+  </ul>
+</footer>
+
+<script>
+  // Canonical comfort items — keys MUST match firestore.rules validWalkerScreening()
+  // and the admin/dashboard.html renderer's COMFORT_LABELS. Order drives display.
+  const COMFORT_ITEMS = [
+    { key: 'cats', label: 'Cats' },
+    { key: 'oralMedication', label: 'Administering oral medication' },
+    { key: 'injections', label: 'Administering injections' },
+    { key: 'multipleDogs', label: 'Multiple dogs at once' },
+    { key: 'puppies', label: 'Puppies (under 1 year)' },
+    { key: 'seniorSpecialNeeds', label: 'Senior or special-needs dogs' },
+    { key: 'largeHighEnergy', label: 'Large or high-energy breeds' },
+    { key: 'overnightStays', label: 'Overnight stays (12+ hours)' },
+  ];
+  const COMFORT_LEVELS = ['Not comfortable', 'Comfortable', 'Very experienced'];
+
+  // Build the comfort matrix rows from COMFORT_ITEMS so the markup never drifts
+  // from the stored keys.
+  document.getElementById('comfortBody').innerHTML = COMFORT_ITEMS.map(item =>
+    `<tr><td>${item.label}</td>` +
+    COMFORT_LEVELS.map(level =>
+      `<td><input type="radio" name="comfort-${item.key}" value="${level}" required></td>`
+    ).join('') +
+    `</tr>`
+  ).join('');
+
+  function toggleDogExp() {
+    const no = document.querySelector('input[name="already-applied"][value="No"]')?.checked;
+    document.getElementById('dogExpField').style.display = no ? 'flex' : 'none';
+  }
+
+  function showScreeningNotification(text, isError) {
+    const n = document.createElement('div');
+    n.className = 'notification';
+    if (isError) n.style.borderLeftColor = 'var(--rust)';
+    n.textContent = text;
+    document.body.appendChild(n);
+    setTimeout(() => { n.style.opacity = '0'; setTimeout(() => n.remove(), 300); }, 4000);
+  }
+
+  async function submitScreening(e) {
+    e.preventDefault();
+    const btn = e.target.querySelector('.btn-submit');
+    btn.textContent = 'Submitting...'; btn.disabled = true;
+    try {
+      const val = sel => document.querySelector(sel)?.value || '';
+
+      // availability: identical {mon:[...], ...} shape to careers.html so it
+      // renders through the same admin buildApplicationAvailabilityGrid().
+      const availability = (() => {
+        const days = ['mon','tue','wed','thu','fri','sat','sun'];
+        const slots = ['morning','early-afternoon','late-afternoon'];
+        const result = {};
+        days.forEach(day => {
+          result[day] = slots.filter(slot => document.querySelector(`input[name="avail-${day}-${slot}"]`)?.checked);
+        });
+        return result;
+      })();
+
+      // comfortLevels: single object keyed by comfort item (never flat fields).
+      // Always writes all 8 canonical keys ('' when unanswered) so the shape is
+      // stable for the rules allowlist and the admin renderer.
+      const comfortLevels = {};
+      COMFORT_ITEMS.forEach(item => {
+        comfortLevels[item.key] = document.querySelector(`input[name="comfort-${item.key}"]:checked`)?.value || '';
+      });
+
+      const data = {
+        type: 'walker_screening',
+        name: val('input[name=name]'),
+        email: val('input[name=email]'),
+        phone: val('input[name=phone]'),
+        availability,
+        transportation: val('select[name=transportation]'),
+        alreadyApplied: document.querySelector('input[name="already-applied"]:checked')?.value || '',
+        // Only meaningful when they did NOT already apply; '' when hidden.
+        dogExperience: val('textarea[name=dog-experience]'),
+        comfortLevels,
+        scenarioAggressive: val('textarea[name=scenario-aggressive]'),
+        scenarioTimeWindow: val('textarea[name=scenario-timewindow]'),
+        scenarioAccess: val('textarea[name=scenario-access]'),
+        writingSample: val('textarea[name=writing-sample]'),
+        references: [
+          { name: val('input[name=ref1-name]'), contact: val('input[name=ref1-contact]') },
+          { name: val('input[name=ref2-name]'), contact: val('input[name=ref2-contact]') },
+        ],
+        read: false,
+        createdAt: window._serverTimestamp(),
+      };
+
+      await window._addDoc(window._collection(window._db, 'submissions'), data);
+
+      showScreeningNotification('Thank you! Your screening has been submitted — we\'ll be in touch within a week.', false);
+      e.target.reset();
+      toggleDogExp(); // reset conditional field visibility after reset
+    } catch (err) {
+      console.error(err);
+      const detail = (err && typeof err.message === 'string') ? err.message.trim() : '';
+      showScreeningNotification(
+        detail || 'Something went wrong submitting your screening. Please try again, or email hello@portcityleashclub.com directly.',
+        true
+      );
+    }
+    btn.textContent = 'Submit Screening'; btn.disabled = false;
+  }
+</script>
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+  import { getFirestore, collection, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+  const firebaseConfig = {
+    apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
+    authDomain: "port-city-leash-club-827ab.firebaseapp.com",
+    projectId: "port-city-leash-club-827ab",
+    storageBucket: "port-city-leash-club-827ab.firebasestorage.app",
+    messagingSenderId: "649385306352",
+    appId: "1:649385306352:web:8e8a6fcbe8a7eff29dfa35"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  window._db = db;
+  window._addDoc = addDoc;
+  window._collection = collection;
+  window._serverTimestamp = serverTimestamp;
+</script>
+<script>
+  function toggleNav() {
+    document.getElementById("navLinks").classList.toggle("open");
+    document.getElementById("hamburger").classList.toggle("open");
+  }
+  function checkNav() {
+    const burger = document.getElementById("hamburger");
+    const nav = document.getElementById("navLinks");
+    if (window.innerWidth <= 768) { burger.style.display = "flex"; nav.style.display = ""; }
+    else { burger.style.display = "none"; nav.style.display = ""; nav.classList.remove("open"); }
+  }
+  window.addEventListener("resize", checkNav);
+  checkNav();
+  document.querySelectorAll(".nav-links a").forEach(a => a.addEventListener("click", () => {
+    document.getElementById("navLinks").classList.remove("open");
+    document.getElementById("hamburger").classList.remove("open");
+  }));
+</script>
+</body>
+</html>
