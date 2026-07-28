@@ -269,23 +269,37 @@ service cloud.firestore {
         return v in ['Not comfortable', 'Comfortable', 'Very experienced'];
       }
 
+      // Availability cells for the screening grid — its OWN slot set including
+      // 'overnight' (separate from the careers/application grid). Each day must
+      // be a list containing only these slots.
+      function validScreeningAvailDay(d) {
+        return d is list && d.hasOnly(['morning', 'early-afternoon', 'late-afternoon', 'overnight']);
+      }
+
       // Source: walker-screening.html (submitScreening). An unlinked, shortlist-
       // only form — same anonymous-create posture as the four public forms.
-      // availability is the careers-shaped map; comfortLevels is a map whose
-      // keys are the fixed screening items (listed explicitly below, matching
-      // COMFORT_ITEMS in the page); references is a list of {name, contact}.
+      // availability is a map keyed by day, each a list of this grid's slots
+      // (morning/early-afternoon/late-afternoon/overnight); comfortLevels is a
+      // map whose keys are the fixed screening items (matching COMFORT_ITEMS in
+      // the page); references is a list of {name, contact}; backgroundCheckConsent
+      // is a required Yes/No.
       function validWalkerScreening() {
         return request.resource.data.keys().hasOnly(
-            ['type', 'name', 'email', 'phone', 'availability', 'transportation',
-             'alreadyApplied', 'dogExperience', 'comfortLevels',
+            ['type', 'name', 'email', 'phone', 'availability', 'comfortLevels',
              'scenarioAggressive', 'scenarioTimeWindow', 'scenarioAccess',
-             'writingSample', 'references', 'read', 'createdAt'])
+             'writingSample', 'references', 'backgroundCheckConsent',
+             'read', 'createdAt'])
           && request.resource.data.name is string && request.resource.data.name.size() <= 200
           && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
           && request.resource.data.availability is map
-          && request.resource.data.transportation is string && request.resource.data.transportation.size() <= 100
-          && request.resource.data.alreadyApplied is string && request.resource.data.alreadyApplied.size() <= 10
-          && request.resource.data.dogExperience is string && request.resource.data.dogExperience.size() <= 10000
+          && request.resource.data.availability.keys().hasOnly(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'])
+          && validScreeningAvailDay(request.resource.data.availability.mon)
+          && validScreeningAvailDay(request.resource.data.availability.tue)
+          && validScreeningAvailDay(request.resource.data.availability.wed)
+          && validScreeningAvailDay(request.resource.data.availability.thu)
+          && validScreeningAvailDay(request.resource.data.availability.fri)
+          && validScreeningAvailDay(request.resource.data.availability.sat)
+          && validScreeningAvailDay(request.resource.data.availability.sun)
           && request.resource.data.comfortLevels is map
           && request.resource.data.comfortLevels.keys().hasOnly(
               ['cats', 'oralMedication', 'injections', 'multipleDogs', 'puppies',
@@ -304,6 +318,7 @@ service cloud.firestore {
           && request.resource.data.scenarioTimeWindow is string && request.resource.data.scenarioTimeWindow.size() <= 10000
           && request.resource.data.scenarioAccess is string && request.resource.data.scenarioAccess.size() <= 10000
           && request.resource.data.writingSample is string && request.resource.data.writingSample.size() <= 10000
+          && request.resource.data.backgroundCheckConsent in ['Yes', 'No']
           // References: exactly 2 entries, each a map with only {name, contact}
           // (both strings). Indexed access is safe because size() == 2 is checked
           // first and && short-circuits.

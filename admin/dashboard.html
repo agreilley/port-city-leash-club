@@ -1911,6 +1911,38 @@ window.openRequestItem = async (id) => {
       + `<thead>${headRow}</thead><tbody>${bodyRows}</tbody></table>`;
   }
 
+  // Walker-screening availability grid. Deliberately SEPARATE from
+  // buildApplicationAvailabilityGrid (which is 3 slots for careers) — this one
+  // adds the 'overnight' column. Keeping them apart avoids the hardcoded-slot
+  // coupling where adding a slot to one grid silently breaks the other.
+  function buildScreeningAvailabilityGrid(raw) {
+    const dayKeys = ['mon','tue','wed','thu','fri','sat','sun'];
+    const dayLabels = { mon:'Monday', tue:'Tuesday', wed:'Wednesday', thu:'Thursday', fri:'Friday', sat:'Saturday', sun:'Sunday' };
+    const slotKeys = ['morning','early-afternoon','late-afternoon','overnight'];
+    const slotLabels = { 'morning':'Morning', 'early-afternoon':'Early Afternoon', 'late-afternoon':'Late Afternoon', 'overnight':'Overnight' };
+    const norm = {};
+    dayKeys.forEach(d => {
+      const slots = (raw && Array.isArray(raw[d])) ? raw[d] : [];
+      norm[d] = slotKeys.filter(s => slots.includes(s));
+    });
+    const anySelected = dayKeys.some(d => norm[d].length);
+    const header = `<div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Availability</div>`;
+    if (!anySelected) {
+      return `<hr class="modal-divider">${header}<div style="font-size:13px;color:var(--text-light);">None selected.</div>`;
+    }
+    const th = s => `<th style="padding:8px 6px;font-size:11px;font-weight:600;color:var(--navy);text-align:center;border-bottom:1px solid rgba(0,0,0,0.08);">${s}</th>`;
+    const headRow = `<tr style="background:var(--sand);"><th style="padding:8px 12px;font-size:11px;font-weight:600;color:var(--navy);text-align:left;border-bottom:1px solid rgba(0,0,0,0.08);">Day</th>${slotKeys.map(s => th(slotLabels[s])).join('')}</tr>`;
+    const bodyRows = dayKeys.map(d => {
+      const cells = slotKeys.map(s => norm[d].includes(s)
+        ? `<td style="padding:8px;text-align:center;background:var(--seafoam);color:#fff;font-weight:600;">✓</td>`
+        : `<td style="padding:8px;text-align:center;color:#C9C9C9;">·</td>`).join('');
+      return `<tr style="border-top:1px solid rgba(0,0,0,0.05);"><td style="padding:8px 12px;font-size:13px;font-weight:500;color:var(--navy);">${dayLabels[d]}</td>${cells}</tr>`;
+    }).join('');
+    return `<hr class="modal-divider">${header}`
+      + `<table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid rgba(0,0,0,0.08);border-radius:8px;overflow:hidden;">`
+      + `<thead>${headRow}</thead><tbody>${bodyRows}</tbody></table>`;
+  }
+
   // Build clean field list based on submission type
   const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', walker_screening: 'Walker Screening', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report', walker_schedule_request: 'Walker Schedule Request', reschedule: 'Walk Reschedule Request', walk_extension: 'Walk Extension Request', tier_change: 'Membership Tier Change', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Vacation Hold Refund' };
   const title = typeLabels[item.type] || 'Submission';
@@ -2068,10 +2100,11 @@ window.openRequestItem = async (id) => {
       { label: 'Submitted', value: fmtDate(item.createdAt) },
     ];
   } else if (item.type === 'walker_screening') {
-    // Shortlist screening (walker-screening.html). Availability reuses the same
-    // grid as applications; comfortLevels + references are looped (not hardcoded)
-    // so the renderer follows whatever the submission actually stored.
-    availabilityGridHTML = buildApplicationAvailabilityGrid(item.availability);
+    // Shortlist screening (walker-screening.html). Availability uses the
+    // screening-specific grid (4 slots incl. Overnight); comfortLevels +
+    // references are looped (not hardcoded) so the renderer follows whatever
+    // the submission actually stored.
+    availabilityGridHTML = buildScreeningAvailabilityGrid(item.availability);
     const COMFORT_LABELS = {
       cats: 'Cats', oralMedication: 'Administering oral medication',
       injections: 'Administering injections', multipleDogs: 'Multiple dogs at once',
@@ -2089,9 +2122,7 @@ window.openRequestItem = async (id) => {
       { label: 'Name', value: item.name || '–' },
       { label: 'Email', value: item.email || '–' },
       { label: 'Phone', value: item.phone || '–' },
-      { label: 'Transportation', value: item.transportation || '–' },
-      { label: 'Already Applied Online?', value: item.alreadyApplied || '–' },
-      { label: 'Dog Experience', value: item.dogExperience || '–' },
+      { label: 'Background Check Consent', value: item.backgroundCheckConsent || '–' },
       ...comfortRows,
       { label: 'Scenario · Aggressive dog', value: item.scenarioAggressive || '–' },
       { label: 'Scenario · Running late', value: item.scenarioTimeWindow || '–' },

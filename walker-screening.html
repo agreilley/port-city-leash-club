@@ -173,79 +173,14 @@
 
       <!-- Availability -->
       <div class="form-section">
-        <div class="section-label">Availability</div>
+        <div class="section-label">Confirm Availability</div>
+        <p class="field-hint">Please complete this even if you already provided your availability on our website application.</p>
         <div class="form-grid">
           <div class="field full">
             <label>Which days and times are you available? (select all that apply)</label>
             <div style="overflow-x:auto;">
-              <div id="availGrid" style="display:grid;grid-template-columns:110px repeat(3,1fr);gap:6px;min-width:520px;">
-                <div></div>
-                <div style="font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">Morning<br><span style="text-transform:none;letter-spacing:0;font-weight:400;">8–11am</span></div>
-                <div style="font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">Early Afternoon<br><span style="text-transform:none;letter-spacing:0;font-weight:400;">11am–2pm</span></div>
-                <div style="font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">Late Afternoon<br><span style="text-transform:none;letter-spacing:0;font-weight:400;">2–5pm</span></div>
-
-                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Monday</div>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-mon-morning" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-mon-early-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-mon-late-afternoon" style="accent-color:var(--seafoam);"></label>
-
-                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Tuesday</div>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-tue-morning" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-tue-early-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-tue-late-afternoon" style="accent-color:var(--seafoam);"></label>
-
-                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Wednesday</div>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-wed-morning" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-wed-early-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-wed-late-afternoon" style="accent-color:var(--seafoam);"></label>
-
-                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Thursday</div>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-thu-morning" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-thu-early-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-thu-late-afternoon" style="accent-color:var(--seafoam);"></label>
-
-                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Friday</div>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-fri-morning" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-fri-early-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-fri-late-afternoon" style="accent-color:var(--seafoam);"></label>
-
-                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Saturday</div>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sat-morning" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sat-early-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sat-late-afternoon" style="accent-color:var(--seafoam);"></label>
-
-                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Sunday</div>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sun-morning" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sun-early-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sun-late-afternoon" style="accent-color:var(--seafoam);"></label>
-              </div>
+              <div id="availGrid" style="display:grid;grid-template-columns:110px repeat(4,1fr);gap:6px;min-width:640px;"><!-- header + rows injected by JS from SCREEN_DAYS / SCREEN_SLOTS --></div>
             </div>
-          </div>
-          <div class="field">
-            <label>Do you have reliable transportation?</label>
-            <select name="transportation">
-              <option value="">Select</option>
-              <option>Yes</option>
-              <option>No</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <!-- Prior application -->
-      <div class="form-section">
-        <div class="section-label">Your Background</div>
-        <div class="form-grid">
-          <div class="field full">
-            <label>Did you already apply through our website?</label>
-            <div class="radio-row">
-              <label class="radio-pill"><input type="radio" name="already-applied" value="Yes" onchange="toggleDogExp()" required> Yes</label>
-              <label class="radio-pill"><input type="radio" name="already-applied" value="No" onchange="toggleDogExp()"> No</label>
-            </div>
-          </div>
-          <div class="field full" id="dogExpField" style="display:none;">
-            <label>Tell us about your experience with dogs</label>
-            <textarea name="dog-experience" placeholder="E.g. I grew up with dogs, worked at a vet clinic, have walked dogs for neighbors..."></textarea>
           </div>
         </div>
       </div>
@@ -278,7 +213,7 @@
             <textarea name="scenario-aggressive" placeholder="Walk us through your steps..."></textarea>
           </div>
           <div class="field full">
-            <label>Your assigned walks fall within a time window (e.g., Morning 7–10am). If something comes up and you might not make it within your window, what do you do?</label>
+            <label>Your assigned walks fall within a time window (e.g., Morning 8–11am). If something comes up and you might not make it within your window, what do you do?</label>
             <textarea name="scenario-timewindow" placeholder="Walk us through your steps..."></textarea>
           </div>
           <div class="field full">
@@ -308,6 +243,20 @@
           <div class="field"><label>Reference 1 — phone or email</label><input type="text" name="ref1-contact" placeholder="Phone or email"></div>
           <div class="field"><label>Reference 2 — name</label><input type="text" name="ref2-name" placeholder="Name"></div>
           <div class="field"><label>Reference 2 — phone or email</label><input type="text" name="ref2-contact" placeholder="Phone or email"></div>
+        </div>
+      </div>
+
+      <!-- Consent -->
+      <div class="form-section">
+        <div class="section-label">Consent</div>
+        <div class="form-grid">
+          <div class="field full">
+            <label>Do you consent to a background check as part of this hiring process?</label>
+            <div class="radio-row">
+              <label class="radio-pill"><input type="radio" name="background-check" value="Yes" required> Yes</label>
+              <label class="radio-pill"><input type="radio" name="background-check" value="No"> No</label>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -347,6 +296,28 @@
 </footer>
 
 <script>
+  // Availability grid — walker-screening's OWN local day/slot lists, kept
+  // deliberately separate from careers.html's application grid so adding the
+  // "overnight" slot here can never silently affect that grid (or its admin
+  // renderer). The admin side has its own matching buildScreeningAvailabilityGrid.
+  const SCREEN_DAYS = [['mon','Monday'],['tue','Tuesday'],['wed','Wednesday'],['thu','Thursday'],['fri','Friday'],['sat','Saturday'],['sun','Sunday']];
+  const SCREEN_SLOTS = [
+    { key: 'morning', label: 'Morning', sub: '8–11am' },
+    { key: 'early-afternoon', label: 'Early Afternoon', sub: '11am–2pm' },
+    { key: 'late-afternoon', label: 'Late Afternoon', sub: '2–5pm' },
+    { key: 'overnight', label: 'Overnight', sub: '12+ hrs' },
+  ];
+  (() => {
+    const headerCell = s => `<div style="font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">${s.label}<br><span style="text-transform:none;letter-spacing:0;font-weight:400;">${s.sub}</span></div>`;
+    const slotCell = (dayKey, s) => `<label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-${dayKey}-${s.key}" style="accent-color:var(--seafoam);"></label>`;
+    document.getElementById('availGrid').innerHTML =
+      '<div></div>' + SCREEN_SLOTS.map(headerCell).join('') +
+      SCREEN_DAYS.map(([key, label]) =>
+        `<div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">${label}</div>` +
+        SCREEN_SLOTS.map(s => slotCell(key, s)).join('')
+      ).join('');
+  })();
+
   // Canonical comfort items — keys MUST match firestore.rules validWalkerScreening()
   // and the admin/dashboard.html renderer's COMFORT_LABELS. Order drives display.
   const COMFORT_ITEMS = [
@@ -361,8 +332,7 @@
   ];
   const COMFORT_LEVELS = ['Not comfortable', 'Comfortable', 'Very experienced'];
 
-  // Build the comfort matrix rows from COMFORT_ITEMS so the markup never drifts
-  // from the stored keys.
+  // Comfort radios are required (server-side rules also enforce a real level).
   document.getElementById('comfortBody').innerHTML = COMFORT_ITEMS.map(item =>
     `<tr><td>${item.label}</td>` +
     COMFORT_LEVELS.map(level =>
@@ -370,11 +340,6 @@
     ).join('') +
     `</tr>`
   ).join('');
-
-  function toggleDogExp() {
-    const no = document.querySelector('input[name="already-applied"][value="No"]')?.checked;
-    document.getElementById('dogExpField').style.display = no ? 'flex' : 'none';
-  }
 
   function showScreeningNotification(text, isError) {
     const n = document.createElement('div');
@@ -392,21 +357,19 @@
     try {
       const val = sel => document.querySelector(sel)?.value || '';
 
-      // availability: identical {mon:[...], ...} shape to careers.html so it
-      // renders through the same admin buildApplicationAvailabilityGrid().
+      // availability: {mon:[...], ...} using this page's local SCREEN_SLOTS
+      // (includes 'overnight'). Shape mirrors careers but is built independently.
       const availability = (() => {
-        const days = ['mon','tue','wed','thu','fri','sat','sun'];
-        const slots = ['morning','early-afternoon','late-afternoon'];
         const result = {};
-        days.forEach(day => {
-          result[day] = slots.filter(slot => document.querySelector(`input[name="avail-${day}-${slot}"]`)?.checked);
+        SCREEN_DAYS.forEach(([day]) => {
+          result[day] = SCREEN_SLOTS.map(s => s.key)
+            .filter(slot => document.querySelector(`input[name="avail-${day}-${slot}"]`)?.checked);
         });
         return result;
       })();
 
       // comfortLevels: single object keyed by comfort item (never flat fields).
-      // Always writes all 8 canonical keys ('' when unanswered) so the shape is
-      // stable for the rules allowlist and the admin renderer.
+      // Radios are required, so every key gets a real level.
       const comfortLevels = {};
       COMFORT_ITEMS.forEach(item => {
         comfortLevels[item.key] = document.querySelector(`input[name="comfort-${item.key}"]:checked`)?.value || '';
@@ -418,10 +381,6 @@
         email: val('input[name=email]'),
         phone: val('input[name=phone]'),
         availability,
-        transportation: val('select[name=transportation]'),
-        alreadyApplied: document.querySelector('input[name="already-applied"]:checked')?.value || '',
-        // Only meaningful when they did NOT already apply; '' when hidden.
-        dogExperience: val('textarea[name=dog-experience]'),
         comfortLevels,
         scenarioAggressive: val('textarea[name=scenario-aggressive]'),
         scenarioTimeWindow: val('textarea[name=scenario-timewindow]'),
@@ -431,6 +390,8 @@
           { name: val('input[name=ref1-name]'), contact: val('input[name=ref1-contact]') },
           { name: val('input[name=ref2-name]'), contact: val('input[name=ref2-contact]') },
         ],
+        // Required Yes/No radio — value is always 'Yes' or 'No' here.
+        backgroundCheckConsent: document.querySelector('input[name="background-check"]:checked')?.value || '',
         read: false,
         createdAt: window._serverTimestamp(),
       };
@@ -439,7 +400,6 @@
 
       showScreeningNotification('Thank you! Your screening has been submitted — we\'ll be in touch within a week.', false);
       e.target.reset();
-      toggleDogExp(); // reset conditional field visibility after reset
     } catch (err) {
       console.error(err);
       const detail = (err && typeof err.message === 'string') ? err.message.trim() : '';
