@@ -262,6 +262,13 @@
       </div>
     </form>
 
+    <!-- Success confirmation: replaces the form after a successful write. -->
+    <div class="form-card" id="screening-success" style="display:none;">
+      <div class="section-label">Screening received</div>
+      <h2 style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:300;color:var(--navy);margin:8px 0 12px;">Thanks &mdash; your screening has been submitted.</h2>
+      <p style="font-size:15px;color:var(--text-mid);line-height:1.7;">We review every screening carefully. If it's a good fit, we'll reach out to schedule an interview. You'll hear back within a week. Questions in the meantime? Email <a href="mailto:hello@portcityleashclub.com">hello@portcityleashclub.com</a>.</p>
+    </div>
+
     <!-- Sidebar -->
     <div class="sidebar">
       <div class="sidebar-card">
@@ -394,8 +401,16 @@
 
       await window._addDoc(window._collection(window._db, 'submissions'), data);
 
+      // Success: swap the form for a persistent confirmation and scroll it into
+      // view so it can't be missed the way a fleeting toast can. Leave the form
+      // hidden (not just reset) so the button is gone and double-submit is impossible.
       showScreeningNotification('Thank you! Your screening has been submitted. We\'ll be in touch within a week.', false);
       e.target.reset();
+      const success = document.getElementById('screening-success');
+      e.target.style.display = 'none';
+      success.style.display = 'block';
+      success.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
     } catch (err) {
       console.error(err);
       const detail = (err && typeof err.message === 'string') ? err.message.trim() : '';
@@ -404,6 +419,8 @@
         true
       );
     }
+    // Only reached on failure (success path returns above), so the button is
+    // re-enabled for a retry after an error and never after a successful write.
     btn.textContent = 'Submit Screening'; btn.disabled = false;
   }
 </script>
