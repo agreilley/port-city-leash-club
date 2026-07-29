@@ -178,8 +178,12 @@
     h2 { font-size: 32px; }
   }
 </style>
+<script src="/js/meta-pixel.js"></script>
 </head>
 <body>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
+/></noscript>
 <nav>
   <a href="index.html" style="text-decoration:none;display:flex;align-items:center;"><img src="images/logo-horizontal.png" alt="Port City Leash Club" style="height:72px;width:auto;"></a>
   <ul class="nav-links" id="navLinks">
@@ -606,6 +610,7 @@
         createdAt: window._serverTimestamp()
       };
       const docRef = await window._addDoc(window._collection(window._db, 'submissions'), data);
+      window.pclcTrack('Lead');
 
       if (window._saveCardOnFile) {
         const cardResult = await window._saveCardOnFile({ name: data.ownerName, email: data.email, submissionId: docRef.id });
