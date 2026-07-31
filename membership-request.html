@@ -508,6 +508,12 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       document.body.appendChild(notif);
     }
     notif.textContent = msg;
+    // Keep the toast clear of the mobile sticky price bar (fixed at bottom:0).
+    // offsetHeight includes its safe-area padding; fall back to 28px on desktop
+    // where the bar is display:none.
+    const bar = document.getElementById('mobilePriceBar');
+    const barVisible = bar && getComputedStyle(bar).display !== 'none';
+    notif.style.bottom = barVisible ? (bar.offsetHeight + 16) + 'px' : '28px';
     notif.style.opacity = '1';
     clearTimeout(notif._timeout);
     notif._timeout = setTimeout(() => notif.style.opacity = '0', 3000);
