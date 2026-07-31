@@ -40,7 +40,7 @@ export function mountCardField(elementId) {
     style: {
       base: {
         fontFamily: "'DM Sans', sans-serif",
-        fontSize: '15px',
+        fontSize: '16px', // >=16px prevents iOS Safari auto-zoom on card-field focus
         color: '#1A1A1A',
         '::placeholder': { color: '#B0B0B0' },
       },

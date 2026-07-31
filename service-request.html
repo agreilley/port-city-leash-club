@@ -717,13 +717,30 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   document.getElementById('addon-extra-pet')?.addEventListener('change', updateSummary);
   document.getElementById('addon-medication')?.addEventListener('change', updateSummary);
 
-  // Mobile: slide the sticky price bar out of the way while a text/select/date
-  // field is focused, so it doesn't fight the on-screen keyboard. Chips are
-  // labels/buttons (no keyboard), so the bar stays visible while selecting.
+  // Mobile: slide the sticky price bar out of the way only while a field that
+  // raises the on-screen keyboard is focused. On iOS a position:fixed;bottom:0
+  // bar sits BEHIND the keyboard, and during the keyboard/scroll transition it
+  // can flicker into mid-screen — hiding it avoids that. <select>, checkboxes,
+  // and date inputs open native pickers (no keyboard), so the bar stays put.
   const priceBar = document.getElementById('mobilePriceBar');
   if (priceBar) {
-    document.addEventListener('focusin',  e => { if (e.target.matches('input, select, textarea')) priceBar.classList.add('is-hidden'); });
-    document.addEventListener('focusout', e => { if (e.target.matches('input, select, textarea')) priceBar.classList.remove('is-hidden'); });
+    const KEYBOARD_TYPES = ['text', 'email', 'tel', 'number', 'search', 'url', 'password'];
+    const raisesKeyboard = el => {
+      if (el.tagName === 'TEXTAREA') return true;
+      if (el.tagName !== 'INPUT') return false;
+      return KEYBOARD_TYPES.includes((el.getAttribute('type') || 'text').toLowerCase());
+    };
+    let showBarTimer;
+    document.addEventListener('focusin', e => {
+      if (raisesKeyboard(e.target)) { clearTimeout(showBarTimer); priceBar.classList.add('is-hidden'); }
+    });
+    document.addEventListener('focusout', e => {
+      if (!raisesKeyboard(e.target)) return;
+      // Debounce: moving between two fields fires focusout→focusin; the pending
+      // focusin re-hides before this 150ms timer restores, so the bar never flashes.
+      clearTimeout(showBarTimer);
+      showBarTimer = setTimeout(() => priceBar.classList.remove('is-hidden'), 150);
+    });
   }
 
   updateServiceFields();
