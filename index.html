@@ -615,6 +615,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           <button id="notify-btn" class="search-btn">Notify me</button>
         </div>
         <div id="notify-confirm" style="margin-top:10px;color:#2D6A40;font-size:13px;display:none;">✓ Thanks! We'll notify you when we expand.</div>
+        <div id="notify-error" style="margin-top:10px;color:var(--rust);font-size:13px;display:none;">Sorry, something went wrong. Please try again, or email <a href="mailto:hello@portcityleashclub.com" style="color:var(--rust);">hello@portcityleashclub.com</a>.</div>
       </div>
 
       <div id="map" style="border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,0.08);aspect-ratio:1200/630;background:#e8e0d5;margin-top:16px;"></div>
@@ -696,6 +697,10 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
   // Nominatim autocomplete
   const addressInput = document.getElementById('address-input');
+  // Last coverage-check result for the address currently in the box. Reset on
+  // every edit so a stale check can't be attributed to a newly-typed address.
+  let lastResolved = null;
+  addressInput.addEventListener('input', () => { lastResolved = null; });
   const suggestionsList = document.createElement('ul');
   suggestionsList.id = 'suggestions';
   suggestionsList.style.cssText = `
@@ -790,6 +795,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
                         // already returned (no extra geocode call needed here).
                         const loc = place.geometry.location;
                         const isInServiceArea = isServed(zipCode, loc.lat(), loc.lng());
+                        lastResolved = { zip: zipCode || null, lat: loc.lat(), lng: loc.lng(), inArea: isInServiceArea };
                         const resultIn = document.getElementById('result-in');
                         const resultOut = document.getElementById('result-out');
                         
@@ -804,6 +810,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
                         // Place lookup failed — fall back to a plain zip
                         // substring match so the user still gets an answer.
                         const inArea = SIMPLE_ZIPS.some(zip => addressInput.value.includes(zip));
+                        lastResolved = { zip: null, lat: null, lng: null, inArea };
                         document.getElementById('result-in').style.display = inArea ? 'flex' : 'none';
                         document.getElementById('result-out').style.display = inArea ? 'none' : 'block';
                       }
@@ -853,7 +860,15 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       return;
     }
 
-    const showResult = (inArea) => {
+    const showResult = (inArea, resolved) => {
+      // Record what was checked so the Notify-me write can attach it. Coords are
+      // null unless the geocoder returned a real location for this address.
+      lastResolved = {
+        zip: (resolved && resolved.zip) || null,
+        lat: (resolved && typeof resolved.lat === 'number') ? resolved.lat : null,
+        lng: (resolved && typeof resolved.lng === 'number') ? resolved.lng : null,
+        inArea,
+      };
       resultIn.style.display = inArea ? 'flex' : 'none';
       resultOut.style.display = inArea ? 'none' : 'block';
     };
@@ -876,7 +891,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       const decide = (loc, zipCode) => {
         if (map) { map.setCenter(loc); map.setZoom(14); }
         if (zipCode) {
-          showResult(isServed(zipCode, loc.lat(), loc.lng()));
+          showResult(isServed(zipCode, loc.lat(), loc.lng()), { zip: zipCode, lat: loc.lat(), lng: loc.lng() });
           return;
         }
         geocoder.geocode({ location: loc }, (revResults, revStatus) => {
@@ -886,10 +901,10 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
             (revResults[0].address_components || []).forEach(c => {
               if (c.types.includes('postal_code')) revZip = c.long_name;
             });
-            showResult(isServed(revZip, revLoc.lat(), revLoc.lng()));
+            showResult(isServed(revZip, revLoc.lat(), revLoc.lng()), { zip: revZip, lat: revLoc.lat(), lng: revLoc.lng() });
           } else {
             // Reverse lookup failed — decide on the radius alone.
-            showResult(isServed(null, loc.lat(), loc.lng()));
+            showResult(isServed(null, loc.lat(), loc.lng()), { zip: null, lat: loc.lat(), lng: loc.lng() });
           }
         });
       };
@@ -931,10 +946,36 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     if (e.key === 'Enter') checkBtn.click();
   });
 
+  // ── Waitlist capture (Notify me) ──────────────────────────────────────────
+  // Persisted via a direct Firestore REST write — no SDK, so the homepage stays
+  // light. Same public Firebase web key as the other pages; the create is
+  // unauthenticated and gated server-side by firestore.rules (validWaitlist).
+  const WAITLIST_URL = 'https://firestore.googleapis.com/v1/projects/'
+    + 'port-city-leash-club-827ab/databases/(default)/documents/submissions'
+    + '?key=AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM';
+  const notifyError = document.getElementById('notify-error');
+
+  // Firestore REST typed-JSON body. zip/lat/lng/inArea are null when the address
+  // wasn't freshly resolved (e.g. edited after checking).
+  function waitlistDoc(email, address, resolved) {
+    const r = resolved || {};
+    return { fields: {
+      type:      { stringValue: 'waitlist' },
+      email:     { stringValue: email },
+      address:   { stringValue: address },
+      zip:       (r.zip != null) ? { stringValue: String(r.zip) } : { nullValue: null },
+      lat:       (typeof r.lat === 'number') ? { doubleValue: r.lat } : { nullValue: null },
+      lng:       (typeof r.lng === 'number') ? { doubleValue: r.lng } : { nullValue: null },
+      inArea:    (typeof r.inArea === 'boolean') ? { booleanValue: r.inArea } : { nullValue: null },
+      read:      { booleanValue: false },
+      createdAt: { timestampValue: new Date().toISOString() },
+    }};
+  }
+
   // Notify me button
-  notifyBtn.addEventListener('click', () => {
+  notifyBtn.addEventListener('click', async () => {
     const email = notifyEmail.value.trim();
-    
+
     if (!email) {
       alert('Please enter your email address');
       return;
@@ -945,12 +986,35 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       return;
     }
 
-    // Show confirmation
-    notifyEmail.style.display = 'none';
-    notifyBtn.style.display = 'none';
-    notifyConfirm.style.display = 'block';
-    
-    console.log('Email captured:', email);
+    // Always capture the address exactly as it sits in the field right now —
+    // never a value cached from an earlier check. lastResolved is null if the
+    // address was edited since the last coverage check.
+    const address = addressInput.value.trim();
+    const resolved = lastResolved;
+
+    notifyBtn.disabled = true;
+    notifyError.style.display = 'none';
+    try {
+      const resp = await fetch(WAITLIST_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(waitlistDoc(email, address, resolved)),
+      });
+      // fetch() does NOT reject on 4xx/5xx — a rules denial comes back as a 403
+      // with ok === false, so this check is what keeps a failed write from
+      // showing the success confirmation.
+      if (!resp.ok) throw new Error('Waitlist write failed: HTTP ' + resp.status);
+
+      // Success path — only reached on a confirmed write.
+      notifyEmail.style.display = 'none';
+      notifyBtn.style.display = 'none';
+      notifyConfirm.style.display = 'block';
+    } catch (err) {
+      // Failure path — input + button stay visible, no success shown.
+      console.error(err);
+      notifyBtn.disabled = false;
+      notifyError.style.display = 'block';
+    }
   });
 
   // Scroll-triggered fade-in for membership steps

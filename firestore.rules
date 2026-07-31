@@ -334,6 +334,24 @@ service cloud.firestore {
           && request.resource.data.references[1].contact is string && request.resource.data.references[1].contact.size() <= 200;
       }
 
+      // Source: index.html (Notify-me waitlist capture on the homepage coverage
+      // checker). Unauthenticated public write — same posture as the other
+      // anonymous forms. address is the raw typed string; zip/lat/lng are the
+      // resolved coverage-check location, null when the address wasn't resolved
+      // or was edited after checking. inArea is the check outcome (a bool), or
+      // null when the submitted address wasn't freshly verified. email / read /
+      // createdAt / type are covered by subBase().
+      function validWaitlist() {
+        return request.resource.data.keys().hasOnly(
+            ['type', 'email', 'address', 'zip', 'lat', 'lng', 'inArea', 'read', 'createdAt'])
+          && request.resource.data.address is string && request.resource.data.address.size() <= 500
+          && (request.resource.data.zip == null
+              || (request.resource.data.zip is string && request.resource.data.zip.size() <= 20))
+          && (request.resource.data.lat == null || request.resource.data.lat is number)
+          && (request.resource.data.lng == null || request.resource.data.lng is number)
+          && (request.resource.data.inArea == null || request.resource.data.inArea is bool);
+      }
+
       allow create: if request.auth != null
         || (subBase() && (
               (request.resource.data.type == 'contact' && validContact())
@@ -341,6 +359,7 @@ service cloud.firestore {
            || (request.resource.data.type == 'service_request' && validService())
            || (request.resource.data.type == 'application' && validApplication())
            || (request.resource.data.type == 'walker_screening' && validWalkerScreening())
+           || (request.resource.data.type == 'waitlist' && validWaitlist())
         ));
 
       allow read: if request.auth != null && resource.data.memberId == request.auth.uid;
