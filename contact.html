@@ -68,8 +68,6 @@
   .footer-links a { font-size: 13px; color: rgba(255,255,255,0.5); text-decoration: none; }
   .footer-links a:hover { color: white; }
 
-  .notification { position: fixed; top: 20px; right: 20px; background: white; border: 1px solid #E5E0D8; border-left: 4px solid #8FA8A2; border-radius: 12px; padding: 20px 24px; box-shadow: 0 4px 20px rgba(13,27,42,0.15); font-size: 15px; color: #0D1B2A; max-width: 400px; z-index: 10000; animation: slideIn 0.3s ease-out; }
-  @keyframes slideIn { from { opacity:0; transform:translateX(400px); } to { opacity:1; transform:translateX(0); } }
 
   @media (max-width: 800px) {
     nav { padding: 0 24px; }
@@ -168,6 +166,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       <h2>Send us a message</h2>
       <p>Have a specific question? Fill out the form below and we'll get back to you within 24 hours.</p>
       <form onsubmit="submitContact(event)">
+        <!-- Post-submit status banner mounts here (top of the form, above the first field) -->
+        <div data-status-container></div>
         <div class="form-grid">
           <div class="field"><label>Name</label><input type="text" name="name" placeholder="Your name" required></div>
           <div class="field"><label>Email</label><input type="email" name="email" placeholder="you@email.com" required></div>
@@ -208,15 +208,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 </footer>
 
 <script>
-  function showContactNotification(text, isError) {
-    const n = document.createElement('div');
-    n.className = 'notification';
-    if (isError) n.style.borderLeftColor = 'var(--rust)';
-    n.textContent = text;
-    document.body.appendChild(n);
-    setTimeout(() => { n.style.transition = 'opacity 0.3s'; n.style.opacity = '0'; setTimeout(() => n.remove(), 300); }, 4000);
-  }
-
   async function submitContact(e) {
     e.preventDefault();
     const btn = e.target.querySelector('.btn-submit');
@@ -236,12 +227,12 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       };
       await window._addDoc(window._collection(window._db, 'submissions'), data);
       // Only show success — and only reset the form — once the write is confirmed.
-      showContactNotification("Message sent! We'll be in touch within 24 hours.", false);
+      window._showSuccess("Message sent! We'll be in touch within 24 hours.");
       e.target.reset();
     } catch(err) {
       console.error(err);
       // Leave the form filled in so nothing typed gets lost on retry.
-      showContactNotification("Something went wrong sending your message. Please try again, or email hello@portcityleashclub.com directly.", true);
+      window._showError("Something went wrong sending your message. Please try again, or email hello@portcityleashclub.com directly.");
     }
     btn.textContent = 'Send Message'; btn.disabled = false;
   }
@@ -249,6 +240,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
   import { getFirestore, collection, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+  import { showSuccess, showError } from '/js/status.js';
   const firebaseConfig = {
     apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
     authDomain: "port-city-leash-club-827ab.firebaseapp.com",
@@ -263,6 +255,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   window._addDoc = addDoc;
   window._collection = collection;
   window._serverTimestamp = serverTimestamp;
+  window._showSuccess = showSuccess;   // bridge ES module -> classic submit handler
+  window._showError = showError;
 </script>
 <script>
   function toggleNav() {
