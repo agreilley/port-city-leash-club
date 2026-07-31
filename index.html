@@ -7,6 +7,38 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Port City Leash Club</title>
+<!-- initMap() and the shared `map` global are defined BEFORE the async Maps
+     loader below, so the loader's callback can never fire before initMap
+     exists (previously initMap was defined ~650 lines down in the body — a
+     parser-timing race that broke once a render-blocking script was added). -->
+<script>
+  let map;
+  function initMap() {
+    const el = document.getElementById('map');
+    // The async Maps callback isn't tied to DOMContentLoaded — if it beats the
+    // parser to the #map element, defer the real init until the DOM is ready
+    // (when #map is guaranteed present). once:true + the `map` guard below keep
+    // this safe against re-entry / double-init.
+    if (!el) {
+      document.addEventListener('DOMContentLoaded', initMap, { once: true });
+      return;
+    }
+    if (map) return; // already initialized — don't rebuild
+    map = new google.maps.Map(el, {
+      zoom: 12,
+      center: { lat: 34.2257, lng: -77.9447 }, // Wilmington, NC
+      mapTypeControl: false,
+      fullscreenControl: false,
+      streetViewControl: false
+    });
+    // Add a marker for Wilmington center
+    new google.maps.Marker({
+      position: { lat: 34.2257, lng: -77.9447 },
+      map: map,
+      title: 'Wilmington, NC'
+    });
+  }
+</script>
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAbBk5q33zuoqtLTOpoZ5X6UIRJrSHZ4ug&libraries=places&callback=initMap" async defer></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
@@ -306,7 +338,7 @@
     .sitting-card-price { font-size: 26px; }
   }
 </style>
-<script src="/js/meta-pixel.js"></script>
+<script src="/js/meta-pixel.js" defer></script>
 </head>
 <body>
 <noscript><img height="1" width="1" style="display:none"
@@ -659,26 +691,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     return false;
   }
   
-  // Initialize Google Map (called by API callback)
-  function initMap() {
-    map = new google.maps.Map(document.getElementById('map'), {
-      zoom: 12,
-      center: { lat: 34.2257, lng: -77.9447 }, // Wilmington, NC
-      mapTypeControl: false,
-      fullscreenControl: false,
-      streetViewControl: false
-    });
-    
-    // Add a marker for Wilmington center
-    new google.maps.Marker({
-      position: { lat: 34.2257, lng: -77.9447 },
-      map: map,
-      title: 'Wilmington, NC'
-    });
-  }
-  
-  // Map variable (will be initialized by callback)
-  let map;
+  // initMap() and the shared `map` global are defined in the <head>, above the
+  // async Maps loader (hoisted to remove a callback-timing race).
 
   // Nominatim autocomplete
   const addressInput = document.getElementById('address-input');
