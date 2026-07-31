@@ -475,15 +475,35 @@
     element.closest('.time-card').classList.add('selected');
   }
 
-  function submitMembershipChange(e) {
+  async function submitMembershipChange(e) {
     e.preventDefault();
     
     const plan = document.querySelector('input[name="plan"]:checked').value;
     const details = document.querySelector(`.plan-card[data-plan="${plan}"]`);
     const planName = details.querySelector('.plan-name').textContent;
     
-    showNotification(`Membership upgraded to ${planName}`);
-    setTimeout(() => window.history.back(), 1500);
+    const submitBtn = document.getElementById('submitButton');
+    const originalLabel = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting…';
+
+    // The Firestore write lives in the module script below (window.submitUpgrade).
+    // Delegate to it, await the result, and only confirm + navigate on real success.
+    if (typeof window.submitUpgrade !== 'function') {
+      showNotification('Something went wrong. Please try again.', 'error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalLabel;
+      return;
+    }
+    const result = await window.submitUpgrade(planName.trim());
+    if (result && result.success) {
+      showNotification(`Change to ${planName.trim()} requested — we'll update your membership within 24 hours.`);
+      setTimeout(() => window.history.back(), 1500);
+    } else {
+      showNotification(result && result.error ? `Couldn't submit your request: ${result.error}` : 'Something went wrong. Please try again.', 'error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalLabel;
+    }
   }
 
   function showNotification(message, type = 'success') {
@@ -528,7 +548,6 @@ onAuthStateChanged(auth, async (user) => {
     const snap = await getDoc(doc(db, 'members', user.uid));
     if (!snap.exists()) return;
     memberData = { id: snap.id, ...snap.data() };
-    loadPageData();
     updateSidebar();
   } catch(e) { console.error(e.message); }
 });
@@ -547,20 +566,11 @@ function updateSidebar() {
 
 window.signOutMember = () => signOut(auth).then(() => window.location.href = 'portal-login.html');
 
-function loadPageData() {
-  if (!memberData) return;
-  const tier = memberData.tier || 'Standard';
-  const isTravelOnly = tier === 'Travel';
-  const currentEl = document.getElementById('currentTier');
-  if (currentEl) currentEl.textContent = isTravelOnly ? 'No walk membership yet' : tier;
-  // Highlight current tier card (Travel-only clients have no walk tier card to highlight)
-  document.querySelectorAll('.tier-card').forEach(card => {
-    if (card.dataset.tier === tier) card.classList.add('current');
-  });
-}
 
+// Pure writer for the tier-change request. Returns { success } / { success, error }
+// so the caller (submitMembershipChange) owns all user feedback and navigation.
 window.submitUpgrade = async (newTier) => {
-  if (!userId) return;
+  if (!userId) return { success: false, error: 'You appear to be signed out. Please log in again.' };
   try {
     await addDoc(collection(db, 'submissions'), {
       type: 'tier_change',
@@ -572,8 +582,11 @@ window.submitUpgrade = async (newTier) => {
       read: false,
       createdAt: serverTimestamp(),
     });
-    alert('Request submitted! We\'ll update your membership within 24 hours.');
-  } catch(e) { alert('Error: ' + e.message); }
+    return { success: true };
+  } catch(e) {
+    console.error('tier_change write failed:', e);
+    return { success: false, error: e.message };
+  }
 };
 
 </script>
