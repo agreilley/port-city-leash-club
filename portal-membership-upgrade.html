@@ -243,6 +243,8 @@
 <main>
   <div class="form-shell">
     <form onsubmit="submitMembershipChange(event)">
+      <!-- Post-submit status banner mounts here (top of the form, above the first field) -->
+      <div data-status-container></div>
       <!-- Plan Selection -->
       <div class="form-section">
         <div class="section-kicker">Step 1 of 2</div>
@@ -490,17 +492,19 @@
     // The Firestore write lives in the module script below (window.submitUpgrade).
     // Delegate to it, await the result, and only confirm + navigate on real success.
     if (typeof window.submitUpgrade !== 'function') {
-      showNotification('Something went wrong. Please try again.', 'error');
+      window._showError('Something went wrong. Please try again.');
       submitBtn.disabled = false;
       submitBtn.textContent = originalLabel;
       return;
     }
     const result = await window.submitUpgrade(planName.trim());
     if (result && result.success) {
-      showNotification(`Change to ${planName.trim()} requested — we'll update your membership within 24 hours.`);
-      setTimeout(() => window.history.back(), 1500);
+      window._showSuccess(`Change to ${planName.trim()} requested — we'll update your membership within 24 hours.`);
+      // Return to the account page, but only after the success banner's full
+      // ~6s visible window so the confirmation is readable first (was 1500ms).
+      setTimeout(() => window.history.back(), 6500);
     } else {
-      showNotification(result && result.error ? `Couldn't submit your request: ${result.error}` : 'Something went wrong. Please try again.', 'error');
+      window._showError(result && result.error ? `Couldn't submit your request: ${result.error}` : 'Something went wrong. Please try again.');
       submitBtn.disabled = false;
       submitBtn.textContent = originalLabel;
     }
@@ -535,6 +539,9 @@
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { showSuccess, showError } from '/js/status.js';
+window._showSuccess = showSuccess;   // bridge ES module -> classic submit handler
+window._showError = showError;
 const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
 const app = getApps().find(a => a.name === 'member-app') || initializeApp(cfg, 'member-app');
 const auth = getAuth(app);

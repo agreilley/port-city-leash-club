@@ -437,6 +437,9 @@
         <p>Manage your membership and preferences</p>
       </div>
 
+      <!-- Post-submit status banner mounts here (top of the content, above the sections) -->
+      <div data-status-container></div>
+
       <!-- Membership Snapshot -->
       <div class="section-card">
         <h2 class="section-title">Your Membership</h2>
@@ -674,6 +677,7 @@
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { showSuccess, showError } from '/js/status.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
 const app = getApps().find(a => a.name === 'member-app') || initializeApp(cfg, 'member-app');
@@ -761,6 +765,7 @@ window.saveAccount = async () => {
   const selectedDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
     .filter(day => el('day-' + day)?.checked);
   const timeSlot = document.querySelector('input[name="timeSlot"]:checked')?.value;
+  let scheduleSaved = false;
   if (selectedDays.length > 0 && timeSlot) {
     try {
       const res = await httpsCallable(functions, 'updateWalkSchedule')({
@@ -768,11 +773,12 @@ window.saveAccount = async () => {
         defaultTimeSlot: timeSlot,
       });
       if (!res.data?.success) {
-        showNotif(res.data?.error || 'Could not save your walk schedule.', true);
+        showError(res.data?.error || 'Could not save your walk schedule.');
         return;
       }
+      scheduleSaved = true;
     } catch(e) {
-      showNotif('Could not save your walk schedule: ' + e.message, true);
+      showError('Could not save your walk schedule: ' + e.message);
       return;
     }
   }
@@ -786,17 +792,12 @@ window.saveAccount = async () => {
       phone: el('phone')?.value || '',
       address: el('address')?.value || '',
     });
-    showNotif('Changes saved!');
-  } catch(e) { showNotif('Error: ' + e.message, true); }
+    // Only claim the walk schedule was saved when the callable actually ran —
+    // when no days/time are selected the schedule half is (correctly) skipped.
+    showSuccess(scheduleSaved ? 'Changes saved.' : 'Your details were saved.');
+  } catch(e) { showError('Error: ' + e.message); }
 };
 
-function showNotif(msg, error) {
-  const n = document.createElement('div');
-  n.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:' + (error ? '#C17B6F' : '#2D9E5E') + ';color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
-  n.textContent = msg;
-  document.body.appendChild(n);
-  setTimeout(() => n.remove(), 3000);
-}
 
 // ─── Change Password ─────────────────────────────────────────────────────
 // Firebase requires a recent login to change a password, so we reauthenticate
@@ -823,12 +824,12 @@ document.getElementById('updatePasswordBtn')?.addEventListener('click', async ()
   const confirm = document.getElementById('confirmNewPassword').value;
 
   // Validate locally before touching Firebase.
-  if (next.length < 8) { showNotif('Password must be at least 8 characters', true); return; }
-  if (next !== confirm) { showNotif("New passwords don't match", true); return; }
-  if (next === current) { showNotif('New password must be different from your current one', true); return; }
+  if (next.length < 8) { showError('Password must be at least 8 characters'); return; }
+  if (next !== confirm) { showError("New passwords don't match"); return; }
+  if (next === current) { showError('New password must be different from your current one'); return; }
 
   const user = auth.currentUser;
-  if (!user || !user.email) { showNotif('You must be signed in to change your password', true); return; }
+  if (!user || !user.email) { showError('You must be signed in to change your password'); return; }
 
   const btn = document.getElementById('updatePasswordBtn');
   btn.disabled = true;
@@ -837,7 +838,7 @@ document.getElementById('updatePasswordBtn')?.addEventListener('click', async ()
     await reauthenticateWithCredential(user, cred);
     await updatePassword(user, next);
     closePasswordModal();
-    showNotif('Password updated successfully');
+    showSuccess('Password updated successfully');
   } catch (e) {
     const code = e.code || '';
     let msg;
@@ -852,7 +853,7 @@ document.getElementById('updatePasswordBtn')?.addEventListener('click', async ()
     } else {
       msg = 'Could not update password. Please try again.';
     }
-    showNotif(msg, true);
+    showError(msg);
   } finally {
     btn.disabled = false;
   }

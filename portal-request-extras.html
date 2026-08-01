@@ -84,8 +84,6 @@
   }
   .btn-signout:hover { border-color: rgba(255,255,255,0.4); color: white; }
 
-  .notification { position: fixed; top: 20px; right: 20px; background: white; border: 1px solid #E5E0D8; border-left: 4px solid #8FA8A2; border-radius: 12px; padding: 20px 24px; box-shadow: 0 4px 20px rgba(13,27,42,0.15); font-size: 15px; color: #0D1B2A; max-width: 400px; z-index: 10000; animation: slideIn 0.3s ease-out; }
-  @keyframes slideIn { from { opacity:0; transform:translateX(400px); } to { opacity:1; transform:translateX(0); } }
 
   /* ── PORTAL MOBILE ─────────────────────────────────────────────────────── */
   .mobile-bottom-nav { display: none; }
@@ -216,6 +214,8 @@
 
   <div class="form-shell">
     <form onsubmit="submitExtrasRequest(event)">
+      <!-- Post-submit status banner mounts here (top of the form, above the first field) -->
+      <div data-status-container></div>
 
       <!-- Step 1: Service Details -->
       <div class="form-section">
@@ -302,6 +302,7 @@
 
 <script type="module">
   import { calculateServiceTotal } from './pricing.js';
+  import { showSuccess, showError } from '/js/status.js';
 
   // Display names only — actual pricing lives in pricing.js (SERVICE_PRICES,
   // via the 'overnight'/'checkin' aliases), not duplicated here.
@@ -408,14 +409,13 @@
         createdAt: serverTimestamp(),
       };
       await addDoc(collection(db, 'submissions'), data);
-      const n = document.createElement('div');
-      n.className = 'notification';
-      n.textContent = "Request submitted! We'll confirm within 24 hours.";
-      document.body.appendChild(n);
-      setTimeout(() => { n.style.opacity = '0'; setTimeout(() => { n.remove(); window.location.href = 'portal-extras.html'; }, 300); }, 2500);
+      showSuccess("Request submitted! We'll confirm within 24 hours.");
+      // Return to the care menu, but only after the success banner's full ~6s
+      // visible window so the confirmation is readable first (was 2500ms).
+      setTimeout(() => { window.location.href = 'portal-extras.html'; }, 6500);
     } catch(err) {
       console.error(err);
-      alert('Something went wrong. Please contact us directly.');
+      showError('Something went wrong submitting your request. Please try again, or contact us directly.');
       btn.textContent = 'Request Services'; btn.disabled = false;
     }
   }
