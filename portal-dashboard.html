@@ -224,6 +224,14 @@
       border: 1.5px solid #8FA8A2;
       font-weight: 500;
     }
+    /* A walk still sits on a day covered by a confirmed overnight — same
+       outline-overlay language as .scheduled.extended (solid outline =
+       confirmed secondary condition layered on the base fill), reusing the
+       walk's own rust rather than any new color. */
+    .calendar-day.overnight-confirmed.walk-conflict {
+      outline: 2px solid #C17B6F;
+      outline-offset: -3px;
+    }
     .calendar-day.overnight-pending {
       background: #FEF9EC;
       color: #92400E;
@@ -565,6 +573,10 @@
 
         <!-- Calendar -->
         <div class="calendar-section">
+          <!-- Cross-month notice: a confirmed overnight can cover walks in a
+               month the calendar isn't currently showing, so per-day styling
+               alone wouldn't surface it. Populated by renderOvernightConflicts(). -->
+          <div id="overnightConflictNotice" style="display:none; margin-bottom: 16px; font-size: 13px; color: #888;"></div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <div class="calendar-header" style="margin: 0;" id="calendarMonthYear">June 2026</div>
             <div style="display: flex; gap: 8px;">
@@ -628,6 +640,9 @@
         <p>Scheduled walk details</p>
       </div>
       <div class="modal-body">
+        <div class="detail-box" id="modalOvernightNote" style="display:none; border-left: 3px solid #C17B6F;">
+          <p id="modalOvernightNoteText" style="margin:0; font-size:14px; color:#0D1B2A; line-height:1.5;"></p>
+        </div>
         <div class="detail-box">
           <div class="detail-label">Time window</div>
           <p class="detail-value" id="modalTime">Early Morning (7:00 AM - 10:00 AM)</p>
@@ -695,6 +710,7 @@ onAuthStateChanged(auth, async (user) => {
     myWalks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     updateMetrics();
     generateCalendar();
+    renderOvernightConflicts();
   }, (err) => {
     console.error('walks subscription error:', err.code, err.message);
     showError(LOAD_ERROR_MSG);
@@ -744,6 +760,7 @@ async function loadOvernights(uid) {
   }
   if (failed) showError(LOAD_ERROR_MSG);
   generateCalendar(); // always regenerate even if overnights failed
+  renderOvernightConflicts();
 }
 
 window.signOutMember = () => signOut(auth).then(() => window.location.href = 'portal-login.html');
@@ -872,10 +889,21 @@ function updateMetrics() {
         if (cellDate.getTime() === today.getTime()) dayEl.classList.add('today');
 
         // A CONFIRMED overnight is a real booking and takes priority over a
-        // walk that day. A PENDING request is not a booking yet, so it must
-        // never suppress a real, already-scheduled walk — that's checked
-        // last, only once there's no walk to show instead.
-        if (overnightMap[day] && overnightMap[day].status === 'confirmed') {
+        // walk that day — UNLESS that walk is still unresolved, in which
+        // case it's a genuine conflict (the overnight's midday check-in
+        // covers the dog, so the walk is very likely no longer needed) and
+        // gets flagged rather than silently hidden. A PENDING request is not
+        // a booking yet, so it must never suppress a real, already-scheduled
+        // walk — that's checked last, only once there's no walk to show
+        // instead.
+        if (overnightMap[day] && overnightMap[day].status === 'confirmed'
+            && walkMap[day] && walkMap[day].status !== 'completed') {
+          const w = walkMap[day];
+          dayEl.classList.add('overnight-confirmed', 'walk-conflict');
+          dayEl.title = 'Overnight stay (confirmed) — walk may not be needed';
+          dayEl.style.cursor = 'pointer';
+          dayEl.onclick = () => openWalkModal(w, cellDate);
+        } else if (overnightMap[day] && overnightMap[day].status === 'confirmed') {
           dayEl.classList.add('overnight-confirmed');
           dayEl.title = 'Overnight stay (confirmed)';
         } else if (walkMap[day]) {
@@ -906,6 +934,64 @@ function updateMetrics() {
       return `${days[date.getDay()]}, ${months[date.getMonth()]} ${date.getDate()}`;
     }
 
+    // "Aug 3–6", or "Aug 30–Sep 2" across a month boundary.
+    function formatOvernightRange(start, end) {
+      const shortMonths = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const sameMonth = start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth();
+      const startStr = `${shortMonths[start.getMonth()]} ${start.getDate()}`;
+      const endStr = sameMonth ? `${end.getDate()}` : `${shortMonths[end.getMonth()]} ${end.getDate()}`;
+      return `${startStr}–${endStr}`;
+    }
+
+    // Local-date (no time-of-day) bounds of a confirmed overnight, for
+    // comparing against a walk's date. Shared by openWalkModal's per-walk
+    // check and renderOvernightConflicts' cross-month sweep so the two can
+    // never disagree about which days count as "during the stay".
+    function confirmedOvernightBounds(o) {
+      const start = o.startDate?.toDate?.() || new Date(o.startDate);
+      const end = o.endDate?.toDate?.() || new Date(o.endDate);
+      return {
+        start: new Date(start.getFullYear(), start.getMonth(), start.getDate()),
+        end: new Date(end.getFullYear(), end.getMonth(), end.getDate()),
+      };
+    }
+
+    // Cross-month notice above the calendar grid: per-day styling alone only
+    // covers whatever month is currently displayed, so a confirmed overnight
+    // in a different month would otherwise have no visible signal at all.
+    function renderOvernightConflicts() {
+      const notice = document.getElementById('overnightConflictNotice');
+      if (!notice) return;
+      const groups = myOvernights
+        .filter(o => o.status === 'confirmed')
+        .map(o => {
+          const { start, end } = confirmedOvernightBounds(o);
+          const walks = myWalks.filter(w => {
+            if (w.status === 'completed' || w.status === 'cancelled') return false;
+            const wd = w.date?.toDate?.() || new Date(w.date);
+            const wdLocal = new Date(wd.getFullYear(), wd.getMonth(), wd.getDate());
+            return wdLocal >= start && wdLocal <= end;
+          });
+          return { start, end, walks };
+        })
+        .filter(g => g.walks.length > 0);
+
+      if (!groups.length) { notice.style.display = 'none'; notice.innerHTML = ''; return; }
+
+      notice.style.display = '';
+      notice.innerHTML = groups.map(g => {
+        const count = g.walks.length;
+        return `<div style="cursor:pointer;" onclick="jumpToOvernightMonth(${g.start.getFullYear()}, ${g.start.getMonth()})">`
+          + `You have ${count} walk${count === 1 ? '' : 's'} scheduled during your confirmed overnight stay `
+          + `(${formatOvernightRange(g.start, g.end)}). Review below.</div>`;
+      }).join('');
+    }
+
+    window.jumpToOvernightMonth = function(year, month) {
+      currentDate = new Date(year, month, 1);
+      generateCalendar();
+    };
+
     window.previousMonth = function() {
       currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
       generateCalendar();
@@ -935,14 +1021,37 @@ function updateMetrics() {
       sessionStorage.setItem('walkTime', document.getElementById('modalTime').textContent);
       sessionStorage.setItem('activeWalkId', walk.id);
 
+      const walkDateObj = liveWalk.date?.toDate?.() || new Date(liveWalk.date);
+      const walkDateLocal = new Date(walkDateObj.getFullYear(), walkDateObj.getMonth(), walkDateObj.getDate());
+
+      // Overnight conflict — only a CONFIRMED overnight counts (a pending
+      // request isn't a booking yet, so it's not something to warn about).
+      // Reuses the exact same bounds helper the calendar chip and the
+      // cross-month notice use, so all three can never disagree.
+      const conflictingOvernight = myOvernights.find(o => {
+        if (o.status !== 'confirmed') return false;
+        const { start, end } = confirmedOvernightBounds(o);
+        return walkDateLocal >= start && walkDateLocal <= end;
+      });
+      const noteBox = document.getElementById('modalOvernightNote');
+      if (conflictingOvernight) {
+        const { start, end } = confirmedOvernightBounds(conflictingOvernight);
+        document.getElementById('modalOvernightNoteText').textContent =
+          `This walk falls during your confirmed overnight stay (${formatOvernightRange(start, end)}). `
+          + `The midday check-in covers ${dogs}, so this walk isn't needed — you can reschedule it to another day.`;
+        noteBox.style.display = '';
+      } else {
+        noteBox.style.display = 'none';
+      }
+
       // Extend button — same eligibility filter as portal-extend-walk.html's
       // loadWalks (today or future, not cancelled/completed), plus hiding it
-      // on a walk that's already extended (nothing to extend to).
-      const walkDateObj = liveWalk.date?.toDate?.() || new Date(liveWalk.date);
+      // on a walk that's already extended (nothing to extend to) or one that
+      // overlaps a confirmed overnight (nothing to extend it to either).
       const today = new Date(); today.setHours(0,0,0,0);
       const extendEligible = walkDateObj >= today
         && liveWalk.status !== 'cancelled' && liveWalk.status !== 'completed'
-        && !liveWalk.extended;
+        && !liveWalk.extended && !conflictingOvernight;
       document.getElementById('modalExtendBtn').style.display = extendEligible ? '' : 'none';
 
       document.getElementById('walkModal').classList.add('show');
