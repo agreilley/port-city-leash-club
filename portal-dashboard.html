@@ -644,6 +644,7 @@
       <div class="modal-footer">
         <button class="btn-secondary" onclick="closeWalkModal()">Close</button>
         <button class="btn-primary" onclick="navigateToReschedule()">Reschedule</button>
+        <button class="btn-primary" id="modalExtendBtn" onclick="navigateToExtendWalk()">Extend</button>
       </div>
     </div>
   </div>
@@ -927,10 +928,22 @@ function updateMetrics() {
       sessionStorage.setItem('walkDate', formatDateString(date));
       sessionStorage.setItem('walkTime', document.getElementById('modalTime').textContent);
       sessionStorage.setItem('activeWalkId', walk.id);
+
+      // Extend button — same eligibility filter as portal-extend-walk.html's
+      // loadWalks (today or future, not cancelled/completed), plus hiding it
+      // on a walk that's already extended (nothing to extend to).
+      const walkDateObj = liveWalk.date?.toDate?.() || new Date(liveWalk.date);
+      const today = new Date(); today.setHours(0,0,0,0);
+      const extendEligible = walkDateObj >= today
+        && liveWalk.status !== 'cancelled' && liveWalk.status !== 'completed'
+        && !liveWalk.extended;
+      document.getElementById('modalExtendBtn').style.display = extendEligible ? '' : 'none';
+
       document.getElementById('walkModal').classList.add('show');
     }
 
     window.navigateToReschedule = function() { window.location.href = 'portal-reschedule.html'; };
+    window.navigateToExtendWalk = function() { window.location.href = '/portal-extend-walk'; };
     window.closeWalkModal = function() { document.getElementById('walkModal').classList.remove('show'); };
 
     document.getElementById('walkModal').addEventListener('click', function(e) {
