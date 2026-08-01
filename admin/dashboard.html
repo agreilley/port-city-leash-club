@@ -1489,7 +1489,7 @@ function renderRequests() {
     container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📬</div><div class="empty-state-title">${emptyMsg}</div></div>`;
     return;
   }
-  const typeLabels = { membership_request: 'Membership', service_request: 'Service', application: 'Application', walker_screening: 'Screening', contact: 'Contact', dog_update: 'Dog Update', overnight_request: 'Overnight', walker_incident: 'Incident', walker_schedule_request: 'Schedule', tier_change: 'Tier Change', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Hold Refund' };
+  const typeLabels = { membership_request: 'Membership', service_request: 'Service', application: 'Application', walker_screening: 'Screening', contact: 'Contact', dog_update: 'Dog Update', overnight_request: 'Overnight', walker_incident: 'Incident', walker_schedule_request: 'Schedule', tier_change: 'Tier Change', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Hold Refund', waitlist: 'Waitlist' };
   const shortDate = (val) => val?.toDate ? val.toDate().toLocaleDateString('en-US', {month:'short',day:'numeric'}) : '–';
   container.innerHTML = filtered.map(item => {
     const time = item.createdAt?.toDate?.() ? item.createdAt.toDate().toLocaleDateString('en-US', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '–';
@@ -1996,7 +1996,7 @@ window.openRequestItem = async (id) => {
   }
 
   // Build clean field list based on submission type
-  const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', walker_screening: 'Walker Screening', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report', walker_schedule_request: 'Walker Schedule Request', reschedule: 'Walk Reschedule Request', walk_extension: 'Walk Extension Request', tier_change: 'Membership Tier Change', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Vacation Hold Refund' };
+  const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', walker_screening: 'Walker Screening', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report', walker_schedule_request: 'Walker Schedule Request', reschedule: 'Walk Reschedule Request', walk_extension: 'Walk Extension Request', tier_change: 'Membership Tier Change', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Vacation Hold Refund', waitlist: 'Waitlist Signup' };
   const title = typeLabels[item.type] || 'Submission';
 
   let fields = [];
@@ -2176,6 +2176,22 @@ window.openRequestItem = async (id) => {
       ...refRows,
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
       { label: 'Submitted', value: fmtDate(item.createdAt) },
+    ];
+  } else if (item.type === 'waitlist') {
+    // "Notify me" capture from the homepage coverage checker (index.html).
+    // zip/inArea are null when the address wasn't freshly resolved at
+    // submit time (e.g. edited after checking) — distinct from a checked
+    // "outside area" result, so this doesn't collapse both into the same
+    // display.
+    const inAreaDisplay = item.inArea === true ? 'Yes'
+      : item.inArea === false ? 'No — outside service area'
+      : 'Not checked';
+    fields = [
+      { label: 'Email', value: item.email || '–' },
+      { label: 'Address', value: item.address || '–' },
+      { label: 'Zip', value: item.zip || '–' },
+      { label: 'In Service Area', value: inAreaDisplay },
+      { label: 'Signed Up', value: fmtDate(item.createdAt) },
     ];
   } else {
     // Generic — show all fields, formatted
