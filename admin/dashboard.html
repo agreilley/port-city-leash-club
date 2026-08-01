@@ -1396,8 +1396,14 @@ function renderCalendarDays() {
       const label = walker ? `${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`;
       return `<div class="walk-chip ${cls}" onclick="openWalkModal('${w.id}')" title="${label}">${label}</div>`;
     }).join('');
+    // Resolve the member live the same way the walk chip does above — the
+    // doc's own memberName is a snapshot from whenever it was created/seeded
+    // and can go stale if the member's profile changes afterward (falls back
+    // to it only when the member can't be found at all).
+    const oMember = overnightMap[d] ? allMembers.find(m => m.id === (overnightMap[d].memberId || '').trim()) : null;
+    const oDisplayName = oMember?.name || overnightMap[d]?.memberName || overnightMap[d]?.memberId || 'Overnight';
     const overnightChip = overnightMap[d]
-      ? `<div class="walk-chip overnight" onclick="openOvernightModal('${overnightMap[d].id}')" title="${overnightMap[d].memberName || overnightMap[d].memberId} · Overnight">🌙 ${overnightMap[d].memberName || 'Overnight'}</div>`
+      ? `<div class="walk-chip overnight" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oDisplayName} · Overnight">🌙 ${oDisplayName}</div>`
       : '';
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}</div>`;
   }
@@ -1598,7 +1604,14 @@ window.openOvernightModal = (overnightId) => {
 };
 
 window.assignOvernightWalker = async (overnightId, walkerId) => {
-  await updateDoc(doc(db, 'overnights', overnightId), { walkerId, updatedAt: serverTimestamp() });
+  // walkerId has exactly one write path in the whole app — this function —
+  // so keeping walkerName in lockstep with it here is sufficient to
+  // guarantee it never drifts, unlike memberName/dogName above (which can go
+  // stale from member-profile edits that happen entirely outside this admin
+  // code, so those have to be resolved live at render instead).
+  const _walkers = window.allWalkers || allWalkers;
+  const walkerName = walkerId ? (_walkers.find(w => w.id === walkerId)?.name || '') : '';
+  await updateDoc(doc(db, 'overnights', overnightId), { walkerId, walkerName, updatedAt: serverTimestamp() });
   closeModal('overnightModal');
 };
 
