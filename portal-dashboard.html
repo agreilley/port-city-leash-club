@@ -530,6 +530,7 @@
     <!-- Main Content -->
     <div class="main-content">
       <div class="content-max">
+        <div data-status-container></div>
         <div class="page-header">
           <h1 id="welcomeHeader">Welcome back</h1>
         </div>
@@ -651,6 +652,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getFirestore, doc, getDoc, collection, query, where, onSnapshot, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { showError } from '/js/status.js';
 const firebaseConfig = {
   apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
   authDomain: "port-city-leash-club-827ab.firebaseapp.com",
@@ -667,6 +669,11 @@ const db = getFirestore(app);
 let memberData = null;
 let myWalks = [];
 let myOvernights = []; // confirmed overnights + pending requests
+// Shown on any walks/overnights load failure — deliberately says "couldn't
+// load", never "no walks", so a display problem never reads as a cancelled
+// service. Empty state (a real member with zero walks) never calls this —
+// only the error callbacks below do.
+const LOAD_ERROR_MSG = "We couldn't load your walks just now. Please refresh, or contact us if this continues.";
 const today = new Date(); today.setHours(0,0,0,0);
     let currentDate = new Date(today.getFullYear(), today.getMonth(), 1);
 
@@ -689,22 +696,30 @@ onAuthStateChanged(auth, async (user) => {
     generateCalendar();
   }, (err) => {
     console.error('walks subscription error:', err.code, err.message);
+    showError(LOAD_ERROR_MSG);
   });
 
   // Real-time overnights (confirmed)
   const overnightsQ = query(collection(db, 'overnights'), where('memberId', '==', user.uid));
   onSnapshot(overnightsQ, () => {
     loadOvernights(user.uid);
+  }, (err) => {
+    console.error('overnights subscription error:', err.code, err.message);
+    showError(LOAD_ERROR_MSG);
   });
 
   // Real-time pending overnight submissions
   const pendingQ = query(collection(db, 'submissions'), where('memberId', '==', user.uid), where('type', '==', 'overnight_request'));
   onSnapshot(pendingQ, () => {
     loadOvernights(user.uid);
+  }, (err) => {
+    console.error('pending overnight submissions subscription error:', err.code, err.message);
+    showError(LOAD_ERROR_MSG);
   });
 });
 
 async function loadOvernights(uid) {
+  let failed = false;
   try {
     const confirmedSnap = await getDocs(query(collection(db, 'overnights'), where('memberId', '==', uid)));
     const confirmed = confirmedSnap.docs.map(d => ({ id: d.id, ...d.data(), calendarType: 'overnight', status: 'confirmed' }));
@@ -716,10 +731,17 @@ async function loadOvernights(uid) {
         .map(d => ({ id: d.id, ...d.data() }))
         .filter(s => s.type === 'overnight_request' && s.status !== 'confirmed')
         .map(s => ({ ...s, calendarType: 'overnight', status: 'pending' }));
-    } catch(e) { console.warn('submissions read failed (rules?):', e.message); }
+    } catch(e) {
+      console.warn('submissions read failed (rules?):', e.message);
+      failed = true;
+    }
 
     myOvernights = [...confirmed, ...pending];
-  } catch(e) { console.warn('overnights read failed:', e.message); }
+  } catch(e) {
+    console.warn('overnights read failed:', e.message);
+    failed = true;
+  }
+  if (failed) showError(LOAD_ERROR_MSG);
   generateCalendar(); // always regenerate even if overnights failed
 }
 
