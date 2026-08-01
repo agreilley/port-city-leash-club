@@ -2864,18 +2864,19 @@ window.confirmOvernight = async (submissionId, item) => {
     const endDate = endDateStr ? Timestamp.fromDate(new Date(`${endDateStr}T12:00:00`)) : (item.endDate || null);
 
     // Write to overnights collection
-    // Look up member name from members collection
-    let memberName = item.memberName || '';
-    if (!memberName && item.memberId) {
-      try {
-        const memberSnap = await getDoc(doc(db, 'members', item.memberId));
-        if (memberSnap.exists()) memberName = memberSnap.data().name || '';
-      } catch(e) { /* ok to fail */ }
-    }
+    // Resolve member/dog names live from allMembers by memberId — the
+    // submission's own memberName/dogName are a snapshot from whenever the
+    // member submitted the request, which can already be stale by
+    // confirmation time (same class of bug as the calendar chip fix). Falls
+    // back to the submission's stored values only if the member can't be
+    // found at all.
+    const confirmMember = item.memberId ? allMembers.find(m => m.id === item.memberId) : null;
+    const memberName = confirmMember?.name || item.memberName || '';
+    const dogName = getMemberDogs(confirmMember)[0]?.name || item.dogName || '';
     await addDoc(collection(db, 'overnights'), {
       memberId:    item.memberId || '',
       memberName:  memberName,
-      dogName:     item.dogName || '',
+      dogName:     dogName,
       startDate,
       endDate,
       serviceType: service || item.serviceType || 'overnight',
