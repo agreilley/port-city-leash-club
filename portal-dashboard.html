@@ -210,6 +210,15 @@
       outline: 2px dashed #D4A843;
       outline-offset: -3px;
     }
+    /* A pending (not yet confirmed) overnight request also covers this walk
+       day — same dashed-gold "pending secondary state" language as
+       .extended-pending, just triggered by a different condition. Visually
+       identical outline is intentional: both mean "something pending is
+       layered on this walk." */
+    .calendar-day.scheduled.overnight-pending-overlap {
+      outline: 2px dashed #D4A843;
+      outline-offset: -3px;
+    }
     .calendar-day.completed {
       background: #8FA8A2;
       color: white;
@@ -916,6 +925,14 @@ function updateMetrics() {
               dayEl.classList.add(w.extendedStatus === 'pending' ? 'extended-pending' : 'extended');
               dayEl.title = w.extendedStatus === 'pending' ? '45-minute walk (pending confirmation)' : '45-minute walk (confirmed)';
             }
+            // A pending overnight request never suppresses the walk (it
+            // isn't a booking), but it's still worth surfacing alongside it —
+            // same dashed-gold secondary-state language .extended-pending
+            // already uses, layered on top rather than replacing anything.
+            if (overnightMap[day] && overnightMap[day].status === 'pending') {
+              dayEl.classList.add('overnight-pending-overlap');
+              if (!w.extended) dayEl.title = 'Scheduled walk — a pending overnight request also covers this day';
+            }
             dayEl.style.cursor = 'pointer';
             dayEl.onclick = () => openWalkModal(w, cellDate);
           }
@@ -943,11 +960,12 @@ function updateMetrics() {
       return `${startStr}–${endStr}`;
     }
 
-    // Local-date (no time-of-day) bounds of a confirmed overnight, for
-    // comparing against a walk's date. Shared by openWalkModal's per-walk
-    // check and renderOvernightConflicts' cross-month sweep so the two can
-    // never disagree about which days count as "during the stay".
-    function confirmedOvernightBounds(o) {
+    // Local-date (no time-of-day) bounds of an overnight (confirmed or
+    // pending), for comparing against a walk's date. Shared by
+    // openWalkModal's per-walk checks and renderOvernightConflicts' cross-
+    // month sweep so none of them can ever disagree about which days count
+    // as "during the stay".
+    function overnightBounds(o) {
       const start = o.startDate?.toDate?.() || new Date(o.startDate);
       const end = o.endDate?.toDate?.() || new Date(o.endDate);
       return {
@@ -965,7 +983,7 @@ function updateMetrics() {
       const groups = myOvernights
         .filter(o => o.status === 'confirmed')
         .map(o => {
-          const { start, end } = confirmedOvernightBounds(o);
+          const { start, end } = overnightBounds(o);
           const walks = myWalks.filter(w => {
             if (w.status === 'completed' || w.status === 'cancelled') return false;
             const wd = w.date?.toDate?.() || new Date(w.date);
@@ -1024,21 +1042,36 @@ function updateMetrics() {
       const walkDateObj = liveWalk.date?.toDate?.() || new Date(liveWalk.date);
       const walkDateLocal = new Date(walkDateObj.getFullYear(), walkDateObj.getMonth(), walkDateObj.getDate());
 
-      // Overnight conflict — only a CONFIRMED overnight counts (a pending
-      // request isn't a booking yet, so it's not something to warn about).
-      // Reuses the exact same bounds helper the calendar chip and the
-      // cross-month notice use, so all three can never disagree.
-      const conflictingOvernight = myOvernights.find(o => {
+      // Overnight overlap — a CONFIRMED overnight is a real conflict (the
+      // check-in already covers the dog, walk likely not needed, worth
+      // resolving now). A PENDING request is informational only — nothing's
+      // decided yet, so it gets a different note and never hides Extend.
+      // Confirmed takes priority in the unlikely case both somehow overlap
+      // the same day, matching the calendar cell's own priority order.
+      const confirmedOvernight = myOvernights.find(o => {
         if (o.status !== 'confirmed') return false;
-        const { start, end } = confirmedOvernightBounds(o);
+        const { start, end } = overnightBounds(o);
+        return walkDateLocal >= start && walkDateLocal <= end;
+      });
+      const pendingOvernight = confirmedOvernight ? null : myOvernights.find(o => {
+        if (o.status !== 'pending') return false;
+        const { start, end } = overnightBounds(o);
         return walkDateLocal >= start && walkDateLocal <= end;
       });
       const noteBox = document.getElementById('modalOvernightNote');
-      if (conflictingOvernight) {
-        const { start, end } = confirmedOvernightBounds(conflictingOvernight);
+      if (confirmedOvernight) {
+        const { start, end } = overnightBounds(confirmedOvernight);
         document.getElementById('modalOvernightNoteText').textContent =
           `This walk falls during your confirmed overnight stay (${formatOvernightRange(start, end)}). `
           + `The midday check-in covers ${dogs}, so this walk isn't needed — you can reschedule it to another day.`;
+        noteBox.style.borderLeftColor = '#C17B6F';
+        noteBox.style.display = '';
+      } else if (pendingOvernight) {
+        const { start, end } = overnightBounds(pendingOvernight);
+        document.getElementById('modalOvernightNoteText').textContent =
+          `A pending overnight request covers ${formatOvernightRange(start, end)}. If it's confirmed, the midday `
+          + `check-in will cover ${dogs} and this walk won't be needed — no action needed for now.`;
+        noteBox.style.borderLeftColor = '#D4A843';
         noteBox.style.display = '';
       } else {
         noteBox.style.display = 'none';
@@ -1047,11 +1080,12 @@ function updateMetrics() {
       // Extend button — same eligibility filter as portal-extend-walk.html's
       // loadWalks (today or future, not cancelled/completed), plus hiding it
       // on a walk that's already extended (nothing to extend to) or one that
-      // overlaps a confirmed overnight (nothing to extend it to either).
+      // overlaps a CONFIRMED overnight (nothing to extend it to either). A
+      // pending overnight is not a booking, so Extend stays available.
       const today = new Date(); today.setHours(0,0,0,0);
       const extendEligible = walkDateObj >= today
         && liveWalk.status !== 'cancelled' && liveWalk.status !== 'completed'
-        && !liveWalk.extended && !conflictingOvernight;
+        && !liveWalk.extended && !confirmedOvernight;
       document.getElementById('modalExtendBtn').style.display = extendEligible ? '' : 'none';
 
       document.getElementById('walkModal').classList.add('show');
