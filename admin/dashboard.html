@@ -1226,9 +1226,9 @@ function renderConversationThread(messages) {
     return `
       <div style="display:flex;flex-direction:column;align-items:${isOut ? 'flex-end' : 'flex-start'};">
         <div style="display:inline-block;max-width:75%;background:${isOut ? '#0D1B2A' : '#F1EEE8'};color:${isOut ? '#fff' : '#0D1B2A'};padding:8px 12px;border-radius:12px;font-size:14px;white-space:pre-wrap;overflow-wrap:break-word;">
-          ${m.subject ? `<div style="font-weight:600;margin-bottom:3px;">${m.subject.replace(/</g,'&lt;')}</div>` : ''}
-          ${normalizeMessageBody(m.body).replace(/</g,'&lt;')}
-          ${m.mediaUrl ? `<img src="${m.mediaUrl}" style="width:100%;border-radius:8px;margin-top:6px;display:block;">` : ''}
+          ${m.subject ? `<div style="font-weight:600;margin-bottom:3px;">${escapeHtml(m.subject)}</div>` : ''}
+          ${escapeHtml(normalizeMessageBody(m.body))}
+          ${m.mediaUrl ? `<img src="${escapeHtml(m.mediaUrl)}" style="width:100%;border-radius:8px;margin-top:6px;display:block;">` : ''}
         </div>
         <div style="font-size:11px;color:#7A7A7A;margin-top:2px;">${channelIcon(m.channel)} ${timeAgo(m.createdAt)}${m.automated ? ' · automatic' : ''}</div>
         ${statusNote}
@@ -1349,9 +1349,9 @@ function renderUpcomingWalks() {
     return `<tr>
       <td data-label="Date">${date.toLocaleDateString('en-US', {month:'short',day:'numeric'})}</td>
       <td data-label="Time Slot">${slotLabel}</td>
-      <td data-label="Member">${member?.name || '–'}</td>
-      <td data-label="Dog">${memberDogNames(member) || '–'}</td>
-      <td data-label="Walker">${isUnassigned ? '<span style="color:var(--rust);">Unassigned</span>' : walker?.name || '–'}</td>
+      <td data-label="Member">${escapeHtml(member?.name || '–')}</td>
+      <td data-label="Dog">${escapeHtml(memberDogNames(member) || '–')}</td>
+      <td data-label="Walker">${isUnassigned ? '<span style="color:var(--rust);">Unassigned</span>' : escapeHtml(walker?.name || '–')}</td>
       <td data-label="Status"><span class="status-badge ${statusClass}">${statusLabel}</span></td>
       <td data-label="">${actionBtn}</td>
     </tr>`;
@@ -1409,7 +1409,7 @@ function renderCalendarDays() {
       const walker = allWalkers.find(k => k.id === wkId);
       const cls = !wkId ? 'unassigned' : (w.status === 'completed' ? 'completed' : w.timeSlot);
       const dogName = getMemberDogs(member)[0]?.name || member?.name?.split(' ')[0] || 'Walk';
-      const label = walker ? `${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`;
+      const label = escapeHtml(walker ? `${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`);
       return `<div class="walk-chip ${cls}" onclick="openWalkModal('${w.id}')" title="${label}">${label}</div>`;
     }).join('');
     // Resolve the member live the same way the walk chip does above — the
@@ -1417,7 +1417,7 @@ function renderCalendarDays() {
     // and can go stale if the member's profile changes afterward (falls back
     // to it only when the member can't be found at all).
     const oMember = overnightMap[d] ? allMembers.find(m => m.id === (overnightMap[d].memberId || '').trim()) : null;
-    const oDisplayName = oMember?.name || overnightMap[d]?.memberName || overnightMap[d]?.memberId || 'Overnight';
+    const oDisplayName = escapeHtml(oMember?.name || overnightMap[d]?.memberName || overnightMap[d]?.memberId || 'Overnight');
     const overnightChip = overnightMap[d]
       ? `<div class="walk-chip overnight" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oDisplayName} · Overnight">🌙 ${oDisplayName}</div>`
       : '';
@@ -1441,8 +1441,8 @@ function renderWalkersTable() {
   tbody.innerHTML = allWalkers.map(w => {
     const thisWeek = allWalks.filter(walk => walk.walkerId === w.id && (() => { const d = walk.date?.toDate?.() || new Date(walk.date); return d >= now && d <= weekEnd; })()).length;
     return `<tr>
-      <td data-label="Name"><strong>${w.name}</strong><br><span style="font-size:11px;color:var(--text-light);">${w.email}</span></td>
-      <td data-label="Zones">${(w.zones || []).join(', ') || '–'}</td>
+      <td data-label="Name"><strong>${escapeHtml(w.name)}</strong><br><span style="font-size:11px;color:var(--text-light);">${escapeHtml(w.email)}</span></td>
+      <td data-label="Zones">${escapeHtml((w.zones || []).join(', ') || '–')}</td>
       <td data-label="Walks/Week Target">${w.weeklyTarget || '–'}</td>
       <td data-label="Walks This Week">${thisWeek}</td>
       <td data-label="Status"><span class="status-badge ${w.status === 'active' ? 'active' : 'pending'}">${w.status || 'active'}</span></td>
@@ -1465,7 +1465,7 @@ function renderAvailabilityGrid() {
     return `<div class="availability-row">
       <div class="availability-walker">
         <div class="walker-dot" style="background:${dotColors[i % dotColors.length]};"></div>
-        ${w.name.split(' ')[0]}
+        ${escapeHtml(w.name.split(' ')[0])}
       </div>
       ${days.map((day, di) => {
         const dayAvail = avail[day] || [];
@@ -1502,12 +1502,12 @@ function renderMembersTable(filter = '') {
     const walker = allWalkers.find(w => w.id === m.assignedWalkerId);
     const since = m.createdAt?.toDate?.() ? m.createdAt.toDate().toLocaleDateString('en-US', {month:'short', year:'numeric'}) : '–';
     return `<tr>
-      <td data-label="Name"><strong>${m.name}</strong><br><span style="font-size:11px;color:var(--text-light);">${m.email}</span></td>
-      <td data-label="Dog">${memberDogNames(m) || '–'}</td>
-      <td data-label="Tier"><span class="status-badge active">${m.tier || 'Standard'}</span></td>
+      <td data-label="Name"><strong>${escapeHtml(m.name)}</strong><br><span style="font-size:11px;color:var(--text-light);">${escapeHtml(m.email)}</span></td>
+      <td data-label="Dog">${escapeHtml(memberDogNames(m) || '–')}</td>
+      <td data-label="Tier"><span class="status-badge active">${escapeHtml(m.tier || 'Standard')}</span></td>
       <td data-label="Billing">${renderBillingBadge(memberBilling[m.id])}</td>
       <td data-label="Walks/Month">${m.walksThisMonth || 0}</td>
-      <td data-label="Walker">${walker?.name || '–'}</td>
+      <td data-label="Walker">${escapeHtml(walker?.name || '–')}</td>
       <td data-label="Member Since">${since}</td>
       <td data-label=""><button class="btn-sm view-btn" onclick="openMemberDetail('${m.id}')">View</button></td>
     </tr>`;
@@ -1694,7 +1694,7 @@ window.openWalkModal = async (walkId) => {
     <div class="suggestion-card best" style="margin-bottom:16px;">
       <div>
         <div style="font-weight:500;font-size:14px;">${escapeHtml(walker?.name || '–')}</div>
-        <div style="font-size:12px;color:var(--text-light);">${(walker?.zones||[]).join(', ')||'Any'} · ${_walks.filter(wk=>wk.walkerId===walker?.id).length} walks this week</div>
+        <div style="font-size:12px;color:var(--text-light);">${escapeHtml((walker?.zones||[]).join(', ')||'Any')} · ${_walks.filter(wk=>wk.walkerId===walker?.id).length} walks this week</div>
       </div>
       <span style="font-size:11px;color:var(--green);font-weight:500;">Assigned ✓</span>
     </div>
@@ -1709,7 +1709,7 @@ window.openWalkModal = async (walkId) => {
       <div class="suggestion-card ${i===0?'best':''}" onclick="assignWalker('${walkId}', '${w.id}')">
         <div>
           <div style="font-weight:500;font-size:14px;">${escapeHtml(w.name)}</div>
-          <div style="font-size:12px;color:var(--text-light);">${(w.zones||[]).join(', ')||'Any'} · ${_walks.filter(wk=>wk.walkerId===w.id).length} walks</div>
+          <div style="font-size:12px;color:var(--text-light);">${escapeHtml((w.zones||[]).join(', ')||'Any')} · ${_walks.filter(wk=>wk.walkerId===w.id).length} walks</div>
         </div>
         <div class="suggestion-score ${i===0?'best':''}">${i===0?'Best fit':''} ${w.score}pts</div>
       </div>`).join('')}
@@ -1831,9 +1831,9 @@ window.createWalkerAccount = async () => {
       <div style="text-align:center;padding:24px 0;">
         <div style="font-size:40px;margin-bottom:16px;">✓</div>
         <div style="font-size:18px;font-weight:500;color:var(--navy);margin-bottom:8px;">Walker account created!</div>
-        <div style="font-size:13px;color:var(--text-light);margin-bottom:4px;">${name} can log in at:</div>
+        <div style="font-size:13px;color:var(--text-light);margin-bottom:4px;">${escapeHtml(name)} can log in at:</div>
         <div style="font-size:13px;font-weight:500;color:var(--navy);margin-bottom:12px;">${window.location.origin}/walker/index.html</div>
-        <div style="font-size:12px;color:var(--text-light);margin-bottom:24px;">${emailNote}</div>
+        <div style="font-size:12px;color:var(--text-light);margin-bottom:24px;">${escapeHtml(emailNote)}</div>
         <button class="btn-primary" onclick="closeModal('addWalkerModal');document.getElementById('addWalkerContent').innerHTML='';" style="width:100%;">Done</button>
       </div>`;
   } catch(e) {
@@ -1861,12 +1861,12 @@ window.openAddWalkModal = () => {
   memberSel.innerHTML = '<option value="">Select member...</option>' +
     allMembers.filter(m => m.status === 'active').map(m => {
       const dogs = memberDogNames(m);
-      return `<option value="${m.id}">${m.name}${dogs ? ' — ' + dogs : ''}</option>`;
+      return `<option value="${m.id}">${escapeHtml(m.name)}${dogs ? ' — ' + escapeHtml(dogs) : ''}</option>`;
     }).join('');
   // Populate walker dropdown
   const walkerSel = document.getElementById('wm-walker');
   walkerSel.innerHTML = '<option value="">Unassigned</option>' +
-    allWalkers.filter(w => w.status === 'active').map(w => `<option value="${w.id}">${w.name}</option>`).join('');
+    allWalkers.filter(w => w.status === 'active').map(w => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join('');
   // Default date to today
   document.getElementById('wm-date').value = new Date().toISOString().slice(0, 10);
   document.getElementById('wm-notes').value = '';
@@ -3142,12 +3142,12 @@ function populateMemberSelect() {
   const sel = document.getElementById('wm-member');
   sel.innerHTML = '<option value="">Select member...</option>' + allMembers.map(m => {
     const dogs = memberDogNames(m);
-    return `<option value="${m.id}">${m.name}${dogs ? ' — ' + dogs : ''}</option>`;
+    return `<option value="${m.id}">${escapeHtml(m.name)}${dogs ? ' — ' + escapeHtml(dogs) : ''}</option>`;
   }).join('');
 }
 function populateWalkerSelect() {
   const sel = document.getElementById('wm-walker');
-  sel.innerHTML = '<option value="">Unassigned</option>' + allWalkers.map(w => `<option value="${w.id}">${w.name}</option>`).join('');
+  sel.innerHTML = '<option value="">Unassigned</option>' + allWalkers.map(w => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join('');
 }
 // Cache the Add Member modal's original HTML so it can be restored after
 // the success screen replaces it.
@@ -3259,7 +3259,7 @@ window.openAddMemberModal = (prefill, submissionId) => {
   const sel = document.getElementById('am-walker');
   if (sel) {
     sel.innerHTML = '<option value="">Unassigned</option>' +
-      allWalkers.map(w => `<option value="${w.id}">${w.name}</option>`).join('');
+      allWalkers.map(w => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join('');
   }
 
   // Track the source submission (if converting from a request item) so saveMember()
@@ -3496,9 +3496,9 @@ window.saveMember = async () => {
       <div style="text-align:center;padding:24px 0;">
         <div style="font-size:40px;margin-bottom:16px;">✓</div>
         <div style="font-size:18px;font-weight:500;color:var(--navy);margin-bottom:8px;">Member account created!</div>
-        <div style="font-size:13px;color:var(--text-light);margin-bottom:4px;">${name} can log in at:</div>
+        <div style="font-size:13px;color:var(--text-light);margin-bottom:4px;">${escapeHtml(name)} can log in at:</div>
         <div style="font-size:13px;font-weight:500;color:var(--navy);margin-bottom:12px;">${window.location.origin}/portal-login</div>
-        <div style="font-size:12px;color:var(--text-light);margin-bottom:24px;">We've emailed ${email} a link to set their password and log in.</div>
+        <div style="font-size:12px;color:var(--text-light);margin-bottom:24px;">We've emailed ${escapeHtml(email)} a link to set their password and log in.</div>
         <div id="am-subscription-warning" style="font-size:12px;color:#b45309;background:#fffbeb;border-radius:6px;padding:8px 12px;margin-bottom:16px;"></div>
         <div id="am-billing-notice" style="font-size:12px;color:var(--navy);background:var(--sand-light);border-radius:6px;padding:8px 12px;margin-bottom:16px;text-align:left;"></div>
         <button class="btn-primary" onclick="closeModal('addMemberModal');restoreAddMemberModal();" style="width:100%;">Done</button>
