@@ -871,10 +871,13 @@ function updateMetrics() {
         const cellDate = new Date(year, month, day); cellDate.setHours(0,0,0,0);
         if (cellDate.getTime() === today.getTime()) dayEl.classList.add('today');
 
-        if (overnightMap[day]) {
-          const o = overnightMap[day];
-          dayEl.classList.add(o.status === 'confirmed' ? 'overnight-confirmed' : 'overnight-pending');
-          dayEl.title = o.status === 'confirmed' ? 'Overnight stay (confirmed)' : 'Overnight stay (pending confirmation)';
+        // A CONFIRMED overnight is a real booking and takes priority over a
+        // walk that day. A PENDING request is not a booking yet, so it must
+        // never suppress a real, already-scheduled walk — that's checked
+        // last, only once there's no walk to show instead.
+        if (overnightMap[day] && overnightMap[day].status === 'confirmed') {
+          dayEl.classList.add('overnight-confirmed');
+          dayEl.title = 'Overnight stay (confirmed)';
         } else if (walkMap[day]) {
           const w = walkMap[day];
           if (w.status === 'completed') {
@@ -888,6 +891,9 @@ function updateMetrics() {
             dayEl.style.cursor = 'pointer';
             dayEl.onclick = () => openWalkModal(w, cellDate);
           }
+        } else if (overnightMap[day]) {
+          dayEl.classList.add('overnight-pending');
+          dayEl.title = 'Overnight stay (pending confirmation)';
         }
 
         calendarGrid.appendChild(dayEl);
