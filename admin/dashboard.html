@@ -669,6 +669,19 @@
         <option value="">Unassigned</option>
       </select>
     </div>
+    <!-- Shown only for a standalone add (no source submission) — this path
+         never starts a Stripe subscription (see saveMember()'s standalone
+         branch), so the admin must explicitly acknowledge that before saving. -->
+    <div id="am-standalone-notice" style="display:none;font-size:12px;color:var(--navy);background:var(--sand-light);border:1px solid rgba(0,0,0,0.08);border-radius:6px;padding:10px 12px;margin-bottom:12px;line-height:1.5;">
+      <strong>Adding this member directly (not converting a submission):</strong>
+      <div style="margin-top:4px;">✓ Their login will be created and walks will be scheduled on the days/time above.</div>
+      <div>✗ No subscription will be started — nothing is charged automatically. Set up billing separately if this member should be paying.</div>
+      <div>✗ Walks are only generated for next month — they won't continue after that, since the monthly scheduler skips members without an active subscription.</div>
+      <label style="display:flex;align-items:flex-start;gap:6px;margin-top:8px;cursor:pointer;">
+        <input type="checkbox" id="am-standalone-ack" style="margin-top:2px;">
+        <span>I understand this account won't be billed automatically.</span>
+      </label>
+    </div>
     <div id="am-error" style="color:var(--rust);font-size:13px;margin-bottom:12px;display:none;"></div>
     <div style="display:flex;gap:8px;">
       <button class="btn-primary" style="flex:1;" onclick="saveMember()">Add Member</button>
@@ -3191,6 +3204,14 @@ window.openAddMemberModal = (prefill, submissionId) => {
   // can mark it confirmed once the member record is created.
   window._addMemberSubmissionId = submissionId || null;
 
+  // The billing-acknowledgment notice only applies to a standalone add (no
+  // source submission) — that path never starts a subscription. Reset the
+  // checkbox on every open so a prior confirmation can't carry over.
+  const standaloneNotice = document.getElementById('am-standalone-notice');
+  if (standaloneNotice) standaloneNotice.style.display = window._addMemberSubmissionId ? 'none' : 'block';
+  const standaloneAck = document.getElementById('am-standalone-ack');
+  if (standaloneAck) standaloneAck.checked = false;
+
   document.getElementById('am-name').value = prefill?.ownerName || prefill?.name || '';
   document.getElementById('am-email').value = prefill?.email || '';
   document.getElementById('am-phone').value = prefill?.phone || '';
@@ -3264,6 +3285,11 @@ window.saveMember = async () => {
 
   if (!name || !email) { errEl.textContent = 'Owner name and email are required.'; errEl.style.display = 'block'; return; }
   if (!tier) { errEl.textContent = 'Select a membership tier before creating the account.'; errEl.style.display = 'block'; return; }
+  if (!window._addMemberSubmissionId && !document.getElementById('am-standalone-ack')?.checked) {
+    errEl.textContent = "Please check the box confirming you understand this account won't be billed automatically.";
+    errEl.style.display = 'block';
+    return;
+  }
 
   // Never shown; the member sets their own via the onboarding email.
   const pass = randomAccountPassword();
@@ -3367,6 +3393,25 @@ window.saveMember = async () => {
         } catch (e) {
           warnings.push(`This month's walks weren't charged: ${e.message}`);
         }
+      }
+    } else {
+      // Standalone add (no source submission) — never starts a subscription
+      // (the required acknowledgment above covers that), but the member
+      // should still see real walks on their calendar for the days/time just
+      // set. generateInitialWalks has no Stripe dependency of its own, and
+      // tolerates a submissionId that doesn't correspond to a real document
+      // (falls back to starting next month on day 1) — so it's safe to call
+      // here with a synthetic id.
+      if (defaultTimeSlot) {
+        try {
+          const generateInitialWalks = httpsCallable(fns, 'generateInitialWalks');
+          await generateInitialWalks({ submissionId: `admin-added-${uid}`, memberId: uid });
+          notices.push('Walks scheduled starting next month. No subscription was started — this account is unbilled until you set one up separately.');
+        } catch (e) {
+          warnings.push(`Walks weren't generated: ${e.message}`);
+        }
+      } else {
+        notices.push('No preferred time slot was set, so no walks were scheduled yet. No subscription was started either — this account is unbilled.');
       }
     }
 
