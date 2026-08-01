@@ -601,14 +601,66 @@ exports.updateWalkSchedule = onCall({}, async (request) => {
   // of the order the member checked them.
   const orderedDays = VALID_WALK_DAYS.filter(d => days.includes(d));
 
+  // Reconcile NEXT month's walk docs if they already exist under the old
+  // schedule — the mid-month-conversion edge case: generateInitialWalks
+  // generates the entire next month at signup, before the member has a
+  // chance to change their days. .create()-based generation never overwrites
+  // those, so without this a day change would sit alongside the stale docs
+  // instead of replacing them. Current month is never touched — already
+  // billed, and "changes take effect next month" already covers it. Steady-
+  // state members (next month not generated yet) hit an empty query below
+  // and this whole block is a no-op — generateMonthlyWalks picks up the new
+  // schedule on its own next month, same as always.
+  const { year, monthIndex } = easternTodayParts();
+  const nextMonthIndex = monthIndex === 11 ? 0 : monthIndex + 1;
+  const nextYear = monthIndex === 11 ? year + 1 : year;
+
+  // Query by memberId (not constructed IDs) so this also catches any walk
+  // added manually via the admin "Add Walk" modal — same reasoning as
+  // submitVacationHold's identical query.
+  const memberWalksSnap = await db.collection('walks').where('memberId', '==', uid).get();
+
+  const batch = db.batch();
+  batch.set(
+    db.collection('members').doc(uid),
+    { defaultWalkDays: orderedDays, defaultTimeSlot },
+    { merge: true }
+  );
+
+  let deletedCount = 0;
+  memberWalksSnap.forEach(snap => {
+    const walk = snap.data();
+    if (walk.status === 'completed') return; // never touch history
+    const walkDate = walk.date?.toDate?.();
+    if (!walkDate) return;
+    if (walkDate.getUTCFullYear() !== nextYear || walkDate.getUTCMonth() !== nextMonthIndex) return; // this month or beyond next month — not our concern
+    batch.delete(snap.ref);
+    deletedCount++;
+  });
+
   try {
-    await db.collection('members').doc(uid).set(
-      { defaultWalkDays: orderedDays, defaultTimeSlot },
-      { merge: true }
-    );
+    await batch.commit();
   } catch (e) {
     console.error('updateWalkSchedule write failed:', e);
     throw new HttpsError('internal', 'Could not save schedule.');
+  }
+
+  // Regenerate next month under the new schedule only if we just deleted
+  // something there. Best-effort: a failure here logs and falls through to
+  // success rather than throwing — deterministic walk doc IDs make this
+  // self-healing, since generateMonthlyWalks will fill in whatever's missing
+  // when that month actually starts (the old docs are already gone).
+  if (deletedCount > 0) {
+    const updatedMember = { ...member, defaultWalkDays: orderedDays, defaultTimeSlot };
+    const fromDay = firstBilledMonthFromDay(member.membershipStartDate, nextYear, nextMonthIndex);
+    try {
+      const result = await generateWalksForMember(uid, updatedMember, nextYear, nextMonthIndex, fromDay);
+      if (result.failed > 0) {
+        console.error(`updateWalkSchedule: ${result.failed} walk(s) failed to regenerate for member ${uid} after schedule change`);
+      }
+    } catch (e) {
+      console.error(`updateWalkSchedule: regeneration failed for member ${uid}:`, e.message);
+    }
   }
 
   return { success: true, message: 'Walk schedule updated' };

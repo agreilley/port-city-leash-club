@@ -797,7 +797,16 @@ window.saveAccount = async () => {
     });
     // Only claim the walk schedule was saved when the callable actually ran —
     // when no days/time are selected the schedule half is (correctly) skipped.
-    showSuccess(scheduleSaved ? 'Changes saved.' : 'Your details were saved.');
+    // Schedule changes are worth naming explicitly: the member just picked
+    // different days but their calendar won't visibly change today, so say
+    // when it does take effect rather than leaving them to guess.
+    if (scheduleSaved) {
+      const nextMonthLabel = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1)
+        .toLocaleDateString('en-US', { month: 'long' });
+      showSuccess(`Walk schedule updated — takes effect ${nextMonthLabel} 1st. Walks already on your calendar this month aren't affected.`);
+    } else {
+      showSuccess('Your details were saved.');
+    }
   } catch(e) { showError('Error: ' + e.message); }
 };
 
