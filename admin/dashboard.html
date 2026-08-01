@@ -465,8 +465,8 @@
         </div>
         <div class="table-scroll">
         <table>
-          <thead><tr><th>Name</th><th>Dog</th><th>Tier</th><th>Walks/Month</th><th>Walker</th><th>Member Since</th><th></th></tr></thead>
-          <tbody id="membersTable"><tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
+          <thead><tr><th>Name</th><th>Dog</th><th>Tier</th><th>Billing</th><th>Walks/Month</th><th>Walker</th><th>Member Since</th><th></th></tr></thead>
+          <tbody id="membersTable"><tr><td colspan="8" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
         </table>
         </div>
       </div>
@@ -817,6 +817,12 @@ window.signOut = () => fbSignOut(auth).then(() => window.location.href = 'index.
 
 // ── STATE ───────────────────────────────────────────────────────────────────
 let allWalks = [], allMembers = [], allWalkers = [], allRequests = [];
+// memberId -> billingStatus ('active' | 'past_due' | 'canceled' | undefined
+// for never-subscribed). Fetched separately from allMembers because billing
+// lives in the protected members/{id}/private/billing subdoc, not on the
+// member doc itself — kept that way so it stays out of walkers' full-doc
+// read on members. See renderBillingBadge / subscribeMembers.
+let memberBilling = {};
 let calendarYear = new Date().getFullYear();
 let calendarMonth = new Date().getMonth();
 let currentRequestFilter = 'all';
@@ -963,12 +969,22 @@ function subscribeOvernights() {
 }
 
 function subscribeMembers() {
-  onSnapshot(collection(db, 'members'), snap => {
+  onSnapshot(collection(db, 'members'), async snap => {
     allMembers = snap.docs.map(d => ({ id: d.id, ...d.data() })); window.allMembers = allMembers;
     renderAll();
     renderMembersTable();
     populateMemberSelect();
     updateStats();
+
+    // Billing health for the table view — fetched separately since it
+    // lives off the member doc (see memberBilling above). Table re-renders
+    // once this resolves; the first paint above just won't have badges yet.
+    const entries = await Promise.all(allMembers.map(async m => {
+      const billingSnap = await getDoc(doc(db, 'members', m.id, 'private', 'billing'));
+      return [m.id, billingSnap.exists() ? billingSnap.data().billingStatus : undefined];
+    }));
+    memberBilling = Object.fromEntries(entries);
+    renderMembersTable();
   });
 }
 
@@ -1463,10 +1479,25 @@ function renderAvailabilityGrid() {
 }
 
 // ── MEMBERS TABLE ─────────────────────────────────────────────────────────────
+// Shared by the members table and the member detail modal. status is
+// billing.billingStatus: 'active' | 'past_due' | 'canceled' | undefined.
+// undefined means never subscribed (Travel-tier / one-time-service-only
+// clients) — deliberately rendered as a plain dash, not a badge, since
+// that's a different, non-alarming state from "unknown"/"in trouble".
+function renderBillingBadge(status) {
+  if (!status) return '–';
+  const display = {
+    active: { cls: 'active', label: 'Active' },
+    past_due: { cls: 'unassigned', label: 'Past Due' },
+    canceled: { cls: 'completed', label: 'Canceled' },
+  }[status] || { cls: 'pending', label: status };
+  return `<span class="status-badge ${display.cls}">${escapeHtml(display.label)}</span>`;
+}
+
 function renderMembersTable(filter = '') {
   const tbody = document.getElementById('membersTable');
   const members = filter ? allMembers.filter(m => m.name?.toLowerCase().includes(filter.toLowerCase()) || memberDogNames(m).toLowerCase().includes(filter.toLowerCase())) : allMembers;
-  if (!members.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:24px;">No members yet.</td></tr>'; return; }
+  if (!members.length) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-light);padding:24px;">No members yet.</td></tr>'; return; }
   tbody.innerHTML = members.map(m => {
     const walker = allWalkers.find(w => w.id === m.assignedWalkerId);
     const since = m.createdAt?.toDate?.() ? m.createdAt.toDate().toLocaleDateString('en-US', {month:'short', year:'numeric'}) : '–';
@@ -1474,6 +1505,7 @@ function renderMembersTable(filter = '') {
       <td data-label="Name"><strong>${m.name}</strong><br><span style="font-size:11px;color:var(--text-light);">${m.email}</span></td>
       <td data-label="Dog">${memberDogNames(m) || '–'}</td>
       <td data-label="Tier"><span class="status-badge active">${m.tier || 'Standard'}</span></td>
+      <td data-label="Billing">${renderBillingBadge(memberBilling[m.id])}</td>
       <td data-label="Walks/Month">${m.walksThisMonth || 0}</td>
       <td data-label="Walker">${walker?.name || '–'}</td>
       <td data-label="Member Since">${since}</td>
@@ -3539,11 +3571,11 @@ window.openMemberDetail = async (id) => {
     { label: 'Assigned Walker', value: walker?.name || 'Unassigned' },
     { label: 'Stripe Customer ID', value: billing.stripeCustomerId || '–' },
     { label: 'Stripe Subscription ID', value: billing.stripeSubscriptionId || '–' },
-    { label: 'Billing Status', value: billing.billingStatus || '–' },
+    { label: 'Billing Status', value: billing.billingStatus || '–', html: renderBillingBadge(billing.billingStatus) },
     { label: 'Member Since', value: fmtDate(member.createdAt) },
   ];
   const fieldHTML = fields.map(f =>
-    `<div class="modal-field"><div class="modal-label">${escapeHtml(f.label)}</div><div class="modal-value">${escapeHtml(f.value)}</div></div>`
+    `<div class="modal-field"><div class="modal-label">${escapeHtml(f.label)}</div><div class="modal-value">${f.html || escapeHtml(f.value)}</div></div>`
   ).join('');
 
   const dogsHTML = renderMemberDogCards(getMemberDogs(member));
