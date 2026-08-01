@@ -595,6 +595,9 @@
     <div style="background:#fff; border-radius:16px; padding:28px; width:100%; max-width:420px; box-shadow:0 20px 60px rgba(0,0,0,0.2);">
       <h2 style="font-size:18px; font-weight:600; color:#0D1B2A; margin-bottom:20px;">Change Password</h2>
 
+      <!-- Modal-local error line — stays visible above the dialog, matches the status component -->
+      <div id="passwordModalError" role="alert" style="display:none; background:#F4F0EA; border:1px solid rgba(13,27,42,0.08); border-left:4px solid #C17B6F; border-radius:6px; padding:14px 16px; margin-bottom:20px; font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; line-height:1.5; color:#0D1B2A;"></div>
+
       <div class="field-group" style="margin-bottom:16px;">
         <label class="field-label">Current Password</label>
         <input type="password" class="field-input" id="currentPassword" placeholder="Enter your current password" autocomplete="current-password">
@@ -804,11 +807,18 @@ window.saveAccount = async () => {
 // with the current password first, then updatePassword. All errors surface
 // through the same showNotif toast the rest of the page uses.
 const passwordModal = document.getElementById('passwordModal');
+// Modal-local error line — password errors stay visible above the dialog (the
+// page-level banner would sit behind the modal overlay). Success still uses the
+// page banner: the modal closes on success, so an in-modal success would vanish.
+const passwordModalError = document.getElementById('passwordModalError');
+const showPasswordError = (msg) => { if (passwordModalError) { passwordModalError.textContent = msg; passwordModalError.style.display = 'block'; } };
+const clearPasswordError = () => { if (passwordModalError) { passwordModalError.textContent = ''; passwordModalError.style.display = 'none'; } };
 const openPasswordModal = () => {
   ['currentPassword', 'newPassword', 'confirmNewPassword'].forEach(id => {
     const inp = document.getElementById(id);
     if (inp) inp.value = '';
   });
+  clearPasswordError();
   passwordModal.style.display = 'flex';
 };
 const closePasswordModal = () => { passwordModal.style.display = 'none'; };
@@ -823,13 +833,15 @@ document.getElementById('updatePasswordBtn')?.addEventListener('click', async ()
   const next = document.getElementById('newPassword').value;
   const confirm = document.getElementById('confirmNewPassword').value;
 
-  // Validate locally before touching Firebase.
-  if (next.length < 8) { showError('Password must be at least 8 characters'); return; }
-  if (next !== confirm) { showError("New passwords don't match"); return; }
-  if (next === current) { showError('New password must be different from your current one'); return; }
+  // Validate locally before touching Firebase. Errors show in the modal-local
+  // line (the page banner would sit behind the modal overlay).
+  clearPasswordError();
+  if (next.length < 8) { showPasswordError('Password must be at least 8 characters'); return; }
+  if (next !== confirm) { showPasswordError("New passwords don't match"); return; }
+  if (next === current) { showPasswordError('New password must be different from your current one'); return; }
 
   const user = auth.currentUser;
-  if (!user || !user.email) { showError('You must be signed in to change your password'); return; }
+  if (!user || !user.email) { showPasswordError('You must be signed in to change your password'); return; }
 
   const btn = document.getElementById('updatePasswordBtn');
   btn.disabled = true;
@@ -853,7 +865,7 @@ document.getElementById('updatePasswordBtn')?.addEventListener('click', async ()
     } else {
       msg = 'Could not update password. Please try again.';
     }
-    showError(msg);
+    showPasswordError(msg);
   } finally {
     btn.disabled = false;
   }
