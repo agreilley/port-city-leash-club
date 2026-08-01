@@ -39,6 +39,12 @@ function billingRef(memberId) {
 // Never hardcode the real key here or commit it to the repo.
 const STRIPE_SECRET_KEY = defineSecret('STRIPE_SECRET_KEY');
 
+// Set this once via:
+//   firebase functions:secrets:set STRIPE_WEBHOOK_SECRET
+// Value comes from the Stripe Dashboard endpoint's "Signing secret" — never
+// hardcode it here or commit it to the repo.
+const STRIPE_WEBHOOK_SECRET = defineSecret('STRIPE_WEBHOOK_SECRET');
+
 function stripeClient(key) {
   // Lazy-require so the Stripe SDK is only loaded inside a function
   // invocation, once the secret is available.
@@ -396,8 +402,12 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
     throw new HttpsError('failed-precondition', 'Customer has no saved payment method.');
   }
 
-  // Set as the default payment method for invoices on this customer.
+  // Set as the default payment method for invoices on this customer, and tag
+  // the customer with the Firestore memberId — stripeWebhook's Stripe-side
+  // fallback lookup (see findMemberIdByStripeCustomerId) reads this back when
+  // the Firestore-side lookup (billing.stripeCustomerId) can't resolve it.
   await stripe.customers.update(sub.stripeCustomerId, {
+    metadata: { memberId },
     invoice_settings: { default_payment_method: paymentMethods.data[0].id },
   });
 
@@ -1190,6 +1200,118 @@ exports.issueRefund = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) =
     if (e instanceof HttpsError) throw e;
     throw new HttpsError('internal', e.message);
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 3f. Stripe webhook — the ONLY place this system reacts to something Stripe
+//    does on its own clock (automatic subscription renewal billing), rather
+//    than in direct response to one of the onCall functions above. Scope is
+//    deliberately minimal: exactly two events.
+//      - invoice.payment_failed: FLAG only (billingStatus: 'past_due') —
+//        does NOT stop walk generation. Both monthly crons run once a
+//        month, so the exposure window is already bounded by that cadence;
+//        Stripe's own retry schedule is what actually decides whether a
+//        decline resolves itself, and re-implementing that logic here would
+//        be redundant at best. This just gives admin visibility to act
+//        sooner than Stripe's own timeline if they choose to.
+//      - customer.subscription.deleted: Stripe's definitive final word
+//        (fires only after retries are exhausted, or a manual cancel) — THIS
+//        is what flips hasActiveSubscription: false, which both monthly
+//        crons already gate walk generation on (see 3c/3d above).
+//    Everything else — payment_succeeded logging, disputes, a real
+//    cancellation flow, subscription.updated — is explicitly out of scope.
+// ─────────────────────────────────────────────────────────────────────────
+
+// Resolves a Stripe customer ID back to a Firestore memberId. Firestore is
+// checked FIRST: billing.stripeCustomerId is the original source of truth,
+// written at signup by createSetupIntent long before any subscription
+// exists, so querying it directly avoids a Stripe round-trip on every
+// webhook delivery and doesn't depend on customer metadata being set. Falls
+// back to Stripe customer metadata.memberId (set by createMembershipSubscription)
+// only if the Firestore lookup comes up empty — covers the collection-group
+// index not existing/still building, or a customer created before that
+// metadata tagging existed.
+async function findMemberIdByStripeCustomerId(stripe, customerId) {
+  const snap = await db.collectionGroup('private')
+    .where('stripeCustomerId', '==', customerId)
+    .limit(1)
+    .get();
+  if (!snap.empty) {
+    // Doc path is members/{memberId}/private/billing — memberId is two
+    // segments up from the matched 'billing' doc.
+    return snap.docs[0].ref.parent.parent.id;
+  }
+
+  try {
+    const customer = await stripe.customers.retrieve(customerId);
+    return (customer && customer.metadata && customer.metadata.memberId) || null;
+  } catch (e) {
+    console.error(`findMemberIdByStripeCustomerId: Stripe lookup failed for ${customerId}:`, e.message);
+    return null;
+  }
+}
+
+exports.stripeWebhook = onRequest({ secrets: [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET] }, async (req, res) => {
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+
+  // Signature verification is the ONLY case that returns non-200 here — an
+  // unverified request is rejected outright. Everything past this point
+  // always returns 200: Stripe retries indefinitely (and eventually disables
+  // the endpoint) on a non-2xx response, so a no-op — duplicate delivery,
+  // an unresolvable customer, an internal error on a genuinely broken event
+  // — must still look like success to Stripe. Retrying a no-op wouldn't fix
+  // it anyway; it would just repeat the same outcome forever.
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.rawBody, req.get('stripe-signature'), STRIPE_WEBHOOK_SECRET.value());
+  } catch (err) {
+    console.error('stripeWebhook: signature verification failed:', err.message);
+    res.status(400).send(`Webhook signature verification failed: ${err.message}`);
+    return;
+  }
+
+  // Idempotency: Stripe redelivers events (its own retries, or plain
+  // duplicate sends). create() throws if this event id was already
+  // recorded, so a redelivery lands here and exits as a safe no-op.
+  const eventRef = db.collection('stripe_webhook_events').doc(event.id);
+  try {
+    await eventRef.create({ type: event.type, receivedAt: FieldValue.serverTimestamp() });
+  } catch (e) {
+    res.status(200).send('Already processed');
+    return;
+  }
+
+  try {
+    if (event.type === 'invoice.payment_failed') {
+      const invoice = event.data.object;
+      const memberId = await findMemberIdByStripeCustomerId(stripe, invoice.customer);
+      if (!memberId) {
+        console.warn(`stripeWebhook: invoice.payment_failed for unresolvable customer ${invoice.customer} (event ${event.id})`);
+      } else {
+        await billingRef(memberId).set({ billingStatus: 'past_due' }, { merge: true });
+      }
+    } else if (event.type === 'customer.subscription.deleted') {
+      const subscription = event.data.object;
+      const memberId = await findMemberIdByStripeCustomerId(stripe, subscription.customer);
+      if (!memberId) {
+        console.warn(`stripeWebhook: customer.subscription.deleted for unresolvable customer ${subscription.customer} (event ${event.id})`);
+      } else {
+        const batch = db.batch();
+        batch.set(db.collection('members').doc(memberId), { hasActiveSubscription: false }, { merge: true });
+        batch.set(billingRef(memberId), { billingStatus: 'canceled' }, { merge: true });
+        await batch.commit();
+      }
+    }
+    // Any other event type: the Stripe Dashboard endpoint is only configured
+    // to send these two (see setup notes), but ignore anything else
+    // defensively rather than erroring.
+  } catch (e) {
+    // A genuine bug processing an already-recorded event. Logged for
+    // investigation, but still 200 — see the comment above on why.
+    console.error(`stripeWebhook: failed processing ${event.type} (${event.id}):`, e.message);
+  }
+
+  res.status(200).send('ok');
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
