@@ -581,6 +581,17 @@
   </div>
 </div>
 
+<!-- MEMBER PORTAL PREVIEW MODAL — iframes the member's own portal-dashboard.html
+     with ?memberId=<id>. Admin's existing session throughout; no custom tokens,
+     no auth switching. Read-only: portal-dashboard.html disables its own
+     outbound links/buttons when it detects preview mode. -->
+<div class="modal-overlay" id="portalPreviewModal">
+  <div class="modal" style="max-width:1000px; padding:0; overflow:hidden;">
+    <button class="modal-close" onclick="closeModal('portalPreviewModal')" style="z-index:1; background:white; border-radius:50%; width:28px; height:28px; display:flex; align-items:center; justify-content:center; top:12px; right:12px;">×</button>
+    <iframe id="portalPreviewFrame" src="about:blank" style="width:100%; height:85vh; border:none; display:block;"></iframe>
+  </div>
+</div>
+
 <!-- WALKER DETAIL MODAL (read-only fields + editable availability/overnight) -->
 <div class="modal-overlay" id="walkerDetailModal">
   <div class="modal" style="max-width:640px;">
@@ -3583,11 +3594,22 @@ window.openMemberDetail = async (id) => {
   document.getElementById('memberDetailModalTitle').textContent = member.name || 'Member Details';
   document.getElementById('memberDetailModalContent').innerHTML = `
     <div class="form-grid">${fieldHTML}</div>
+    <button class="btn-secondary" style="margin-top:4px;" onclick="openMemberPortalPreview('${member.id}')">Preview Member Portal</button>
     <hr class="modal-divider">
     <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Dogs</div>
     ${dogsHTML}
   `;
   document.getElementById('memberDetailModal').classList.add('open');
+};
+
+// Opens a read-only preview of exactly what this member sees in their own
+// portal dashboard — same admin session throughout, no custom tokens, no
+// auth switching. portal-dashboard.html itself verifies admin status
+// server-side (admins/{request.auth.uid}) before honoring ?memberId= and
+// disables all its own outbound links/buttons in that mode.
+window.openMemberPortalPreview = (memberId) => {
+  document.getElementById('portalPreviewFrame').src = `../portal-dashboard.html?memberId=${encodeURIComponent(memberId)}`;
+  document.getElementById('portalPreviewModal').classList.add('open');
 };
 window.openWalkerDetail = (id) => {
   const walker = allWalkers.find(w => w.id === id);
@@ -3733,6 +3755,11 @@ window.closeModal = (id) => {
   if (id === 'conversationModal' && convoUnsubscribeThread) {
     convoUnsubscribeThread();
     convoUnsubscribeThread = null;
+  }
+  if (id === 'portalPreviewModal') {
+    // Tear down the iframe's document entirely so its onSnapshot listeners
+    // stop running in the background instead of just being visually hidden.
+    document.getElementById('portalPreviewFrame').src = 'about:blank';
   }
 };
 document.querySelectorAll('.modal-overlay').forEach(m => m.addEventListener('click', e => { if (e.target === m) closeModal(m.id); }));

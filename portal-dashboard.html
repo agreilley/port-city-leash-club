@@ -382,6 +382,20 @@
       transition: all 0.15s;
     }
     .btn-signout:hover { border-color: rgba(255,255,255,0.4); color: white; }
+    .btn-signout:disabled { opacity: 0.5; cursor: default; }
+
+    .preview-banner {
+      display: none;
+      background: #D4A843;
+      color: #0D1B2A;
+      padding: 10px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      letter-spacing: 0.01em;
+    }
 
     @media (max-width: 768px) {
       .portal-container {
@@ -538,6 +552,7 @@
     <div class="main-content">
       <div class="content-max">
         <div data-status-container></div>
+        <div class="preview-banner" id="previewBanner">Admin preview — <span id="previewBannerName"></span> (read-only)</div>
         <div class="page-header">
           <h1 id="welcomeHeader">Welcome back</h1>
         </div>
@@ -660,6 +675,26 @@
   </div>
 
   <script type="module">
+// ═══════════════════════════════════════════════════════════════════════════
+// INVARIANT — DO NOT ADD FIRESTORE WRITE CALLS TO THIS FILE
+// (updateDoc / setDoc / addDoc / deleteDoc, or update() with arrayUnion etc.)
+//
+// admin/dashboard.html's "Preview Member Portal" feature iframes this exact
+// file with ?memberId=<id>, running it under the ADMIN'S OWN session (no
+// custom tokens, no auth switching — see the admin preview block below).
+// firestore.rules grants isAdmin() blanket read/write on every collection
+// this page touches (members, walks, overnights, submissions) — NONE of the
+// field-level hasOnly()/value-pinning guards that constrain a real member's
+// writes apply once the caller is an admin. There is no rules-layer backstop
+// here: "read-only" is enforced ENTIRELY by this file containing zero write
+// paths, plus the isPreviewMode checks on navigation (signOutMember /
+// navigateToReschedule / navigateToExtendWalk, below).
+//
+// If a write is ever needed here for the real member-facing flow, it MUST be
+// guarded with `if (isPreviewMode) return;` before it runs — and the
+// necessity of adding it to THIS file (vs. a page that isn't also an admin
+// preview target) should be reconsidered first.
+// ═══════════════════════════════════════════════════════════════════════════
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getFirestore, doc, getDoc, collection, query, where, onSnapshot, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
@@ -688,19 +723,51 @@ const LOAD_ERROR_MSG = "We couldn't load your walks just now. Please refresh, or
 const today = new Date(); today.setHours(0,0,0,0);
     let currentDate = new Date(today.getFullYear(), today.getMonth(), 1);
 
+// ── ADMIN PREVIEW MODE ────────────────────────────────────────────────────────
+// ?memberId=<id> requests a read-only preview of another member's dashboard.
+// It only takes effect if the SIGNED-IN user is an admin — verified server-side
+// via the same admins/{request.auth.uid} check used everywhere else in the app
+// (admin/dashboard.html, admin/index.html, admin/data-review.html), keyed off
+// the caller's OWN uid, never anything client-supplied. A non-admin passing
+// this param is indistinguishable from one who didn't: the check silently
+// fails and viewedMemberId falls back to their own uid — no error, no
+// behavior change. Any error during the check also fails closed to self-view.
+// This is a UI convenience only; the actual security boundary is firestore.rules,
+// which re-checks isAdmin()/ownership server-side on every read regardless of
+// what this branch decides.
+const previewMemberId = new URLSearchParams(location.search).get('memberId');
+let isPreviewMode = false;
+let viewedMemberId = null;
+
 // ── AUTH GUARD ────────────────────────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.href = 'portal-login.html'; return; }
+
+  viewedMemberId = user.uid;
+  if (previewMemberId) {
+    try {
+      const adminSnap = await getDoc(doc(db, 'admins', user.uid));
+      if (adminSnap.exists()) {
+        isPreviewMode = true;
+        viewedMemberId = previewMemberId;
+      }
+    } catch (e) {
+      console.error('admin check failed:', e.message); // fail closed — stays on own uid
+    }
+  }
+
   try {
-    const snap = await getDoc(doc(db, 'members', user.uid));
+    const snap = await getDoc(doc(db, 'members', viewedMemberId));
     if (snap.exists()) {
       memberData = { id: snap.id, ...snap.data() };
       populateMemberUI();
     }
   } catch(e) { console.error('member load:', e.message); }
 
+  if (isPreviewMode) applyPreviewModeUI();
+
   // Real-time walks subscription
-  const walksQ = query(collection(db, 'walks'), where('memberId', '==', user.uid));
+  const walksQ = query(collection(db, 'walks'), where('memberId', '==', viewedMemberId));
   onSnapshot(walksQ, (snap) => {
     myWalks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     updateMetrics();
@@ -712,18 +779,18 @@ onAuthStateChanged(auth, async (user) => {
   });
 
   // Real-time overnights (confirmed)
-  const overnightsQ = query(collection(db, 'overnights'), where('memberId', '==', user.uid));
+  const overnightsQ = query(collection(db, 'overnights'), where('memberId', '==', viewedMemberId));
   onSnapshot(overnightsQ, () => {
-    loadOvernights(user.uid);
+    loadOvernights(viewedMemberId);
   }, (err) => {
     console.error('overnights subscription error:', err.code, err.message);
     showError(LOAD_ERROR_MSG);
   });
 
   // Real-time pending overnight submissions
-  const pendingQ = query(collection(db, 'submissions'), where('memberId', '==', user.uid), where('type', '==', 'overnight_request'));
+  const pendingQ = query(collection(db, 'submissions'), where('memberId', '==', viewedMemberId), where('type', '==', 'overnight_request'));
   onSnapshot(pendingQ, () => {
-    loadOvernights(user.uid);
+    loadOvernights(viewedMemberId);
   }, (err) => {
     console.error('pending overnight submissions subscription error:', err.code, err.message);
     showError(LOAD_ERROR_MSG);
@@ -758,7 +825,10 @@ async function loadOvernights(uid) {
   renderOvernightConflicts();
 }
 
-window.signOutMember = () => signOut(auth).then(() => window.location.href = 'portal-login.html');
+window.signOutMember = () => {
+  if (isPreviewMode) return; // admin previewing another member — never sign the admin out
+  signOut(auth).then(() => window.location.href = 'portal-login.html');
+};
 
 // ── POPULATE STATIC UI FROM MEMBER DOC ───────────────────────────────────────
 // esc() — HTML-escape user-controlled dog fields before innerHTML (L-1)
@@ -802,6 +872,56 @@ function populateMemberUI() {
   document.getElementById('bannerSchedule').textContent = isTravelOnly
     ? 'No recurring walks on file'
     : (days && slot ? `${days} • ${slot}` : 'Schedule pending');
+}
+
+// ── ADMIN PREVIEW: disable every outbound action/link ───────────────────────
+// Buttons/links are disabled, never hidden or removed — the admin should see
+// the real layout including controls. Native `disabled` is used wherever the
+// element is a <button>; <a> tags get pointer-events:none + href stripped +
+// a preventDefault listener, since <a> has no native disabled state. Each
+// guarded handler (signOutMember, navigateToReschedule, navigateToExtendWalk)
+// also checks isPreviewMode itself as defense-in-depth in case a disabled
+// attribute is ever stripped (e.g. future markup changes).
+function applyPreviewModeUI() {
+  const banner = document.getElementById('previewBanner');
+  const nameEl = document.getElementById('previewBannerName');
+  if (banner && nameEl) {
+    nameEl.textContent = memberData?.name || viewedMemberId;
+    banner.style.display = '';
+  }
+
+  // Sidebar + mobile nav — every item leads to a different portal page that
+  // isn't part of this read-only preview and isn't gated the same way, so
+  // all of them (including "Dashboard" itself, to avoid silently dropping
+  // out of preview mode on a stray click) are disabled.
+  document.querySelectorAll('.sidebar-nav .nav-item, .mobile-bottom-nav .mobile-tab').forEach(el => {
+    el.style.pointerEvents = 'none';
+    el.style.opacity = '0.5';
+    el.setAttribute('aria-disabled', 'true');
+    el.removeAttribute('href');
+    el.addEventListener('click', e => e.preventDefault());
+  });
+
+  // "Change Schedule" banner link
+  const changeScheduleLink = document.querySelector('a[href="portal-account.html#walk-schedule"]');
+  if (changeScheduleLink) {
+    changeScheduleLink.style.pointerEvents = 'none';
+    changeScheduleLink.style.opacity = '0.5';
+    changeScheduleLink.setAttribute('aria-disabled', 'true');
+    changeScheduleLink.removeAttribute('href');
+    changeScheduleLink.addEventListener('click', e => e.preventDefault());
+  }
+
+  // Sign-out buttons (sidebar's is a real <button>; mobile's is covered by
+  // the nav-item loop above since it's an <a class="mobile-tab">)
+  document.querySelectorAll('.btn-signout').forEach(el => el.setAttribute('disabled', ''));
+
+  // Modal Reschedule/Extend buttons are static in the DOM (not re-templated
+  // per open), so they're disabled once here rather than on every open.
+  const rescheduleBtn = document.querySelector('.modal-footer button[onclick="navigateToReschedule()"]');
+  if (rescheduleBtn) rescheduleBtn.setAttribute('disabled', '');
+  const extendBtn = document.getElementById('modalExtendBtn');
+  if (extendBtn) extendBtn.setAttribute('disabled', '');
 }
 
 // ── METRICS ───────────────────────────────────────────────────────────────────
@@ -1045,9 +1165,14 @@ function updateMetrics() {
         ? memberData.dogs.map(d => d.name).filter(Boolean).join(' & ')
         : memberData?.dogName || '–';
       document.getElementById('modalDog').textContent = dogs;
-      sessionStorage.setItem('walkDate', formatDateString(date));
-      sessionStorage.setItem('walkTime', document.getElementById('modalTime').textContent);
-      sessionStorage.setItem('activeWalkId', walk.id);
+      // Skipped in preview mode: Reschedule/Extend are disabled so nothing
+      // consumes these, and they'd otherwise leave the previewed member's
+      // walk ID sitting in the admin's own sessionStorage for that tab.
+      if (!isPreviewMode) {
+        sessionStorage.setItem('walkDate', formatDateString(date));
+        sessionStorage.setItem('walkTime', document.getElementById('modalTime').textContent);
+        sessionStorage.setItem('activeWalkId', walk.id);
+      }
 
       const walkDateObj = liveWalk.date?.toDate?.() || new Date(liveWalk.date);
       const walkDateLocal = new Date(walkDateObj.getFullYear(), walkDateObj.getMonth(), walkDateObj.getDate());
@@ -1101,8 +1226,8 @@ function updateMetrics() {
       document.getElementById('walkModal').classList.add('show');
     }
 
-    window.navigateToReschedule = function() { window.location.href = 'portal-reschedule.html'; };
-    window.navigateToExtendWalk = function() { window.location.href = '/portal-extend-walk'; };
+    window.navigateToReschedule = function() { if (isPreviewMode) return; window.location.href = 'portal-reschedule.html'; };
+    window.navigateToExtendWalk = function() { if (isPreviewMode) return; window.location.href = '/portal-extend-walk'; };
     window.closeWalkModal = function() { document.getElementById('walkModal').classList.remove('show'); };
 
     document.getElementById('walkModal').addEventListener('click', function(e) {
