@@ -183,76 +183,66 @@
     }
 
     .calendar-day {
+      position: relative;
       aspect-ratio: 1;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #888;
+    }
+
+    .cal-day-num {
+      position: absolute;
+      left: 8px;
+      bottom: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #0D1B2A;
+      line-height: 1;
+    }
+
+    /* --- fills: solid + solid border = confirmed, tinted + dashed border = pending --- */
+    .calendar-day.scheduled { background: #C5D5D1; }
+    .calendar-day.completed { background: #8FA8A2; }
+    .calendar-day.overnight-confirmed { background: #C17B6F; border: 1.5px solid #C17B6F; }
+    .calendar-day.overnight-pending { background: #F0DEDB; border: 1.5px dashed #C17B6F; }
+    .calendar-day.completed .cal-day-num,
+    .calendar-day.overnight-confirmed .cal-day-num { color: white; }
+
+    /* Walk-overlap dot (bottom-right): a walk also exists on a day whose
+       fill is driven by an overnight. Filled = the overnight is confirmed,
+       dashed ring = the overnight is still pending. */
+    .calendar-day .walk-dot {
+      position: absolute;
+      right: 6px;
+      bottom: 6px;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+    }
+    .calendar-day .walk-dot.confirmed { background: #C5D5D1; border: 1.5px solid white; }
+    .calendar-day .walk-dot.pending { background: transparent; border: 1.5px dashed #C5D5D1; }
+
+    /* Extension badge (top-right): an attribute of the walk, independent of
+       the cell's fill — always a white chip so the "45" stays legible over
+       every state color. Dashed navy ring = extension pending, solid = confirmed. */
+    .calendar-day .ext-badge {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: white;
+      color: #0D1B2A;
+      font-size: 9.5px;
+      font-weight: 700;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 13px;
-      color: #888;
-      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(13, 27, 42, 0.3);
     }
-
-    .calendar-day.scheduled {
-      background: #C17B6F;
-      color: white;
-      
-      border: 2px solid #C17B6F;
-      font-weight: 500;
-    }
-
-    .calendar-day.scheduled.extended {
-      background: #C17B6F;
-      outline: 2px solid rgba(13, 27, 42, 0.35);
-      outline-offset: -3px;
-    }
-    .calendar-day.scheduled.extended-pending {
-      background: #C17B6F;
-      outline: 2px dashed #D4A843;
-      outline-offset: -3px;
-    }
-    /* A pending (not yet confirmed) overnight request also covers this walk
-       day — same dashed-gold "pending secondary state" language as
-       .extended-pending, just triggered by a different condition. Visually
-       identical outline is intentional: both mean "something pending is
-       layered on this walk." */
-    .calendar-day.scheduled.overnight-pending-overlap {
-      outline: 2px dashed #D4A843;
-      outline-offset: -3px;
-    }
-    .calendar-day.completed {
-      background: #8FA8A2;
-      color: white;
-    }
-    .calendar-day.scheduled {
-      background: #C17B6F;
-      color: white;
-    }
-    .calendar-day.overnight-confirmed {
-      background: #E8F4F0;
-      color: #2D7A5E;
-      border: 1.5px solid #8FA8A2;
-      font-weight: 500;
-    }
-    /* A walk still sits on a day covered by a confirmed overnight — same
-       outline-overlay language as .scheduled.extended (solid outline =
-       confirmed secondary condition layered on the base fill), reusing the
-       walk's own rust rather than any new color. */
-    .calendar-day.overnight-confirmed.walk-conflict {
-      outline: 2px solid #C17B6F;
-      outline-offset: -3px;
-    }
-    .calendar-day.overnight-pending {
-      background: #FEF9EC;
-      color: #92400E;
-      border: 1.5px dashed #D4A843;
-    }
-    .calendar-day.completed.extended {
-      background: #8FA8A2;
-      color: white;
-      opacity: 0.6;
-      border: 2px solid #8FA8A2;
-      font-weight: 500;
-    }
+    .calendar-day .ext-badge.pending { border: 2px dashed #0D1B2A; }
+    .calendar-day .ext-badge.confirmed { border: 2px solid #0D1B2A; }
 
     .calendar-day.today {
       border: 3px solid #0D1B2A;
@@ -613,24 +603,20 @@
           <!-- Legend -->
           <div class="calendar-legend">
             <div class="legend-item">
-              <div class="legend-color" style="background: #C17B6F;"></div>
-              <span>Scheduled walks</span>
+              <div class="legend-color" style="background: #C5D5D1;"></div>
+              <span>Scheduled walk</span>
             </div>
             <div class="legend-item">
               <div class="legend-color" style="background: #8FA8A2;"></div>
-              <span>Completed walks</span>
+              <span>Completed walk</span>
             </div>
             <div class="legend-item">
-              <div class="legend-color" style="background: #E8F4F0; border: 1.5px solid #8FA8A2;"></div>
+              <div class="legend-color" style="background: #C17B6F;"></div>
               <span>Overnight (confirmed)</span>
             </div>
             <div class="legend-item">
-              <div class="legend-color" style="background: #FEF9EC; border: 1.5px dashed #D4A843;"></div>
+              <div class="legend-color" style="background: #F0DEDB; border: 1.5px dashed #C17B6F;"></div>
               <span>Overnight (pending)</span>
-            </div>
-            <div class="legend-item">
-              <div class="legend-color" style="background: #C17B6F; outline: 2px dashed #D4A843; outline-offset: -3px;"></div>
-              <span>Extended walk (pending)</span>
             </div>
             <div class="legend-item" style="margin-left: auto; color: #888;">
               Click a walk to reschedule
@@ -892,23 +878,45 @@ function updateMetrics() {
       for (let day = 1; day <= daysInMonth; day++) {
         const dayEl = document.createElement('div');
         dayEl.className = 'calendar-day';
-        dayEl.textContent = day;
+
+        const dayNum = document.createElement('div');
+        dayNum.className = 'cal-day-num';
+        dayNum.textContent = day;
+        dayEl.appendChild(dayNum);
 
         const cellDate = new Date(year, month, day); cellDate.setHours(0,0,0,0);
         if (cellDate.getTime() === today.getTime()) dayEl.classList.add('today');
+
+        const w = walkMap[day];
+        // Extension is an attribute of the walk, independent of the cell's
+        // fill (scheduled or completed) — shown as a badge, not a color.
+        function addExtensionBadge() {
+          if (!w || !w.extended) return;
+          const badge = document.createElement('div');
+          badge.className = 'ext-badge ' + (w.extendedStatus === 'pending' ? 'pending' : 'confirmed');
+          badge.textContent = '45';
+          dayEl.appendChild(badge);
+        }
+        function addWalkDot(kind) {
+          const dot = document.createElement('div');
+          dot.className = 'walk-dot ' + kind;
+          dayEl.appendChild(dot);
+        }
 
         // A CONFIRMED overnight is a real booking and takes priority over a
         // walk that day — UNLESS that walk is still unresolved, in which
         // case it's a genuine conflict (the overnight's midday check-in
         // covers the dog, so the walk is very likely no longer needed) and
-        // gets flagged rather than silently hidden. A PENDING request is not
+        // gets flagged rather than silently hidden (rust fill + a seafoam dot
+        // marking the walk that still sits on it). A PENDING request is not
         // a booking yet, so it must never suppress a real, already-scheduled
         // walk — that's checked last, only once there's no walk to show
         // instead.
         if (overnightMap[day] && overnightMap[day].status === 'confirmed'
             && walkMap[day] && walkMap[day].status !== 'completed') {
-          const w = walkMap[day];
-          dayEl.classList.add('overnight-confirmed', 'walk-conflict');
+          dayEl.classList.add('overnight-confirmed');
+          addWalkDot('confirmed');
+          addExtensionBadge();
           dayEl.title = 'Overnight stay (confirmed) — walk may not be needed';
           dayEl.style.cursor = 'pointer';
           dayEl.onclick = () => openWalkModal(w, cellDate);
@@ -916,26 +924,26 @@ function updateMetrics() {
           dayEl.classList.add('overnight-confirmed');
           dayEl.title = 'Overnight stay (confirmed)';
         } else if (walkMap[day]) {
-          const w = walkMap[day];
           if (w.status === 'completed') {
             dayEl.classList.add('completed');
-          } else {
-            dayEl.classList.add('scheduled');
-            if (w.extended) {
-              dayEl.classList.add(w.extendedStatus === 'pending' ? 'extended-pending' : 'extended');
-              dayEl.title = w.extendedStatus === 'pending' ? '45-minute walk (pending confirmation)' : '45-minute walk (confirmed)';
-            }
+          } else if (overnightMap[day] && overnightMap[day].status === 'pending') {
             // A pending overnight request never suppresses the walk (it
             // isn't a booking), but it's still worth surfacing alongside it —
-            // same dashed-gold secondary-state language .extended-pending
-            // already uses, layered on top rather than replacing anything.
-            if (overnightMap[day] && overnightMap[day].status === 'pending') {
-              dayEl.classList.add('overnight-pending-overlap');
-              if (!w.extended) dayEl.title = 'Scheduled walk — a pending overnight request also covers this day';
-            }
-            dayEl.style.cursor = 'pointer';
-            dayEl.onclick = () => openWalkModal(w, cellDate);
+            // same fill the day would get on its own, plus a dashed dot
+            // marking the walk that still sits on it.
+            dayEl.classList.add('overnight-pending');
+            addWalkDot('pending');
+            dayEl.title = 'A pending overnight request also covers this day';
+          } else {
+            dayEl.classList.add('scheduled');
           }
+          addExtensionBadge();
+          if (w.extended) {
+            const extNote = w.extendedStatus === 'pending' ? '45-minute walk (pending confirmation)' : '45-minute walk (confirmed)';
+            dayEl.title = dayEl.title ? `${dayEl.title} · ${extNote}` : extNote;
+          }
+          dayEl.style.cursor = 'pointer';
+          dayEl.onclick = () => openWalkModal(w, cellDate);
         } else if (overnightMap[day]) {
           dayEl.classList.add('overnight-pending');
           dayEl.title = 'Overnight stay (pending confirmation)';
@@ -1029,7 +1037,9 @@ function updateMetrics() {
       // Always read from the live myWalks array so extended flag is current
       const liveWalk = myWalks.find(w => w.id === walk.id) || walk;
       const durationText = liveWalk.extended ? '45-minute walk' : (liveWalk.duration || '30-minute walk');
-      document.getElementById('modalDuration').textContent = (liveWalk.extended && liveWalk.extendedStatus === 'pending') ? `${durationText} (pending confirmation)` : durationText;
+      document.getElementById('modalDuration').textContent = liveWalk.extended
+        ? `${durationText} — ${liveWalk.extendedStatus === 'pending' ? 'pending confirmation' : 'confirmed'}`
+        : durationText;
       // Show all dogs in the household
       const dogs = memberData?.dogs?.length
         ? memberData.dogs.map(d => d.name).filter(Boolean).join(' & ')
