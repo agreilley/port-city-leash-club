@@ -2003,6 +2003,9 @@ exports.twilioInboundWebhook = onRequest({ secrets: [TWILIO_AUTH_TOKEN] }, async
 //    walk complete with a photo/note. No admin involvement, by design
 //    (see business decision: routine walk updates bypass the inbox
 //    entirely; only non-routine communication goes through admin).
+//
+//    ALSO rate-stamps the walk's payout here (same trigger, same guard) —
+//    see the payout-stamping block below for why.
 // ─────────────────────────────────────────────────────────────────────────
 exports.onWalkCompleted = onDocumentUpdated({
   document: 'walks/{walkId}',
@@ -2014,6 +2017,34 @@ exports.onWalkCompleted = onDocumentUpdated({
   // Only fire on the actual scheduled -> completed transition, not on
   // every subsequent edit to an already-completed walk.
   if (before.status === 'completed' || after.status !== 'completed') return;
+
+  // ── PAYOUT RATE-STAMPING ──────────────────────────────────────────────
+  // Fixes what this walk is worth AT COMPLETION TIME, immune to
+  // WALKER_RATES changing later (the 45 -> 65 overnight change is why this
+  // exists: without a stamp, a walk's payout retroactively shifts to
+  // whatever WALKER_RATES says whenever it's later read, even long after
+  // completion). walker-pricing.js is dynamically imported because it's an
+  // ES module and this file is CommonJS — see the note at the top of that
+  // file for how it gets deployed alongside this function.
+  //
+  // Runs unconditionally on a genuine completion, independent of the
+  // member/phone/SMS logic below. The `after.payout` check is
+  // defense-in-depth on top of the status-transition guard above: writing
+  // `payout` back onto this same doc re-triggers this function, but that
+  // re-invocation sees before.status already 'completed' and returns at
+  // the guard above before ever reaching here — this check just makes that
+  // explicit rather than relying solely on the guard's timing.
+  if (!after.payout) {
+    const { calculateWalkPayout } = await import('./walker-pricing.js');
+    await event.data.after.ref.update({
+      payout: {
+        rateKey: after.extended ? 'extended' : 'standard',
+        amount: calculateWalkPayout(after),
+        stampedAt: FieldValue.serverTimestamp(),
+      },
+    });
+  }
+
   if (!after.memberId) return;
 
   const memberSnap = await db.collection('members').doc(after.memberId).get();
@@ -2053,6 +2084,46 @@ exports.onWalkCompleted = onDocumentUpdated({
     });
     console.error('Walk-update text failed:', e.message);
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 9b. Overnight/check-in payout rate-stamping — completeOvernight() in
+//    walker/dashboard.html is a plain client write with no prior server-side
+//    hook (unlike walks, which already had onWalkCompleted for SMS). Same
+//    guard pattern as onWalkCompleted, same reasoning: fixes what a
+//    completed overnight is worth at the moment it's marked done, immune to
+//    WALKER_RATES changing later. No SMS/member-notification counterpart
+//    exists for overnights, so this trigger only does the rate stamp.
+// ─────────────────────────────────────────────────────────────────────────
+exports.onOvernightCompleted = onDocumentUpdated({
+  document: 'overnights/{overnightId}',
+}, async (event) => {
+  const before = event.data.before.data() || {};
+  const after = event.data.after.data() || {};
+
+  // Only fire on the actual confirmed -> completed transition, not on every
+  // subsequent edit to an already-completed overnight — identical guard to
+  // onWalkCompleted, for the identical reason: this write re-triggers
+  // itself (see below), and this is what stops that from looping or
+  // double-stamping.
+  if (before.status === 'completed' || after.status !== 'completed') return;
+  if (after.payout) return; // defense-in-depth, see onWalkCompleted's note on the equivalent check
+
+  const { calculateOvernightPayout, WALKER_RATES } = await import('./walker-pricing.js');
+  const payout = calculateOvernightPayout(after);
+
+  await event.data.after.ref.update({
+    payout: {
+      rateKey: payout.key,
+      rate: WALKER_RATES[payout.key],
+      days: payout.days,
+      baseTotal: payout.base,
+      extraPetTotal: payout.extraPetTotal,
+      medicationTotal: payout.medicationTotal,
+      amount: payout.total,
+      stampedAt: FieldValue.serverTimestamp(),
+    },
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -159,6 +159,14 @@ Existence of a document at `admins/{uid}` **is** the admin authorization check �
                                    // (not a numeric minutes field, despite what you might expect)
   createdAt: timestamp
   updatedAt: timestamp              // set on walker reassignment or reschedule
+  payout: {                         // written ONCE by onWalkCompleted (functions/index.js), on the real
+                                   // scheduled -> completed transition only — fixes what this walk pays
+                                   // out, immune to WALKER_RATES (walker-pricing.js) changing later.
+                                   // Absent on any walk not yet completed.
+    rateKey: string                 // "standard" | "extended"
+    amount: number                  // dollars — calculateWalkPayout() at the moment of completion
+    stampedAt: timestamp
+  }
 }
 ```
 
@@ -168,6 +176,7 @@ Existence of a document at `admins/{uid}` **is** the admin authorization check �
 - No `originalDate`/`originalTimeSlot` and no `rescheduleHistory` audit trail. Rescheduling just overwrites `date` and `timeSlot` directly on the same document (`approveReschedule()` in admin/dashboard.html) — there is no record of what the walk's date used to be.
 - No cancellation fields (`cancelledAt`/`cancellationReason`/`cancelledBy`) and no cancellation flow of any kind.
 - No per-walk billing fields (`creditUsed`/`priceApplied`) — see the Billing section below for how charging actually works.
+- `payout` is NOT itself a payment record — it's an immutable rate stamp. What was actually paid to a walker lives in `walkerPayments` (§10), generated from walks/overnights whose `payout` is already stamped.
 
 ---
 
@@ -268,6 +277,19 @@ Confirmed (paid, scheduled) overnight stays and check-in visits — created from
   walkerId: string                   // references walkers.walkerId; empty until assigned
   extraPet: boolean
   medication: boolean
+  payout: {                          // written ONCE by onOvernightCompleted (functions/index.js), on the
+                                    // real confirmed -> completed transition only — same immutable-stamp
+                                    // reasoning as walks.payout above. Absent on any overnight not yet
+                                    // completed.
+    rateKey: string                  // "checkin" | "overnight"
+    rate: number                     // per-night dollar rate applied
+    days: number
+    baseTotal: number                // rate * days
+    extraPetTotal: number            // 0 if extraPet was false
+    medicationTotal: number          // 0 if medication was false
+    amount: number                   // baseTotal + extraPetTotal + medicationTotal
+    stampedAt: timestamp
+  }
 }
 ```
 
@@ -341,6 +363,53 @@ Admin-configured available time slots for prospective-member meet & greets, one 
                           // that day's default slot set; absence of a doc means "use defaults"
 }
 ```
+
+---
+
+### 10. `walkerPayments`
+
+What a walker was actually paid — the record the app pays FROM, not a mirror of QuickBooks (which is where the money itself moves and where 1099 tax data lives; no tax ID/legal name is stored here). Distinct from `walks`/`overnights`.`payout` (§4, §6), which stamps what a single unit of work is worth at completion time but is not itself a payment. Written only by Cloud Functions using the Admin SDK — `generateWalkerPayout` and `markPaid` — never by a direct client write, same posture as `members/{id}/private/billing`.
+
+**Document ID:** `{walkerId}_{periodStart YYYY-MM-DD}` — deterministic, written via `.create()` for the same idempotent-ID reason `walks/{memberId}_{date}` is (§4): a second "generate" for a period already generated fails loudly instead of silently duplicating.
+
+**Fields:**
+```
+{
+  walkerId: string
+  walkerName: string                 // denormalized at generation time
+  periodStart: timestamp             // Monday of the covered week
+  periodEnd: timestamp               // the following Monday (exclusive)
+  status: string                     // "pending" -> "paid" (possibly "voided" for corrections)
+  items: array<{                     // one entry per walk/overnight this payment claims
+    type: string                     // "walk" | "overnight" | "checkin"
+    refCollection: string            // "walks" | "overnights"
+    refId: string                    // source document ID, for audit/traceability
+    date: timestamp
+    rateKey: string
+    rateApplied: number              // copied from the source doc's stamped payout.amount / rate — not
+                                      // re-derived from live WALKER_RATES
+    extraPet: boolean
+    medication: boolean
+    amount: number
+  }>
+  counts: {                          // rollup, mirrors calculateEarnings()'s breakdown shape
+    standard: { count: number, total: number }
+    extended: { count: number, total: number }
+    checkin: { count: number, total: number }
+    overnight: { count: number, total: number }
+    extraPet: { count: number, total: number }
+    medication: { count: number, total: number }
+  }
+  total: number
+  generatedAt: timestamp
+  generatedBy: string                // admin uid
+  paidAt: timestamp | null
+  paidBy: string | null              // admin uid
+  quickbooksReference: string | null // free-text (check #, QB transaction ID) — not an API integration
+}
+```
+
+**Double-payment protection:** each claimed `walks`/`overnights` doc gets a `payoutId` field (this document's ID) set in the same transaction that creates this record — a doc can only ever belong to one payment record, and a re-run of "generate" for the same walker/period naturally excludes anything already claimed. See `generateWalkerPayout` for the transaction.
 
 ---
 

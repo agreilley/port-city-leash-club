@@ -386,5 +386,18 @@ service cloud.firestore {
         allow read, write: if isAdmin();
       }
     }
+
+    // Walker payment records — what a walker was actually paid, as opposed
+    // to walks/overnights.payout (rate-stamped at completion, but not
+    // itself a payment record). Same posture as members/{id}/private/billing:
+    // ALL writes, including admin's, go through Cloud Functions using the
+    // Admin SDK (which bypasses rules) — generateWalkerPayout / markPaid —
+    // never a direct client write. A walker may read only their own records
+    // (scoped by walkerId via myWalkerId(), same pattern already used to
+    // scope walks/overnights to the logged-in walker); admin reads everyone's.
+    match /walkerPayments/{id} {
+      allow read: if isAdmin() || (isWalker() && resource.data.walkerId == myWalkerId());
+      allow write: if false;
+    }
   }
 }
