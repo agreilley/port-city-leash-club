@@ -2126,6 +2126,214 @@ exports.onOvernightCompleted = onDocumentUpdated({
   });
 });
 
+function isoDateStr(date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
+// A claimed walks/{id} doc -> one walkerPayments.items[] entry. Reads
+// entirely from the doc's already-stamped `payout` (see onWalkCompleted) —
+// never recomputes from live WALKER_RATES, so a rate change after this
+// walk was completed can't retroactively change what this payment record
+// says it paid.
+function walkItemFromSnap(snap) {
+  const w = snap.data();
+  return {
+    type: 'walk', refCollection: 'walks', refId: snap.id, date: w.date,
+    rateKey: w.payout.rateKey, rateApplied: w.payout.amount,
+    extraPet: false, medication: false, amount: w.payout.amount,
+  };
+}
+
+// Same, for a claimed overnights/{id} doc — reads entirely from the
+// stamped `payout` (see onOvernightCompleted).
+function overnightItemFromSnap(snap) {
+  const o = snap.data();
+  return {
+    type: o.payout.rateKey === 'checkin' ? 'checkin' : 'overnight',
+    refCollection: 'overnights', refId: snap.id, date: o.startDate,
+    rateKey: o.payout.rateKey, rateApplied: o.payout.rate,
+    extraPet: !!o.extraPet, medication: !!o.medication, amount: o.payout.amount,
+  };
+}
+
+// Per-category rollup, same shape as walker-pricing.js's calculateEarnings()
+// breakdown — built from the same stamped payout data as the items above,
+// not a separate recalculation.
+function buildPayoutCounts(walkSnaps, overnightSnaps) {
+  const counts = {
+    standard: { count: 0, total: 0 }, extended: { count: 0, total: 0 },
+    checkin: { count: 0, total: 0 }, overnight: { count: 0, total: 0 },
+    extraPet: { count: 0, total: 0 }, medication: { count: 0, total: 0 },
+  };
+  walkSnaps.forEach(snap => {
+    const w = snap.data();
+    counts[w.payout.rateKey].count++;
+    counts[w.payout.rateKey].total += w.payout.amount;
+  });
+  overnightSnaps.forEach(snap => {
+    const o = snap.data();
+    counts[o.payout.rateKey].count++;
+    counts[o.payout.rateKey].total += o.payout.baseTotal;
+    if (o.payout.extraPetTotal) { counts.extraPet.count++; counts.extraPet.total += o.payout.extraPetTotal; }
+    if (o.payout.medicationTotal) { counts.medication.count++; counts.medication.total += o.payout.medicationTotal; }
+  });
+  return counts;
+}
+
+// Generates a walker's payout — admin-only, and the piece that decides
+// what a contractor actually gets paid, so every guarantee below is
+// deliberate, not incidental:
+//
+// - Claims every completed, non-demo, not-yet-claimed walk/overnight for
+//   this walker. periodStart/periodEnd are a LABEL on the resulting
+//   record (when this batch was cut), not a filter on which items are
+//   eligible — deliberately unbounded by date. A walk completed after an
+//   earlier period's payout already went out must still get paid
+//   eventually, not silently vanish because its own `date` falls inside an
+//   already-closed period; the payoutId==null claim state is the actual
+//   source of truth for "what's still owed," not any date range. It simply
+//   isn't claimed by anything until the NEXT time this runs for this
+//   walker, whenever that is, and lands on THAT payment's period label.
+// - demo/already-claimed filtering happens in application code, not a
+//   Firestore query clause — Firestore's `!=` and `==null` operators both
+//   SKIP documents where the field is simply absent (true of every
+//   pre-existing walk/overnight, which never had `demo` or `payoutId` set),
+//   which would silently exclude exactly the real work this needs to
+//   include. A plain equality filter on walkerId/status avoids that trap;
+//   everything else is filtered here, in code that's easy to read directly.
+// - Every included item must already have a stamped `payout` (written by
+//   onWalkCompleted/onOvernightCompleted at completion time). If any
+//   claimed item lacks one — genuinely old data predating rate-stamping,
+//   or this running in the few-second window before that trigger has
+//   finished — this walker's ENTIRE payout is blocked rather than pricing
+//   that item at $0 or guessing a rate. `total` is always the sum of
+//   already-stamped item amounts, never a live WALKER_RATES recalculation.
+// - Double-payment protection, two layers: the payment doc's ID is
+//   deterministic (`{walkerId}_{periodStart}`) and written with tx.create()
+//   inside a transaction that first checks it doesn't already exist — a
+//   second generate() for the same walker+period fails loudly, no
+//   duplicate record. Separately, every claimed walk/overnight is re-read
+//   INSIDE that same transaction (not trusted from the query above) and
+//   stamped with this payment's ID as part of the one atomic commit — if a
+//   concurrent generate() call (same walker, any period) claims one of
+//   these same items first, Firestore detects this transaction's reads
+//   went stale and retries it, so the retry's re-read correctly excludes
+//   whatever the other call already claimed. An item can only ever belong
+//   to one payment record, regardless of how many calls race for it.
+// Separated from the onCall wrapper below so the actual claiming logic is
+// directly callable (and testable) without going through Cloud Functions'
+// HTTPS/auth-token layer — adminUid is passed in explicitly rather than
+// read from request.auth.
+async function runGenerateWalkerPayout(adminUid, { walkerId, periodStart, periodEnd } = {}) {
+  if (!walkerId) throw new HttpsError('invalid-argument', 'walkerId is required.');
+  const periodStartDate = parseIsoDateStrict(periodStart);
+  const periodEndDate = parseIsoDateStrict(periodEnd);
+  if (!periodStartDate || !periodEndDate) {
+    throw new HttpsError('invalid-argument', 'periodStart and periodEnd must be YYYY-MM-DD dates.');
+  }
+  if (periodEndDate <= periodStartDate) {
+    throw new HttpsError('invalid-argument', 'periodEnd must be after periodStart.');
+  }
+
+  const walkerSnap = await db.collection('walkers').doc(walkerId).get();
+  if (!walkerSnap.exists) throw new HttpsError('not-found', 'Walker not found.');
+  const walker = walkerSnap.data();
+
+  const paymentId = `${walkerId}_${isoDateStr(periodStartDate)}`;
+  const paymentRef = db.collection('walkerPayments').doc(paymentId);
+
+  // Checked here, before even looking at unclaimed work, so "this period
+  // already has a payout" is ALWAYS a clear, immediate error — never masked
+  // by a "nothing to pay" result just because everything from that period
+  // happens to already be claimed (which would otherwise be indistinguishable
+  // from a walker who genuinely has no outstanding work). Re-checked again
+  // inside the transaction below for genuine concurrent-race protection —
+  // this early check only exists to fail fast with a clean message in the
+  // common, non-racing case.
+  const existingCheck = await paymentRef.get();
+  if (existingCheck.exists) {
+    throw new HttpsError('already-exists', `A payout already exists for this walker and period: ${paymentId}.`);
+  }
+
+  const [walksSnap, overnightsSnap] = await Promise.all([
+    db.collection('walks').where('walkerId', '==', walkerId).where('status', '==', 'completed').get(),
+    db.collection('overnights').where('walkerId', '==', walkerId).where('status', '==', 'completed').get(),
+  ]);
+
+  const isUnclaimed = (doc) => {
+    const d = doc.data();
+    return d.demo !== true && !d.payoutId;
+  };
+  const unclaimedWalks = walksSnap.docs.filter(isUnclaimed);
+  const unclaimedOvernights = overnightsSnap.docs.filter(isUnclaimed);
+
+  if (!unclaimedWalks.length && !unclaimedOvernights.length) {
+    return { status: 'no_unclaimed_work', walkerId, total: 0 };
+  }
+
+  const unstamped = [...unclaimedWalks, ...unclaimedOvernights].filter(d => !d.data().payout);
+  if (unstamped.length) {
+    throw new HttpsError(
+      'failed-precondition',
+      `${unstamped.length} completed item(s) for this walker have no stamped payout rate and cannot be priced ` +
+      `automatically: ${unstamped.map(d => d.ref.path).join(', ')}. Stamp a payout on each (or wait a few seconds ` +
+      `and retry, in case completion just happened) before generating this walker's payout.`
+    );
+  }
+
+  return db.runTransaction(async (tx) => {
+    const existingPayment = await tx.get(paymentRef);
+    if (existingPayment.exists) {
+      throw new HttpsError('already-exists', `A payout already exists for this walker and period: ${paymentId}.`);
+    }
+
+    const freshWalks = await Promise.all(unclaimedWalks.map(d => tx.get(d.ref)));
+    const freshOvernights = await Promise.all(unclaimedOvernights.map(d => tx.get(d.ref)));
+    const stillUnclaimedWalks = freshWalks.filter(s => s.exists && !s.data().payoutId);
+    const stillUnclaimedOvernights = freshOvernights.filter(s => s.exists && !s.data().payoutId);
+
+    if (!stillUnclaimedWalks.length && !stillUnclaimedOvernights.length) {
+      // Everything this call found was claimed by a concurrent generate()
+      // between the query above and this transaction committing.
+      return { status: 'no_unclaimed_work', walkerId, total: 0 };
+    }
+
+    const items = [...stillUnclaimedWalks.map(walkItemFromSnap), ...stillUnclaimedOvernights.map(overnightItemFromSnap)];
+    const counts = buildPayoutCounts(stillUnclaimedWalks, stillUnclaimedOvernights);
+    const total = items.reduce((sum, i) => sum + i.amount, 0);
+
+    tx.create(paymentRef, {
+      walkerId,
+      walkerName: walker.name || null,
+      periodStart: Timestamp.fromDate(periodStartDate),
+      periodEnd: Timestamp.fromDate(periodEndDate),
+      status: 'pending',
+      items,
+      counts,
+      total,
+      generatedAt: FieldValue.serverTimestamp(),
+      generatedBy: adminUid,
+      paidAt: null,
+      paidBy: null,
+      quickbooksReference: null,
+    });
+
+    stillUnclaimedWalks.forEach(s => tx.update(s.ref, { payoutId: paymentId }));
+    stillUnclaimedOvernights.forEach(s => tx.update(s.ref, { payoutId: paymentId }));
+
+    return { status: 'generated', walkerId, paymentId, total, itemCount: items.length };
+  });
+}
+
+exports.generateWalkerPayout = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+  return runGenerateWalkerPayout(request.auth.uid, request.data || {});
+});
+// Exposed directly (not just via the onCall wrapper above) so this
+// money-critical logic can be exercised and verified without needing a
+// real ID token / HTTPS round trip for every check.
+exports.runGenerateWalkerPayout = runGenerateWalkerPayout;
+
 // ─────────────────────────────────────────────────────────────────────────
 // 10. Email notification for every new request (membership request, service
 //    request, application, contact form, reschedule, pause, tier change,
