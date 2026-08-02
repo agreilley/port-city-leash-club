@@ -2334,6 +2334,42 @@ exports.generateWalkerPayout = onCall({}, async (request) => {
 // real ID token / HTTPS round trip for every check.
 exports.runGenerateWalkerPayout = runGenerateWalkerPayout;
 
+// Marks a walkerPayments record paid — admin-only, and only pending -> paid.
+// Transactional for the same reason issueRefund's status-flip is: if "Mark
+// Paid" is clicked twice (double-click, two admin tabs), only one call ever
+// observes status === 'pending' — the other's re-read after the first
+// commits sees 'paid' and throws, rather than silently re-stamping paidAt/
+// paidBy a second time.
+async function runMarkPaid(adminUid, { paymentId, quickbooksReference } = {}) {
+  if (!paymentId) throw new HttpsError('invalid-argument', 'paymentId is required.');
+  if (quickbooksReference != null && (typeof quickbooksReference !== 'string' || quickbooksReference.length > 200)) {
+    throw new HttpsError('invalid-argument', 'quickbooksReference must be a string of 200 characters or fewer.');
+  }
+
+  const paymentRef = db.collection('walkerPayments').doc(paymentId);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(paymentRef);
+    if (!snap.exists) throw new HttpsError('not-found', 'Payment record not found.');
+    const payment = snap.data();
+    if (payment.status !== 'pending') {
+      throw new HttpsError('failed-precondition', `This payment is already '${payment.status}' — cannot mark paid again.`);
+    }
+    tx.update(paymentRef, {
+      status: 'paid',
+      paidAt: FieldValue.serverTimestamp(),
+      paidBy: adminUid,
+      quickbooksReference: quickbooksReference || null,
+    });
+    return { status: 'paid', paymentId };
+  });
+}
+
+exports.markPaid = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+  return runMarkPaid(request.auth.uid, request.data || {});
+});
+exports.runMarkPaid = runMarkPaid;
+
 // ─────────────────────────────────────────────────────────────────────────
 // 10. Email notification for every new request (membership request, service
 //    request, application, contact form, reschedule, pause, tier change,

@@ -325,6 +325,11 @@
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3.314 2.686-5 6-5s6 1.686 6 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     Walkers
   </a>
+  <a class="nav-item" data-view="payouts" onclick="switchView('payouts')">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M11 4.5c0-1.38-1.34-2.5-3-2.5s-3 1.12-3 2.5S6.34 7 8 7s3 1.12 3 2.5S9.66 12 8 12s-3-1.12-3-2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    Payouts
+    <span class="badge" id="payoutsBadge" style="display:none;">0</span>
+  </a>
   <a class="nav-item" data-view="members" onclick="switchView('members')">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="6" cy="5" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M1 13c0-2.761 2.239-4.5 5-4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="11" cy="6" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M8.5 13c0-2.209 1.343-3.5 3-3.5s3 1.291 3 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     Members
@@ -452,6 +457,50 @@
             <div id="availabilityGrid"><div style="padding:20px;text-align:center;color:var(--text-light);">Loading...</div></div>
           </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAYOUTS VIEW -->
+    <div class="view" id="view-payouts">
+      <!-- Generated but not yet paid — deliberately the first thing on this
+           page, styled distinctly, so a payout that's been generated can
+           never quietly fall out of view before it's actually paid. -->
+      <div id="unpaidPayoutsSection" style="display:none; margin-bottom:24px;">
+        <div class="table-card" style="border-color:#D4A843; background:#FFFBEF;">
+          <div class="table-header">
+            <div class="table-title" style="color:#8A6D1F;">⚠ Generated, Not Yet Paid</div>
+          </div>
+          <div class="table-scroll">
+          <table>
+            <thead><tr><th>Walker</th><th>Period</th><th>Total</th><th>Generated</th><th></th></tr></thead>
+            <tbody id="unpaidPayoutsTable"></tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">Generate Payouts</div>
+        </div>
+        <div class="table-scroll">
+        <table>
+          <thead><tr><th>Walker</th><th>Unclaimed Completed Work</th><th>Computed Total</th><th></th></tr></thead>
+          <tbody id="payoutGenerateTable"><tr><td colspan="4" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
+        </table>
+        </div>
+      </div>
+
+      <div class="table-card" style="margin-top:24px;">
+        <div class="table-header">
+          <div class="table-title">Payment History</div>
+        </div>
+        <div class="table-scroll">
+        <table>
+          <thead><tr><th>Walker</th><th>Period</th><th>Total</th><th>Paid</th><th></th></tr></thead>
+          <tbody id="paidPayoutsTable"><tr><td colspan="5" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
+        </table>
         </div>
       </div>
     </div>
@@ -598,6 +647,15 @@
     <button class="modal-close" onclick="closeModal('walkerDetailModal')">×</button>
     <div class="modal-title" id="walkerDetailModalTitle">Walker Details</div>
     <div id="walkerDetailModalContent"></div>
+  </div>
+</div>
+
+<!-- PAYOUT REVIEW MODAL -->
+<div class="modal-overlay" id="payoutReviewModal">
+  <div class="modal" style="max-width:560px;">
+    <button class="modal-close" onclick="closeModal('payoutReviewModal')">×</button>
+    <div class="modal-title" id="payoutReviewTitle">Payout</div>
+    <div id="payoutReviewContent"></div>
   </div>
 </div>
 
@@ -839,6 +897,7 @@ let calendarMonth = new Date().getMonth();
 let currentRequestFilter = 'all';
 let currentStatusFilter = 'pending';
 let allOvernights = [];
+let allPayouts = [];
 
 // A submission counts as resolved once it's reached any of these terminal
 // statuses — covers every type's own vocabulary ('confirmed'/'declined'
@@ -953,6 +1012,7 @@ function initDashboard() {
   subscribeRequests();
   subscribeConversations();
   subscribeOvernights();
+  subscribePayouts();
   renderCalendar();
   refreshGmailStatus();
   // Connect Gmail opens the OAuth consent screen in a new tab — re-check
@@ -969,6 +1029,7 @@ function subscribeWalks() {
     renderUpcomingWalks();
     renderCalendarDays();
     updateStats();
+    renderPayoutsView();
   });
 }
 
@@ -976,8 +1037,210 @@ function subscribeOvernights() {
   onSnapshot(collection(db, 'overnights'), snap => {
     allOvernights = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderCalendarDays();
+    renderPayoutsView();
   });
 }
+
+function subscribePayouts() {
+  onSnapshot(collection(db, 'walkerPayments'), snap => {
+    allPayouts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderPayoutsView();
+  });
+}
+
+// ── PAYOUTS ──────────────────────────────────────────────────────────────────
+// Mirrors generateWalkerPayout's own eligibility filter EXACTLY (status,
+// demo, payoutId) so this preview never disagrees with what generating
+// would actually do — but reads amounts only from each item's already-
+// stamped payout.amount, same as the real generator, never from a live
+// WALKER_RATES recalculation.
+function computeUnclaimedPreview(walkerId) {
+  const isUnclaimed = (d) => d.walkerId === walkerId && d.status === 'completed' && d.demo !== true && !d.payoutId;
+  const walks = allWalks.filter(isUnclaimed);
+  const overnights = allOvernights.filter(isUnclaimed);
+  const items = [...walks, ...overnights];
+  const unstamped = items.filter(d => !d.payout);
+  const total = items.filter(d => d.payout).reduce((sum, d) => sum + d.payout.amount, 0);
+  return { count: items.length, total, unstamped };
+}
+
+// Monday-through-next-Monday, matching "paid weekly, Fridays, for the prior
+// week" — periodStart/periodEnd only ever LABEL the resulting record
+// (see generateWalkerPayout's own comment); they don't change what gets
+// claimed, so there's no real downside to this being automatic rather than
+// a picker.
+function getCurrentWeekPeriod() {
+  const now = new Date();
+  const day = now.getDay();
+  const mondayOffset = day === 0 ? 6 : day - 1;
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayOffset);
+  const nextMonday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7);
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return { periodStart: iso(monday), periodEnd: iso(nextMonday) };
+}
+
+function fmtPayoutPeriod(p) {
+  const s = p.periodStart?.toDate?.() || new Date(p.periodStart);
+  const e = p.periodEnd?.toDate?.() || new Date(p.periodEnd);
+  const eDisplay = new Date(e.getTime() - 86400000); // periodEnd is exclusive
+  return `${s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${eDisplay.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+}
+function fmtPayoutDate(ts) {
+  if (!ts) return '–';
+  const d = ts?.toDate?.() || new Date(ts);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function renderPayoutsView() {
+  const pending = allPayouts.filter(p => p.status === 'pending');
+
+  // Badge stays visible from anywhere in the app, not just while on this
+  // tab — a generated-but-unpaid payout should be hard to forget about.
+  const badge = document.getElementById('payoutsBadge');
+  if (badge) {
+    badge.textContent = pending.length;
+    badge.style.display = pending.length > 0 ? 'inline' : 'none';
+  }
+
+  const unpaidSection = document.getElementById('unpaidPayoutsSection');
+  const unpaidTable = document.getElementById('unpaidPayoutsTable');
+  if (unpaidSection && unpaidTable) {
+    if (!pending.length) {
+      unpaidSection.style.display = 'none';
+    } else {
+      unpaidSection.style.display = '';
+      unpaidTable.innerHTML = pending.map(p => `
+        <tr>
+          <td>${escapeHtml(p.walkerName || p.walkerId)}</td>
+          <td>${fmtPayoutPeriod(p)}</td>
+          <td>$${p.total}</td>
+          <td>${fmtPayoutDate(p.generatedAt)}</td>
+          <td><button class="btn-sm view-btn" onclick="openPayoutReviewModal('${p.id}')">Review &amp; Pay</button></td>
+        </tr>`).join('');
+    }
+  }
+
+  const generateTable = document.getElementById('payoutGenerateTable');
+  if (generateTable) {
+    if (!allWalkers.length) {
+      generateTable.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-light);padding:24px;">No walkers yet.</td></tr>';
+    } else {
+      generateTable.innerHTML = allWalkers.map(w => {
+        const { count, total, unstamped } = computeUnclaimedPreview(w.id);
+        const warn = unstamped.length
+          ? `<div style="color:#B45309;font-size:12px;margin-top:4px;">⚠ ${unstamped.length} item(s) missing a payout stamp — generating will list which.</div>`
+          : '';
+        return `<tr>
+          <td>${escapeHtml(w.name || w.id)}</td>
+          <td>${count} item${count === 1 ? '' : 's'}</td>
+          <td>$${total}${warn}</td>
+          <td>
+            <button class="btn-sm view-btn" onclick="generatePayoutForWalker('${w.id}')" ${count ? '' : 'disabled'}>Generate</button>
+            <div id="payout-status-${w.id}"></div>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+  }
+
+  const paidTable = document.getElementById('paidPayoutsTable');
+  if (paidTable) {
+    const paid = allPayouts.filter(p => p.status === 'paid').sort((a, b) => {
+      const da = a.paidAt?.toDate?.() || new Date(0);
+      const db_ = b.paidAt?.toDate?.() || new Date(0);
+      return db_ - da;
+    });
+    paidTable.innerHTML = paid.length
+      ? paid.map(p => `
+        <tr>
+          <td>${escapeHtml(p.walkerName || p.walkerId)}</td>
+          <td>${fmtPayoutPeriod(p)}</td>
+          <td>$${p.total}</td>
+          <td>${fmtPayoutDate(p.paidAt)}</td>
+          <td><button class="btn-sm view-btn" onclick="openPayoutReviewModal('${p.id}')">View</button></td>
+        </tr>`).join('')
+      : '<tr><td colspan="5" style="text-align:center;color:var(--text-light);padding:24px;">No paid payouts yet.</td></tr>';
+  }
+}
+
+function showPayoutStatus(walkerId, message, isError) {
+  const el = document.getElementById(`payout-status-${walkerId}`);
+  if (!el) return;
+  el.textContent = message;
+  el.style.cssText = `font-size:12px;margin-top:6px;${message ? `color:${isError ? '#B91C1C' : 'var(--green)'};` : ''}`;
+}
+
+// error.message here is whatever generateWalkerPayout's HttpsError said —
+// for an unstamped item, that already names the exact walks/{id} or
+// overnights/{id} path, so surfacing it verbatim (not a generic "failed")
+// is what actually satisfies "show me which document."
+window.generatePayoutForWalker = async (walkerId) => {
+  showPayoutStatus(walkerId, 'Generating…', false);
+  try {
+    const { periodStart, periodEnd } = getCurrentWeekPeriod();
+    const generateWalkerPayout = httpsCallable(fns, 'generateWalkerPayout');
+    const res = await generateWalkerPayout({ walkerId, periodStart, periodEnd });
+    if (res.data.status === 'no_unclaimed_work') {
+      showPayoutStatus(walkerId, 'Nothing to pay — no unclaimed completed work.', false);
+    } else {
+      showPayoutStatus(walkerId, '', false);
+      openPayoutReviewModal(res.data.paymentId);
+    }
+  } catch (e) {
+    showPayoutStatus(walkerId, e.message, true);
+  }
+};
+
+window.openPayoutReviewModal = async (paymentId) => {
+  const snap = await getDoc(doc(db, 'walkerPayments', paymentId));
+  if (!snap.exists()) { alert('Payment record not found.'); return; }
+  const p = { id: snap.id, ...snap.data() };
+
+  document.getElementById('payoutReviewTitle').textContent = `${p.walkerName || p.walkerId} — ${fmtPayoutPeriod(p)}`;
+
+  const itemRows = (p.items || []).map(item => `
+    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(0,0,0,0.06);font-size:13px;">
+      <span>${escapeHtml(item.type)} · ${fmtPayoutDate(item.date)}${item.extraPet ? ' · +pet' : ''}${item.medication ? ' · +med' : ''}</span>
+      <span style="font-weight:500;">$${item.amount}</span>
+    </div>`).join('');
+
+  const isPending = p.status === 'pending';
+  document.getElementById('payoutReviewContent').innerHTML = `
+    <div style="margin-bottom:16px;">${itemRows || '<div style="color:var(--text-light);font-size:13px;">No items.</div>'}</div>
+    <div style="display:flex;justify-content:space-between;font-weight:600;font-size:15px;padding-top:8px;border-top:2px solid rgba(0,0,0,0.1);">
+      <span>Total</span><span>$${p.total}</span>
+    </div>
+    ${isPending ? `
+      <div style="margin-top:20px;">
+        <label style="font-size:12px;font-weight:500;color:var(--navy);display:block;margin-bottom:6px;">QuickBooks reference (optional)</label>
+        <input type="text" id="payoutQbReference" placeholder="Check #, transaction ID..." maxlength="200" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:14px;">
+      </div>
+      <div id="payoutReviewError" style="color:#B91C1C;font-size:13px;margin-top:10px;display:none;"></div>
+      <button class="btn-primary" id="markPaidBtn" style="width:100%;margin-top:14px;" onclick="markPayoutPaid('${p.id}')">Mark Paid</button>
+    ` : `
+      <div style="margin-top:16px;font-size:13px;color:var(--text-light);">
+        Paid ${fmtPayoutDate(p.paidAt)}${p.quickbooksReference ? ` · Ref: ${escapeHtml(p.quickbooksReference)}` : ''}
+      </div>
+    `}
+  `;
+  document.getElementById('payoutReviewModal').classList.add('open');
+};
+
+window.markPayoutPaid = async (paymentId) => {
+  const qbRef = document.getElementById('payoutQbReference')?.value.trim() || null;
+  const btn = document.getElementById('markPaidBtn');
+  const errEl = document.getElementById('payoutReviewError');
+  btn.disabled = true; btn.textContent = 'Marking Paid…';
+  if (errEl) errEl.style.display = 'none';
+  try {
+    const markPaid = httpsCallable(fns, 'markPaid');
+    await markPaid({ paymentId, quickbooksReference: qbRef });
+    closeModal('payoutReviewModal');
+  } catch (e) {
+    if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+    btn.disabled = false; btn.textContent = 'Mark Paid';
+  }
+};
 
 function subscribeMembers() {
   onSnapshot(collection(db, 'members'), async snap => {
@@ -1013,6 +1276,7 @@ function subscribeWalkers() {
     renderAvailabilityGrid();
     populateWalkerSelect();
     updateStats();
+    renderPayoutsView();
   });
 }
 
@@ -3996,7 +4260,7 @@ window.avSelectDate = avSelectDate;
 
 
 
-const viewTitles = { overview: 'Overview', calendar: 'Walk Calendar', walkers: 'Walkers', members: 'Members', availability: 'Meet & Greet Availability', requests: 'Requests', conversations: 'Messages' };
+const viewTitles = { overview: 'Overview', calendar: 'Walk Calendar', walkers: 'Walkers', payouts: 'Payouts', members: 'Members', availability: 'Meet & Greet Availability', requests: 'Requests', conversations: 'Messages' };
 window.toggleSidebar = (force) => {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebarOverlay');

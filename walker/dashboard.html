@@ -360,6 +360,7 @@ let walkerDoc = null;
 let myWalks = [];
 let myOvernights = [];
 let allMembers = [];
+let myPayouts = [];
 
 function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -436,6 +437,17 @@ function loadData() {
     renderHistory();
     renderOvernights();
     renderEarnings();
+  });
+
+  // Subscribe to this walker's own payment records — what was ACTUALLY
+  // paid, as opposed to myWalks/myOvernights above, which only drive the
+  // live "This Week" estimate.
+  const payoutsQ = query(collection(db, 'walkerPayments'), where('walkerId', '==', walkerDoc.id));
+  onSnapshot(payoutsQ, snap => {
+    myPayouts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderEarnings();
+  }, (err) => {
+    console.error('payouts subscription error:', err.code, err.message);
   });
 
   renderSchedule();
@@ -908,74 +920,89 @@ window.submitScheduleRequest = async () => {
 };
 
 // ── EARNINGS ─────────────────────────────────────────────────────────────────
-// Calculation itself lives in walker-pricing.js, imported above, and is
-// shared with admin/dashboard.html's walker earnings view — this file only
-// handles date-range filtering and rendering.
+// "This Week" is the only live-recalculated figure left here — an
+// explicitly-labeled estimate of work not yet paid. Everything claiming to
+// be an actual dollar amount owed/paid (Total Paid, Payment History) comes
+// from walkerPayments records instead, never from calculateEarnings() over
+// myWalks/myOvernights — those numbers can't drift against what admin
+// generated and marked paid, because they're read from the same records,
+// not recomputed independently. calculateEarnings() itself still lives in
+// walker-pricing.js, imported above, shared with admin/dashboard.html.
 function renderEarnings() {
   const container = document.getElementById('earningsDisplay');
   const completedWalks = myWalks.filter(w => w.status === 'completed');
   const completedOvernights = myOvernights.filter(o => o.status === 'completed');
 
-  if (!completedWalks.length && !completedOvernights.length) {
-    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-light);">No completed work yet — earnings will show up here once you start.</div>';
-    return;
-  }
-
   const now = new Date();
-
-  // This week (Mon–Sun)
   const dayOfWeek = now.getDay(); // 0=Sun
   const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
   const thisWeekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayOffset);
   const thisWeekEnd = new Date(thisWeekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  // This month
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const thisMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-
-  // Last month
-  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1);
-
   function dateStr(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
-
   function walksInRange(start, end) {
     const startStr = dateStr(start), endStr = dateStr(end);
-    return completedWalks.filter(w => {
-      const ds = walkDateStr(w.date);
-      return ds >= startStr && ds < endStr;
-    });
+    return completedWalks.filter(w => { const ds = walkDateStr(w.date); return ds >= startStr && ds < endStr; });
   }
-
-  // Overnights are attributed to the month/week their stay started in,
-  // even though a stay can run past that boundary — a defensible, simple
-  // convention given a booking has no single "the" date the way a walk does.
   function overnightsInRange(start, end) {
     const startStr = dateStr(start), endStr = dateStr(end);
     return completedOvernights.filter(o => {
       const d = o.startDate?.toDate?.() || new Date(o.startDate);
-      const ds = dateStr(d);
-      return ds >= startStr && ds < endStr;
+      return dateStr(d) >= startStr && dateStr(d) < endStr;
     });
   }
-
-  function periodTotal(start, end) {
-    return calculateEarnings(walksInRange(start, end), overnightsInRange(start, end));
-  }
-
-  const thisWeek = periodTotal(thisWeekStart, thisWeekEnd);
-  const thisMonth = periodTotal(thisMonthStart, thisMonthEnd);
-  const lastMonth = periodTotal(lastMonthStart, lastMonthEnd);
-  const allTime = calculateEarnings(completedWalks, completedOvernights);
-
+  const thisWeek = calculateEarnings(walksInRange(thisWeekStart, thisWeekEnd), overnightsInRange(thisWeekStart, thisWeekEnd));
   function countLabel(period) {
     const count = period.walkCount + period.overnightCount;
     const noun = period.overnightCount ? 'item' : 'walk';
     return `${count} ${noun}${count !== 1 ? 's' : ''}`;
   }
 
-  const monthName = now.toLocaleString('en-US', { month: 'long' });
-  const lastMonthName = lastMonthStart.toLocaleString('en-US', { month: 'long' });
+  // Total Paid: summed from actual PAID payment records only — never a live
+  // recalculation. This is what makes it authoritative rather than an
+  // estimate, and why it can never disagree with what was actually paid.
+  const paidPayouts = myPayouts.filter(p => p.status === 'paid');
+  const totalPaid = paidPayouts.reduce((sum, p) => sum + (p.total || 0), 0);
+
+  function fmtPeriod(p) {
+    const s = p.periodStart?.toDate?.() || new Date(p.periodStart);
+    const e = p.periodEnd?.toDate?.() || new Date(p.periodEnd);
+    const eDisplay = new Date(e.getTime() - 86400000); // periodEnd is exclusive
+    return `${s.toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${eDisplay.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
+  }
+  function fmtDate(ts) {
+    if (!ts) return '–';
+    const d = ts?.toDate?.() || new Date(ts);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  const sortedPayouts = [...myPayouts].sort((a, b) => {
+    const da = a.periodStart?.toDate?.() || new Date(a.periodStart || 0);
+    const db_ = b.periodStart?.toDate?.() || new Date(b.periodStart || 0);
+    return db_ - da;
+  });
+
+  const historyHTML = sortedPayouts.length
+    ? sortedPayouts.map(p => {
+        const isPaid = p.status === 'paid';
+        const items = (p.items || []).map(item => `
+          <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:var(--text-mid);">
+            <span>${escapeHtml(item.type)} · ${fmtDate(item.date)}${item.extraPet ? ' · +pet' : ''}${item.medication ? ' · +med' : ''}</span>
+            <span>$${item.amount}</span>
+          </div>`).join('');
+        return `
+        <div class="walk-card" style="flex-direction:column;align-items:stretch;cursor:pointer;" onclick="const el=this.querySelector('.payout-items'); el.style.display = el.style.display === 'none' ? 'block' : 'none';">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <div style="font-size:14px;font-weight:600;color:var(--navy);">${fmtPeriod(p)}</div>
+              <div style="font-size:12px;color:var(--text-light);">${isPaid ? `Paid ${fmtDate(p.paidAt)}` : 'Pending — not yet paid'}</div>
+            </div>
+            <div style="font-size:16px;font-weight:600;color:${isPaid ? 'var(--green)' : 'var(--rust)'};">$${p.total}</div>
+          </div>
+          <div class="payout-items" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,0,0,0.06);">${items || '<div style="font-size:12px;color:var(--text-light);">No items.</div>'}</div>
+        </div>`;
+      }).join('')
+    : '<div style="text-align:center;padding:32px;color:var(--text-light);">No payments yet.</div>';
 
   const rateRows = [
     ['Standard Walk (30 min)', WALKER_RATES.standard],
@@ -989,26 +1016,19 @@ function renderEarnings() {
   container.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:24px;">
       <div class="stat-card">
-        <div class="stat-label">This Week</div>
-        <div class="stat-value" style="color:var(--green);"><span style="font-family:'DM Sans',sans-serif;">$</span>${thisWeek.total}</div>
-        <div class="stat-sub">${countLabel(thisWeek)}</div>
+        <div class="stat-label">This Week (Estimate)</div>
+        <div class="stat-value" style="color:var(--rust);"><span style="font-family:'DM Sans',sans-serif;">$</span>${thisWeek.total}</div>
+        <div class="stat-sub">${countLabel(thisWeek)} · not yet paid</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">${monthName}</div>
-        <div class="stat-value" style="color:var(--green);"><span style="font-family:'DM Sans',sans-serif;">$</span>${thisMonth.total}</div>
-        <div class="stat-sub">${countLabel(thisMonth)}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">${lastMonthName}</div>
-        <div class="stat-value"><span style="font-family:'DM Sans',sans-serif;">$</span>${lastMonth.total}</div>
-        <div class="stat-sub">${countLabel(lastMonth)}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">All Time</div>
-        <div class="stat-value"><span style="font-family:'DM Sans',sans-serif;">$</span>${allTime.total}</div>
-        <div class="stat-sub">${countLabel(allTime)}</div>
+        <div class="stat-label">Total Paid (All Time)</div>
+        <div class="stat-value" style="color:var(--green);"><span style="font-family:'DM Sans',sans-serif;">$</span>${totalPaid}</div>
+        <div class="stat-sub">${paidPayouts.length} payment${paidPayouts.length !== 1 ? 's' : ''}</div>
       </div>
     </div>
+
+    <div class="section-title">Payment History</div>
+    <div style="margin-bottom:24px;">${historyHTML}</div>
 
     <div class="section-title">Rate Card</div>
     <div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;overflow:hidden;">
