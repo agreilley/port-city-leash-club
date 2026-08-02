@@ -710,7 +710,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig, 'member-app');
 const auth = getAuth(app);
-const db = getFirestore(app);
+let db = getFirestore(app);
 
 let memberData = null;
 let myWalks = [];
@@ -725,39 +725,99 @@ const today = new Date(); today.setHours(0,0,0,0);
 
 // ── ADMIN PREVIEW MODE ────────────────────────────────────────────────────────
 // ?memberId=<id> requests a read-only preview of another member's dashboard.
-// It only takes effect if the SIGNED-IN user is an admin — verified server-side
-// via the same admins/{request.auth.uid} check used everywhere else in the app
-// (admin/dashboard.html, admin/index.html, admin/data-review.html), keyed off
-// the caller's OWN uid, never anything client-supplied. A non-admin passing
-// this param is indistinguishable from one who didn't: the check silently
-// fails and viewedMemberId falls back to their own uid — no error, no
-// behavior change. Any error during the check also fails closed to self-view.
-// This is a UI convenience only; the actual security boundary is firestore.rules,
-// which re-checks isAdmin()/ownership server-side on every read regardless of
-// what this branch decides.
+//
+// Why a SECOND Firebase App: this file authenticates members through a named
+// app ('member-app' above), matching portal-login.html. An admin who signed in
+// via admin/index.html / admin/dashboard.html is on a COMPLETELY SEPARATE
+// session — Firebase Auth's persistence key is
+// `firebase:authUser:<apiKey>:<appName>`, so a different app name means a
+// different, non-shared session even in the same browser/origin. An admin
+// opening this file under 'member-app' would correctly see "nobody signed in"
+// there and hit the redirect below — not because they aren't a member, but
+// because their session simply isn't visible under this app name.
+//
+// To read the admin's OWN already-established session — no custom token, no
+// new sign-in, no impersonation — we lazily initialize a SECOND, default-named
+// Firebase App: the same identity space admin/dashboard.html and
+// admin/index.html use. This only happens when previewMemberId is present. A
+// normal member load with no param never touches any of this: no second app,
+// no extra Auth/Firestore init, the member's own experience is unaffected.
+//
+// The redirect below stays the default in every case. The ONLY way to avoid it
+// is a POSITIVE, server-verified admin identity on that default app
+// (admins/{uid} existence, keyed off THEIR OWN uid — never the memberId param
+// itself). The mere presence of ?memberId= is never sufficient on its own —
+// resolveVerifiedAdminUid() returns null (never "trust the param") for every
+// other outcome: nobody signed in on the default app, a signed-in non-admin,
+// or any read error. This is a UI convenience only; the actual security
+// boundary is firestore.rules, which re-checks isAdmin()/ownership
+// server-side on every read regardless of what this branch decides.
 const previewMemberId = new URLSearchParams(location.search).get('memberId');
 let isPreviewMode = false;
 let viewedMemberId = null;
 
+let defaultApp = null;
+function getDefaultAuth() {
+  if (!defaultApp) defaultApp = initializeApp(firebaseConfig); // same (unnamed) identity as admin/dashboard.html
+  return getAuth(defaultApp);
+}
+
+// Firebase Auth's "first callback after persistence restores" as a one-shot
+// promise — currentUser can read as null for a moment on a cold load, before
+// the persisted session has finished restoring.
+function waitForAuthState(authInstance) {
+  return new Promise((resolve) => {
+    const unsubscribe = onAuthStateChanged(authInstance, (u) => { unsubscribe(); resolve(u); });
+  });
+}
+
+// Resolves to the admin's uid ONLY when there's a currently signed-in user on
+// the default app AND that uid has an admins/{uid} doc — both checked fresh
+// on every load. Returns null for every other outcome (no default-app
+// session, a signed-in non-admin, or any read error), so the caller always
+// falls through to the normal redirect-or-own-data guard rather than ever
+// trusting the memberId param by itself.
+async function resolveVerifiedAdminUid() {
+  try {
+    const defaultUser = await waitForAuthState(getDefaultAuth());
+    if (!defaultUser) return null;
+    // Read via a Firestore instance bound to that SAME default app, so the
+    // request is authenticated as the admin's own token — 'member-app'-bound
+    // db has no session at all in this scenario and would read as fully
+    // unauthenticated.
+    const defaultDb = getFirestore(defaultApp);
+    const adminSnap = await getDoc(doc(defaultDb, 'admins', defaultUser.uid));
+    if (!adminSnap.exists()) return null;
+    db = defaultDb; // every subsequent read in this file goes through the verified admin's own authenticated instance
+    return defaultUser.uid;
+  } catch (e) {
+    console.error('admin verification failed:', e.message); // fail closed — null
+    return null;
+  }
+}
+
 // ── AUTH GUARD ────────────────────────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
-  if (!user) { window.location.href = 'portal-login.html'; return; }
-
-  viewedMemberId = user.uid;
   if (previewMemberId) {
-    try {
-      const adminSnap = await getDoc(doc(db, 'admins', user.uid));
-      if (adminSnap.exists()) {
-        isPreviewMode = true;
-        viewedMemberId = previewMemberId;
-      }
-    } catch (e) {
-      console.error('admin check failed:', e.message); // fail closed — stays on own uid
+    const verifiedAdminUid = await resolveVerifiedAdminUid();
+    if (verifiedAdminUid) {
+      isPreviewMode = true;
+      viewedMemberId = previewMemberId;
+      await loadAndSubscribe(viewedMemberId);
+      return; // never falls through to the member-app redirect below
     }
+    // Not a verified admin — previewMemberId alone changes nothing here.
+    // Fall through to the exact same guard every other visitor gets.
   }
 
+  if (!user) { window.location.href = 'portal-login.html'; return; }
+  viewedMemberId = user.uid;
+  await loadAndSubscribe(viewedMemberId);
+});
+
+async function loadAndSubscribe(targetId) {
   try {
-    const snap = await getDoc(doc(db, 'members', viewedMemberId));
+    const snap = await getDoc(doc(db, 'members', targetId));
     if (snap.exists()) {
       memberData = { id: snap.id, ...snap.data() };
       populateMemberUI();
@@ -767,7 +827,7 @@ onAuthStateChanged(auth, async (user) => {
   if (isPreviewMode) applyPreviewModeUI();
 
   // Real-time walks subscription
-  const walksQ = query(collection(db, 'walks'), where('memberId', '==', viewedMemberId));
+  const walksQ = query(collection(db, 'walks'), where('memberId', '==', targetId));
   onSnapshot(walksQ, (snap) => {
     myWalks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     updateMetrics();
@@ -779,23 +839,23 @@ onAuthStateChanged(auth, async (user) => {
   });
 
   // Real-time overnights (confirmed)
-  const overnightsQ = query(collection(db, 'overnights'), where('memberId', '==', viewedMemberId));
+  const overnightsQ = query(collection(db, 'overnights'), where('memberId', '==', targetId));
   onSnapshot(overnightsQ, () => {
-    loadOvernights(viewedMemberId);
+    loadOvernights(targetId);
   }, (err) => {
     console.error('overnights subscription error:', err.code, err.message);
     showError(LOAD_ERROR_MSG);
   });
 
   // Real-time pending overnight submissions
-  const pendingQ = query(collection(db, 'submissions'), where('memberId', '==', viewedMemberId), where('type', '==', 'overnight_request'));
+  const pendingQ = query(collection(db, 'submissions'), where('memberId', '==', targetId), where('type', '==', 'overnight_request'));
   onSnapshot(pendingQ, () => {
-    loadOvernights(viewedMemberId);
+    loadOvernights(targetId);
   }, (err) => {
     console.error('pending overnight submissions subscription error:', err.code, err.message);
     showError(LOAD_ERROR_MSG);
   });
-});
+}
 
 async function loadOvernights(uid) {
   let failed = false;
