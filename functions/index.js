@@ -17,6 +17,7 @@
 // dashboard), which is the intended design: nothing gets charged without
 // a human confirming the booking first.
 
+const crypto = require('crypto');
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
@@ -2508,15 +2509,53 @@ exports.onNewSubmission = onDocumentCreated({
   }
 });
 
+// Referral code format: PCLC-XXXXXX, six characters drawn from an alphabet
+// that excludes visually ambiguous characters (0/O, 1/I/L) so a code is easy
+// to read and type correctly off a printed card or over the phone.
+// Deliberately random, not sequential — a sequential PCLC-REF-0001-style
+// counter (the original format) leaks the total number of codes ever issued
+// to anyone who collects a few. 31^6 (~887M) possible codes makes collisions
+// rare enough that a short create-and-retry loop is sufficient; no shared
+// counter document is needed for uniqueness anymore. Pre-existing
+// PCLC-REF-NNNN codes are untouched and keep working — this only changes
+// what NEW codes look like.
+const REFERRAL_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const REFERRAL_CODE_LENGTH = 6;
+const REFERRAL_CODE_MAX_ATTEMPTS = 5;
+
+function randomReferralCode() {
+  let suffix = '';
+  for (let i = 0; i < REFERRAL_CODE_LENGTH; i++) {
+    suffix += REFERRAL_CODE_ALPHABET[crypto.randomInt(REFERRAL_CODE_ALPHABET.length)];
+  }
+  return `PCLC-${suffix}`;
+}
+
+// Generates a random code and creates its referralCodes/{code} doc, retrying
+// on the rare chance of a collision. doc.create() is itself atomic (it
+// throws if the doc already exists), so — unlike the old counter-based
+// scheme — no Firestore transaction is needed purely for uniqueness: each
+// candidate is independent, so a plain retry loop is the simpler fit here.
+// Returns the code that was actually created.
+async function createReferralCodeDoc(fields) {
+  for (let attempt = 1; attempt <= REFERRAL_CODE_MAX_ATTEMPTS; attempt++) {
+    const code = randomReferralCode();
+    try {
+      await db.collection('referralCodes').doc(code).create({ code, ...fields });
+      return code;
+    } catch (e) {
+      if (attempt === REFERRAL_CODE_MAX_ATTEMPTS) {
+        throw new HttpsError('internal', 'Could not generate a unique referral code. Please try again.');
+      }
+      console.warn(`Referral code collision on attempt ${attempt} (${code}), retrying:`, e.message);
+    }
+  }
+}
+
 // Partner referral intake (/welcomehome). Unlike every other public form,
 // this doesn't write to `submissions` from the client — it's a code-issuing
 // flow (the code is redeemed later for $50 credit), so it gets its own
-// collection and lifecycle. Client-side random/UUID codes can't guarantee
-// uniqueness against a shared sequence, so code allocation happens here,
-// server-side, inside a transaction on a counter doc — the same "avoid a
-// client-side collision-avoidance guess" reasoning as generateWalkerPayout's
-// deterministic payment ID, just sequential instead of deterministic since
-// there's no natural key (walkerId+period) to derive a referral code from.
+// collection and lifecycle.
 //
 // No assertIsAdmin(): unauthenticated apartment/agent-referred visitors are
 // the intended caller. That makes this function itself the security
@@ -2552,46 +2591,28 @@ async function runGenerateReferralCode(payload = {}) {
     if (!agent || !brokerage) throw new HttpsError('invalid-argument', 'Agent name and brokerage are required.');
   }
 
-  const counterRef = db.collection('counters').doc('referralCode');
-
-  // The code is derived from the counter's post-increment value and both the
-  // read and the tx.create() of the code doc happen inside this one
-  // transaction, so Firestore's transaction serialization on counterRef is
-  // what actually guarantees no two calls can ever land on the same code —
-  // not the randomness of an ID. tx.create() (not set()) is a second,
-  // redundant guard: it throws if a doc at that code already exists instead
-  // of silently overwriting it.
-  return db.runTransaction(async (tx) => {
-    const counterSnap = await tx.get(counterRef);
-    const next = (counterSnap.exists ? (counterSnap.data().value || 0) : 0) + 1;
-    const code = `PCLC-REF-${String(next).padStart(4, '0')}`;
-    const referralRef = db.collection('referralCodes').doc(code);
-
-    tx.set(counterRef, { value: next }, { merge: true });
-    tx.create(referralRef, {
-      code,
-      source,
-      building,
-      agent,
-      brokerage,
-      submittedName,
-      submittedPhone,
-      submittedEmail,
-      notes,
-      // referrerId/referrerName are null here (only member_referral docs,
-      // written by getOrCreateMemberReferralCode, set them) — explicit null
-      // rather than an absent field so referralCodes' member-scoped read rule
-      // (resource.data.referrerId == request.auth.uid) has a consistent field
-      // to compare against on every doc, partner or member.
-      referrerId: null,
-      referrerName: null,
-      createdAt: FieldValue.serverTimestamp(),
-      status: 'active',
-      creditIssued: false,
-    });
-
-    return { code };
+  const code = await createReferralCodeDoc({
+    source,
+    building,
+    agent,
+    brokerage,
+    submittedName,
+    submittedPhone,
+    submittedEmail,
+    notes,
+    // referrerId/referrerName are null here (only member_referral docs,
+    // written by getOrCreateMemberReferralCode, set them) — explicit null
+    // rather than an absent field so referralCodes' member-scoped read rule
+    // (resource.data.referrerId == request.auth.uid) has a consistent field
+    // to compare against on every doc, partner or member.
+    referrerId: null,
+    referrerName: null,
+    createdAt: FieldValue.serverTimestamp(),
+    status: 'active',
+    creditIssued: false,
   });
+
+  return { code };
 }
 
 exports.generateReferralCode = onCall({}, async (request) => {
@@ -2619,48 +2640,48 @@ exports.getOrCreateMemberReferralCode = onCall({}, async (request) => {
   }
 
   // Fast path: most calls are a returning visit to the tab, and the code
-  // never changes once set — no need to open a transaction just to read it.
+  // never changes once set — no need to generate anything.
   const existing = memberSnap.data().referralCode;
   if (existing) return { code: existing };
 
-  const counterRef = db.collection('counters').doc('referralCode');
+  // Generate the candidate BEFORE opening the transaction below. A Firestore
+  // transaction can't retry a doc-already-exists collision itself — that
+  // precondition is only checked at commit time, which would abort the
+  // whole transaction rather than let us try another candidate — so
+  // collision retries (createReferralCodeDoc) have to happen outside it.
+  // The transaction below decides only whether THIS candidate becomes the
+  // member's code, not whether the code itself is unique.
+  const candidateCode = await createReferralCodeDoc({
+    source: 'member_referral',
+    building: null,
+    agent: null,
+    brokerage: null,
+    submittedName: null,
+    submittedPhone: null,
+    submittedEmail: null,
+    notes: null,
+    referrerId: uid,
+    referrerName: memberSnap.data().name || null,
+    createdAt: FieldValue.serverTimestamp(),
+    status: 'active',
+    creditIssued: false,
+  });
 
-  // Same shared counter + tx.create() pattern as runGenerateReferralCode, so
-  // member and partner codes are one continuous PCLC-REF-NNNN sequence.
   // Re-checks referralCode INSIDE the transaction (not just the fast-path
   // read above) so two concurrent calls for the same member — double-click,
-  // two tabs — can't allocate two codes for one person; the second call's
-  // re-read sees the first call's write and returns that code instead.
+  // two tabs — can't both "win": whichever transaction commits first claims
+  // candidateCode on the member doc; the other sees referralCode already set
+  // and discards its own candidate. That candidate is left as a harmless,
+  // never-returned orphan doc in referralCodes — cheaper than the complexity
+  // of deleting it, and referralCodes has no delete path from any client
+  // anyway.
   return db.runTransaction(async (tx) => {
     const freshMemberSnap = await tx.get(memberRef);
     const freshExisting = freshMemberSnap.data()?.referralCode;
     if (freshExisting) return { code: freshExisting };
 
-    const counterSnap = await tx.get(counterRef);
-    const next = (counterSnap.exists ? (counterSnap.data().value || 0) : 0) + 1;
-    const code = `PCLC-REF-${String(next).padStart(4, '0')}`;
-    const referralRef = db.collection('referralCodes').doc(code);
-
-    tx.set(counterRef, { value: next }, { merge: true });
-    tx.create(referralRef, {
-      code,
-      source: 'member_referral',
-      building: null,
-      agent: null,
-      brokerage: null,
-      submittedName: null,
-      submittedPhone: null,
-      submittedEmail: null,
-      notes: null,
-      referrerId: uid,
-      referrerName: freshMemberSnap.data().name || null,
-      createdAt: FieldValue.serverTimestamp(),
-      status: 'active',
-      creditIssued: false,
-    });
-    tx.update(memberRef, { referralCode: code });
-
-    return { code };
+    tx.update(memberRef, { referralCode: candidateCode });
+    return { code: candidateCode };
   });
 });
 
