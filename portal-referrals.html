@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="apple-touch-icon" href="images/favicon.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="icon" type="image/png" href="images/favicon.png">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Refer a Friend - The Leash Club</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      background: #f5f3ed;
+      color: #0D1B2A;
+    }
+
+    .portal-container {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 220px;
+      background: #0D1B2A;
+      color: white;
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    .sidebar-logo {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase;
+      color: white;
+      transition: opacity 0.2s;
+    }
+
+    .sidebar-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .nav-item {
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #8FA8A2;
+      text-decoration: none;
+      transition: all 0.2s;
+      display: block;
+      white-space: nowrap;
+      line-height: 1.4;
+    }
+
+    .nav-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .nav-item.active {
+      padding: 12px 12px;
+      background: #C17B6F;
+      color: white;
+    }
+
+    .sidebar-pet {
+      border-top: 0.5px solid rgba(255, 255, 255, 0.1);
+      padding-top: 16px;
+      color: #8FA8A2;
+      font-size: 13px;
+    }
+
+    .pet-name {
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+
+    .pet-info {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .main-content {
+      flex: 1;
+      padding: 32px;
+      overflow-y: auto;
+    }
+
+    .content-max {
+      max-width: 900px;
+    }
+
+    .page-header {
+      margin-bottom: 32px;
+    }
+
+    .page-header h1 {
+      font-size: 28px;
+      font-weight: 500;
+      margin: 0 0 4px;
+    }
+
+    .page-header p {
+      font-size: 14px;
+      color: #888;
+      margin: 0;
+    }
+
+    .btn-signout {
+      width: 100%;
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.5);
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-signout:hover { border-color: rgba(255,255,255,0.4); color: white; }
+
+    button {
+      border: none;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+
+    .btn-primary {
+      background: #C17B6F;
+      color: white;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .btn-primary:hover { background: #b06a60; }
+
+    /* Give/Get hero card */
+    .refer-hero {
+      background: linear-gradient(135deg, #C17B6F 0%, #8FA8A2 100%);
+      color: white;
+      padding: 32px;
+      border-radius: 12px;
+      margin-bottom: 24px;
+    }
+    .refer-hero h2 {
+      font-weight: 500;
+      font-size: 28px;
+      margin: 0 0 8px;
+    }
+    .refer-hero p {
+      font-size: 14px;
+      opacity: 0.95;
+      max-width: 480px;
+      line-height: 1.6;
+      margin: 0;
+    }
+
+    /* Code card */
+    .code-card {
+      background: white;
+      border: 0.5px solid #ddd;
+      border-radius: 12px;
+      padding: 28px;
+      margin-bottom: 24px;
+    }
+    .code-label {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #8FA8A2;
+      margin-bottom: 10px;
+    }
+    .code-value {
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: #0D1B2A;
+      margin-bottom: 18px;
+    }
+    .code-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .btn-secondary-code {
+      background: transparent;
+      color: #C17B6F;
+      border: 1px solid #C17B6F;
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+    }
+    .btn-secondary-code:hover { background: rgba(193,123,111,0.08); }
+
+    /* Credit + referral list row */
+    .info-row {
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .info-box {
+      background: #f9f8f5;
+      padding: 20px;
+      border-radius: 12px;
+      border: 0.5px solid #ddd;
+    }
+    .info-box .info-label {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #8FA8A2;
+      margin-bottom: 8px;
+    }
+    .info-box .info-value {
+      font-size: 24px;
+      font-weight: 600;
+      color: #0D1B2A;
+      margin-bottom: 4px;
+    }
+    .info-box .info-sub {
+      font-size: 12px;
+      color: #888;
+    }
+
+    .referral-list-card {
+      background: white;
+      border: 0.5px solid #ddd;
+      border-radius: 12px;
+      padding: 20px 24px;
+    }
+    .referral-list-card h3 {
+      font-size: 15px;
+      font-weight: 500;
+      color: #0D1B2A;
+      margin-bottom: 4px;
+    }
+    .referral-list-card > p {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 16px;
+    }
+    .referral-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 0;
+      border-top: 0.5px solid #eee;
+      font-size: 13px;
+    }
+    .referral-row:first-child { border-top: none; }
+    .referral-name { color: #0D1B2A; font-weight: 500; flex: 1; }
+    .referral-date { color: #888; }
+    .referral-status {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+    .status-invited { background: rgba(143,168,162,0.15); color: #5c7570; }
+    .status-joined { background: rgba(193,123,111,0.15); color: #A36358; }
+    .status-credit_applied { background: rgba(193,123,111,0.9); color: white; }
+    .empty-state {
+      font-size: 13px;
+      color: #888;
+      padding: 12px 0;
+    }
+
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .info-row { grid-template-columns: 1fr; }
+    }
+
+  /* ── PORTAL MOBILE ─────────────────────────────────────────────────────── */
+  .mobile-bottom-nav { display: none; }
+
+  @media (max-width: 768px) {
+    html, body { overflow-x: hidden; }
+    .sidebar { display: none !important; }
+    .portal-container { display: block !important; }
+    .main-content { margin-left: 0 !important; padding: 20px 16px 90px !important; }
+
+    .mobile-bottom-nav {
+      display: flex;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: #0D1B2A;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      z-index: 200;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .mobile-tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 10px 4px 12px;
+      text-decoration: none;
+      color: rgba(255,255,255,0.45);
+      font-size: 10px;
+      font-family: "DM Sans", sans-serif;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      transition: color 0.15s;
+    }
+    .mobile-tab.active { color: #C17B6F; }
+    .mobile-tab svg { opacity: 0.7; }
+    .mobile-tab.active svg { opacity: 1; }
+
+    .page-header { margin-bottom: 20px; }
+    .page-header h1 { font-size: 24px; }
+    .refer-hero { padding: 24px; }
+  }
+
+</style>
+</head>
+<body>
+  <div class="portal-container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-logo">The Leash Club</div>
+      <nav class="sidebar-nav">
+        <a href="portal-dashboard.html" class="nav-item">Dashboard</a>
+        <a href="portal-pet-profile.html" class="nav-item">Pet Profile</a>
+        <a href="portal-walk-history.html" class="nav-item">Walk History</a>
+        <a href="portal-extras.html" class="nav-item">Additional Care</a>
+        <a href="portal-referrals.html" class="nav-item active">Refer a Friend</a>
+        <a href="portal-account.html" class="nav-item">Account</a>
+      </nav>
+      <div class="sidebar-pet">
+        <div id="sidebarPets">
+          <div class="pet-name" id="sidebarPetName">Scout</div>
+          <div class="pet-info" id="sidebarPetInfo">Golden Retriever • 5 years old</div>
+        </div>
+      </div>
+      <div style="margin-top:auto;">
+        <button class="btn-signout" onclick="signOutMember()">Log Out</button>
+        <a href="index.html" style="display:flex;justify-content:center;padding:16px 12px 20px;border-top:1px solid rgba(255,255,255,0.08);text-decoration:none;"><img src="../images/logo-square.png" alt="Port City Leash Club" style="height:auto;width:100%;max-width:93px;filter:invert(1) sepia(1) saturate(0.3) brightness(1.1);opacity:1;"></a>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <div class="content-max">
+        <div class="page-header">
+          <h1>Refer a Friend</h1>
+          <p>Share the love — and the walks.</p>
+        </div>
+
+        <div class="refer-hero">
+          <h2>Give $50, Get $50.</h2>
+          <p>Share your code with a friend or neighbor. When they sign up for a membership or book pet sitting, they get $50 off their first month — and once their first payment goes through, you get $50 in account credit too.</p>
+        </div>
+
+        <div class="code-card">
+          <div class="code-label">Your Referral Code</div>
+          <div class="code-value" id="referralCodeValue">Loading&hellip;</div>
+          <div class="code-actions">
+            <button type="button" class="btn-secondary-code" id="copyCodeBtn">Copy Code</button>
+            <a href="#" class="btn-secondary-code" id="shareEmailBtn">Share via Email</a>
+          </div>
+        </div>
+
+        <div class="info-row">
+          <div class="info-box">
+            <div class="info-label">Credit Balance</div>
+            <div class="info-value">Coming Soon</div>
+            <div class="info-sub">We're building automatic credit tracking — check back soon.</div>
+          </div>
+
+          <div class="referral-list-card">
+            <h3>Your Referrals</h3>
+            <p>Friends who've used your code.</p>
+            <div id="referralList">
+              <div class="empty-state">Loading&hellip;</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+<script type="module">
+import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getFirestore, doc, getDoc, collection, query, orderBy, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
+const app = getApps().find(a => a.name === 'member-app') || initializeApp(cfg, 'member-app');
+const auth = getAuth(app);
+const db = getFirestore(app);
+const functions = getFunctions(app);
+window.signOutMember = () => signOut(auth).then(() => window.location.href = 'portal-login.html');
+
+// esc() — HTML-escape user-controlled fields (referral names come from a
+// public form, same L-1 XSS-hardening pattern used across the portal)
+// before innerHTML.
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const STATUS_LABELS = { invited: 'Invited', joined: 'Joined', credit_applied: 'Credit Applied' };
+
+function renderCode(code) {
+  document.getElementById('referralCodeValue').textContent = code;
+  const mailBody = `Hey! I've been using Port City Leash Club for dog walking and pet sitting and thought you'd love it too.\n\n`
+    + `Use my referral code ${code} when you sign up and you'll get $50 off your first month — and I'll get $50 in credit too.\n\n`
+    + `https://www.portcityleashclub.com/membership-request`;
+  document.getElementById('shareEmailBtn').href =
+    'mailto:?subject=' + encodeURIComponent('Try Port City Leash Club — $50 off your first month!')
+    + '&body=' + encodeURIComponent(mailBody);
+}
+
+document.getElementById('copyCodeBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('copyCodeBtn');
+  const code = document.getElementById('referralCodeValue').textContent;
+  try {
+    await navigator.clipboard.writeText(code);
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy Code'; }, 1800);
+  } catch (err) {
+    console.error('Clipboard copy failed:', err);
+  }
+});
+
+async function loadReferralList(code) {
+  const listEl = document.getElementById('referralList');
+  try {
+    const q = query(collection(db, 'referralCodes', code, 'redemptions'), orderBy('createdAt', 'desc'));
+    const snap = await getDocs(q);
+    if (snap.empty) {
+      listEl.innerHTML = '<div class="empty-state">No referrals yet — share your code to get started!</div>';
+      return;
+    }
+    listEl.innerHTML = snap.docs.map(d => {
+      const r = d.data();
+      const date = r.createdAt?.toDate ? r.createdAt.toDate().toLocaleDateString() : '';
+      const status = r.status || 'invited';
+      return '<div class="referral-row">'
+        + '<div class="referral-name">' + esc(r.name || 'A friend') + '</div>'
+        + '<div class="referral-date">' + esc(date) + '</div>'
+        + '<div class="referral-status status-' + esc(status) + '">' + esc(STATUS_LABELS[status] || 'Invited') + '</div>'
+        + '</div>';
+    }).join('');
+  } catch (e) {
+    console.error('Failed to load referrals:', e.message);
+    listEl.innerHTML = '<div class="empty-state">Couldn\'t load your referrals right now.</div>';
+  }
+}
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href = 'portal-login.html'; return; }
+  try {
+    const snap = await getDoc(doc(db, 'members', user.uid));
+    if (!snap.exists()) return;
+    const m = snap.data();
+
+    // Sidebar pet summary — same pattern as every other portal page.
+    const dogs = m.dogs?.length ? m.dogs : [{ name: m.dogName, breed: m.petBreed, age: m.petAge ? m.petAge + ' years' : '' }];
+    const sidebarEl = document.getElementById('sidebarPets');
+    if (sidebarEl && dogs.some(d => d.name)) {
+      sidebarEl.innerHTML = dogs.map(d => {
+        const info = [esc(d.breed), d.age ? esc(d.age) + ' old' : ''].filter(Boolean).join(' • ');
+        return '<div style="margin-bottom:10px;"><div class="pet-name">' + esc(d.name) + '</div><div class="pet-info">' + info + '</div></div>';
+      }).join('');
+    }
+
+    // Existing code? Just display it — no need to call the callable at all.
+    // Only a member with no code yet (first visit to this tab) triggers
+    // getOrCreateMemberReferralCode, which allocates one.
+    let code = m.referralCode;
+    if (!code) {
+      const result = await httpsCallable(functions, 'getOrCreateMemberReferralCode')();
+      code = result.data.code;
+    }
+    renderCode(code);
+    await loadReferralList(code);
+  } catch(e) {
+    console.error('Referral tab load failed:', e.message);
+    document.getElementById('referralCodeValue').textContent = 'Unavailable';
+    document.getElementById('referralList').innerHTML = '<div class="empty-state">Couldn\'t load your referrals right now.</div>';
+  }
+});
+</script>
+<!-- Mobile Bottom Nav -->
+<nav class="mobile-bottom-nav">
+  <a class="mobile-tab" href="portal-dashboard.html"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="2" y="2" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="2" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="12" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="12" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg><span>Home</span></a>
+  <a class="mobile-tab" href="portal-walk-history.html"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M4 11h14M4 6h14M4 16h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>Walks</span></a>
+  <a class="mobile-tab" href="portal-extras.html"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 4v14M4 11h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>Care</span></a>
+  <a class="mobile-tab active" href="portal-referrals.html"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 3l2.2 4.46 4.92.72-3.56 3.47.84 4.9L11 14.98l-4.4 2.31.84-4.9-3.56-3.47 4.92-.72L11 3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><span>Refer</span></a>
+  <a class="mobile-tab" href="#" onclick="signOutMember(); return false;"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M8.5 3H4.5a1 1 0 00-1 1v14a1 1 0 001 1h4M14 15l4-4-4-4M18 11H7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Log Out</span></a>
+  <a class="mobile-tab" href="portal-pet-profile.html"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M3 20c0-4.418 3.582-7 8-7s8 2.582 8 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>Profile</span></a>
+  <a class="mobile-tab" href="portal-account.html"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>Account</span></a>
+</nav>
+</body>
+</html>

@@ -2413,6 +2413,34 @@ exports.onNewSubmission = onDocumentCreated({
   const sub = event.data?.data();
   if (!sub) return;
 
+  // Member-referral tracking: if this submission entered a valid
+  // member-referral code, record a lightweight redemption under that code so
+  // the referring member's portal tab has something to show. Tracking only —
+  // it never issues credit (a separate, future build) and never blocks or
+  // alters the signup if the code is missing, stale, or was never valid;
+  // validateReferralCode already screened it client-side, but this is the
+  // actual trust boundary since a client claim can't be trusted. Runs before
+  // the meet-greet early-return below since membership/service requests
+  // without a booked slot still need their referral recorded. The redemption
+  // doc ID is the submission's own ID, so a retried trigger delivery
+  // overwrites the same doc instead of creating a duplicate.
+  if (sub.referredByCode) {
+    try {
+      const codeRef = db.collection('referralCodes').doc(sub.referredByCode);
+      const codeSnap = await codeRef.get();
+      if (codeSnap.exists && codeSnap.data().status === 'active') {
+        await codeRef.collection('redemptions').doc(event.params.submissionId).set({
+          name: sub.ownerName || sub.name || null,
+          submissionType: sub.type,
+          status: 'invited',
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      console.error(`Referral redemption tracking failed for code ${sub.referredByCode}:`, e.message);
+    }
+  }
+
   // Only meet & greet bookings notify. Everything else (membership requests
   // without a booked slot, service requests, contact forms, portal-generated
   // requests) is reviewed in the admin portal instead of paging anyone.
@@ -2550,6 +2578,13 @@ async function runGenerateReferralCode(payload = {}) {
       submittedPhone,
       submittedEmail,
       notes,
+      // referrerId/referrerName are null here (only member_referral docs,
+      // written by getOrCreateMemberReferralCode, set them) — explicit null
+      // rather than an absent field so referralCodes' member-scoped read rule
+      // (resource.data.referrerId == request.auth.uid) has a consistent field
+      // to compare against on every doc, partner or member.
+      referrerId: null,
+      referrerName: null,
       createdAt: FieldValue.serverTimestamp(),
       status: 'active',
       creditIssued: false,
@@ -2565,3 +2600,79 @@ exports.generateReferralCode = onCall({}, async (request) => {
 // Exposed directly, same reasoning as runGenerateWalkerPayout — testable
 // without a real HTTPS/auth round trip.
 exports.runGenerateReferralCode = runGenerateReferralCode;
+
+// Member portal "Refer a Friend" tab: an existing member's own evergreen
+// referral code, generated once and reused thereafter. Unlike
+// generateReferralCode (anonymous /welcomehome intake), this is auth-gated —
+// request.auth.uid IS the referrer, so there's no client payload to spoof
+// identity from, and no assertIsAdmin(): any signed-in member may fetch
+// their own code, never anyone else's.
+exports.getOrCreateMemberReferralCode = onCall({}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'You must be signed in.');
+  }
+  const uid = request.auth.uid;
+  const memberRef = db.collection('members').doc(uid);
+  const memberSnap = await memberRef.get();
+  if (!memberSnap.exists) {
+    throw new HttpsError('not-found', 'Member not found.');
+  }
+
+  // Fast path: most calls are a returning visit to the tab, and the code
+  // never changes once set — no need to open a transaction just to read it.
+  const existing = memberSnap.data().referralCode;
+  if (existing) return { code: existing };
+
+  const counterRef = db.collection('counters').doc('referralCode');
+
+  // Same shared counter + tx.create() pattern as runGenerateReferralCode, so
+  // member and partner codes are one continuous PCLC-REF-NNNN sequence.
+  // Re-checks referralCode INSIDE the transaction (not just the fast-path
+  // read above) so two concurrent calls for the same member — double-click,
+  // two tabs — can't allocate two codes for one person; the second call's
+  // re-read sees the first call's write and returns that code instead.
+  return db.runTransaction(async (tx) => {
+    const freshMemberSnap = await tx.get(memberRef);
+    const freshExisting = freshMemberSnap.data()?.referralCode;
+    if (freshExisting) return { code: freshExisting };
+
+    const counterSnap = await tx.get(counterRef);
+    const next = (counterSnap.exists ? (counterSnap.data().value || 0) : 0) + 1;
+    const code = `PCLC-REF-${String(next).padStart(4, '0')}`;
+    const referralRef = db.collection('referralCodes').doc(code);
+
+    tx.set(counterRef, { value: next }, { merge: true });
+    tx.create(referralRef, {
+      code,
+      source: 'member_referral',
+      building: null,
+      agent: null,
+      brokerage: null,
+      submittedName: null,
+      submittedPhone: null,
+      submittedEmail: null,
+      notes: null,
+      referrerId: uid,
+      referrerName: freshMemberSnap.data().name || null,
+      createdAt: FieldValue.serverTimestamp(),
+      status: 'active',
+      creditIssued: false,
+    });
+    tx.update(memberRef, { referralCode: code });
+
+    return { code };
+  });
+});
+
+// Signup-form code validation (membership-request.html / service-request.html).
+// referralCodes has no public read rule (see firestore.rules), so the client
+// can't check a code directly — this callable is the narrow, PII-free
+// substitute: it looks the code up with the Admin SDK and returns only a
+// boolean, never the referrer's identity. No assertIsAdmin(): the person
+// entering a friend's code at signup isn't authenticated at all yet.
+exports.validateReferralCode = onCall({}, async (request) => {
+  const code = typeof request.data?.code === 'string' ? request.data.code.trim() : '';
+  if (!code) return { valid: false };
+  const snap = await db.collection('referralCodes').doc(code).get();
+  return { valid: snap.exists && snap.data().status === 'active' };
+});

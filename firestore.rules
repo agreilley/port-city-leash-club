@@ -180,11 +180,19 @@ service cloud.firestore {
       // startDate is localDateToTimestamp() → timestamp OR null (empty input),
       // so it must be null-tolerant. dogs is collectDogs() → list of maps with
       // variable per-species keys; type-checked as a list and size-capped only.
+      // referredByCode is the member-referral intake field: the client
+      // validates the code against the validateReferralCode callable BEFORE
+      // submit and sends null when blank/invalid, so it's always present but
+      // null-tolerant here, same pattern as startDate. This create rule does
+      // NOT re-verify the code is real — that's intake plumbing, not a
+      // security boundary (an unverifiable string here can't grant anything;
+      // it's only ever read back out by the referral-tracking trigger, which
+      // itself looks the code up before trusting it).
       function validMembership() {
         return request.resource.data.keys().hasOnly(
             ['type', 'plan', 'ownerName', 'email', 'phone', 'address', 'accessNotes',
              'dogs', 'dogName', 'startDate', 'timeWindow', 'days', 'meetGreetDateTime',
-             'read', 'createdAt'])
+             'referredByCode', 'read', 'createdAt'])
           && request.resource.data.ownerName is string && request.resource.data.ownerName.size() <= 200
           && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
           && request.resource.data.address is string && request.resource.data.address.size() <= 1000
@@ -195,6 +203,8 @@ service cloud.firestore {
           && request.resource.data.dogName is string && request.resource.data.dogName.size() <= 200
           && request.resource.data.meetGreetDateTime is string && request.resource.data.meetGreetDateTime.size() <= 100
           && (request.resource.data.startDate == null || request.resource.data.startDate is timestamp)
+          && (request.resource.data.referredByCode == null
+              || (request.resource.data.referredByCode is string && request.resource.data.referredByCode.size() <= 40))
           && request.resource.data.dogs is list && request.resource.data.dogs.size() <= 10;
       }
 
@@ -205,11 +215,13 @@ service cloud.firestore {
       // (grandTotal), not the authoritative charge — the real charge is
       // computed server-side in chargeSavedCard — so it's allowed but pinned to
       // a non-negative capped number.
+      // referredByCode: same member-referral intake field and same
+      // null-tolerant, unverified-here posture as validMembership() above.
       function validService() {
         return request.resource.data.keys().hasOnly(
             ['type', 'service', 'startDate', 'endDate', 'visitsPerDay', 'extraPet',
              'medication', 'dogs', 'ownerName', 'email', 'phone', 'address',
-             'meetGreetDateTime', 'estimatedTotal', 'read', 'createdAt'])
+             'meetGreetDateTime', 'estimatedTotal', 'referredByCode', 'read', 'createdAt'])
           && request.resource.data.ownerName is string && request.resource.data.ownerName.size() <= 200
           && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
           && request.resource.data.address is string && request.resource.data.address.size() <= 1000
@@ -226,6 +238,8 @@ service cloud.firestore {
           && request.resource.data.estimatedTotal <= 100000
           && (request.resource.data.startDate == null || request.resource.data.startDate is timestamp)
           && (request.resource.data.endDate == null || request.resource.data.endDate is timestamp)
+          && (request.resource.data.referredByCode == null
+              || (request.resource.data.referredByCode is string && request.resource.data.referredByCode.size() <= 40))
           && request.resource.data.dogs is list && request.resource.data.dogs.size() <= 10;
       }
 
@@ -400,17 +414,38 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Partner referral codes (/welcomehome intake form). Unlike submissions,
-    // there is no public create rule here at all — the generateReferralCode
-    // callable is the only writer, using the Admin SDK (which bypasses these
-    // rules) so it can atomically allocate a sequential code inside a
-    // transaction. A client-side create rule would just be unused surface
-    // area. Read is admin-only pending the future admin referralCodes view;
-    // update/delete stay closed to everyone, including admins, until that
-    // view (and any voiding/credit-issuance flow) is actually built.
+    // Referral codes — both the /welcomehome partner intake (source:
+    // 'apartment'/'agent') and the member portal's "Refer a Friend" tab
+    // (source: 'member_referral', referrerId: the referring member's uid).
+    // Unlike submissions, there is no public create rule here at all — every
+    // write goes through a Cloud Function (generateReferralCode,
+    // getOrCreateMemberReferralCode) using the Admin SDK, which bypasses these
+    // rules and atomically allocates a code inside a transaction. A
+    // client-side create rule would just be unused surface area.
+    // Read: admin always; a member may additionally read ONLY their own
+    // code doc (referrerId == their uid) so the portal referral tab can
+    // display it — partner-sourced docs have referrerId: null, so this
+    // never opens partner leads to any member. Update/delete stay closed to
+    // everyone, including admins, until an admin view (and any
+    // voiding/credit-issuance flow) is actually built.
     match /referralCodes/{id} {
-      allow read: if isAdmin();
+      allow read: if isAdmin()
+        || (request.auth != null && resource.data.referrerId == request.auth.uid);
       allow write: if false;
+
+      // Lightweight redemption-tracking records, one per submission that
+      // entered this code at signup (written by onNewSubmission via the
+      // Admin SDK — see functions/index.js). Read-scoped the same way as the
+      // parent doc: a member may read redemptions under a code that's
+      // actually theirs. get() (not resource.data.referrerId, which isn't
+      // available here — {id} is the parent code, not this subdoc) is the
+      // same cross-document-lookup pattern myWalkerId() already uses above.
+      match /redemptions/{redemptionId} {
+        allow read: if isAdmin()
+          || (request.auth != null
+              && get(/databases/$(database)/documents/referralCodes/$(id)).data.referrerId == request.auth.uid);
+        allow write: if false;
+      }
     }
   }
 }
