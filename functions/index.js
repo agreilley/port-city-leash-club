@@ -2479,3 +2479,89 @@ exports.onNewSubmission = onDocumentCreated({
     console.error('Request notification email failed:', e.message);
   }
 });
+
+// Partner referral intake (/welcomehome). Unlike every other public form,
+// this doesn't write to `submissions` from the client — it's a code-issuing
+// flow (the code is redeemed later for $50 credit), so it gets its own
+// collection and lifecycle. Client-side random/UUID codes can't guarantee
+// uniqueness against a shared sequence, so code allocation happens here,
+// server-side, inside a transaction on a counter doc — the same "avoid a
+// client-side collision-avoidance guess" reasoning as generateWalkerPayout's
+// deterministic payment ID, just sequential instead of deterministic since
+// there's no natural key (walkerId+period) to derive a referral code from.
+//
+// No assertIsAdmin(): unauthenticated apartment/agent-referred visitors are
+// the intended caller. That makes this function itself the security
+// boundary (there is deliberately no public Firestore create rule for
+// referralCodes — see firestore.rules) — every field is validated and
+// length-capped here rather than trusted from the client payload.
+async function runGenerateReferralCode(payload = {}) {
+  const source = payload.source;
+  if (source !== 'apartment' && source !== 'agent') {
+    throw new HttpsError('invalid-argument', 'source must be "apartment" or "agent".');
+  }
+
+  const clean = (v, max) => {
+    const s = typeof v === 'string' ? v.trim() : '';
+    return s ? s.slice(0, max) : '';
+  };
+
+  const submittedName = clean(payload.submittedName, 200);
+  const submittedPhone = clean(payload.submittedPhone, 40);
+  const submittedAddress = clean(payload.submittedAddress, 300);
+  const notes = clean(payload.notes, 2000) || null;
+  if (!submittedName || !submittedPhone || !submittedAddress) {
+    throw new HttpsError('invalid-argument', 'Name, phone, and address are required.');
+  }
+
+  let building = null, agent = null, brokerage = null;
+  if (source === 'apartment') {
+    building = clean(payload.building, 200);
+    if (!building) throw new HttpsError('invalid-argument', 'Building name is required.');
+  } else {
+    agent = clean(payload.agent, 200);
+    brokerage = clean(payload.brokerage, 200);
+    if (!agent || !brokerage) throw new HttpsError('invalid-argument', 'Agent name and brokerage are required.');
+  }
+
+  const counterRef = db.collection('counters').doc('referralCode');
+
+  // The code is derived from the counter's post-increment value and both the
+  // read and the tx.create() of the code doc happen inside this one
+  // transaction, so Firestore's transaction serialization on counterRef is
+  // what actually guarantees no two calls can ever land on the same code —
+  // not the randomness of an ID. tx.create() (not set()) is a second,
+  // redundant guard: it throws if a doc at that code already exists instead
+  // of silently overwriting it.
+  return db.runTransaction(async (tx) => {
+    const counterSnap = await tx.get(counterRef);
+    const next = (counterSnap.exists ? (counterSnap.data().value || 0) : 0) + 1;
+    const code = `PCLC-REF-${String(next).padStart(4, '0')}`;
+    const referralRef = db.collection('referralCodes').doc(code);
+
+    tx.set(counterRef, { value: next }, { merge: true });
+    tx.create(referralRef, {
+      code,
+      source,
+      building,
+      agent,
+      brokerage,
+      submittedName,
+      submittedPhone,
+      submittedAddress,
+      notes,
+      createdAt: FieldValue.serverTimestamp(),
+      status: 'active',
+      creditIssued: false,
+    });
+
+    return { code };
+  });
+}
+
+exports.generateReferralCode = onCall({}, async (request) => {
+  return runGenerateReferralCode(request.data || {});
+});
+// Exposed directly, same reasoning as runGenerateWalkerPayout — testable
+// without a real HTTPS/auth round trip.
+exports.runGenerateReferralCode = runGenerateReferralCode;

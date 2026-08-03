@@ -399,5 +399,18 @@ service cloud.firestore {
       allow read: if isAdmin() || (isWalker() && resource.data.walkerId == myWalkerId());
       allow write: if false;
     }
+
+    // Partner referral codes (/welcomehome intake form). Unlike submissions,
+    // there is no public create rule here at all — the generateReferralCode
+    // callable is the only writer, using the Admin SDK (which bypasses these
+    // rules) so it can atomically allocate a sequential code inside a
+    // transaction. A client-side create rule would just be unused surface
+    // area. Read is admin-only pending the future admin referralCodes view;
+    // update/delete stay closed to everyone, including admins, until that
+    // view (and any voiding/credit-issuance flow) is actually built.
+    match /referralCodes/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
   }
 }
