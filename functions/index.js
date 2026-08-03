@@ -2508,10 +2508,10 @@ async function runGenerateReferralCode(payload = {}) {
 
   const submittedName = clean(payload.submittedName, 200);
   const submittedPhone = clean(payload.submittedPhone, 40);
-  const submittedAddress = clean(payload.submittedAddress, 300);
+  const submittedEmail = clean(payload.submittedEmail, 320);
   const notes = clean(payload.notes, 2000) || null;
-  if (!submittedName || !submittedPhone || !submittedAddress) {
-    throw new HttpsError('invalid-argument', 'Name, phone, and address are required.');
+  if (!submittedName || !submittedPhone || !submittedEmail) {
+    throw new HttpsError('invalid-argument', 'Name, phone, and email are required.');
   }
 
   let building = null, agent = null, brokerage = null;
@@ -2548,7 +2548,7 @@ async function runGenerateReferralCode(payload = {}) {
       brokerage,
       submittedName,
       submittedPhone,
-      submittedAddress,
+      submittedEmail,
       notes,
       createdAt: FieldValue.serverTimestamp(),
       status: 'active',

@@ -152,8 +152,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
             <input type="tel" name="phone" placeholder="(000) 000-0000" required>
           </div>
           <div class="field">
-            <label>Address</label>
-            <input type="text" name="address" placeholder="Your street address" required>
+            <label>Email</label>
+            <input type="email" name="email" placeholder="you@email.com" required>
           </div>
           <div class="field full">
             <label>How did you hear about us?</label>
@@ -314,7 +314,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         source,
         submittedName: document.querySelector('input[name=name]')?.value || '',
         submittedPhone: document.querySelector('input[name=phone]')?.value || '',
-        submittedAddress: document.querySelector('input[name=address]')?.value || '',
+        submittedEmail: document.querySelector('input[name=email]')?.value || '',
         notes: document.querySelector('textarea[name=notes]')?.value || '',
       };
       if (source === 'apartment') {
