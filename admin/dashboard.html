@@ -1602,7 +1602,17 @@ function updateStats() {
   const now = new Date(); const weekEnd = new Date(now); weekEnd.setDate(weekEnd.getDate() + 7);
   const thisWeek = allWalks.filter(w => { const d = w.date?.toDate?.() || new Date(w.date); return d >= now && d <= weekEnd; });
   document.getElementById('stat-walks').textContent = thisWeek.length;
-  document.getElementById('stat-unassigned').textContent = allWalks.filter(w => !w.walkerId && w.status !== 'cancelled').length;
+  // Bounded to the next 14 days — under the rolling two-month walk-generation
+  // window, next month's walks (default walkerId: null for anyone without an
+  // assigned walker) all exist a full month ahead of when they're needed, and
+  // an unbounded count would spike by that entire batch the moment it
+  // generates even though none of it needs attention yet.
+  const unassignedWindowEnd = new Date(now); unassignedWindowEnd.setDate(unassignedWindowEnd.getDate() + 14);
+  document.getElementById('stat-unassigned').textContent = allWalks.filter(w => {
+    if (w.walkerId || w.status === 'cancelled') return false;
+    const d = w.date?.toDate?.() || new Date(w.date);
+    return d >= now && d <= unassignedWindowEnd;
+  }).length;
 }
 
 // ── UPCOMING WALKS TABLE ──────────────────────────────────────────────────────
@@ -1783,6 +1793,10 @@ const NEEDS_REVIEW_LABELS = {
     label: 'Duplicate referral code',
     title: 'This member used a partner (apartment/agent) referral code that was already redeemed by a different member — those codes are meant for one lead. No credit was issued automatically. Review manually.',
   },
+  walk_extension_credit_failed: {
+    label: 'Extension credit failed',
+    title: 'A walk extension credit (owed after a schedule change dropped a paid extension) failed to issue — see the Walk Extension Update in Requests for the specific date and error. Issue the credit manually in Stripe.',
+  },
 };
 function renderBillingBadge(billing) {
   if (!billing) return '–';
@@ -1833,7 +1847,7 @@ function renderRequests() {
     container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📬</div><div class="empty-state-title">${emptyMsg}</div></div>`;
     return;
   }
-  const typeLabels = { membership_request: 'Membership', service_request: 'Service', application: 'Application', walker_screening: 'Screening', contact: 'Contact', dog_update: 'Dog Update', overnight_request: 'Overnight', walker_incident: 'Incident', walker_schedule_request: 'Schedule', tier_change: 'Tier Change', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Hold Refund', waitlist: 'Waitlist' };
+  const typeLabels = { membership_request: 'Membership', service_request: 'Service', application: 'Application', walker_screening: 'Screening', contact: 'Contact', dog_update: 'Dog Update', overnight_request: 'Overnight', walker_incident: 'Incident', walker_schedule_request: 'Schedule', tier_change: 'Tier Change', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Hold Refund', waitlist: 'Waitlist', walk_extension_reassignment: 'Extension Update' };
   const shortDate = (val) => val?.toDate ? val.toDate().toLocaleDateString('en-US', {month:'short',day:'numeric'}) : '–';
   container.innerHTML = filtered.map(item => {
     const time = item.createdAt?.toDate?.() ? item.createdAt.toDate().toLocaleDateString('en-US', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '–';
@@ -2347,7 +2361,7 @@ window.openRequestItem = async (id) => {
   }
 
   // Build clean field list based on submission type
-  const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', walker_screening: 'Walker Screening', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report', walker_schedule_request: 'Walker Schedule Request', reschedule: 'Walk Reschedule Request', walk_extension: 'Walk Extension Request', tier_change: 'Membership Tier Change', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Vacation Hold Refund', waitlist: 'Waitlist Signup' };
+  const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', walker_screening: 'Walker Screening', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report', walker_schedule_request: 'Walker Schedule Request', reschedule: 'Walk Reschedule Request', walk_extension: 'Walk Extension Request', walk_extension_reassignment: 'Walk Extension Update', tier_change: 'Membership Tier Change', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Vacation Hold Refund', waitlist: 'Waitlist Signup' };
   const title = typeLabels[item.type] || 'Submission';
 
   let fields = [];
@@ -2527,6 +2541,29 @@ window.openRequestItem = async (id) => {
       ...refRows,
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
       { label: 'Submitted', value: fmtDate(item.createdAt) },
+    ];
+  } else if (item.type === 'walk_extension_reassignment') {
+    // Informational (or manual-handling) record from updateWalkSchedule —
+    // written when a schedule change orphaned one or more paid extensions.
+    // Resolutions is member-authored data (from the portal), not attacker
+    // input from an anonymous form, but escaped via fieldHTML's join point
+    // below like everything else here.
+    const resolutionLines = Array.isArray(item.resolutions) && item.resolutions.length
+      ? item.resolutions.map(r => r.action === 'move'
+          ? `${r.date} → moved to ${r.targetDate}`
+          : `${r.date} → credited`).join('; ')
+      : '–';
+    const failedMoveLines = Array.isArray(item.failedMoves) && item.failedMoves.length ? item.failedMoves.join(', ') : '–';
+    const failedCreditLines = Array.isArray(item.failedCredits) && item.failedCredits.length
+      ? item.failedCredits.map(c => `${c.date} (${c.error || 'unknown error'})`).join('; ')
+      : '–';
+    fields = [
+      { label: 'Member', value: item.memberName || '–' },
+      { label: 'Resolutions', value: resolutionLines },
+      { label: 'Failed Moves', value: failedMoveLines },
+      { label: 'Failed Credits', value: failedCreditLines },
+      { label: 'Status', value: item.status || '–' },
+      { label: 'Created', value: fmtDate(item.createdAt) },
     ];
   } else if (item.type === 'waitlist') {
     // "Notify me" capture from the homepage coverage checker (index.html).
@@ -2746,6 +2783,17 @@ window.openRequestItem = async (id) => {
     actionBtn.onclick = async () => {
       actionBtn.disabled = true; actionBtn.textContent = 'Updating...';
       await updateDoc(doc(db, 'submissions', item.id), { status: 'handled', read: true });
+      closeModal('requestModal');
+    };
+  } else if (item.type === 'walk_extension_reassignment' && item.status === 'pending') {
+    // status:'pending' here means updateWalkSchedule couldn't fully resolve
+    // this on its own (a move or a Stripe credit failed) — see
+    // failedMoves/failedCredits above. status:'applied' (no button at all)
+    // means it went through cleanly and this is informational only.
+    actionBtn.textContent = 'Mark Handled'; actionBtn.style.display = 'block';
+    actionBtn.onclick = async () => {
+      actionBtn.disabled = true; actionBtn.textContent = 'Updating...';
+      await updateDoc(doc(db, 'submissions', item.id), { status: 'resolved', read: true });
       closeModal('requestModal');
     };
   } else {
@@ -3363,9 +3411,13 @@ window.confirmWalkExtension = async (submissionId, item) => {
     ));
     // Any walk admin unchecked reverts to its original 30-minute state —
     // a walk_extension request should never leave a walk showing 45
-    // minutes on the member's calendar with no charge behind it.
+    // minutes on the member's calendar with no charge behind it. Also
+    // clears any stale extensionChargeId from an earlier confirm cycle on
+    // this same (recurring) walk date — see the note below on why that
+    // field exists; it should never linger on a walk that isn't currently
+    // a confirmed extension.
     await Promise.all(droppedIds.map(walkId =>
-      updateDoc(doc(db, 'walks', walkId), { extended: false, extendedStatus: null })
+      updateDoc(doc(db, 'walks', walkId), { extended: false, extendedStatus: null, extensionChargeId: null })
     ));
     await updateDoc(doc(db, 'submissions', submissionId), {
       status: 'confirmed',
@@ -3376,6 +3428,31 @@ window.confirmWalkExtension = async (submissionId, item) => {
     });
 
     await chargeAndTrackPayment(submissionId, item.stripeCustomerId ? amountInDollars : 0, `Port City Leash Club - Walk Extension (${checkedIds.length} walk${checkedIds.length === 1 ? '' : 's'})`);
+
+    // Stamp the specific Stripe charge onto each confirmed walk —
+    // chargeAndTrackPayment (via chargeSavedCard) already wrote lastChargeId
+    // onto this submission doc; re-reading it here makes each walk
+    // self-describing about exactly which charge paid for its extension,
+    // without a fragile reverse lookup later. This is what
+    // updateWalkSchedule's orphaned-extension credit flow keys its
+    // idempotency doc on — walkExtensionCredits/{memberId}_{date}_{chargeId} —
+    // so a walk that's extended, dropped, re-added, and re-extended never
+    // collides with its own earlier credit (each cycle gets a new charge,
+    // hence a new key). A charge that failed (paymentMethodStatus stays
+    // 'skipped'/'failed' rather than 'charged') leaves lastChargeId unset,
+    // which is fine — a walk that was never actually paid for should never
+    // reach 'confirmed' with real money behind it in the first place, but
+    // if it somehow does, updateWalkSchedule falls back to the walk's own
+    // createdAt as a still-disambiguating (if less traceable) key.
+    if (checkedIds.length) {
+      const chargedSub = (await getDoc(doc(db, 'submissions', submissionId))).data();
+      const chargeId = chargedSub?.lastChargeId || null;
+      if (chargeId) {
+        await Promise.all(checkedIds.map(walkId =>
+          updateDoc(doc(db, 'walks', walkId), { extensionChargeId: chargeId })
+        ));
+      }
+    }
 
     closeModal('requestModal');
     const msg = document.createElement('div');
@@ -3397,7 +3474,7 @@ window.declineWalkExtension = async (submissionId, item) => {
   btn.textContent = 'Declining…'; btn.disabled = true;
   try {
     await Promise.all((item.walkIds || []).map(walkId =>
-      updateDoc(doc(db, 'walks', walkId), { extended: false, extendedStatus: null })
+      updateDoc(doc(db, 'walks', walkId), { extended: false, extendedStatus: null, extensionChargeId: null })
     ));
     await updateDoc(doc(db, 'submissions', submissionId), { status: 'declined', read: true });
 

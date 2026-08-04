@@ -502,8 +502,16 @@ function walkIsBeforeToday(walkDate) {
 // ── UPCOMING ──────────────────────────────────────────────────────────────────
 function renderUpcoming() {
   const container = document.getElementById('upcomingList');
+  // Capped to the current calendar month — under the rolling two-month walk-
+  // generation window, next month's walks now exist a full month ahead, and
+  // a flat top-15 slice would start pulling those in for any walker with a
+  // light near-term load, showing them work 45+ days out with nothing to do
+  // about it yet.
+  const now = new Date();
+  const monthEndDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const monthEndStr = `${monthEndDate.getFullYear()}-${String(monthEndDate.getMonth() + 1).padStart(2, '0')}-${String(monthEndDate.getDate()).padStart(2, '0')}`;
   const upcoming = myWalks.filter(w => {
-    return walkIsOnOrAfterToday(w.date) && w.status !== 'completed';
+    return walkIsOnOrAfterToday(w.date) && w.status !== 'completed' && walkDateStr(w.date) <= monthEndStr;
   }).slice(0, 15);
 
   if (!upcoming.length) {
