@@ -618,6 +618,25 @@
       </div>
     </div>
   </div>
+
+  <!-- Orphaned walk-extension resolution modal — shown only when a schedule
+       change would drop a date that already has a CONFIRMED (paid) 45-minute
+       extension on it. Blocks the schedule change until every one is resolved. -->
+  <div id="extensionResolutionModal" style="display:none; position:fixed; inset:0; background:rgba(13,27,42,0.5); z-index:10000; align-items:center; justify-content:center; padding:20px;">
+    <div style="background:#fff; border-radius:16px; padding:28px; width:100%; max-width:480px; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+      <h2 style="font-size:18px; font-weight:600; color:#0D1B2A; margin-bottom:8px;">Your extended walks need a new home</h2>
+      <p style="font-size:13px; color:#7A7A7A; margin-bottom:20px;">
+        Your new schedule drops one or more days that already have a paid 45-minute extension on them.
+        For each, pick a day on your new schedule to move it to, or take a credit instead.
+      </p>
+      <div id="extensionResolutionError" role="alert" style="display:none; background:#F4F0EA; border:1px solid rgba(13,27,42,0.08); border-left:4px solid #C17B6F; border-radius:6px; padding:14px 16px; margin-bottom:16px; font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; line-height:1.5; color:#0D1B2A;"></div>
+      <div id="extensionResolutionList"></div>
+      <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:24px;">
+        <button class="btn btn-secondary" id="cancelExtensionResolutionBtn">Cancel</button>
+        <button class="btn btn-primary" id="confirmExtensionResolutionBtn">Confirm & Save Schedule</button>
+      </div>
+    </div>
+  </div>
 <script>
   // ─── PLAN DATA ───────────────────────────────────────────────────────────────
   // When the backend is ready, replace CURRENT_USER_PLAN with the value from
@@ -757,6 +776,113 @@ function loadPageData() {
   }
 }
 
+// ─── Orphaned walk-extension resolution (rolling two-month schedule) ──────
+// updateWalkSchedule returns { success:false, needsResolution:true,
+// orphanedExtensions, eligibleDates } instead of committing when the
+// proposed schedule would drop a date that already has a CONFIRMED (paid)
+// extension. The member has to say where each one goes before anything
+// saves — see updateWalkSchedule in functions/index.js for the full flow.
+const extensionResolutionModal = document.getElementById('extensionResolutionModal');
+const extensionResolutionError = document.getElementById('extensionResolutionError');
+const showExtensionResolutionError = (msg) => { extensionResolutionError.textContent = msg; extensionResolutionError.style.display = 'block'; };
+const clearExtensionResolutionError = () => { extensionResolutionError.textContent = ''; extensionResolutionError.style.display = 'none'; };
+
+let pendingScheduleDays = null;
+let pendingScheduleTimeSlot = null;
+let currentOrphanedExtensions = [];
+let currentEligibleDates = [];
+const chosenResolutions = {}; // date -> { action: 'move'|'credit', targetDate?: string }
+
+function formatDateStr(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function renderExtensionResolutionRows() {
+  const usedTargets = new Set(Object.values(chosenResolutions).filter(r => r.action === 'move').map(r => r.targetDate));
+  const list = document.getElementById('extensionResolutionList');
+  list.innerHTML = currentOrphanedExtensions.map(o => {
+    const chosen = chosenResolutions[o.date];
+    const availableForThisRow = currentEligibleDates.filter(d => d === chosen?.targetDate || !usedTargets.has(d));
+    const options = ['<option value="" disabled ' + (chosen ? '' : 'selected') + '>Choose what to do…</option>']
+      .concat(availableForThisRow.map(d =>
+        `<option value="move:${d}" ${chosen?.action === 'move' && chosen.targetDate === d ? 'selected' : ''}>Move to ${formatDateStr(d)}</option>`
+      ))
+      .concat([`<option value="credit" ${chosen?.action === 'credit' ? 'selected' : ''}>Credit $${o.amount} to my next bill</option>`])
+      .join('');
+    return `
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-top:1px solid rgba(13,27,42,0.08);">
+        <div style="font-size:14px; color:#0D1B2A;">Extension on <strong>${formatDateStr(o.date)}</strong> <span style="color:#7A7A7A;">($${o.amount}, paid)</span></div>
+        <select data-orphan-date="${o.date}" style="border:1px solid rgba(0,0,0,0.14); border-radius:6px; padding:8px; font-size:13px; font-family:inherit; min-width:180px;">
+          ${options}
+        </select>
+      </div>`;
+  }).join('');
+
+  list.querySelectorAll('select[data-orphan-date]').forEach(select => {
+    select.onchange = () => {
+      const date = select.dataset.orphanDate;
+      const val = select.value;
+      if (!val) { delete chosenResolutions[date]; }
+      else if (val === 'credit') { chosenResolutions[date] = { action: 'credit' }; }
+      else { chosenResolutions[date] = { action: 'move', targetDate: val.slice('move:'.length) }; }
+      renderExtensionResolutionRows(); // re-render so other rows drop the now-claimed target
+    };
+  });
+}
+
+function openExtensionResolutionModal(orphanedExtensions, eligibleDates) {
+  currentOrphanedExtensions = orphanedExtensions;
+  currentEligibleDates = eligibleDates;
+  Object.keys(chosenResolutions).forEach(k => delete chosenResolutions[k]);
+  clearExtensionResolutionError();
+  renderExtensionResolutionRows();
+  extensionResolutionModal.style.display = 'flex';
+}
+const closeExtensionResolutionModal = () => { extensionResolutionModal.style.display = 'none'; };
+
+document.getElementById('cancelExtensionResolutionBtn')?.addEventListener('click', closeExtensionResolutionModal);
+extensionResolutionModal?.addEventListener('click', (e) => { if (e.target === extensionResolutionModal) closeExtensionResolutionModal(); });
+
+document.getElementById('confirmExtensionResolutionBtn')?.addEventListener('click', async () => {
+  clearExtensionResolutionError();
+  if (Object.keys(chosenResolutions).length !== currentOrphanedExtensions.length) {
+    showExtensionResolutionError('Choose what to do with every extended walk before continuing.');
+    return;
+  }
+  const resolutions = currentOrphanedExtensions.map(o => ({ date: o.date, ...chosenResolutions[o.date] }));
+  const btn = document.getElementById('confirmExtensionResolutionBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const res = await httpsCallable(functions, 'updateWalkSchedule')({
+      defaultWalkDays: pendingScheduleDays,
+      defaultTimeSlot: pendingScheduleTimeSlot,
+      resolutions,
+    });
+    if (res.data?.needsResolution) {
+      // Stale — the eligible/orphaned set changed since this modal opened
+      // (e.g. the schedule changed again, or admin declined an extension in
+      // the meantime). Re-open with the fresh set rather than silently
+      // mis-applying the member's now-outdated choices.
+      openExtensionResolutionModal(res.data.orphanedExtensions, res.data.eligibleDates);
+      showExtensionResolutionError(res.data.error || 'This changed since you last reviewed it — please review again.');
+      return;
+    }
+    if (!res.data?.success) {
+      showExtensionResolutionError(res.data?.error || 'Could not save your walk schedule.');
+      return;
+    }
+    closeExtensionResolutionModal();
+    const nextMonthLabel = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1)
+      .toLocaleDateString('en-US', { month: 'long' });
+    showSuccess(`Walk schedule updated — takes effect ${nextMonthLabel} 1st. Walks already on your calendar this month aren't affected.`);
+  } catch (e) {
+    showExtensionResolutionError('Could not save your walk schedule: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Confirm & Save Schedule';
+  }
+});
+
 window.saveAccount = async () => {
   if (!userId) return;
   const el = id => document.getElementById(id);
@@ -777,6 +903,14 @@ window.saveAccount = async () => {
         defaultWalkDays: selectedDays,
         defaultTimeSlot: timeSlot,
       });
+      if (res.data?.needsResolution) {
+        // Schedule change is on hold until the member says where each
+        // orphaned paid extension goes — nothing has been saved yet.
+        pendingScheduleDays = selectedDays;
+        pendingScheduleTimeSlot = timeSlot;
+        openExtensionResolutionModal(res.data.orphanedExtensions, res.data.eligibleDates);
+        return;
+      }
       if (!res.data?.success) {
         showError(res.data?.error || 'Could not save your walk schedule.');
         return;
