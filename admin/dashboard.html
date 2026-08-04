@@ -1766,21 +1766,36 @@ function renderAvailabilityGrid() {
 // clients) — deliberately rendered as a plain dash, not a badge, since
 // that's a different, non-alarming state from "unknown"/"in trouble".
 // billing.needsReview appends a second badge regardless of billingStatus —
-// set by runFirstPaymentReferralCredit (functions/index.js) when a possible
-// self-referral was detected on this member's first payment. No credit was
-// auto-issued in that case; this is the only surfacing of that until it's
-// manually resolved (there's no review workflow built yet, deliberately).
+// set by runFirstPaymentReferralCredit (functions/index.js) when referral
+// credit issuance was skipped and needs a human look. billing.needsReviewReason
+// distinguishes why: 'possible_self_referral' (member-referral code, same
+// phone as the referrer) vs. 'partner_code_already_redeemed' (apartment/agent
+// code — meant for one lead — redeemed a second time by a different member).
+// No credit was auto-issued in either case; this is the only surfacing of
+// that until it's manually resolved (there's no review workflow built yet,
+// deliberately).
+const NEEDS_REVIEW_LABELS = {
+  possible_self_referral: {
+    label: 'Possible self-referral',
+    title: "This member's first payment looked like a possible self-referral (same phone number as whoever referred them) — no credit was issued automatically. Review manually.",
+  },
+  partner_code_already_redeemed: {
+    label: 'Duplicate referral code',
+    title: 'This member used a partner (apartment/agent) referral code that was already redeemed by a different member — those codes are meant for one lead. No credit was issued automatically. Review manually.',
+  },
+};
 function renderBillingBadge(billing) {
   if (!billing) return '–';
-  const { billingStatus, needsReview } = billing;
+  const { billingStatus, needsReview, needsReviewReason } = billing;
   const display = {
     active: { cls: 'active', label: 'Active' },
     past_due: { cls: 'unassigned', label: 'Past Due' },
     canceled: { cls: 'completed', label: 'Canceled' },
   }[billingStatus] || (billingStatus ? { cls: 'pending', label: billingStatus } : null);
   const statusBadge = display ? `<span class="status-badge ${display.cls}">${escapeHtml(display.label)}</span>` : '–';
+  const reviewInfo = NEEDS_REVIEW_LABELS[needsReviewReason] || { label: 'Needs review', title: 'Referral credit issuance was skipped for this member and needs a manual look.' };
   const reviewBadge = needsReview
-    ? ` <span class="status-badge unassigned" title="This member's first payment looked like a possible self-referral (same phone number as whoever referred them) — no credit was issued automatically. Review manually.">Possible self-referral</span>`
+    ? ` <span class="status-badge unassigned" title="${escapeHtml(reviewInfo.title)}">${escapeHtml(reviewInfo.label)}</span>`
     : '';
   return statusBadge + reviewBadge;
 }
@@ -3881,7 +3896,7 @@ window.openMemberDetail = async (id) => {
     { label: 'Assigned Walker', value: walker?.name || 'Unassigned' },
     { label: 'Stripe Customer ID', value: billing.stripeCustomerId || '–' },
     { label: 'Stripe Subscription ID', value: billing.stripeSubscriptionId || '–' },
-    { label: 'Billing Status', value: billing.billingStatus || '–', html: renderBillingBadge(billing.billingStatus) },
+    { label: 'Billing Status', value: billing.billingStatus || '–', html: renderBillingBadge(billing) },
     { label: 'Member Since', value: fmtDate(member.createdAt) },
   ];
   const fieldHTML = fields.map(f =>
