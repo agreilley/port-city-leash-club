@@ -1253,9 +1253,15 @@ function subscribeMembers() {
     // Billing health for the table view — fetched separately since it
     // lives off the member doc (see memberBilling above). Table re-renders
     // once this resolves; the first paint above just won't have badges yet.
+    // needsReview is set by runFirstPaymentReferralCredit (functions/index.js)
+    // when a new member's first payment looks like a possible self-referral
+    // (same phone as the member who referred them) — surfaced here rather
+    // than a new query, since this billing doc is already being fetched for
+    // every member on this page.
     const entries = await Promise.all(allMembers.map(async m => {
       const billingSnap = await getDoc(doc(db, 'members', m.id, 'private', 'billing'));
-      return [m.id, billingSnap.exists() ? billingSnap.data().billingStatus : undefined];
+      const data = billingSnap.exists() ? billingSnap.data() : {};
+      return [m.id, { billingStatus: data.billingStatus, needsReview: !!data.needsReview }];
     }));
     memberBilling = Object.fromEntries(entries);
     renderMembersTable();
@@ -1759,14 +1765,24 @@ function renderAvailabilityGrid() {
 // undefined means never subscribed (Travel-tier / one-time-service-only
 // clients) — deliberately rendered as a plain dash, not a badge, since
 // that's a different, non-alarming state from "unknown"/"in trouble".
-function renderBillingBadge(status) {
-  if (!status) return '–';
+// billing.needsReview appends a second badge regardless of billingStatus —
+// set by runFirstPaymentReferralCredit (functions/index.js) when a possible
+// self-referral was detected on this member's first payment. No credit was
+// auto-issued in that case; this is the only surfacing of that until it's
+// manually resolved (there's no review workflow built yet, deliberately).
+function renderBillingBadge(billing) {
+  if (!billing) return '–';
+  const { billingStatus, needsReview } = billing;
   const display = {
     active: { cls: 'active', label: 'Active' },
     past_due: { cls: 'unassigned', label: 'Past Due' },
     canceled: { cls: 'completed', label: 'Canceled' },
-  }[status] || { cls: 'pending', label: status };
-  return `<span class="status-badge ${display.cls}">${escapeHtml(display.label)}</span>`;
+  }[billingStatus] || (billingStatus ? { cls: 'pending', label: billingStatus } : null);
+  const statusBadge = display ? `<span class="status-badge ${display.cls}">${escapeHtml(display.label)}</span>` : '–';
+  const reviewBadge = needsReview
+    ? ` <span class="status-badge unassigned" title="This member's first payment looked like a possible self-referral (same phone number as whoever referred them) — no credit was issued automatically. Review manually.">Possible self-referral</span>`
+    : '';
+  return statusBadge + reviewBadge;
 }
 
 function renderMembersTable(filter = '') {
@@ -3048,6 +3064,24 @@ window.confirmServiceRequest = async (submissionId, item) => {
       }
     }
 
+    // Link this submission's Stripe customer (and any referral code entered
+    // at signup) onto the member's billing subdoc — members/{id}/private/billing
+    // is Cloud-Function-only to write (firestore.rules), so this can't be a
+    // plain setDoc here the way the member doc above is. Without this, a
+    // Travel-tier member's stripeCustomerId lived ONLY on this ephemeral
+    // submission, invisible to stripeWebhook and to referral credit
+    // issuance. Never blocks confirming/charging the service — same
+    // best-effort posture as the account-creation try/catch above.
+    let billingLinkWarning = '';
+    if (memberId) {
+      try {
+        const linkServiceRequestBilling = httpsCallable(fns, 'linkServiceRequestBilling');
+        await linkServiceRequestBilling({ submissionId, memberId });
+      } catch (e) {
+        billingLinkWarning = `Billing wasn't linked for this member (${e.message}). Referral credit and payment-failure alerts may not work for them until this is resolved.`;
+      }
+    }
+
     await updateDoc(doc(db, 'submissions', submissionId), {
       status: 'confirmed',
       memberId,
@@ -3091,9 +3125,10 @@ window.confirmServiceRequest = async (submissionId, item) => {
     document.body.appendChild(msg);
     setTimeout(() => msg.remove(), 3000);
 
-    // Surface any non-fatal warnings (account not created, email not sent)
-    // after the success toast — the service itself is confirmed and charged.
-    const warns = [accountWarning, emailWarning].filter(Boolean);
+    // Surface any non-fatal warnings (account not created, billing not
+    // linked, email not sent) after the success toast — the service itself
+    // is confirmed and charged.
+    const warns = [accountWarning, billingLinkWarning, emailWarning].filter(Boolean);
     if (warns.length) alert(warns.join('\n\n'));
   } catch (e) {
     btn.textContent = 'Confirm & Charge'; btn.disabled = false;
