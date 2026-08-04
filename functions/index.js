@@ -608,8 +608,16 @@ exports.generateInitialWalks = onCall({}, async (request) => {
     // so the walks generated here line up exactly with what was billed.
     // sub.startDate is a Firestore Timestamp (new Date(sub.startDate) below
     // is a fallback for any pre-existing docs still stored as a string).
-    const now = new Date();
-    const nextFirst = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    //
+    // "Now" is Eastern time, same as every other date-sensitive function
+    // here (chargeCurrentMonthWalks, updateWalkSchedule, submitVacationHold)
+    // — a bare `new Date()` + UTC getters used to disagree with those in the
+    // ~7pm-midnight ET window on the last day of a month (UTC already reads
+    // the next month while ET doesn't), computing the wrong "next month".
+    const { year: todayYear, monthIndex: todayMonthIndex } = easternTodayParts();
+    const nextMonthIndex = todayMonthIndex === 11 ? 0 : todayMonthIndex + 1;
+    const nextYear = todayMonthIndex === 11 ? todayYear + 1 : todayYear;
+    const nextFirst = new Date(Date.UTC(nextYear, nextMonthIndex, 1));
     let fromDay = 1;
     if (sub.startDate) {
       const startDateObj = sub.startDate.toDate ? sub.startDate.toDate() : new Date(sub.startDate);
@@ -663,7 +671,7 @@ const TIER_DAY_RULES = {
   Daily:     { min: 5, max: 5, label: 'Daily members are scheduled every weekday and cannot change their days' },
 };
 
-exports.updateWalkSchedule = onCall({}, async (request) => {
+exports.updateWalkSchedule = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
   // No auth context at all — callable convention is to throw (the client's
   // try/catch surfaces it). Everything else is a returned {success:false}.
   if (!request.auth) {
@@ -682,7 +690,7 @@ exports.updateWalkSchedule = onCall({}, async (request) => {
     return { success: false, error: `Your account tier (${member.tier || 'none'}) does not support schedule changes here. Please contact us.` };
   }
 
-  const { defaultWalkDays, defaultTimeSlot } = request.data || {};
+  const { defaultWalkDays, defaultTimeSlot, resolutions } = request.data || {};
 
   // Normalize days: lowercase + trim, drop blanks, dedupe. Reject anything
   // that isn't a Monday–Friday name (weekends aren't part of any tier).
@@ -709,24 +717,167 @@ exports.updateWalkSchedule = onCall({}, async (request) => {
   // of the order the member checked them.
   const orderedDays = VALID_WALK_DAYS.filter(d => days.includes(d));
 
-  // Reconcile NEXT month's walk docs if they already exist under the old
-  // schedule — the mid-month-conversion edge case: generateInitialWalks
-  // generates the entire next month at signup, before the member has a
-  // chance to change their days. .create()-based generation never overwrites
-  // those, so without this a day change would sit alongside the stale docs
-  // instead of replacing them. Current month is never touched — already
-  // billed, and "changes take effect next month" already covers it. Steady-
-  // state members (next month not generated yet) hit an empty query below
-  // and this whole block is a no-op — generateMonthlyWalks picks up the new
-  // schedule on its own next month, same as always.
+  // Reconcile NEXT month's walk docs against the new schedule. Under the
+  // rolling two-month window next month always has generated walks by the
+  // time a member can see/edit it, so this fires on essentially every
+  // schedule change, not just the rare mid-signup edge case it used to be
+  // limited to. Current month is never touched — already billed, and
+  // "changes take effect next month" covers it.
   const { year, monthIndex } = easternTodayParts();
   const nextMonthIndex = monthIndex === 11 ? 0 : monthIndex + 1;
   const nextYear = monthIndex === 11 ? year + 1 : year;
 
   // Query by memberId (not constructed IDs) so this also catches any walk
-  // added manually via the admin "Add Walk" modal — same reasoning as
-  // submitVacationHold's identical query.
+  // added manually via the admin "Add Walk" modal or moved by an approved
+  // reschedule (approveReschedule updates date/timeSlot on the walk's
+  // ORIGINAL doc in place, so its live `date` can diverge from what its own
+  // deterministic ID implies) — same reasoning as submitVacationHold's
+  // identical query. Everything below keys off each walk's live `date`
+  // field, never its doc ID, for the same reason.
   const memberWalksSnap = await db.collection('walks').where('memberId', '==', uid).get();
+
+  // Snapshot every next-month, non-completed walk BEFORE deleting anything,
+  // keyed by ISO date — this is what makes regeneration below able to
+  // restore per-walk state (walker assignment, an in-progress extension,
+  // a rescheduled time slot) on any date that survives into the new
+  // schedule, instead of silently discarding it the way a plain
+  // delete-and-regenerate would.
+  //
+  // Two or more docs can in principle share a date (an ad hoc admin-added
+  // walk on a day the recurring schedule also covers, most likely) — a
+  // pre-existing possibility this change doesn't introduce. When that
+  // happens, the canonical deterministic-ID doc wins if one of them is it
+  // (since that's the one regeneration will recreate); otherwise the most
+  // recently created doc wins and the collision is logged.
+  const snapshotByDate = new Map(); // dateStr -> snapshot
+  const oldDateStrs = new Set();
+  memberWalksSnap.forEach(snap => {
+    const walk = snap.data();
+    if (walk.status === 'completed') return; // never touch history
+    const walkDate = walk.date?.toDate?.();
+    if (!walkDate) return;
+    if (walkDate.getUTCFullYear() !== nextYear || walkDate.getUTCMonth() !== nextMonthIndex) return; // this month or beyond next month — not our concern
+    const dateStr = isoDateStr(walkDate);
+    oldDateStrs.add(dateStr);
+    const isCanonicalId = snap.id === `${uid}_${dateStr}`;
+    const existing = snapshotByDate.get(dateStr);
+    const createdAtMs = walk.createdAt?.toMillis?.() || 0;
+    if (existing && !isCanonicalId && (existing.isCanonicalId || existing.createdAtMs >= createdAtMs)) {
+      console.warn(`updateWalkSchedule: multiple walks for member ${uid} on ${dateStr} (${existing.docId}, ${snap.id}) — keeping ${existing.docId}.`);
+      return;
+    }
+    if (existing) {
+      console.warn(`updateWalkSchedule: multiple walks for member ${uid} on ${dateStr} (${existing.docId}, ${snap.id}) — keeping ${snap.id}.`);
+    }
+    snapshotByDate.set(dateStr, {
+      date: dateStr,
+      docId: snap.id,
+      isCanonicalId,
+      createdAtMs,
+      walkerId: walk.walkerId || null,
+      extended: !!walk.extended,
+      extendedStatus: walk.extendedStatus || null,
+      duration: walk.duration || null,
+      timeSlot: walk.timeSlot || null,
+      // Stamped by confirmWalkExtension (admin/dashboard.html) at the moment
+      // this specific walk's extension was actually charged — see the credit
+      // idempotency key below for why this, not just the date, is what a
+      // credit gets keyed on.
+      extensionChargeId: walk.extensionChargeId || null,
+    });
+  });
+
+  // Canonical dates the PROPOSED schedule would produce. Uses the same
+  // fromDay regeneration below will actually use (normally 1, but a member
+  // whose billing start date falls IN this exact target month — the narrow
+  // window between confirmation and their first billed month starting — is
+  // only ever generated from that start day forward). Computed once here so
+  // eligibleDates/newDateStrs can never disagree with what regeneration
+  // actually produces.
+  const fromDay = firstBilledMonthFromDay(member.membershipStartDate, nextYear, nextMonthIndex);
+  const newDateNums = datesMatchingWeekdaysInMonth(orderedDays, nextYear, nextMonthIndex, fromDay);
+  const newDateStrs = new Set(newDateNums.map(day =>
+    `${nextYear}-${String(nextMonthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  ));
+
+  // Extension pricing/description — needed for the preview response, the
+  // credit description, and rewriting a scrubbed pending-extension submission.
+  const { WALK_EXTENSION_PRICE, calculateWalkExtensionTotal } = await import('./pricing.js');
+
+  // Dates being dropped that carried a CONFIRMED (paid) extension — the
+  // only case with real money already spent that a plain delete would
+  // otherwise silently erase. A PENDING extension on a dropped date is
+  // handled separately below (no money moved, so no member resolution is
+  // needed — just cleanup of the submission that references it).
+  const orphanedConfirmed = [...oldDateStrs]
+    .filter(d => !newDateStrs.has(d))
+    .map(d => snapshotByDate.get(d))
+    .filter(s => s && s.extendedStatus === 'confirmed');
+
+  // Eligible "move a paid extension here" targets: survives into the new
+  // schedule AND isn't already extended itself.
+  const eligibleDates = [...newDateStrs].filter(d => {
+    const existing = snapshotByDate.get(d);
+    return !existing || !existing.extended;
+  }).sort();
+
+  let validatedResolutions = [];
+  if (orphanedConfirmed.length > 0) {
+    if (!Array.isArray(resolutions)) {
+      // First pass: report what needs resolving, write nothing.
+      return {
+        success: false,
+        needsResolution: true,
+        orphanedExtensions: orphanedConfirmed.map(o => ({ date: o.date, amount: WALK_EXTENSION_PRICE })),
+        eligibleDates,
+      };
+    }
+
+    // Re-derive the orphan set fresh (above) rather than trusting the
+    // client's copy of it — reject a stale/mismatched submission (e.g. the
+    // schedule changed again, or admin declined an extension, since the
+    // member last saw the preview) instead of silently mis-crediting.
+    const orphanedDateSet = new Set(orphanedConfirmed.map(o => o.date));
+    const resolvedDateSet = new Set(resolutions.map(r => r && r.date));
+    const missing = [...orphanedDateSet].filter(d => !resolvedDateSet.has(d));
+    const extra = [...resolvedDateSet].filter(d => !orphanedDateSet.has(d));
+    if (missing.length || extra.length) {
+      return {
+        success: false,
+        needsResolution: true,
+        error: 'Your schedule may have changed since you last reviewed this — please review the affected extensions again.',
+        orphanedExtensions: orphanedConfirmed.map(o => ({ date: o.date, amount: WALK_EXTENSION_PRICE })),
+        eligibleDates,
+      };
+    }
+
+    const chosenTargets = new Set();
+    for (const r of resolutions) {
+      if (r.action === 'move') {
+        if (!eligibleDates.includes(r.targetDate)) {
+          return { success: false, error: `"${r.targetDate}" isn't an eligible date for moving an extension to.` };
+        }
+        if (chosenTargets.has(r.targetDate)) {
+          return { success: false, error: `More than one extension was moved to ${r.targetDate} — each date can only take one.` };
+        }
+        chosenTargets.add(r.targetDate);
+      } else if (r.action !== 'credit') {
+        return { success: false, error: `Unrecognized resolution action "${r.action}".` };
+      }
+    }
+    validatedResolutions = resolutions;
+  }
+
+  // Dropped dates with a PENDING (unpaid, unconfirmed) extension — no money
+  // involved, so no member resolution is needed. But the walk_extension
+  // submission that named this walkId will otherwise reference a deleted
+  // doc, which throws if admin later tries to confirm it — scrub the stale
+  // ID out of that submission (or mark it stale if that empties it) rather
+  // than leaving a landmine. Computed now, applied after the delete below.
+  const droppedPendingDates = [...oldDateStrs]
+    .filter(d => !newDateStrs.has(d))
+    .map(d => snapshotByDate.get(d))
+    .filter(s => s && s.extendedStatus === 'pending');
 
   const batch = db.batch();
   batch.set(
@@ -735,7 +886,6 @@ exports.updateWalkSchedule = onCall({}, async (request) => {
     { merge: true }
   );
 
-  let deletedCount = 0;
   memberWalksSnap.forEach(snap => {
     const walk = snap.data();
     if (walk.status === 'completed') return; // never touch history
@@ -743,7 +893,6 @@ exports.updateWalkSchedule = onCall({}, async (request) => {
     if (!walkDate) return;
     if (walkDate.getUTCFullYear() !== nextYear || walkDate.getUTCMonth() !== nextMonthIndex) return; // this month or beyond next month — not our concern
     batch.delete(snap.ref);
-    deletedCount++;
   });
 
   try {
@@ -753,25 +902,186 @@ exports.updateWalkSchedule = onCall({}, async (request) => {
     throw new HttpsError('internal', 'Could not save schedule.');
   }
 
-  // Regenerate next month under the new schedule only if we just deleted
-  // something there. Best-effort: a failure here logs and falls through to
-  // success rather than throwing — deterministic walk doc IDs make this
-  // self-healing, since generateMonthlyWalks will fill in whatever's missing
-  // when that month actually starts (the old docs are already gone).
-  if (deletedCount > 0) {
-    const updatedMember = { ...member, defaultWalkDays: orderedDays, defaultTimeSlot };
-    const fromDay = firstBilledMonthFromDay(member.membershipStartDate, nextYear, nextMonthIndex);
+  // Everything past this point is best-effort, sequential follow-through —
+  // same pattern as chargeCurrentMonthWalks/createMembershipSubscription's
+  // own multi-step flows, not a single mega-transaction (generateWalksForMember's
+  // per-date .create() loop and the Stripe credit call below can't
+  // meaningfully participate in one Firestore transaction anyway). The
+  // schedule change itself already committed above; a failure from here on
+  // is logged and, for walk generation, self-healing via the same
+  // deterministic-ID/.create() idempotency every other caller relies on.
+  const updatedMember = { ...member, defaultWalkDays: orderedDays, defaultTimeSlot };
+  try {
+    const result = await generateWalksForMember(uid, updatedMember, nextYear, nextMonthIndex, fromDay);
+    if (result.failed > 0) {
+      console.error(`updateWalkSchedule: ${result.failed} walk(s) failed to regenerate for member ${uid} after schedule change`);
+    }
+  } catch (e) {
+    console.error(`updateWalkSchedule: regeneration failed for member ${uid}:`, e.message);
+  }
+
+  // Restore per-walk state onto any date that survived the change.
+  const defaultWalkerId = updatedMember.assignedWalkerId || null;
+  const survivingDates = [...oldDateStrs].filter(d => newDateStrs.has(d));
+  for (const dateStr of survivingDates) {
+    const snap = snapshotByDate.get(dateStr);
+    if (!snap) continue;
+    const update = {};
+    if (snap.walkerId && snap.walkerId !== defaultWalkerId) update.walkerId = snap.walkerId;
+    if (snap.extended) {
+      update.extended = true;
+      if (snap.extendedStatus) update.extendedStatus = snap.extendedStatus;
+      if (snap.duration) update.duration = snap.duration;
+    }
+    if (snap.timeSlot && snap.timeSlot !== defaultTimeSlot) update.timeSlot = snap.timeSlot;
+    if (!Object.keys(update).length) continue; // regenerated doc's defaults already match
     try {
-      const result = await generateWalksForMember(uid, updatedMember, nextYear, nextMonthIndex, fromDay);
-      if (result.failed > 0) {
-        console.error(`updateWalkSchedule: ${result.failed} walk(s) failed to regenerate for member ${uid} after schedule change`);
-      }
+      await db.collection('walks').doc(`${uid}_${dateStr}`).update(update);
     } catch (e) {
-      console.error(`updateWalkSchedule: regeneration failed for member ${uid}:`, e.message);
+      console.error(`updateWalkSchedule: failed to restore state for ${uid}_${dateStr}:`, e.message);
     }
   }
 
-  return { success: true, message: 'Walk schedule updated' };
+  // Apply move/credit resolutions for orphaned confirmed extensions.
+  const failedMoves = [];
+  const creditResults = [];
+  for (const r of validatedResolutions) {
+    if (r.action === 'move') {
+      try {
+        await db.collection('walks').doc(`${uid}_${r.targetDate}`).update({
+          extended: true,
+          extendedStatus: 'confirmed',
+          duration: '45-minute walk',
+        });
+      } catch (e) {
+        console.error(`updateWalkSchedule: failed to move extension from ${r.date} to ${r.targetDate} for member ${uid}:`, e.message);
+        failedMoves.push(r);
+      }
+    }
+  }
+
+  const creditResolutions = validatedResolutions.filter(r => r.action === 'credit');
+  if (creditResolutions.length) {
+    const billingSnap = await billingRef(uid).get();
+    const stripeCustomerId = billingSnap.data()?.stripeCustomerId;
+    const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+    for (const r of creditResolutions) {
+      // Keyed on the SPECIFIC charge that paid for this extension
+      // (extensionChargeId, stamped by confirmWalkExtension), not just the
+      // date — a calendar date can cycle through extend -> drop -> re-add ->
+      // re-extend -> drop more than once while it's still reachable here,
+      // and each cycle is a genuinely distinct paid extension with its own
+      // Stripe PaymentIntent. Keying on date alone would make the SECOND
+      // cycle's credit collide with (and silently no-op against) the
+      // FIRST's already-issued record. Falls back to the walk's own
+      // createdAt (also changes every regeneration cycle) only if
+      // extensionChargeId is somehow missing — see the comment where it's
+      // stamped for when that can happen. Either way, this is a permanent,
+      // safe-to-retry idempotency key: a retried call that already claimed
+      // this credit record (tx.create() below) skips straight to checking
+      // its status rather than issuing a second Stripe credit.
+      const snap = snapshotByDate.get(r.date);
+      const keyPart = snap?.extensionChargeId || `c${snap?.createdAtMs || 0}`;
+      const creditRef = db.collection('walkExtensionCredits').doc(`${uid}_${r.date}_${keyPart}`);
+      let claimed = true;
+      try {
+        await db.runTransaction(async (tx) => {
+          const existing = await tx.get(creditRef);
+          if (existing.exists) throw new Error('already-claimed');
+          tx.create(creditRef, {
+            memberId: uid,
+            date: r.date,
+            amount: WALK_EXTENSION_PRICE,
+            chargeId: snap?.extensionChargeId || null,
+            reason: 'schedule_change_orphan',
+            status: 'pending',
+            createdAt: FieldValue.serverTimestamp(),
+          });
+        });
+      } catch (e) {
+        claimed = false;
+      }
+      if (!claimed) {
+        const existing = (await creditRef.get()).data() || {};
+        if (existing.status === 'issued') {
+          creditResults.push({ ...r, status: 'issued' });
+          continue;
+        }
+        // status is 'pending' or 'failed' from an earlier attempt — fall
+        // through and retry issuing it below, same record, no re-claim needed.
+      }
+      if (!stripeCustomerId) {
+        await creditRef.set({ status: 'failed', error: 'No stripeCustomerId on file', failedAt: FieldValue.serverTimestamp() }, { merge: true }).catch(() => {});
+        creditResults.push({ ...r, status: 'failed', error: 'no-stripe-customer' });
+        continue;
+      }
+      try {
+        const bt = await issueStripeBalanceCredit(
+          stripe, stripeCustomerId, Math.round(WALK_EXTENSION_PRICE * 100),
+          `Port City Leash Club walk extension credit — schedule change (${r.date})`
+        );
+        await creditRef.set({ status: 'issued', stripeBalanceTransactionId: bt.id, issuedAt: FieldValue.serverTimestamp() }, { merge: true });
+        creditResults.push({ ...r, status: 'issued' });
+      } catch (e) {
+        console.error(`updateWalkSchedule: extension credit failed for member ${uid} date ${r.date}:`, e.message);
+        await creditRef.set({ status: 'failed', error: e.message, failedAt: FieldValue.serverTimestamp() }, { merge: true }).catch(() => {});
+        await billingRef(uid).set({ needsReview: true, needsReviewReason: 'walk_extension_credit_failed' }, { merge: true }).catch(() => {});
+        creditResults.push({ ...r, status: 'failed', error: e.message });
+      }
+    }
+  }
+
+  // Scrub stale walkIds out of any still-pending walk_extension submission
+  // that named a date we just dropped for free (unpaid, so nothing to
+  // credit — see droppedPendingDates above).
+  if (droppedPendingDates.length) {
+    const staleWalkIds = new Set(droppedPendingDates.map(s => s.docId));
+    try {
+      const pendingExtSnap = await db.collection('submissions')
+        .where('memberId', '==', uid)
+        .where('type', '==', 'walk_extension')
+        .where('status', '==', 'pending')
+        .get();
+      for (const doc of pendingExtSnap.docs) {
+        const sub = doc.data();
+        const walkIds = Array.isArray(sub.walkIds) ? sub.walkIds : [];
+        const kept = walkIds.filter(id => !staleWalkIds.has(id));
+        if (kept.length === walkIds.length) continue; // nothing stale in this one
+        if (kept.length === 0) {
+          await doc.ref.update({ status: 'stale', walkIds: kept, count: 0 });
+        } else {
+          await doc.ref.update({ walkIds: kept, count: kept.length, estimatedTotal: calculateWalkExtensionTotal(kept.length) });
+        }
+      }
+    } catch (e) {
+      console.error(`updateWalkSchedule: failed to scrub stale walk_extension submissions for member ${uid}:`, e.message);
+    }
+  }
+
+  // Admin-visible record of what happened — mirrors pause_membership's
+  // informational-record pattern. Only written when there was something to
+  // resolve; a plain day/time-slot change writes nothing here, same as today.
+  const failedCredits = creditResults.filter(c => c.status === 'failed');
+  if (validatedResolutions.length) {
+    const needsManualHandling = failedMoves.length > 0 || failedCredits.length > 0;
+    try {
+      await db.collection('submissions').add({
+        type: 'walk_extension_reassignment',
+        memberId: uid,
+        memberName: member.name || '',
+        status: needsManualHandling ? 'pending' : 'applied',
+        read: false,
+        resolutions: validatedResolutions.map(r => ({ date: r.date, action: r.action, targetDate: r.targetDate || null })),
+        failedMoves: failedMoves.map(r => r.date),
+        failedCredits: failedCredits.map(c => ({ date: c.date, error: c.error })),
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      console.error(`updateWalkSchedule: failed to write the schedule-change record for member ${uid}:`, e.message);
+    }
+  }
+
+  return { success: true, message: 'Walk schedule updated', resolutions: validatedResolutions };
 });
 
 // Today's calendar date in Eastern time, as UTC-style components.
@@ -1006,18 +1316,29 @@ exports.syncMonthlyWalkQuantities = onSchedule({
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// 3d. Generate next month's walk documents for every active member with a
-//    subscription. Same schedule as syncMonthlyWalkQuantities, but a
+// 3d. Generate walk documents for every active member with a subscription,
+//    one month ahead of the month that just started — this is what keeps
+//    the rolling two-month window (current + next always generated) intact
+//    going forward. Same schedule as syncMonthlyWalkQuantities, but a
 //    separate function — a bug in walk generation can't take down the
-//    Stripe quantity sync, or vice versa.
+//    Stripe quantity sync, or vice versa. syncMonthlyWalkQuantities and
+//    resumePausedMemberships deliberately stay bound to the month that just
+//    started (billing/reactivation, not schedule-visibility, concerns) —
+//    only this function's target shifts.
 // ─────────────────────────────────────────────────────────────────────────
 exports.generateMonthlyWalks = onSchedule({
   schedule: '5 0 1 * *',
   timeZone: 'America/New_York',
 }, async () => {
+  // "Now" is the month that just started (this cron fires 5 minutes after
+  // midnight ET on the 1st) — the target for generation is one month past
+  // that, so next month is always generated a full month ahead of when it
+  // starts, same as this month was.
   const now = new Date();
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth();
+  const thisRunMonth = now.getUTCMonth();
+  const thisRunYear = now.getUTCFullYear();
+  const month = thisRunMonth === 11 ? 0 : thisRunMonth + 1;
+  const year = thisRunMonth === 11 ? thisRunYear + 1 : thisRunYear;
 
   const membersSnap = await db.collection('members').where('status', '==', 'active').get();
 
@@ -1036,6 +1357,79 @@ exports.generateMonthlyWalks = onSchedule({
       console.error(`generateMonthlyWalks: member ${memberDoc.id} had ${result.failed} failed walk(s)`);
     }
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 3d-backfill. One-time cutover helper for the rolling two-month window
+// above: generates NEXT month for every currently active, subscribed
+// member, using the exact same selection/generation logic
+// generateMonthlyWalks uses every month — not a special-cased alternate
+// path, just that same logic invoked once, by hand, ahead of its next
+// scheduled run. Safe to run more than once: generateWalksForMember's doc
+// IDs are deterministic (memberId_date) and it creates with .create(),
+// which throws ALREADY_EXISTS (caught, counted as skipped, never
+// overwrites) for anything already there — the same guarantee every other
+// caller (generateMonthlyWalks, generateInitialWalks, chargeCurrentMonthWalks,
+// updateWalkSchedule) already relies on.
+//
+// dryRun:true computes and returns what WOULD be created/skipped/blocked
+// without writing anything — mirrors generateWalksForMember's own decision
+// logic (has a defaultTimeSlot? which dates match defaultWalkDays?) plus an
+// existence check per candidate date, but never calls .create().
+// ─────────────────────────────────────────────────────────────────────────
+exports.backfillNextMonthWalks = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+  const dryRun = !!(request.data && request.data.dryRun);
+
+  const { year: todayYear, monthIndex: todayMonthIndex } = easternTodayParts();
+  const nextMonthIndex = todayMonthIndex === 11 ? 0 : todayMonthIndex + 1;
+  const nextYear = todayMonthIndex === 11 ? todayYear + 1 : todayYear;
+
+  const membersSnap = await db.collection('members').where('status', '==', 'active').get();
+
+  const perMember = [];
+  let totalCreated = 0, totalSkipped = 0, totalFailed = 0, totalBlocked = 0;
+
+  for (const memberDoc of membersSnap.docs) {
+    const member = memberDoc.data();
+    if (!member.hasActiveSubscription) continue; // Travel-tier / one-time clients — same filter generateMonthlyWalks uses
+
+    const fromDay = firstBilledMonthFromDay(member.membershipStartDate, nextYear, nextMonthIndex);
+
+    if (dryRun) {
+      if (!member.defaultTimeSlot) {
+        perMember.push({ memberId: memberDoc.id, wouldCreate: 0, alreadyExists: 0, blocked: 'no-time-slot' });
+        totalBlocked++;
+        continue;
+      }
+      const days = datesMatchingWeekdaysInMonth(member.defaultWalkDays, nextYear, nextMonthIndex, fromDay);
+      let wouldCreate = 0, alreadyExists = 0;
+      for (const day of days) {
+        const dateStr = `${nextYear}-${String(nextMonthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const exists = (await db.collection('walks').doc(`${memberDoc.id}_${dateStr}`).get()).exists;
+        if (exists) alreadyExists++; else wouldCreate++;
+      }
+      perMember.push({ memberId: memberDoc.id, wouldCreate, alreadyExists, blocked: null });
+      totalCreated += wouldCreate;
+      totalSkipped += alreadyExists;
+    } else {
+      const result = await generateWalksForMember(memberDoc.id, member, nextYear, nextMonthIndex, fromDay);
+      perMember.push({ memberId: memberDoc.id, created: result.created, skipped: result.skipped, failed: result.failed, blocked: result.blocked });
+      totalCreated += result.created;
+      totalSkipped += result.skipped;
+      totalFailed += result.failed;
+      if (result.blocked) totalBlocked++;
+    }
+  }
+
+  return {
+    success: true,
+    dryRun,
+    targetMonth: `${nextYear}-${String(nextMonthIndex + 1).padStart(2, '0')}`,
+    memberCount: perMember.length,
+    totals: { created: totalCreated, skipped: totalSkipped, failed: totalFailed, blocked: totalBlocked },
+    perMember,
+  };
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1376,6 +1770,19 @@ async function findMemberIdByStripeCustomerId(stripe, customerId) {
   }
 }
 
+// A single Stripe customer-balance credit — negative amount reduces what
+// the customer owes, applied automatically to their next invoice with no
+// separate "redeem" step on their end. Shared by issueReferralCredit below
+// and updateWalkSchedule's extension-credit path, so there's one place that
+// knows how a credit actually gets issued.
+async function issueStripeBalanceCredit(stripe, stripeCustomerId, amountCents, description) {
+  return stripe.customers.createBalanceTransaction(stripeCustomerId, {
+    amount: -amountCents,
+    currency: 'usd',
+    description,
+  });
+}
+
 // ── Referral credit issuance ────────────────────────────────────────────
 // $50 issued to a single member, via whichever mechanism matches their OWN
 // tier — never the tier of whoever they were credited in relation to. A
@@ -1391,14 +1798,7 @@ async function issueReferralCredit(stripe, memberId, memberData) {
     if (!stripeCustomerId) {
       throw new Error(`Membership-tier member ${memberId} has no stripeCustomerId on file — cannot issue a Stripe balance credit.`);
     }
-    // Negative amount = a credit reducing what the customer owes (Stripe
-    // Customer Balance Transactions API), applied automatically to their
-    // next invoice — no separate "redeem" step needed on their end.
-    await stripe.customers.createBalanceTransaction(stripeCustomerId, {
-      amount: -5000,
-      currency: 'usd',
-      description: 'Port City Leash Club referral credit ($50)',
-    });
+    await issueStripeBalanceCredit(stripe, stripeCustomerId, 5000, 'Port City Leash Club referral credit ($50)');
   } else {
     // Travel-tier: no ongoing subscription for a Stripe balance credit to
     // apply against, so it accrues here instead and is applied as a

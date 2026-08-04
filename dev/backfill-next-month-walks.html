@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Backfill Next Month's Walks | PCLC (admin only)</title>
+<meta name="robots" content="noindex">
+<style>
+  body { font-family: 'SF Mono', ui-monospace, Menlo, monospace; background: #0D1B2A; color: #C5D5D1; padding: 28px; line-height: 1.7; max-width: 900px; margin: 0 auto; }
+  h1 { color: #fff; font-size: 18px; margin: 0 0 4px; }
+  .sub { color: rgba(255,255,255,0.45); font-size: 12px; margin-bottom: 20px; }
+  .panel { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 16px 18px; margin-bottom: 16px; }
+  .panel h2 { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #8FA8A2; margin: 0 0 10px; }
+  .row { display: flex; justify-content: space-between; font-size: 13px; padding: 2px 0; }
+  .row .n { color: #fff; }
+  .ok { color: #6FCF97; } .err { color: #C17B6F; } .warn { color: #E0C068; } .muted { color: rgba(255,255,255,0.4); }
+  button { background: #C17B6F; color: #fff; border: none; border-radius: 5px; padding: 11px 20px; font: inherit; font-size: 13px; cursor: pointer; margin-right: 10px; }
+  button.ghost { background: #22384c; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  #log { font-size: 12px; margin-top: 8px; max-height: 340px; overflow-y: auto; }
+  #log div { padding: 1px 0; }
+  a { color: #8FA8A2; }
+  code { background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<h1>Port City Leash Club — Backfill Next Month's Walks</h1>
+<div class="sub">
+  Admin-gated, one-time cutover helper for the rolling two-month walk-generation window. Calls the
+  <code>backfillNextMonthWalks</code> Cloud Function, which generates next month's walk docs for every currently
+  active, subscribed member — the same selection/generation logic <code>generateMonthlyWalks</code> runs every month,
+  invoked once by hand. Safe to run more than once (deterministic walk IDs + <code>.create()</code>
+  <code>ALREADY_EXISTS</code> handling mean a repeat run only fills in gaps, never duplicates or overwrites). Delete
+  this file (or leave it — it does nothing unless the signed-in user is an admin) once the cutover is done.
+</div>
+
+<div class="panel" id="authPanel"><span class="muted">Checking admin session…</span></div>
+
+<div class="panel" id="controls" style="display:none">
+  <h2>Run</h2>
+  <div>
+    <button id="dryRunBtn">Dry run (no writes)</button>
+    <button id="realRunBtn" class="ghost" disabled>Run for real</button>
+  </div>
+  <div class="sub" style="margin:8px 0 0;">Run a dry run first — "Run for real" stays disabled until one completes.</div>
+</div>
+
+<div class="panel" id="resultPanel" style="display:none">
+  <h2 id="resultTitle">Result</h2>
+  <div id="resultSummary"></div>
+  <div id="resultDetail" style="margin-top:10px;"></div>
+</div>
+
+<div class="panel" id="logPanel" style="display:none"><h2>Log</h2><div id="log"></div></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getFirestore, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+
+// Same project + default app as /admin, so this page shares the admin's signed-in session.
+const firebaseConfig = {
+  apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
+  authDomain: "port-city-leash-club-827ab.firebaseapp.com",
+  projectId: "port-city-leash-club-827ab",
+  storageBucket: "port-city-leash-club-827ab.firebasestorage.app",
+  messagingSenderId: "649385306352",
+  appId: "1:649385306352:web:51e46c0b58b8b6b3a8dece"
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const fns = getFunctions(app);
+
+const $ = id => document.getElementById(id);
+function log(msg, cls = '') { const d = document.createElement('div'); if (cls) d.className = cls; d.textContent = msg; $('log').appendChild(d); $('log').scrollTop = $('log').scrollHeight; }
+
+let hasDryRun = false;
+
+// ── AUTH GATE ────────────────────────────────────────────────────────────────
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    $('authPanel').innerHTML = '<span class="err">Not signed in.</span> Open <a href="/admin">/admin</a> and sign in as admin (same browser), then reload this page.';
+    return;
+  }
+  let isAdmin = false;
+  try { isAdmin = (await getDoc(doc(db, 'admins', user.uid))).exists(); } catch (e) {}
+  if (!isAdmin) {
+    $('authPanel').innerHTML = `<span class="err">Signed in as ${user.email} — not an admin.</span> This page does nothing for non-admins (and backfillNextMonthWalks would reject the call regardless).`;
+    return;
+  }
+  $('authPanel').innerHTML = `<span class="ok">Admin session: ${user.email} ✓</span>`;
+  $('controls').style.display = 'block';
+  $('logPanel').style.display = 'block';
+});
+
+function renderResult(res) {
+  $('resultPanel').style.display = 'block';
+  $('resultTitle').textContent = res.dryRun ? `Dry run — target month ${res.targetMonth}` : `Run complete — target month ${res.targetMonth}`;
+
+  const t = res.totals;
+  const createdLabel = res.dryRun ? 'Would create' : 'Created';
+  const skippedLabel = res.dryRun ? 'Already exists' : 'Skipped (already existed)';
+  $('resultSummary').innerHTML = `
+    <div class="row"><span>Members checked</span><span class="n">${res.memberCount}</span></div>
+    <div class="row"><span>${createdLabel}</span><span class="n ok">${t.created}</span></div>
+    <div class="row"><span>${skippedLabel}</span><span class="n muted">${t.skipped}</span></div>
+    <div class="row"><span>Blocked (no time slot set)</span><span class="n ${t.blocked ? 'warn' : 'muted'}">${t.blocked}</span></div>
+    <div class="row"><span>Failed</span><span class="n ${t.failed ? 'err' : 'muted'}">${t.failed}</span></div>
+  `;
+
+  const rows = res.perMember.filter(m => m.blocked || m.failed > 0 || (res.dryRun ? m.wouldCreate > 0 : m.created > 0));
+  if (!rows.length) {
+    $('resultDetail').innerHTML = '<span class="muted">Nothing to show per-member — no member had anything to generate.</span>';
+    return;
+  }
+  $('resultDetail').innerHTML = rows.map(m => {
+    if (m.blocked) return `<div class="row"><span>${m.memberId}</span><span class="n warn">blocked — no defaultTimeSlot</span></div>`;
+    const created = res.dryRun ? m.wouldCreate : m.created;
+    const skipped = res.dryRun ? m.alreadyExists : m.skipped;
+    const failed = m.failed || 0;
+    const failedPart = failed ? ` <span class="err">· ${failed} failed</span>` : '';
+    return `<div class="row"><span>${m.memberId}</span><span class="n">${created} ${res.dryRun ? 'would create' : 'created'} <span class="muted">· ${skipped} ${res.dryRun ? 'exist' : 'skipped'}</span>${failedPart}</span></div>`;
+  }).join('');
+}
+
+$('dryRunBtn').onclick = async () => {
+  $('dryRunBtn').disabled = true; $('dryRunBtn').textContent = 'Running…';
+  log('Running dry run…');
+  try {
+    const backfillNextMonthWalks = httpsCallable(fns, 'backfillNextMonthWalks');
+    const res = (await backfillNextMonthWalks({ dryRun: true })).data;
+    log(`Dry run complete: ${res.totals.created} would create, ${res.totals.skipped} already exist, ${res.totals.blocked} blocked, ${res.totals.failed} failed.`, 'ok');
+    renderResult(res);
+    hasDryRun = true;
+    $('realRunBtn').disabled = false;
+  } catch (e) {
+    log(`Dry run failed: ${e.message}`, 'err');
+  } finally {
+    $('dryRunBtn').disabled = false; $('dryRunBtn').textContent = 'Dry run (no writes)';
+  }
+};
+
+$('realRunBtn').onclick = async () => {
+  if (!hasDryRun) return; // guarded by disabled state too, belt-and-suspenders
+  if (!confirm('Generate next month\'s walks for every active, subscribed member now? This writes to Firestore. Review the dry run above first.')) return;
+  $('realRunBtn').disabled = true; $('realRunBtn').textContent = 'Running…';
+  log('Running for real…');
+  try {
+    const backfillNextMonthWalks = httpsCallable(fns, 'backfillNextMonthWalks');
+    const res = (await backfillNextMonthWalks({ dryRun: false })).data;
+    log(`Backfill complete: ${res.totals.created} created, ${res.totals.skipped} skipped (already existed), ${res.totals.blocked} blocked, ${res.totals.failed} failed.`, res.totals.failed ? 'warn' : 'ok');
+    renderResult(res);
+  } catch (e) {
+    log(`Backfill failed: ${e.message}`, 'err');
+  } finally {
+    $('realRunBtn').disabled = false; $('realRunBtn').textContent = 'Run for real';
+  }
+};
+</script>
+</body>
+</html>
