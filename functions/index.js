@@ -23,6 +23,7 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, FieldValue, Timestamp } = require('firebase-admin/firestore');
+const { sendEmail, RESEND_API_KEY } = require('./lib/email');
 
 initializeApp();
 const db = getFirestore();
@@ -2330,54 +2331,38 @@ async function sendGmailMessage({ to, subject, body, threadId, inReplyTo, refere
 // ─────────────────────────────────────────────────────────────────────────
 const BUSINESS_PORTAL_ORIGIN = 'https://www.portcityleashclub.com';
 
+// kind:'service' used to live here too (a plain-text Gmail send for a new
+// one-time customer) — retired now that confirmServiceRequest calls
+// sendBookingConfirmedEmail (below) for every confirmation, new account or
+// not, via the portal-service-confirmed/walk-confirmed Resend templates.
 exports.sendOnboardingEmail = onCall({
-  secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET],
+  secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, RESEND_API_KEY],
 }, async (request) => {
   await assertIsAdmin(request.auth);
-  const { memberId, walkerUid, kind, serviceName, paymentCharged } = request.data || {};
-  if (!['member', 'service', 'walker'].includes(kind)) {
-    throw new HttpsError('invalid-argument', "kind must be 'member', 'service', or 'walker'.");
+  const { memberId, walkerUid, kind } = request.data || {};
+  if (!['member', 'walker'].includes(kind)) {
+    throw new HttpsError('invalid-argument', "kind must be 'member' or 'walker'.");
   }
 
-  // Resolve the recipient. Walkers live in their own collection with a
-  // different shape (no pet, no tier); members and one-time customers are
-  // member docs. Everything downstream works off email/firstName/petName.
-  let email, firstName, petName = null, memberTier = null;
   if (kind === 'walker') {
     if (!walkerUid) throw new HttpsError('invalid-argument', 'walkerUid is required for a walker email.');
     const wSnap = await db.collection('walkers').doc(walkerUid).get();
     const walker = wSnap.data();
     if (!walker) throw new HttpsError('not-found', 'Walker record not found.');
-    email = walker.email;
-    firstName = (walker.name || '').trim().split(/\s+/)[0] || 'there';
-  } else {
-    if (!memberId) throw new HttpsError('invalid-argument', 'memberId is required.');
-    const memberSnap = await db.collection('members').doc(memberId).get();
-    const member = memberSnap.data();
-    if (!member) throw new HttpsError('not-found', 'Member record not found.');
-    email = member.email;
-    firstName = (member.name || '').trim().split(/\s+/)[0] || 'there';
-    petName = (Array.isArray(member.dogs) ? member.dogs.map((d) => d && d.name).find(Boolean) : null) || null;
-    memberTier = member.tier || null;
-  }
-  if (!email) throw new HttpsError('failed-precondition', 'This recipient has no email on file.');
+    const email = walker.email;
+    if (!email) throw new HttpsError('failed-precondition', 'This recipient has no email on file.');
+    const firstName = (walker.name || '').trim().split(/\s+/)[0] || 'there';
+    const portalUrl = `${BUSINESS_PORTAL_ORIGIN}/walker`;
 
-  // Capitalized for use at the start of a bullet; a real name is already
-  // capitalized, the fallback needs it.
-  const petProfileBullet = petName ? `${petName}'s profile` : "Your pet's profile";
-  // Walkers land on the walker portal, everyone else on the member portal.
-  // Both are clean URLs (no .html) so Vercel serves them without a redirect.
-  const portalUrl = `${BUSINESS_PORTAL_ORIGIN}${kind === 'walker' ? '/walker' : '/portal-login'}`;
+    // generatePasswordResetLink generates the link without sending it, so
+    // the welcome text is ours (via Gmail) rather than Firebase's default
+    // template. Walker onboarding stays on this Gmail path for now — see
+    // the Phase 1 Resend build notes for why.
+    const { getAuth } = require('firebase-admin/auth');
+    const link = await getAuth().generatePasswordResetLink(email, { url: portalUrl });
 
-  // generatePasswordResetLink generates the link without sending it, so the
-  // welcome text is ours (via Gmail) rather than Firebase's default template.
-  const { getAuth } = require('firebase-admin/auth');
-  const link = await getAuth().generatePasswordResetLink(email, { url: portalUrl });
-
-  let subject, lines;
-  if (kind === 'walker') {
-    subject = `Welcome to the team, ${firstName}`;
-    lines = [
+    const subject = `Welcome to the team, ${firstName}`;
+    const lines = [
       `Hi ${firstName},`, '',
       `Welcome to the Port City Leash Club team. Your walker account is all set up, and we're glad to have you.`, '',
       `Your account is ready in the walker portal. Log in to find:`, '',
@@ -2390,56 +2375,115 @@ exports.sendOnboardingEmail = onCall({
       `Questions? Just reply to this email or reach us at ${BUSINESS_EMAIL_ADDRESS}.`, '',
       `The Port City Leash Club team`,
     ];
-  } else if (kind === 'member') {
-    const tier = memberTier || 'membership';
-    const line2 = memberTier === 'Travel'
-      ? `${petName ? petName + "'s" : 'Your'} membership is set up, and we can't wait to take care of ${petName || 'your pet'}.`
-      : `${petName ? petName + "'s " + tier : 'Your ' + tier} membership is set up, and we can't wait to get started.`;
-    subject = `Welcome to the Leash Club, ${firstName}`;
-    lines = [
-      `Hi ${firstName},`, '',
-      `You're in. ${line2}`, '',
-      `Your account is ready in the member portal. Log in to find:`, '',
-      `  - Your upcoming visits`,
-      `  - ${petProfileBullet}`,
-      `  - Everything about your membership`, '',
-      `Set your password to get in:`, '',
-      link, '',
-      `Link expired? Head to ${portalUrl} and choose "Forgot password?" for a new one.`, '',
-      `Questions? Just reply to this email or reach us at ${BUSINESS_EMAIL_ADDRESS}.`, '',
-      `The Port City Leash Club team`,
-    ];
-  } else {
-    const svc = serviceName || 'booking';
-    subject = `Your booking is confirmed`;
-    lines = [
-      `Hi ${firstName},`, '',
-      `Thanks for booking with us. Your ${svc}${petName ? ' for ' + petName : ''} is confirmed.`, '',
-      `We've set up a portal account so you can keep track of everything. Log in to find:`, '',
-      `  - Your booking details`,
-      `  - ${petProfileBullet}`, '',
-      `Set your password to get in:`, '',
-      link, '',
-      `Link expired? Head to ${portalUrl} and choose "Forgot password?" for a new one.`, '',
-    ];
-    if (paymentCharged) {
-      lines.push('Payment has been processed. A separate receipt from Stripe is on its way.', '');
-    }
-    lines.push(
-      `Questions? Just reply to this email or reach us at ${BUSINESS_EMAIL_ADDRESS}.`, '',
-      `The Port City Leash Club team`,
-    );
+    await sendGmailMessage({ to: email, subject, body: lines.join('\n') });
+    return { success: true, sentTo: email };
   }
 
-  // No `from` is passed, so sendGmailMessage uses its default,
-  // BUSINESS_EMAIL_DISPLAY ("Port City Leash Club <hello@portcityleashclub.com>"),
-  // matching sendMemberMessage — the branded name and address a customer should
-  // see. This only shows as hello@ if hello@ is a verified "Send mail as" alias
-  // on the connected Gmail account; otherwise Gmail rewrites the From back to
-  // the connected address (it does not error). sendGmailMessage throws if Gmail
-  // isn't connected.
-  await sendGmailMessage({ to: email, subject, body: lines.join('\n') });
+  // kind === 'member'
+  if (!memberId) throw new HttpsError('invalid-argument', 'memberId is required.');
+  const memberSnap = await db.collection('members').doc(memberId).get();
+  const member = memberSnap.data();
+  if (!member) throw new HttpsError('not-found', 'Member record not found.');
+  const email = member.email;
+  if (!email) throw new HttpsError('failed-precondition', 'This recipient has no email on file.');
+
+  const firstName = (member.name || '').trim().split(/\s+/)[0] || 'there';
+  const dogNames = (Array.isArray(member.dogs) ? member.dogs.map((d) => d && d.name).filter(Boolean) : []);
+
+  // Same weekday order updateWalkSchedule already canonicalizes
+  // defaultWalkDays into — sorted again here defensively rather than
+  // trusted, since this reads whatever the Convert-to-Member form wrote.
+  const orderedDays = VALID_WALK_DAYS.filter((d) => (member.defaultWalkDays || []).includes(d));
+  const frequency = orderedDays.length
+    ? orderedDays.map((d) => d[0].toUpperCase() + d.slice(1)).join(', ')
+    : null;
+
+  // Earliest scheduled walk, if any exist yet. Single equality query +
+  // in-memory min, same pattern as updateWalkSchedule/submitVacationHold —
+  // deliberately not an orderBy() query, which would need a composite index
+  // this collection doesn't have.
+  let firstWalkDateStr = null;
+  try {
+    const walksSnap = await db.collection('walks').where('memberId', '==', memberId).get();
+    let earliest = null;
+    walksSnap.forEach((snap) => {
+      const d = snap.data().date?.toDate?.();
+      if (d && (!earliest || d < earliest)) earliest = d;
+    });
+    if (earliest) firstWalkDateStr = isoDateStr(earliest);
+  } catch (e) {
+    console.error(`sendOnboardingEmail: failed to look up first walk date for member ${memberId}:`, e.message);
+  }
+
+  const portalUrl = `${BUSINESS_PORTAL_ORIGIN}/portal-login`;
+  const { getAuth } = require('firebase-admin/auth');
+  const portalSetupLink = await getAuth().generatePasswordResetLink(email, { url: portalUrl });
+
+  const result = await sendEmail({
+    to: email,
+    template: 'member-welcome',
+    data: {
+      firstName,
+      dogNames,
+      tier: member.tier || null,
+      frequency,
+      firstWalkDateStr,
+      portalSetupLink,
+    },
+    idempotencyKey: `member-welcome:${memberId}`,
+  });
+  if (!result.ok) {
+    throw new HttpsError('internal', `Welcome email failed to send: ${result.error}`);
+  }
   return { success: true, sentTo: email };
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Booking-confirmed email — portal-service-confirmed or walk-confirmed,
+// fired from confirmServiceRequest / confirmOvernight / confirmWalkExtension
+// in admin/dashboard.html, for EVERY confirmation (new account or existing
+// member alike), unlike the old sendOnboardingEmail(kind:'service') it
+// replaces, which only ever fired for a freshly created account.
+//
+// The admin client shapes `data` to match whichever template it's calling
+// (it already has service/dates/dogs/walks in scope at the exact point it
+// charges the booking) — this callable's job is narrowly the parts only the
+// Admin SDK can do: resolving the member's email and, for a new account,
+// generating the portal-access link. Same "throw on failure, caller warns
+// without undoing the booking" contract as sendOnboardingEmail.
+// ─────────────────────────────────────────────────────────────────────────
+exports.sendBookingConfirmedEmail = onCall({
+  secrets: [RESEND_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET],
+}, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { memberId, template, data, isNewAccount, idempotencyKey } = request.data || {};
+  if (!['portal-service-confirmed', 'walk-confirmed'].includes(template)) {
+    throw new HttpsError('invalid-argument', 'template must be "portal-service-confirmed" or "walk-confirmed".');
+  }
+  if (!memberId) throw new HttpsError('invalid-argument', 'memberId is required.');
+  if (!idempotencyKey) throw new HttpsError('invalid-argument', 'idempotencyKey is required.');
+
+  const memberSnap = await db.collection('members').doc(memberId).get();
+  const member = memberSnap.data();
+  if (!member || !member.email) {
+    throw new HttpsError('failed-precondition', 'This member has no email on file.');
+  }
+
+  const finalData = { ...(data || {}) };
+  if (isNewAccount) {
+    const { getAuth } = require('firebase-admin/auth');
+    finalData.isNewAccount = true;
+    finalData.portalSetupLink = await getAuth().generatePasswordResetLink(member.email, { url: `${BUSINESS_PORTAL_ORIGIN}/portal-login` });
+  } else {
+    finalData.isNewAccount = false;
+    finalData.portalSetupLink = null;
+  }
+
+  const result = await sendEmail({ to: member.email, template, data: finalData, idempotencyKey });
+  if (!result.ok) {
+    throw new HttpsError('internal', `Booking confirmation email failed to send: ${result.error}`);
+  }
+  return { success: true, sentTo: member.email };
 });
 
 exports.gmailAuthUrl = onCall({ secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET] }, async (request) => {
@@ -3142,9 +3186,178 @@ function parseMeetGreetDateTime(value) {
   return { dateStr, slot };
 }
 
+// ── onNewSubmission's per-type email senders ────────────────────────────
+// Each resolves its own recipient and builds its own data. Unlike
+// sendEmail() itself, these DO throw — a dynamic import() failing, a
+// members/{id}.get() rejecting, or a Promise.all() over walk lookups
+// throwing all propagate straight out. That's why the switch below wraps
+// the whole dispatch in one try/catch: an uncaught throw here would abort
+// onNewSubmission before it ever reaches the meet & greet mirror/Gmail
+// alert further down, and Firestore's retry of the trigger would then
+// re-run that alert send too — which has no idempotency key of its own, so
+// a retry means a duplicate admin alert, and a persistent failure means no
+// alert at all for a booked meet & greet. The requester-facing emails
+// above are idempotency-keyed and safe to retry; the meet & greet mirror
+// isn't optional, so this failure must never take it down too.
+
+async function dispatchSubmissionEmail(sub, submissionId) {
+  switch (sub.type) {
+    case 'membership_request':
+      await sendMembershipRequestReceivedEmail(sub, submissionId);
+      break;
+    case 'service_request':
+      if (sub.memberId) {
+        await sendPortalServiceRequestReceivedEmail(sub, submissionId);
+      } else {
+        await sendServiceRequestReceivedEmail(sub, submissionId);
+      }
+      break;
+    case 'overnight_request':
+      await sendPortalServiceRequestReceivedEmail(sub, submissionId);
+      break;
+    case 'walk_extension':
+      await sendPortalWalkRequestReceivedEmail(sub, submissionId);
+      break;
+    default:
+      // No automated email for this type — reviewed in the admin Requests
+      // tab instead (contact, dog_update, reschedule, pause_membership,
+      // vacation_hold_refund, tier_change, application, walker_screening,
+      // walker_incident, walker_schedule_request, waitlist).
+      break;
+  }
+}
+
+async function sendMembershipRequestReceivedEmail(sub, submissionId) {
+  if (!sub.email) return;
+  const meetGreet = parseMeetGreetDateTime(sub.meetGreetDateTime);
+  const result = await sendEmail({
+    to: sub.email,
+    template: 'membership-request-received',
+    data: {
+      firstName: (sub.ownerName || '').trim().split(/\s+/)[0] || 'there',
+      dogNames: Array.isArray(sub.dogs) ? sub.dogs.map((d) => d && d.name).filter(Boolean) : [],
+      tier: sub.plan || null,
+      meetGreetDateStr: meetGreet?.dateStr || null,
+      meetGreetSlot: meetGreet?.slot || null,
+      address: sub.address || null,
+    },
+    idempotencyKey: `membership-request-received:${submissionId}`,
+  });
+  if (!result.ok) console.error(`onNewSubmission: membership-request-received failed for ${submissionId}:`, result.error);
+}
+
+// New (public-form, no account yet) service_request — pet sitting or a
+// one-time walk, disambiguated via pricing.js's SERVICE_PRICES[key].unit,
+// the same source of truth the charge calculations already use. Dynamic
+// import: pricing.js is an ES module (shared with the browser-side forms),
+// this file is CommonJS, same pattern walker-pricing.js already uses from
+// onWalkCompleted.
+async function sendServiceRequestReceivedEmail(sub, submissionId) {
+  if (!sub.email) return;
+  const { SERVICE_PRICES, resolveServiceKey } = await import('./pricing.js');
+  const info = SERVICE_PRICES[resolveServiceKey(sub.service)];
+  const serviceFamily = info?.unit === 'walk' ? 'walk' : 'pet-sitting';
+  const meetGreet = parseMeetGreetDateTime(sub.meetGreetDateTime);
+  const result = await sendEmail({
+    to: sub.email,
+    template: 'service-request-received',
+    data: {
+      firstName: (sub.ownerName || '').trim().split(/\s+/)[0] || 'there',
+      petNames: Array.isArray(sub.dogs) ? sub.dogs.map((d) => d && d.name).filter(Boolean) : [],
+      serviceFamily,
+      meetGreetDateStr: meetGreet?.dateStr || null,
+      meetGreetSlot: meetGreet?.slot || null,
+      address: sub.address || null,
+    },
+    idempotencyKey: `service-request-received:${submissionId}`,
+  });
+  if (!result.ok) console.error(`onNewSubmission: service-request-received failed for ${submissionId}:`, result.error);
+}
+
+// Existing member's portal pet-sitting request (overnight_request, or a
+// service_request that already carries memberId). portal-request-extras.html
+// only ever offers Overnight Stay / Check-In Visit — always pet sitting,
+// never a walk (portal walk requests are a separate submission type,
+// walk_extension, handled by sendPortalWalkRequestReceivedEmail). Neither
+// submission shape carries dogs[] or a name — both are resolved from the
+// member doc, which portal-request-extras.html doesn't duplicate onto the
+// submission itself.
+async function sendPortalServiceRequestReceivedEmail(sub, submissionId) {
+  if (!sub.memberId) return;
+  const memberSnap = await db.collection('members').doc(sub.memberId).get();
+  const member = memberSnap.data();
+  if (!member || !member.email) return;
+
+  const { SERVICE_PRICES, resolveServiceKey, getDaysBetween } = await import('./pricing.js');
+  const key = resolveServiceKey(sub.service);
+  const info = SERVICE_PRICES[key];
+  const startDate = sub.startDate?.toDate?.();
+  const endDate = sub.endDate?.toDate?.();
+  const isDropIn = key === 'drop-in-visit';
+  // Nights (overnight-stay) are exactly the date range — no approximation.
+  // Visits (drop-in) are NOT: portal-request-extras.html never collects
+  // visitsPerDay, so days-between would silently understate however many
+  // visits per day the member actually wants. Omitted rather than guessed —
+  // the template drops the Length row entirely when this is null.
+  const unitCount = (!isDropIn && startDate && endDate) ? Math.max(getDaysBetween(startDate, endDate), 1) : null;
+
+  const result = await sendEmail({
+    to: member.email,
+    template: 'portal-service-request-received',
+    data: {
+      firstName: (member.name || '').trim().split(/\s+/)[0] || 'there',
+      petNames: Array.isArray(member.dogs) ? member.dogs.map((d) => d && d.name).filter(Boolean) : [],
+      serviceLabel: info?.name || sub.service || 'Service',
+      startDateStr: startDate ? isoDateStr(startDate) : '',
+      endDateStr: endDate ? isoDateStr(endDate) : '',
+      unitCount,
+      unitNoun: isDropIn ? 'visit' : 'night',
+    },
+    idempotencyKey: `portal-service-request-received:${submissionId}`,
+  });
+  if (!result.ok) console.error(`onNewSubmission: portal-service-request-received failed for ${submissionId}:`, result.error);
+}
+
+// Existing member's extra/extended walk request (walk_extension,
+// portal-extend-walk.html). The submission carries only walkIds, no dates —
+// the actual date/timeSlot for each lives on the referenced walks/{id}
+// docs, so those are fetched individually (walkIds is always a small
+// handful, never worth a batched query).
+async function sendPortalWalkRequestReceivedEmail(sub, submissionId) {
+  if (!sub.memberId) return;
+  const memberSnap = await db.collection('members').doc(sub.memberId).get();
+  const member = memberSnap.data();
+  if (!member || !member.email) return;
+
+  const walkIds = Array.isArray(sub.walkIds) ? sub.walkIds : [];
+  const walkSnaps = await Promise.all(walkIds.map((id) => db.collection('walks').doc(id).get()));
+  const walks = walkSnaps
+    .filter((s) => s.exists)
+    .map((s) => {
+      const w = s.data();
+      const d = w.date?.toDate?.();
+      return d ? { dateStr: isoDateStr(d), slot: w.timeSlot || null } : null;
+    })
+    .filter(Boolean);
+
+  const result = await sendEmail({
+    to: member.email,
+    template: 'portal-walk-request-received',
+    data: {
+      firstName: (member.name || '').trim().split(/\s+/)[0] || 'there',
+      dogNames: Array.isArray(member.dogs) ? member.dogs.map((d) => d && d.name).filter(Boolean) : [],
+      walkTypeLabel: 'Extended walk',
+      durationMinutes: 45,
+      walks,
+    },
+    idempotencyKey: `portal-walk-request-received:${submissionId}`,
+  });
+  if (!result.ok) console.error(`onNewSubmission: portal-walk-request-received failed for ${submissionId}:`, result.error);
+}
+
 exports.onNewSubmission = onDocumentCreated({
   document: 'submissions/{submissionId}',
-  secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET],
+  secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, RESEND_API_KEY],
 }, async (event) => {
   const sub = event.data?.data();
   if (!sub) return;
@@ -3177,9 +3390,30 @@ exports.onNewSubmission = onDocumentCreated({
     }
   }
 
-  // Only meet & greet bookings notify. Everything else (membership requests
-  // without a booked slot, service requests, contact forms, portal-generated
-  // requests) is reviewed in the admin portal instead of paging anyone.
+  // Requester-facing "we got your request" email, routed by submission
+  // type — dispatchSubmissionEmail's explicit switch with a logged default,
+  // rather than the old catch-all early return below (that pattern — a
+  // hardcoded list some types match and everything else silently falls
+  // through — is exactly what's bitten this project before, in
+  // careers.html's time slots and the admin dashboard's two out-of-sync
+  // typeLabels maps). Wrapped here, not left to propagate: a throw from any
+  // sender (pricing.js failing to import, a members/{id}.get() rejecting, a
+  // walk-lookup Promise.all() throwing) must not abort this trigger before
+  // it reaches the meet & greet mirror/Gmail alert below — that alert has
+  // no idempotency key of its own, so letting this take the whole trigger
+  // down would mean either a duplicate alert (on Firestore's retry) or,
+  // if the failure persists, no alert at all for a booked meet & greet.
+  try {
+    await dispatchSubmissionEmail(sub, event.params.submissionId);
+  } catch (e) {
+    console.error(`onNewSubmission: email dispatch failed for ${event.params.submissionId} (type ${sub.type}):`, e.message);
+  }
+
+  // Only meet & greet bookings page admin. Everything else (membership
+  // requests without a booked slot, service requests, contact forms,
+  // portal-generated requests) is reviewed in the admin portal instead —
+  // unchanged by the requester-facing emails above, which fire regardless
+  // of whether a meet & greet was booked.
   const meetGreet = parseMeetGreetDateTime(sub.meetGreetDateTime);
   if (!meetGreet) return;
 

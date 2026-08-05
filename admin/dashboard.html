@@ -3061,7 +3061,7 @@ window.confirmServiceRequest = async (submissionId, item) => {
     const extraPet = document.getElementById('rev-extra-pet')?.checked || false;
     const medication = document.getElementById('rev-medication')?.checked || false;
     const dogs = item.dogs || [];
-    const { total: amountInDollars } = calculateServiceTotal({
+    const { total: amountInDollars, unitCount } = calculateServiceTotal({
       serviceKey: service, startDate: startDateStr, endDate: endDateStr, visitsPerDay, extraPet, medication,
     });
     const startDate = startDateStr ? Timestamp.fromDate(new Date(`${startDateStr}T12:00:00`)) : (item.startDate || null);
@@ -3163,22 +3163,53 @@ window.confirmServiceRequest = async (submissionId, item) => {
     // charge" and records paymentStatus: 'skipped' without calling Stripe.
     const paymentStatus = await chargeAndTrackPayment(submissionId, item.stripeCustomerId ? amountInDollars : 0, serviceChargeDescription(service, item));
 
-    // Welcome / confirmation email — only for a freshly created account (a
-    // returning customer already received one). Never blocks the confirmed,
-    // charged service; a failure is surfaced as a warning.
+    // Booking-confirmed email — every confirmation gets one now, new
+    // account or existing member alike. Replaces the old
+    // sendOnboardingEmail(kind:'service'), which only ever fired for a
+    // freshly created account and left every returning/existing member
+    // with no confirmation email at all. Never blocks the confirmed,
+    // charged service; a failure is surfaced as a warning. Family (walk vs
+    // pet sitting) comes from the same SERVICE_PRICES.unit this file
+    // already imports for pricing — one source of truth, not a second
+    // classification that could drift from it.
     let emailWarning = '';
-    if (createdMemberUid) {
-      try {
-        const sendOnboardingEmail = httpsCallable(fns, 'sendOnboardingEmail');
-        await sendOnboardingEmail({
-          memberId: createdMemberUid,
-          kind: 'service',
-          serviceName: SERVICE_PRICES[resolveServiceKey(service)]?.name || 'booking',
-          paymentCharged: paymentStatus === 'charged',
-        });
-      } catch (e) {
-        emailWarning = `Confirmation email wasn't sent: ${e.message}`;
-      }
+    try {
+      if (!memberId) throw new Error('no member to email (no account was linked or created)');
+      const memberRecord = allMembers.find(m => m.id === memberId);
+      const fullName = item.ownerName || memberRecord?.name || '';
+      const firstName = fullName.trim().split(/\s+/)[0] || 'there';
+      const petNames = (dogs.length ? dogs : (memberRecord?.dogs || [])).map(d => d?.name).filter(Boolean);
+      const resolvedStartStr = startDateStr || toDateInputValue(startDate);
+      const resolvedEndStr = endDateStr || toDateInputValue(endDate);
+      const serviceKey = resolveServiceKey(service);
+      const serviceInfo = SERVICE_PRICES[serviceKey];
+      const isWalk = serviceInfo?.unit === 'walk';
+
+      const template = isWalk ? 'walk-confirmed' : 'portal-service-confirmed';
+      const data = isWalk ? {
+        firstName, dogNames: petNames,
+        walkTypeLabel: serviceInfo?.name || 'Walk',
+        durationMinutes: serviceKey === 'extended-walk' ? 45 : 30,
+        // No time-of-day is ever captured for a one-time walk booking
+        // (service-request.html has no time-slot field, only dates) — the
+        // template degrades to a date-only line when slot is null.
+        walks: [{ dateStr: resolvedStartStr, slot: null }],
+      } : {
+        firstName, petNames,
+        serviceLabel: serviceInfo?.name || service,
+        startDateStr: resolvedStartStr, endDateStr: resolvedEndStr,
+        unitCount: Math.max(unitCount || 1, 1),
+        unitNoun: serviceKey === 'drop-in-visit' ? 'visit' : 'night',
+      };
+
+      const sendBookingConfirmedEmail = httpsCallable(fns, 'sendBookingConfirmedEmail');
+      await sendBookingConfirmedEmail({
+        memberId, template, data,
+        isNewAccount: !!createdMemberUid,
+        idempotencyKey: `booking-confirmed:${submissionId}`,
+      });
+    } catch (e) {
+      emailWarning = `Confirmation email wasn't sent: ${e.message}`;
     }
 
     closeModal('requestModal');
@@ -3310,6 +3341,37 @@ window.confirmOvernight = async (submissionId, item) => {
 
     await chargeAndTrackPayment(submissionId, item.stripeCustomerId ? amountInDollars : 0, serviceChargeDescription(service, item));
 
+    // Booking-confirmed email — overnights are always pet-sitting family
+    // (this flow has no walk equivalent), so always portal-service-confirmed.
+    // Never blocks the confirmed, charged stay; a failure is surfaced as a
+    // warning rather than an error, same posture as confirmServiceRequest.
+    let emailWarning = '';
+    try {
+      if (!item.memberId) throw new Error('no member on this request to email');
+      const firstName = memberName.trim().split(/\s+/)[0] || 'there';
+      const petNames = getMemberDogs(confirmMember).map(d => d?.name).filter(Boolean);
+      const { unitCount } = calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet: addonExtraPet, medication: addonMedication });
+      const serviceInfo = SERVICE_PRICES[resolveServiceKey(service)];
+
+      const sendBookingConfirmedEmail = httpsCallable(fns, 'sendBookingConfirmedEmail');
+      await sendBookingConfirmedEmail({
+        memberId: item.memberId,
+        template: 'portal-service-confirmed',
+        data: {
+          firstName, petNames,
+          serviceLabel: serviceInfo?.name || service,
+          startDateStr: startDateStr || toDateInputValue(startDate),
+          endDateStr: endDateStr || toDateInputValue(endDate),
+          unitCount: Math.max(unitCount || 1, 1),
+          unitNoun: resolveServiceKey(service) === 'drop-in-visit' ? 'visit' : 'night',
+        },
+        isNewAccount: false, // overnight_request only ever comes from an existing member
+        idempotencyKey: `booking-confirmed:${submissionId}`,
+      });
+    } catch (e) {
+      emailWarning = `Confirmation email wasn't sent: ${e.message}`;
+    }
+
     closeModal('requestModal');
     // Show brief success message
     const msg = document.createElement('div');
@@ -3317,6 +3379,7 @@ window.confirmOvernight = async (submissionId, item) => {
     msg.textContent = 'Overnight stay confirmed';
     document.body.appendChild(msg);
     setTimeout(() => msg.remove(), 3000);
+    if (emailWarning) alert(emailWarning);
   } catch(e) {
     btn.textContent = 'Confirm & Charge'; btn.disabled = false;
     alert('Error: ' + e.message);
@@ -3454,12 +3517,55 @@ window.confirmWalkExtension = async (submissionId, item) => {
       }
     }
 
+    // Booking-confirmed email — always walk-confirmed (a walk_extension
+    // request has no pet-sitting equivalent). Never blocks the confirmed,
+    // charged extension; a failure is surfaced as a warning. Looks walk
+    // dates up from the already-synced allWalks rather than re-fetching —
+    // this file already keeps every walk doc live in memory for the
+    // calendar/assignment views.
+    let emailWarning = '';
+    try {
+      if (!checkedIds.length) throw new Error('every walk was dropped, nothing to confirm');
+      if (!item.memberId) throw new Error('no member on this request to email');
+      const member = allMembers.find(m => m.id === item.memberId);
+      const firstName = (member?.name || item.memberName || '').trim().split(/\s+/)[0] || 'there';
+      const dogNames = getMemberDogs(member).map(d => d?.name).filter(Boolean);
+      // allWalks directly, not window.allWalks || allWalks — window.allWalks
+      // is never assigned anywhere in this file (this is a module, so its
+      // top-level `let` bindings aren't window properties), same reason
+      // openAddMemberModal's walker dropdown was already fixed to read
+      // allWalkers directly instead of that same dead fallback.
+      const walks = checkedIds.map(id => {
+        const w = allWalks.find(x => x.id === id);
+        return w ? { dateStr: toDateInputValue(w.date), slot: w.timeSlot || null } : null;
+      }).filter(Boolean);
+
+      const sendBookingConfirmedEmail = httpsCallable(fns, 'sendBookingConfirmedEmail');
+      await sendBookingConfirmedEmail({
+        memberId: item.memberId,
+        template: 'walk-confirmed',
+        data: { firstName, dogNames, walkTypeLabel: 'Extended walk', durationMinutes: 45, walks },
+        isNewAccount: false, // walk_extension only ever comes from an existing member
+        // Scoped to the specific walks actually confirmed here, not just the
+        // submission — confirmServiceRequest/confirmOvernight resolve their
+        // whole submission in one shot, but this flow confirms `checkedIds`,
+        // a subset the admin ticks. Keying on submissionId alone would let a
+        // later confirm of the REMAINING walks from this same submission
+        // collide with this one's already-sent record and get silently
+        // skipped, even though it's charging different walks.
+        idempotencyKey: `booking-confirmed:${submissionId}:${[...checkedIds].sort().join(',')}`,
+      });
+    } catch (e) {
+      emailWarning = `Confirmation email wasn't sent: ${e.message}`;
+    }
+
     closeModal('requestModal');
     const msg = document.createElement('div');
     msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2D9E5E;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
     msg.textContent = 'Walk extension confirmed';
     document.body.appendChild(msg);
     setTimeout(() => msg.remove(), 3000);
+    if (emailWarning) alert(emailWarning);
   } catch (e) {
     btn.textContent = 'Confirm & Charge'; btn.disabled = false;
     alert('Error: ' + e.message);
