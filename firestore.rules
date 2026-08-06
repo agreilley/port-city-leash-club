@@ -224,14 +224,21 @@ service cloud.firestore {
       // the client starts sending it — hasOnly() below rejects the entire
       // write if a field isn't listed, so shipping the client field first
       // would break every walk-family submission, not just drop timeSlot.
+      // notes: Care Notes textarea — always a plain string (client defaults
+      // to '' when blank, same as ownerName/phone/address below), not
+      // null-tolerant like startDate/timeSlot. 10000 cap matches the
+      // free-text fields in the other validators below (writingSample,
+      // dogExperience, etc.) — this validator otherwise has none, so
+      // there's no existing sibling in THIS function to match instead.
       function validService() {
         return request.resource.data.keys().hasOnly(
-            ['type', 'service', 'startDate', 'endDate', 'timeSlot', 'visitsPerDay', 'extraPet',
+            ['type', 'service', 'startDate', 'endDate', 'timeSlot', 'notes', 'visitsPerDay', 'extraPet',
              'medication', 'dogs', 'ownerName', 'email', 'phone', 'address',
              'meetGreetDateTime', 'estimatedTotal', 'referredByCode', 'read', 'createdAt'])
           && request.resource.data.ownerName is string && request.resource.data.ownerName.size() <= 200
           && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
           && request.resource.data.address is string && request.resource.data.address.size() <= 1000
+          && request.resource.data.notes is string && request.resource.data.notes.size() <= 10000
           // 'service' is a reserved word in the rules language (`service
           // cloud.firestore`), so this field MUST be read via bracket access —
           // dot access (request.resource.data.service) fails to compile.

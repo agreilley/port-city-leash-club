@@ -2880,6 +2880,11 @@ function renderServiceRequestReview(item) {
     <div style="display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:17px;color:var(--navy);">
       <span>Total</span><span id="rev-total">$0</span>
     </div>
+    ${item.notes ? `
+    <hr class="modal-divider">
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Care Notes</div>
+    <div style="font-size:13px;color:var(--text-mid);white-space:pre-wrap;">${escapeHtml(item.notes)}</div>
+    ` : ''}
     <hr class="modal-divider">
     <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Pets</div>
     ${renderPetDetailCards(item.dogs)}
