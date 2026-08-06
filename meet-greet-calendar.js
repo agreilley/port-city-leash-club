@@ -49,6 +49,26 @@ function getMgAvailableSlots(dateStr) {
   return allSlots.filter(slot => !bookedMins.some(bm => Math.abs(slotToMins(slot) - bm) < 60));
 }
 
+// Whether there's anywhere left to book, not just whether a doc exists.
+// "meet_greet_availability is empty" (the collection) stops being a useful
+// signal after the first booking ever mirrors a doc into it (see the note
+// above) and says nothing about a doc whose slots are all now in the past
+// or fully booked out. Scanning actual computed availability across a
+// forward window catches all three cases — untouched collection, stale
+// past-dated doc, fully-booked week — with one check, the same slot math
+// renderMgCalendar() uses to color a date green.
+const AVAILABILITY_LOOKAHEAD_DAYS = 60;
+function hasAnyFutureAvailability() {
+  const day = new Date(); day.setHours(0, 0, 0, 0);
+  day.setDate(day.getDate() + 1); // earliest bookable day is tomorrow, matching renderMgCalendar()
+  for (let i = 0; i < AVAILABILITY_LOOKAHEAD_DAYS; i++) {
+    const dateStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+    if (getMgAvailableSlots(dateStr).length) return true;
+    day.setDate(day.getDate() + 1);
+  }
+  return false;
+}
+
 async function loadMeetGreetAvailability() {
   try {
     const { getFirestore, collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
@@ -80,6 +100,19 @@ async function loadMeetGreetAvailability() {
   } catch(e) { console.log('Loading default schedule'); }
   const loadingMsg = document.getElementById('mgLoadingMsg');
   if (loadingMsg) loadingMsg.style.display = 'none';
+
+  // Only membership-request.html has a #mgNoAvailMsg fallback element —
+  // service-request.html doesn't, so this stays a no-op there and keeps
+  // rendering the calendar off the WEEKLY_SCHEDULE default as before.
+  const noAvailMsg = document.getElementById('mgNoAvailMsg');
+  const calendarShell = document.getElementById('meetGreetCalendar');
+  const introCopy = document.getElementById('mgIntroCopy');
+  if (!hasAnyFutureAvailability() && noAvailMsg && calendarShell) {
+    calendarShell.style.display = 'none';
+    if (introCopy) introCopy.style.display = 'none';
+    noAvailMsg.style.display = 'block';
+    return;
+  }
   renderMgCalendar();
 }
 

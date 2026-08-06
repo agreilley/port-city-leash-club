@@ -2395,7 +2395,10 @@ window.openRequestItem = async (id) => {
       { label: 'Start Date', value: fmtDate(item.startDate) },
       { label: 'Dogs', value: dogsDisplay },
       { label: 'Address', value: item.address || '–' },
-      { label: 'Access Notes', value: item.accessNotes || '–' },
+      // membership-request.html no longer collects this (removed from the
+      // form); kept here conditionally so older submissions that still have
+      // it stay readable instead of disappearing from the modal.
+      ...(item.accessNotes ? [{ label: 'Access Notes', value: item.accessNotes }] : []),
       { label: 'Meet Greet Date/Time', value: item.meetGreetDateTime || '–' },
       { label: 'Attribution', value: formatAttribution(item.attribution) },
       { label: 'Created At', value: fmtDate(item.createdAt) },

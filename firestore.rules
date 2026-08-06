@@ -234,6 +234,17 @@ service cloud.firestore {
       // security boundary (an unverifiable string here can't grant anything;
       // it's only ever read back out by the referral-tracking trigger, which
       // itself looks the code up before trusting it).
+      //
+      // accessNotes: removed from the client (membership-request.html no
+      // longer collects it), but kept in hasOnly() and made null-tolerant
+      // rather than dropped outright — hasOnly() only permits the key, it
+      // doesn't require it, so this accepts both an old cached page still
+      // sending a string and a new page sending nothing at all. Deploying
+      // the narrower rule (dropping the key from hasOnly entirely) at the
+      // same time as this static file would reject any submit that lands
+      // between the rules deploy and the static deploy. TODO: once no old
+      // session can still have the pre-change page loaded, remove
+      // 'accessNotes' from the hasOnly() list and this whole check.
       function validMembership() {
         return request.resource.data.keys().hasOnly(
             ['type', 'plan', 'ownerName', 'email', 'phone', 'address', 'accessNotes',
@@ -242,7 +253,8 @@ service cloud.firestore {
           && request.resource.data.ownerName is string && request.resource.data.ownerName.size() <= 200
           && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
           && request.resource.data.address is string && request.resource.data.address.size() <= 1000
-          && request.resource.data.accessNotes is string && request.resource.data.accessNotes.size() <= 5000
+          && (!('accessNotes' in request.resource.data)
+              || (request.resource.data.accessNotes is string && request.resource.data.accessNotes.size() <= 5000))
           && request.resource.data.plan is string && request.resource.data.plan.size() <= 100
           && request.resource.data.timeWindow is string && request.resource.data.timeWindow.size() <= 100
           && request.resource.data.days is string && request.resource.data.days.size() <= 200

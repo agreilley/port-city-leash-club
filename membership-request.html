@@ -99,7 +99,7 @@
   .trust-list li { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--navy); display:flex; gap:9px; align-items:center; }
   .trust-list li::before { content:'✓'; color:var(--seafoam); font-weight:500; }
 
-  .next-steps { background:var(--sand-light); border:1px solid rgba(0,0,0,.08); border-radius:8px; padding:24px; margin-bottom:24px; }
+  .next-steps { background:var(--sand-light); border:1px solid rgba(0,0,0,.08); border-radius:8px; padding:24px; }
   .next-steps-title { font-family:'Cormorant Garamond',serif; font-size:27px; color:var(--navy); margin-bottom:12px; }
   .next-steps ol { padding-left: 20px; color:var(--text-mid); font-size:14px; line-height:1.8; }
   .submit-row { display:flex; align-items:center; justify-content:space-between; gap:18px; }
@@ -219,7 +219,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       <div data-status-container></div>
       <section class="form-section">
         <p class="section-kicker">Step 01</p>
-        <h2>Choose your membership</h2>
+        <h2>Which membership are you leaning toward?</h2>
         <div class="membership-grid" id="planGrid">
           <label class="plan-card selected" data-plan="essential" data-rate="28" data-default="2">
             <input type="radio" name="membership" value="Essential" checked>
@@ -254,6 +254,18 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
       <section class="form-section">
         <p class="section-kicker">Step 02</p>
+        <h2>Your information</h2>
+        <div class="field-grid">
+          <div class="field"><label class="field-label" for="ownerName">Name</label><input id="ownerName" name="ownerName" type="text" placeholder="Your full name"></div>
+          <div class="field"><label class="field-label" for="email">Email</label><input id="email" name="email" type="email" placeholder="you@example.com"></div>
+          <div class="field"><label class="field-label" for="phone">Phone</label><input id="phone" name="phone" type="tel" placeholder="(910) 555-1234"></div>
+          <div class="field"><label class="field-label" for="address">Home address</label><input id="address" name="address" type="text" placeholder="Street address"></div>
+        </div>
+        <div class="field" style="margin-top:18px;"><label class="field-label" for="referralCode">Referral code <span style="font-weight:400;">(optional)</span></label><input id="referralCode" name="referralCode" type="text" placeholder="e.g. PCLC-3F9K7H"></div>
+      </section>
+
+      <section class="form-section">
+        <p class="section-kicker">Step 03</p>
         <h2>Choose your schedule</h2>
         <p class="section-copy">Daily memberships automatically include Monday through Friday.</p>
         <div class="field-grid" style="max-width: 320px;">
@@ -287,19 +299,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       </section>
 
       <section class="form-section">
-        <p class="section-kicker">Step 03</p>
-        <h2>Your information</h2>
-        <div class="field-grid">
-          <div class="field"><label class="field-label" for="ownerName">Name</label><input id="ownerName" name="ownerName" type="text" placeholder="Your full name"></div>
-          <div class="field"><label class="field-label" for="email">Email</label><input id="email" name="email" type="email" placeholder="you@example.com"></div>
-          <div class="field"><label class="field-label" for="phone">Phone</label><input id="phone" name="phone" type="tel" placeholder="(910) 555-1234"></div>
-          <div class="field"><label class="field-label" for="address">Home address</label><input id="address" name="address" type="text" placeholder="Street address"></div>
-        </div>
-        <div class="field" style="margin-top:18px;"><label class="field-label" for="accessNotes">Apartment, gate, parking, or home access notes</label><textarea id="accessNotes" name="accessNotes" placeholder="Anything we should know about getting to your home?"></textarea></div>
-        <div class="field" style="margin-top:18px;"><label class="field-label" for="referralCode">Referral code <span style="font-weight:400;">(optional)</span></label><input id="referralCode" name="referralCode" type="text" placeholder="e.g. PCLC-3F9K7H"></div>
-      </section>
-
-      <section class="form-section">
         <p class="section-kicker">Step 04</p>
         <h2>Tell us about your dog</h2>
 
@@ -323,7 +322,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       <section class="form-section">
         <p class="section-kicker">Step 05</p>
         <h2>Schedule your complimentary meet & greet</h2>
-        <p style="font-size:14px;color:var(--text-mid);margin-bottom:20px;">Select a date and time that works for you. Available slots are shown in green.</p>
+        <p id="mgIntroCopy" style="font-size:14px;color:var(--text-mid);margin-bottom:20px;">Select a date and time that works for you. Available slots are shown in green.</p>
 
         <div id="meetGreetCalendar" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;">
 
@@ -362,26 +361,24 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         <div id="mgNoAvailMsg" style="font-size:13px;color:var(--rust);padding:12px 0;display:none;">No availability set yet. We'll reach out to schedule your meet & greet after you submit.</div>
       </section>
 
+      <div class="next-steps">
+        <div class="next-steps-title">What happens next</div>
+        <ol>
+          <li>We review your membership request and confirm availability in your neighborhood.</li>
+          <li>We confirm your preferred schedule and membership fit.</li>
+          <li>We meet you and your dog for a complimentary meet & greet.</li>
+          <li>Once your meet & greet is complete, we set up your membership and your walks begin.</li>
+          <li>Your first charge comes after your meet & greet, covering the walks scheduled for the rest of that month. After that, billing is monthly on the 1st.</li>
+        </ol>
+      </div>
+
       <section class="form-section">
         <p class="section-kicker">Step 06</p>
         <h2>Save a payment method</h2>
         <p class="section-copy">We'll securely save your card on file through Stripe. You won't be charged today.</p>
         <div id="card-element" style="padding:14px 16px;border:1px solid rgba(0,0,0,0.15);border-radius:6px;background:white;max-width:480px;"></div>
         <div id="card-errors" role="alert" style="color:var(--rust);font-size:13px;margin-top:8px;"></div>
-      </section>
-
-      <section class="form-section">
-        <div class="next-steps">
-          <div class="next-steps-title">What happens next</div>
-          <ol>
-            <li>We review your membership request and confirm availability in your neighborhood.</li>
-            <li>We confirm your preferred schedule and membership fit.</li>
-            <li>We meet you and your dog for a complimentary meet & greet.</li>
-            <li>Once your meet & greet is complete, we set up your membership and your walks begin.</li>
-            <li>Your first charge comes after your meet & greet, covering the walks scheduled for the rest of that month. After that, billing is monthly on the 1st.</li>
-          </ol>
-        </div>
-        <div class="submit-row">
+        <div class="submit-row" style="margin-top:24px;">
           <p class="submit-note">Submitting this request does not create a paid membership yet. We'll confirm details with you before recurring care begins.</p>
           <button type="submit" class="btn-primary">Submit Request</button>
         </div>
@@ -597,6 +594,31 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       return;
     }
     startDateError.style.display = 'none';
+
+    // C: dog name and breed are required for every dog card present — same
+    // block-and-show-inline-error pattern as startDate above. A missing name
+    // or breed means the walker can't be briefed and the dog can't be matched.
+    let firstInvalidDogField = null;
+    for (let i = 1; i <= dogCount; i++) {
+      const card = document.getElementById(`dogCard${i}`);
+      if (!card) continue;
+      const nameInput = card.querySelector(`[name=dog_name_${i}]`);
+      const breedInput = card.querySelector(`[name=dog_breed_${i}]`);
+      const nameError = document.getElementById(`dogNameError${i}`);
+      const breedError = document.getElementById(`dogBreedError${i}`);
+      const nameMissing = !nameInput?.value.trim();
+      const breedMissing = !breedInput?.value.trim();
+      if (nameError) nameError.style.display = nameMissing ? 'block' : 'none';
+      if (breedError) breedError.style.display = breedMissing ? 'block' : 'none';
+      if (!firstInvalidDogField && nameMissing) firstInvalidDogField = nameInput;
+      if (!firstInvalidDogField && breedMissing) firstInvalidDogField = breedInput;
+    }
+    if (firstInvalidDogField) {
+      firstInvalidDogField.focus();
+      firstInvalidDogField.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+
     btn.textContent = 'Sending...'; btn.disabled = true;
     try {
       // Referral code is optional and never blocks submission — an invalid
@@ -641,7 +663,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         email: document.getElementById('email')?.value || '',
         phone: document.getElementById('phone')?.value || '',
         address: document.getElementById('address')?.value || '',
-        accessNotes: document.getElementById('accessNotes')?.value || '',
         referredByCode,
         attribution,
         dogs: collectDogs(),
@@ -701,24 +722,18 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         <div class="field-grid">
           <div class="field">
             <label class="field-label">Dog's name</label>
-            <input type="text" name="dog_name_${n}" placeholder="Example: Scout">
+            <input type="text" name="dog_name_${n}" placeholder="Example: Scout" oninput="const el=document.getElementById('dogNoteName${n}'); if(el) el.textContent = this.value.trim() || 'your dog'; const err=document.getElementById('dogNameError${n}'); if(err && this.value.trim()) err.style.display='none';">
+            <span class="date-error" id="dogNameError${n}">Please enter your dog's name.</span>
           </div>
           <div class="field">
             <label class="field-label">Breed</label>
-            <input type="text" name="dog_breed_${n}" placeholder="Example: Golden Retriever">
-          </div>
-          <div class="field">
-            <label class="field-label">Age</label>
-            <input type="text" name="dog_age_${n}" placeholder="Example: 4 years">
-          </div>
-          <div class="field">
-            <label class="field-label">Weight</label>
-            <input type="text" name="dog_weight_${n}" placeholder="Example: 55 lbs">
+            <input type="text" name="dog_breed_${n}" placeholder="Example: Golden Retriever" oninput="const err=document.getElementById('dogBreedError${n}'); if(err && this.value.trim()) err.style.display='none';">
+            <span class="date-error" id="dogBreedError${n}">Please enter your dog's breed.</span>
           </div>
         </div>
         <div class="field" style="margin-top:14px;">
-          <label class="field-label">Temperament & any notes for your walker</label>
-          <textarea name="dog_notes_${n}" placeholder="E.g. friendly, pulls on leash, nervous around traffic, food motivated…" style="min-height:80px;resize:vertical;"></textarea>
+          <label class="field-label">Anything we should know before we meet <span id="dogNoteName${n}">your dog</span>? <span style="font-weight:400;">(optional)</span></label>
+          <textarea name="dog_notes_${n}" placeholder="E.g. friendly, pulls on leash, nervous around new people, food motivated…" style="min-height:80px;resize:vertical;"></textarea>
         </div>
       </div>
     `;
@@ -754,8 +769,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       dogs.push({
         name:   card.querySelector(`[name=dog_name_${i}]`)?.value || '',
         breed:  card.querySelector(`[name=dog_breed_${i}]`)?.value || '',
-        age:    card.querySelector(`[name=dog_age_${i}]`)?.value || '',
-        weight: card.querySelector(`[name=dog_weight_${i}]`)?.value || '',
         notes:  card.querySelector(`[name=dog_notes_${i}]`)?.value || '',
       });
     }
