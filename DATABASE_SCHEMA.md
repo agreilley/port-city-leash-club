@@ -91,6 +91,14 @@ Existence of a document at `admins/{uid}` **is** the admin authorization check �
   pauseStartDate: timestamp
   pauseEndDate: timestamp
 
+  attribution: object | null    // first-touch marketing attribution — same shape as
+                                 // submissions.attribution (§5). Carried forward from the source
+                                 // membership_request/service_request submission by
+                                 // admin/dashboard.html at Convert-to-Member / one-time-service
+                                 // account creation — never written directly by any public form or
+                                 // Cloud Function. Absent (not null) on any member created before
+                                 // this feature shipped, or created by any path other than those two.
+
   createdAt: timestamp
 }
 ```
@@ -99,6 +107,7 @@ Existence of a document at `admins/{uid}` **is** the admin authorization check �
 - `tier: "Travel"` members are pet-sitting-only clients with no recurring walk subscription — `defaultWalkDays`/`defaultTimeSlot` and the Stripe fields may be absent.
 - `status: "paused"` is set by the vacation-hold flow (`submitVacationHold` Cloud Function) and cleared by a daily scheduled function (`resumePausedMemberships`) once `pauseEndDate` passes. There is no `"cancelled"` status anywhere in the code — churn/cancellation isn't a built feature yet.
 - Security rules block members from writing their own Stripe/billing fields (`stripeCustomerId`, `stripeSubscriptionId`, `stripeSubscriptionItemId`, `billingStatus`, `lastPaymentAmount`, `lastPaymentDate`, `paymentMethodUpdatedAt`) even on an otherwise-permitted self-update — see Security Rules below. (`lastPaymentAmount`/`lastPaymentDate`/`paymentMethodUpdatedAt` are referenced in rules but not currently written by any code path found — likely reserved for a near-future feature.)
+- `attribution` reflects the ORIGINAL acquisition submission only. A returning one-time-service customer who's matched to their existing member doc by email (rather than getting a new one) never has that doc's attribution overwritten by the later booking — see submissions §5.
 
 ---
 
@@ -210,7 +219,8 @@ dogs: array<{name, breed, age, notes, weight}>,   // see note below re: shape dr
 dogName,                                           // legacy: first dog's name, for pre-conversion display
 startDate: timestamp,                              // converted from a date-input string at submission
 timeWindow, days, meetGreetDateTime,
-stripeCustomerId, paymentMethodStatus
+stripeCustomerId, paymentMethodStatus,
+attribution: object | null                         // first-touch marketing attribution — see note below
 ```
 
 **`service_request`** (public one-time-service form `service-request.html`, AND the member-portal booking flow `portal-request-extras.html` when the requested service isn't an overnight stay) —
@@ -223,11 +233,32 @@ dogs: array<{name, species, breed, age, weight, spayed, temperament,
             }>,
 startDate: timestamp, endDate: timestamp,
 visitsPerDay, extraPet, medication, estimatedTotal, stripeCustomerId, paymentStatus,
-memberId, memberName   // present only when submitted from the member portal, not the public form
+memberId, memberName,  // present only when submitted from the member portal, not the public form
+attribution: object | null   // first-touch marketing attribution — see note below; public form only,
+                              // never set on the member-portal booking path — portal-request-extras.html
+                              // is an authenticated page and deliberately loads no capture script
 ```
 Note: the public form's `dogs[]` shape (species/spayed/friendly-with-people/etc.) is genuinely different from `membership_request`'s simpler shape and from `members.dogs[]`'s canonical shape — three different pet-object shapes exist in this codebase depending on which form produced them, admin's request-detail modal renders each correctly for its own submission type.
 
-**`overnight_request`** (member-portal booking, `portal-request-extras.html`, when service is an overnight stay) — same field shape as `service_request` above, minus the public-form-only fields (no `ownerName`/full pet profile — assumes an existing member and looks their info up by `memberId`).
+**Attribution blob** (`attribution`, on `membership_request` and `service_request` only — never on `overnight_request` or any authenticated-portal-originated submission) — first-touch marketing attribution, captured client-side in `js/attribution.js` and read back at submission via `window.pclcReadAttribution()`:
+```
+attribution: {
+  utmSource: string | null
+  utmMedium: string | null
+  utmCampaign: string | null
+  utmContent: string | null
+  referrer: string | null       // document.referrer at first touch
+  landingPage: string | null    // pathname + query string of the first page seen
+  capturedAt: timestamp         // when the first touch happened, NOT when this submission was created
+} | null
+```
+Captured on the visitor's FIRST touch anywhere on the site (not only on this form) and persisted in `localStorage` for 90 days — a valid, non-expired blob is never overwritten by a later visit, so a Meta ad landing on `index.html` days before a signup on `membership-request.html` still gets credit. `attribution: null` means either `localStorage` was unavailable/blocked at submit time, or the visitor's first touch predates this feature.
+
+Every string field is attacker-controlled (anonymous create — same M-2-hardened surface as the rest of this collection), so `firestore.rules`' `validAttrString()` enforces a strict character allowlist (`[a-zA-Z0-9 _.:/?&=-]` only) and a per-field length cap (200 chars for the four UTM fields, 500 for `referrer`, 300 for `landingPage`) as the real security boundary — the matching client-side sanitize in `js/attribution.js` is defense in depth, not relied on alone. Rendered in admin's request-detail modal through the same `escapeHtml()` join point every other field in that modal uses (`formatAttribution()` in `admin/dashboard.html`), same H-1 stored-XSS posture.
+
+**Submissions created before this feature shipped have the field absent entirely, not `null`** — `item.attribution` is `undefined` on those docs. Treat "absent" and "explicit `null`" identically as "no attribution captured," never as an error case.
+
+**`overnight_request`** (member-portal booking, `portal-request-extras.html`, when service is an overnight stay) — same field shape as `service_request` above, minus the public-form-only fields (no `ownerName`/full pet profile, and no `attribution` — assumes an existing member and looks their info up by `memberId`).
 
 **`application`** (walker job application, `careers.html`) —
 ```
