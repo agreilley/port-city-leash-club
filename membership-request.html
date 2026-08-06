@@ -10,7 +10,12 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { overflow-x: hidden; max-width: 100%; }
+  /* clip, not hidden — overflow-x:hidden here implicitly forces body's
+     overflow-y to auto (CSS Overflow spec: a non-visible x paired with a
+     visible y coerces y to auto), which makes body its own scroll container
+     and breaks position:sticky for .sidebar below. clip guards the same
+     horizontal-scrollbar case without that side effect. */
+  html, body { overflow-x: clip; max-width: 100%; }
   :root {
     --navy: #0D1B2A; --navy-mid: #1C2F42;
     --seafoam: #8FA8A2; --seafoam-light: #C5D5D1;
@@ -250,6 +255,39 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
             <div class="plan-note">Choose this if you'd like guidance.</div>
           </label>
         </div>
+
+        <div style="margin-top:32px;padding-top:28px;border-top:1px solid rgba(0,0,0,0.08);">
+          <div style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;color:var(--navy);margin-bottom:6px;">Choose your schedule</div>
+          <p class="section-copy" style="margin-bottom:20px;">Daily memberships automatically include Monday through Friday.</p>
+          <div class="field-grid" style="max-width: 320px;">
+            <div class="field">
+              <label class="field-label" for="startDate">Preferred start date for walks</label>
+              <input id="startDate" name="startDate" type="date" required>
+              <span class="date-error" id="startDateError">We begin September 1 — please choose a date on or after September 1.</span>
+            </div>
+          </div>
+          <div style="margin-top:22px;">
+            <label class="field-label" style="display:block;margin-bottom:10px;">Preferred days</label>
+            <div class="days-grid" id="daysGrid">
+              <label class="day-chip"><input type="checkbox" name="days" value="Monday">Mon</label>
+              <label class="day-chip"><input type="checkbox" name="days" value="Tuesday">Tue</label>
+              <label class="day-chip"><input type="checkbox" name="days" value="Wednesday">Wed</label>
+              <label class="day-chip"><input type="checkbox" name="days" value="Thursday">Thu</label>
+              <label class="day-chip"><input type="checkbox" name="days" value="Friday">Fri</label>
+              <label class="day-chip"><input type="checkbox" name="days" value="Saturday">Sat</label>
+              <label class="day-chip"><input type="checkbox" name="days" value="Sunday">Sun</label>
+            </div>
+          </div>
+          <div>
+            <label class="field-label" style="display:block;margin-bottom:10px;">Preferred time window</label>
+            <div class="time-grid" id="timeGrid">
+              <label class="time-card selected"><input type="radio" name="timeWindow" value="Morning" checked><div class="time-title">Morning</div><div class="time-sub">8:00 AM–11:00 AM</div></label>
+              <label class="time-card"><input type="radio" name="timeWindow" value="Early Afternoon"><div class="time-title">Early Afternoon</div><div class="time-sub">11:00 AM–2:00 PM</div></label>
+              <label class="time-card"><input type="radio" name="timeWindow" value="Late Afternoon"><div class="time-title">Late Afternoon</div><div class="time-sub">2:00 PM–5:00 PM</div></label>
+            </div>
+          </div>
+          <p class="policy-note">Need to make a change? Upcoming walks can be managed through the member portal. Schedule changes must be made at least 48 hours in advance.</p>
+        </div>
       </section>
 
       <section class="form-section">
@@ -261,45 +299,10 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           <div class="field"><label class="field-label" for="phone">Phone</label><input id="phone" name="phone" type="tel" placeholder="(910) 555-1234"></div>
           <div class="field"><label class="field-label" for="address">Home address</label><input id="address" name="address" type="text" placeholder="Street address"></div>
         </div>
-        <div class="field" style="margin-top:18px;"><label class="field-label" for="referralCode">Referral code <span style="font-weight:400;">(optional)</span></label><input id="referralCode" name="referralCode" type="text" placeholder="e.g. PCLC-3F9K7H"></div>
       </section>
 
       <section class="form-section">
         <p class="section-kicker">Step 03</p>
-        <h2>Choose your schedule</h2>
-        <p class="section-copy">Daily memberships automatically include Monday through Friday.</p>
-        <div class="field-grid" style="max-width: 320px;">
-          <div class="field">
-            <label class="field-label" for="startDate">Preferred start date for walks</label>
-            <input id="startDate" name="startDate" type="date" required>
-            <span class="date-error" id="startDateError">We begin September 1 — please choose a date on or after September 1.</span>
-          </div>
-        </div>
-        <div style="margin-top:22px;">
-          <label class="field-label" style="display:block;margin-bottom:10px;">Preferred days</label>
-          <div class="days-grid" id="daysGrid">
-            <label class="day-chip"><input type="checkbox" name="days" value="Monday">Mon</label>
-            <label class="day-chip"><input type="checkbox" name="days" value="Tuesday">Tue</label>
-            <label class="day-chip"><input type="checkbox" name="days" value="Wednesday">Wed</label>
-            <label class="day-chip"><input type="checkbox" name="days" value="Thursday">Thu</label>
-            <label class="day-chip"><input type="checkbox" name="days" value="Friday">Fri</label>
-            <label class="day-chip"><input type="checkbox" name="days" value="Saturday">Sat</label>
-            <label class="day-chip"><input type="checkbox" name="days" value="Sunday">Sun</label>
-          </div>
-        </div>
-        <div>
-          <label class="field-label" style="display:block;margin-bottom:10px;">Preferred time window</label>
-          <div class="time-grid" id="timeGrid">
-            <label class="time-card selected"><input type="radio" name="timeWindow" value="Morning" checked><div class="time-title">Morning</div><div class="time-sub">8:00 AM–11:00 AM</div></label>
-            <label class="time-card"><input type="radio" name="timeWindow" value="Early Afternoon"><div class="time-title">Early Afternoon</div><div class="time-sub">11:00 AM–2:00 PM</div></label>
-            <label class="time-card"><input type="radio" name="timeWindow" value="Late Afternoon"><div class="time-title">Late Afternoon</div><div class="time-sub">2:00 PM–5:00 PM</div></label>
-          </div>
-        </div>
-        <p class="policy-note">Need to make a change? Upcoming walks can be managed through the member portal. Schedule changes must be made at least 48 hours in advance.</p>
-      </section>
-
-      <section class="form-section">
-        <p class="section-kicker">Step 04</p>
         <h2>Tell us about your dog</h2>
 
         <!-- Dog cards container -->
@@ -320,7 +323,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       </section>
 
       <section class="form-section">
-        <p class="section-kicker">Step 05</p>
+        <p class="section-kicker">Step 04</p>
         <h2>Schedule your complimentary meet & greet</h2>
         <p id="mgIntroCopy" style="font-size:14px;color:var(--text-mid);margin-bottom:20px;">Select a date and time that works for you. Available slots are shown in green.</p>
 
@@ -373,9 +376,10 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       </div>
 
       <section class="form-section">
-        <p class="section-kicker">Step 06</p>
+        <p class="section-kicker">Step 05</p>
         <h2>Save a payment method</h2>
         <p class="section-copy">We'll securely save your card on file through Stripe. You won't be charged today.</p>
+        <div class="field" style="max-width:320px;margin-bottom:24px;"><label class="field-label" for="referralCode">Referral code <span style="font-weight:400;">(optional)</span></label><input id="referralCode" name="referralCode" type="text"></div>
         <div id="card-element" style="padding:14px 16px;border:1px solid rgba(0,0,0,0.15);border-radius:6px;background:white;max-width:480px;"></div>
         <div id="card-errors" role="alert" style="color:var(--rust);font-size:13px;margin-top:8px;"></div>
         <div class="submit-row" style="margin-top:24px;">
