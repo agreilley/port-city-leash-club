@@ -217,9 +217,16 @@ service cloud.firestore {
       // a non-negative capped number.
       // referredByCode: same member-referral intake field and same
       // null-tolerant, unverified-here posture as validMembership() above.
+      // timeSlot: same three buckets as VALID_TIME_SLOTS (functions/index.js)
+      // and walks/{id}.timeSlot — null for drop-in-visit/overnight-stay (no
+      // time-of-day field shown for those), a bucket key for standard-walk/
+      // extended-walk. Must be added here BEFORE (or in the same deploy as)
+      // the client starts sending it — hasOnly() below rejects the entire
+      // write if a field isn't listed, so shipping the client field first
+      // would break every walk-family submission, not just drop timeSlot.
       function validService() {
         return request.resource.data.keys().hasOnly(
-            ['type', 'service', 'startDate', 'endDate', 'visitsPerDay', 'extraPet',
+            ['type', 'service', 'startDate', 'endDate', 'timeSlot', 'visitsPerDay', 'extraPet',
              'medication', 'dogs', 'ownerName', 'email', 'phone', 'address',
              'meetGreetDateTime', 'estimatedTotal', 'referredByCode', 'read', 'createdAt'])
           && request.resource.data.ownerName is string && request.resource.data.ownerName.size() <= 200
@@ -238,6 +245,8 @@ service cloud.firestore {
           && request.resource.data.estimatedTotal <= 100000
           && (request.resource.data.startDate == null || request.resource.data.startDate is timestamp)
           && (request.resource.data.endDate == null || request.resource.data.endDate is timestamp)
+          && (request.resource.data.timeSlot == null
+              || request.resource.data.timeSlot in ['morning', 'early-afternoon', 'late-afternoon'])
           && (request.resource.data.referredByCode == null
               || (request.resource.data.referredByCode is string && request.resource.data.referredByCode.size() <= 40))
           && request.resource.data.dogs is list && request.resource.data.dogs.size() <= 10;
