@@ -173,4 +173,8 @@ async function sendEmail({ to, template, data, replyTo, idempotencyKey }) {
   return { ok: result.ok, id: result.id || null, error: result.error || null };
 }
 
-module.exports = { sendEmail, RESEND_API_KEY };
+// TEMPLATES is exported alongside sendEmail so dev/render-emails.js (a local
+// preview tool, never deployed) can render every registered template
+// directly from the same registry real sends use — there's no separate
+// list to fall out of sync with this one.
+module.exports = { sendEmail, RESEND_API_KEY, TEMPLATES };

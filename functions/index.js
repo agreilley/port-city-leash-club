@@ -2358,8 +2358,14 @@ exports.sendOnboardingEmail = onCall({
     // the welcome text is ours (via Gmail) rather than Firebase's default
     // template. Walker onboarding stays on this Gmail path for now — see
     // the Phase 1 Resend build notes for why.
+    //
+    // ?welcome=1 rides along as part of continueUrl (Firebase forwards the
+    // whole `url` value verbatim) so portal-password-reset.html — the
+    // page every emailed action link lands on, Action URL being
+    // project-wide — can tell a first-time link from a genuine reset and
+    // show "set your password" copy instead of "reset password" copy.
     const { getAuth } = require('firebase-admin/auth');
-    const link = await getAuth().generatePasswordResetLink(email, { url: portalUrl });
+    const link = await getAuth().generatePasswordResetLink(email, { url: `${portalUrl}?welcome=1` });
 
     const subject = `Welcome to the team, ${firstName}`;
     const lines = [
@@ -2417,7 +2423,8 @@ exports.sendOnboardingEmail = onCall({
 
   const portalUrl = `${BUSINESS_PORTAL_ORIGIN}/portal-login`;
   const { getAuth } = require('firebase-admin/auth');
-  const portalSetupLink = await getAuth().generatePasswordResetLink(email, { url: portalUrl });
+  // ?welcome=1 — see the matching comment on the walker branch above.
+  const portalSetupLink = await getAuth().generatePasswordResetLink(email, { url: `${portalUrl}?welcome=1` });
 
   const result = await sendEmail({
     to: email,
@@ -2473,7 +2480,8 @@ exports.sendBookingConfirmedEmail = onCall({
   if (isNewAccount) {
     const { getAuth } = require('firebase-admin/auth');
     finalData.isNewAccount = true;
-    finalData.portalSetupLink = await getAuth().generatePasswordResetLink(member.email, { url: `${BUSINESS_PORTAL_ORIGIN}/portal-login` });
+    // ?welcome=1 — see the matching comment on sendOnboardingEmail's walker branch.
+    finalData.portalSetupLink = await getAuth().generatePasswordResetLink(member.email, { url: `${BUSINESS_PORTAL_ORIGIN}/portal-login?welcome=1` });
   } else {
     finalData.isNewAccount = false;
     finalData.portalSetupLink = null;
