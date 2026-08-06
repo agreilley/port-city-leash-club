@@ -13,3 +13,6 @@ dev/email-previews/
 dev/test-member-welcome-setup.js
 dev/test-member-welcome-teardown.js
 dev/.test-member-welcome-uid
+
+# Local visual reference, regenerable from the service area definitions.
+dev/dev-coverage-map.html
