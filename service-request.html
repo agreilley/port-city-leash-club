@@ -300,6 +300,7 @@
   }
 </style>
 <script src="/js/meta-pixel.js" defer></script>
+<script src="/js/attribution.js" defer></script>
 </head>
 <body>
 <noscript><img height="1" width="1" style="display:none"
@@ -807,6 +808,24 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       }
 
       const isWalk = serviceSelect.value === 'standard-walk' || serviceSelect.value === 'extended-walk';
+
+      // window.pclcReadAttribution() (js/attribution.js) returns the visitor's
+      // first-touch UTM/referrer/landing-page blob from localStorage, already
+      // sanitized to the same character allowlist firestore.rules enforces —
+      // or null if nothing was ever captured. capturedAt comes back as a
+      // plain epoch-ms number — convert to a real Timestamp here, same as
+      // membership-request.html.
+      const rawAttribution = window.pclcReadAttribution ? window.pclcReadAttribution() : null;
+      const attribution = rawAttribution ? {
+        utmSource: rawAttribution.utmSource,
+        utmMedium: rawAttribution.utmMedium,
+        utmCampaign: rawAttribution.utmCampaign,
+        utmContent: rawAttribution.utmContent,
+        referrer: rawAttribution.referrer,
+        landingPage: rawAttribution.landingPage,
+        capturedAt: window._Timestamp.fromMillis(rawAttribution.capturedAt),
+      } : null;
+
       const data = {
         type: 'service_request',
         service: serviceSelect.value,
@@ -825,6 +844,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         meetGreetDateTime: document.getElementById('meetGreetDateTime')?.value || '',
         estimatedTotal: window._lastEstimatedTotal || 0,
         referredByCode,
+        attribution,
         read: false,
         createdAt: window._serverTimestamp()
       };

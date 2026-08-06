@@ -167,6 +167,52 @@ service cloud.firestore {
           && request.resource.data.email.size() <= 320;
       }
 
+      // Attribution blob (Phase 1 analytics). Captured client-side in
+      // js/attribution.js from UTM params + document.referrer + landing page
+      // on an anonymous visitor's FIRST touch, persisted to localStorage for
+      // up to 90 days, and attached at signup — shared by validMembership()
+      // and validService() below.
+      //
+      // Every string here is attacker-controlled (same anonymous-create
+      // surface the rest of this M-2 hardening covers) and gets rendered
+      // later in admin/dashboard.html's request-detail modal, so this is a
+      // strict character ALLOWLIST, not just a size cap — same posture as
+      // the H-1 stored-XSS fix, not relying on client-side sanitizing alone.
+      // ATTR_CHARS here mirrors js/attribution.js's sanitize() regex exactly;
+      // keep the two in lockstep if either changes.
+      //
+      // Optional via `!('attribution' in data) || ...` rather than
+      // null-tolerant-only, so these rules can deploy before
+      // membership-request.html/service-request.html start sending the
+      // field — same rollout pattern validApplication() below already uses
+      // for resumePath/resumeName. Once the client ships, real submissions
+      // always send it (a map or explicit null); bare-absent only happens
+      // against a stale cached page mid-rollout.
+      function validAttrString(v, maxLen) {
+        return v is string && v.size() <= maxLen && v.matches('^[a-zA-Z0-9 _.:/?&=-]*$');
+      }
+      function validAttribution() {
+        return request.resource.data.attribution == null || (
+          request.resource.data.attribution is map
+          && request.resource.data.attribution.keys().hasOnly(
+              ['utmSource', 'utmMedium', 'utmCampaign', 'utmContent',
+               'referrer', 'landingPage', 'capturedAt'])
+          && (request.resource.data.attribution.utmSource == null
+              || validAttrString(request.resource.data.attribution.utmSource, 200))
+          && (request.resource.data.attribution.utmMedium == null
+              || validAttrString(request.resource.data.attribution.utmMedium, 200))
+          && (request.resource.data.attribution.utmCampaign == null
+              || validAttrString(request.resource.data.attribution.utmCampaign, 200))
+          && (request.resource.data.attribution.utmContent == null
+              || validAttrString(request.resource.data.attribution.utmContent, 200))
+          && (request.resource.data.attribution.referrer == null
+              || validAttrString(request.resource.data.attribution.referrer, 500))
+          && (request.resource.data.attribution.landingPage == null
+              || validAttrString(request.resource.data.attribution.landingPage, 300))
+          && request.resource.data.attribution.capturedAt is timestamp
+        );
+      }
+
       // Source: contact.html:224 (submitContact)
       function validContact() {
         return request.resource.data.keys().hasOnly(
@@ -192,7 +238,7 @@ service cloud.firestore {
         return request.resource.data.keys().hasOnly(
             ['type', 'plan', 'ownerName', 'email', 'phone', 'address', 'accessNotes',
              'dogs', 'dogName', 'startDate', 'timeWindow', 'days', 'meetGreetDateTime',
-             'referredByCode', 'read', 'createdAt'])
+             'referredByCode', 'attribution', 'read', 'createdAt'])
           && request.resource.data.ownerName is string && request.resource.data.ownerName.size() <= 200
           && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
           && request.resource.data.address is string && request.resource.data.address.size() <= 1000
@@ -205,6 +251,7 @@ service cloud.firestore {
           && (request.resource.data.startDate == null || request.resource.data.startDate is timestamp)
           && (request.resource.data.referredByCode == null
               || (request.resource.data.referredByCode is string && request.resource.data.referredByCode.size() <= 40))
+          && (!('attribution' in request.resource.data) || validAttribution())
           && request.resource.data.dogs is list && request.resource.data.dogs.size() <= 10;
       }
 
@@ -234,7 +281,7 @@ service cloud.firestore {
         return request.resource.data.keys().hasOnly(
             ['type', 'service', 'startDate', 'endDate', 'timeSlot', 'notes', 'visitsPerDay', 'extraPet',
              'medication', 'dogs', 'ownerName', 'email', 'phone', 'address',
-             'meetGreetDateTime', 'estimatedTotal', 'referredByCode', 'read', 'createdAt'])
+             'meetGreetDateTime', 'estimatedTotal', 'referredByCode', 'attribution', 'read', 'createdAt'])
           && request.resource.data.ownerName is string && request.resource.data.ownerName.size() <= 200
           && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
           && request.resource.data.address is string && request.resource.data.address.size() <= 1000
@@ -256,6 +303,7 @@ service cloud.firestore {
               || request.resource.data.timeSlot in ['morning', 'early-afternoon', 'late-afternoon'])
           && (request.resource.data.referredByCode == null
               || (request.resource.data.referredByCode is string && request.resource.data.referredByCode.size() <= 40))
+          && (!('attribution' in request.resource.data) || validAttribution())
           && request.resource.data.dogs is list && request.resource.data.dogs.size() <= 10;
       }
 

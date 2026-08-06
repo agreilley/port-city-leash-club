@@ -180,6 +180,7 @@
   }
 </style>
 <script src="/js/meta-pixel.js" defer></script>
+<script src="/js/attribution.js" defer></script>
 </head>
 <body>
 <noscript><img height="1" width="1" style="display:none"
@@ -613,6 +614,26 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         }
       }
 
+      // window.pclcReadAttribution() (js/attribution.js) returns the visitor's
+      // first-touch UTM/referrer/landing-page blob from localStorage, already
+      // sanitized to the same character allowlist firestore.rules enforces —
+      // or null if nothing was ever captured (localStorage blocked, or this
+      // visitor's first touch predates this feature). capturedAt comes back
+      // as a plain epoch-ms number (js/attribution.js has no Firebase
+      // dependency, since it also runs on index.html/faq.html which load no
+      // Firebase SDK at all) — convert to a real Timestamp here, where
+      // Firestore's Timestamp class is already in scope.
+      const rawAttribution = window.pclcReadAttribution ? window.pclcReadAttribution() : null;
+      const attribution = rawAttribution ? {
+        utmSource: rawAttribution.utmSource,
+        utmMedium: rawAttribution.utmMedium,
+        utmCampaign: rawAttribution.utmCampaign,
+        utmContent: rawAttribution.utmContent,
+        referrer: rawAttribution.referrer,
+        landingPage: rawAttribution.landingPage,
+        capturedAt: window._Timestamp.fromMillis(rawAttribution.capturedAt),
+      } : null;
+
       const data = {
         type: 'membership_request',
         plan: document.querySelector('input[name=membership]:checked')?.value || '',
@@ -622,6 +643,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         address: document.getElementById('address')?.value || '',
         accessNotes: document.getElementById('accessNotes')?.value || '',
         referredByCode,
+        attribution,
         dogs: collectDogs(),
         // dogName kept as a legacy display field — the admin request-list
         // preview reads it before a request is converted to a member.

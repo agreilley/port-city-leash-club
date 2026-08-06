@@ -2397,6 +2397,7 @@ window.openRequestItem = async (id) => {
       { label: 'Address', value: item.address || '–' },
       { label: 'Access Notes', value: item.accessNotes || '–' },
       { label: 'Meet Greet Date/Time', value: item.meetGreetDateTime || '–' },
+      { label: 'Attribution', value: formatAttribution(item.attribution) },
       { label: 'Created At', value: fmtDate(item.createdAt) },
       { label: 'Stripe Customer ID', value: item.stripeCustomerId || '–' },
       { label: 'Payment Method Status', value: item.paymentMethodStatus || '–' },
@@ -2418,6 +2419,7 @@ window.openRequestItem = async (id) => {
       { label: 'Estimated Total', value: item.estimatedTotal ? `$${item.estimatedTotal}` : '–' },
       { label: 'Payment', value: item.paymentStatus ? item.paymentStatus.charAt(0).toUpperCase() + item.paymentStatus.slice(1) : 'Not yet confirmed' },
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
+      { label: 'Attribution', value: formatAttribution(item.attribution) },
       { label: 'Created At', value: fmtDate(item.createdAt) },
     ];
   } else if (item.type === 'overnight_request' || item.service === 'overnight' || item.service === 'checkin') {
@@ -3154,6 +3156,7 @@ window.confirmServiceRequest = async (submissionId, item) => {
             dogs: dogs,
             walksThisMonth: 0,
             status: 'active',
+            attribution: item.attribution || null,
             createdAt: serverTimestamp(),
           });
           memberId = uid;
@@ -3806,6 +3809,27 @@ function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// Formats the attribution map (Phase 1 analytics) into one readable string
+// for the request-detail modal. Returns a plain string, not markup — it
+// flows through the same fields.map(...escapeHtml(f.value)...) join point
+// every other field in that modal uses (see the comment above fieldHTML),
+// so a crafted UTM value can't run script here any more than a crafted dog
+// name can. item.attribution is undefined on every submission from before
+// this feature shipped — that's the expected "pre-tracking" case, not an
+// error, same as any other missing field in this modal.
+function formatAttribution(attribution) {
+  if (!attribution) return '– (no attribution captured)';
+  const parts = [
+    attribution.utmSource && `source: ${attribution.utmSource}`,
+    attribution.utmMedium && `medium: ${attribution.utmMedium}`,
+    attribution.utmCampaign && `campaign: ${attribution.utmCampaign}`,
+    attribution.utmContent && `content: ${attribution.utmContent}`,
+    attribution.referrer && `referrer: ${attribution.referrer}`,
+    attribution.landingPage && `landing: ${attribution.landingPage}`,
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : 'Direct / no UTM';
+}
+
 // Multi-dog editor for the Add Member modal — replaces the old single-dog
 // am-dogname/am-breed/am-age/am-dognotes fields (and the window._addMemberPrefillDogs
 // bypass that used to feed them) entirely. _addMemberDogRows is the working
@@ -3900,6 +3924,11 @@ window.openAddMemberModal = (prefill, submissionId) => {
   // Track the source submission (if converting from a request item) so saveMember()
   // can mark it confirmed once the member record is created.
   window._addMemberSubmissionId = submissionId || null;
+  // Carry the source submission's attribution (Phase 1 analytics) forward to
+  // saveMember() the same way — prefill IS the submission when converting a
+  // request, undefined for a standalone add. saveMember() has no other way
+  // to reach it since it isn't passed `prefill` directly.
+  window._addMemberSubmissionAttribution = prefill?.attribution || null;
 
   // The billing-acknowledgment notice only applies to a standalone add (no
   // source submission) — that path never starts a subscription. Reset the
@@ -4022,6 +4051,7 @@ window.saveMember = async () => {
       defaultWalkDays, defaultTimeSlot,
       dogs, assignedWalkerId: walker,
       walksThisMonth: 0, status: 'active',
+      attribution: window._addMemberSubmissionAttribution || null,
       createdAt: serverTimestamp()
     });
 
@@ -4158,6 +4188,11 @@ window.saveMember = async () => {
 
     // Clear state
     window._addMemberSubmissionId = null;
+    // Must be reset alongside the id above — otherwise an admin who converts
+    // one request and then immediately opens the modal again for an
+    // unrelated standalone add would have the new member silently stamped
+    // with the PREVIOUS request's attribution.
+    window._addMemberSubmissionAttribution = null;
     _addMemberDogRows = [];
   } catch(e) {
     errEl.textContent = e.message;
