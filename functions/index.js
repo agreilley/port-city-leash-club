@@ -361,10 +361,18 @@ exports.linkServiceRequestBilling = onCall({}, async (request) => {
 exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
   await assertIsAdmin(request.auth);
 
-  const { submissionId, amountInDollars, description } = request.data || {};
+  const { submissionId, amountInDollars, description, chargeKey: chargeKeyInput } = request.data || {};
   if (!submissionId || !amountInDollars) {
     throw new HttpsError('invalid-argument', 'submissionId and amountInDollars are required.');
   }
+  // Defaults to submissionId — correct for every caller except
+  // confirmWalkExtension, which confirms a checked SUBSET of a submission's
+  // walks at a time. A later confirm of the remaining walks from that same
+  // submission is a legitimate second charge, not a duplicate, so that
+  // caller passes a finer key (submissionId + the sorted walk ids) instead.
+  // See the idempotencyKey note on sendBookingConfirmedEmail in
+  // confirmWalkExtension for the same problem solved the same way.
+  const chargeKey = chargeKeyInput || submissionId;
 
   const stripe = stripeClient(STRIPE_SECRET_KEY.value());
   const subDoc = await db.collection('submissions').doc(submissionId).get();
@@ -372,6 +380,22 @@ exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (reques
 
   if (!sub || !sub.stripeCustomerId) {
     throw new HttpsError('failed-precondition', 'No saved card found for this submission.');
+  }
+
+  // Idempotency guard #1: never charge the same chargeKey twice, however
+  // this call is retried (double-click, two admin tabs open on the same
+  // request, a retried call after a network hiccup) — same pattern as
+  // chargeCurrentMonthWalks' currentMonthCharge guard. Blocks ONLY on a
+  // prior 'charged' outcome for this exact key — never on 'failed', so a
+  // transient Stripe error can always be retried rather than permanently
+  // wedging a legitimate charge.
+  const priorAttempt = sub.lastChargeAttempt;
+  if (priorAttempt && priorAttempt.chargeKey === chargeKey && priorAttempt.status === 'charged') {
+    return {
+      success: true, alreadyCharged: true,
+      paymentIntentId: sub.lastChargeId || null,
+      creditApplied: sub.referralCreditApplied || 0,
+    };
   }
 
   // Travel-tier clients receive referral credit as a Firestore balance
@@ -405,15 +429,34 @@ exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (reques
       throw new HttpsError('failed-precondition', 'Customer has no saved payment method.');
     }
 
-    paymentIntent = await stripe.paymentIntents.create({
-      amount: chargeAmountInCents,
-      currency: 'usd',
-      customer: customer.id,
-      payment_method: paymentMethods.data[0].id,
-      off_session: true,
-      confirm: true,
-      description: description || 'Port City Leash Club service',
-    });
+    try {
+      paymentIntent = await stripe.paymentIntents.create({
+        amount: chargeAmountInCents,
+        currency: 'usd',
+        customer: customer.id,
+        payment_method: paymentMethods.data[0].id,
+        off_session: true,
+        confirm: true,
+        description: description || 'Port City Leash Club service',
+      }, {
+        // Idempotency guard #2, at Stripe itself: a retry that gets past the
+        // Firestore guard above (e.g. two clicks racing before the first
+        // write lands) resolves to the same PaymentIntent rather than a
+        // second charge. Same pattern as chargeCurrentMonthWalks.
+        idempotencyKey: `charge-saved-card:${chargeKey}`,
+      });
+    } catch (e) {
+      // Durable failure record, not a block — the guard above only ever
+      // matches on status 'charged', so this same chargeKey stays retryable
+      // rather than getting permanently wedged by one transient Stripe error.
+      await db.collection('submissions').doc(submissionId).set({
+        lastChargeAttempt: {
+          chargeKey, status: 'failed', amount: chargeAmountInDollars,
+          reason: e.message, failedAt: FieldValue.serverTimestamp(),
+        },
+      }, { merge: true }).catch(() => {});
+      throw new HttpsError('internal', `Card charge failed: ${e.message}`);
+    }
   }
   // chargeAmountInCents === 0 means the referral credit fully covered this
   // charge — Stripe doesn't allow a $0 PaymentIntent, so it's skipped
@@ -425,6 +468,11 @@ exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (reques
     lastChargeId: paymentIntent ? paymentIntent.id : null,
     lastChargeAmount: chargeAmountInDollars,
     lastChargedAt: FieldValue.serverTimestamp(),
+    lastChargeAttempt: {
+      chargeKey, status: 'charged', amount: chargeAmountInDollars,
+      paymentIntentId: paymentIntent ? paymentIntent.id : null,
+      chargedAt: FieldValue.serverTimestamp(),
+    },
     ...(creditApplied > 0 ? { referralCreditApplied: creditApplied } : {}),
   }, { merge: true });
 

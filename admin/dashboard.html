@@ -44,6 +44,8 @@
   .topbar-actions { display: flex; gap: 10px; }
   .btn-primary { background: var(--rust); color: white; border: none; border-radius: 4px; padding: 8px 18px; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: background 0.2s; }
   .btn-primary:hover { background: var(--rust-dark); }
+  .btn-primary:disabled { background: rgba(0,0,0,0.15); color: rgba(255,255,255,0.7); cursor: not-allowed; }
+  .btn-primary:disabled:hover { background: rgba(0,0,0,0.15); }
   .btn-secondary { background: white; color: var(--navy); border: 1px solid rgba(0,0,0,0.12); border-radius: 4px; padding: 8px 18px; font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.2s; }
   .btn-secondary:hover { border-color: var(--navy); }
   .content { padding: 32px; flex: 1; }
@@ -3020,12 +3022,16 @@ function serviceChargeDescription(serviceKey, item) {
 // resolves straight to 'skipped' without calling Stripe at all. Confirming
 // the underlying booking/extension should always happen BEFORE this is
 // called — a Stripe hiccup here never undoes or blocks that confirmation.
-async function chargeAndTrackPayment(submissionId, amountInDollars, description) {
+// chargeKey is optional and defaults (server-side, in chargeSavedCard) to
+// submissionId — pass a finer key only when one submission can legitimately
+// be charged more than once, e.g. confirmWalkExtension confirming a subset
+// of its walks at a time. See chargeSavedCard's own comment on chargeKey.
+async function chargeAndTrackPayment(submissionId, amountInDollars, description, chargeKey) {
   let paymentStatus = 'skipped';
   if (amountInDollars > 0) {
     try {
       const chargeSavedCard = httpsCallable(fns, 'chargeSavedCard');
-      await chargeSavedCard({ submissionId, amountInDollars, description });
+      await chargeSavedCard({ submissionId, amountInDollars, description, ...(chargeKey ? { chargeKey } : {}) });
       paymentStatus = 'charged';
     } catch (chargeErr) {
       paymentStatus = 'failed';
@@ -3468,6 +3474,12 @@ window.confirmWalkExtension = async (submissionId, item) => {
     const checkedIds = _reviewWalkIds.filter(id => document.getElementById(`rev-walk-${id}`)?.checked);
     const droppedIds = _reviewWalkIds.filter(id => !checkedIds.includes(id));
     const amountInDollars = calculateWalkExtensionTotal(checkedIds.length);
+    // Shared by the charge guard and the email idempotency key below — one
+    // submission can legitimately be confirmed more than once (a later
+    // confirm of the walks left unchecked this time), so both guards must
+    // scope to this exact checkedIds subset, not just submissionId. Computed
+    // once so the two can't drift apart.
+    const chargeKey = `${submissionId}:${[...checkedIds].sort().join(',')}`;
 
     await Promise.all(checkedIds.map(walkId =>
       updateDoc(doc(db, 'walks', walkId), { extendedStatus: 'confirmed' })
@@ -3490,7 +3502,7 @@ window.confirmWalkExtension = async (submissionId, item) => {
       read: true,
     });
 
-    await chargeAndTrackPayment(submissionId, item.stripeCustomerId ? amountInDollars : 0, `Port City Leash Club - Walk Extension (${checkedIds.length} walk${checkedIds.length === 1 ? '' : 's'})`);
+    await chargeAndTrackPayment(submissionId, item.stripeCustomerId ? amountInDollars : 0, `Port City Leash Club - Walk Extension (${checkedIds.length} walk${checkedIds.length === 1 ? '' : 's'})`, chargeKey);
 
     // Stamp the specific Stripe charge onto each confirmed walk —
     // chargeAndTrackPayment (via chargeSavedCard) already wrote lastChargeId
@@ -3553,7 +3565,7 @@ window.confirmWalkExtension = async (submissionId, item) => {
         // later confirm of the REMAINING walks from this same submission
         // collide with this one's already-sent record and get silently
         // skipped, even though it's charging different walks.
-        idempotencyKey: `booking-confirmed:${submissionId}:${[...checkedIds].sort().join(',')}`,
+        idempotencyKey: `booking-confirmed:${chargeKey}`,
       });
     } catch (e) {
       emailWarning = `Confirmation email wasn't sent: ${e.message}`;
