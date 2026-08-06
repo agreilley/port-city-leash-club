@@ -11,7 +11,12 @@
 
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { overflow-x: hidden; max-width: 100%; }
+  /* clip, not hidden — overflow-x:hidden here implicitly forces body's
+     overflow-y to auto (CSS Overflow spec: a non-visible x paired with a
+     visible y coerces y to auto), which makes body its own scroll container
+     and breaks position:sticky for .order-sidebar below. clip guards the
+     same horizontal-scrollbar case without that side effect. */
+  html, body { overflow-x: clip; max-width: 100%; }
   :root {
     --navy: #0D1B2A; --navy-mid: #1C2F42;
     --seafoam: #8FA8A2; --seafoam-light: #C5D5D1;
@@ -397,7 +402,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         <div class="field"><label for="email">Email</label><input id="email" type="email"></div>
         <div class="field"><label for="phone">Phone</label><input id="phone" type="tel"></div>
         <div class="field"><label for="address">Home Address</label><input id="address" type="text"></div>
-        <div class="field"><label for="referralCode">Referral code <span style="font-weight:400;">(optional)</span></label><input id="referralCode" type="text" placeholder="e.g. PCLC-3F9K7H"></div>
       </div>
     </div>
 
@@ -425,9 +429,9 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
               ${!isFirst ? `<button type="button" onclick="removeDog(${n})" style="background:none;border:none;font-size:13px;color:var(--text-light);cursor:pointer;padding:4px 8px;border-radius:4px;" onmouseover="this.style.color='var(--rust)'" onmouseout="this.style.color='var(--text-light)'">Remove</button>` : ''}
             </div>
             <div class="form-grid-3">
-              <div class="field"><label for="pet-name-${n}">Pet's Name</label><input id="pet-name-${n}" name="pet-name-${n}" type="text"></div>
+              <div class="field"><label for="pet-name-${n}">Pet's Name</label><input id="pet-name-${n}" name="pet-name-${n}" type="text" oninput="const err=document.getElementById('petNameError${n}'); if(err && this.value.trim()) err.style.display='none';"><span class="date-error" id="petNameError${n}">Please enter your pet's name.</span></div>
               <div class="field"><label for="species-${n}">Pet Type</label><select id="species-${n}" name="species-${n}" onchange="updateSpeciesFields(${n})"><option value="Dog" selected>Dog</option><option value="Cat">Cat</option></select></div>
-              <div class="field"><label for="breed-${n}">Breed</label><input id="breed-${n}" name="breed-${n}" type="text"></div>
+              <div class="field"><label for="breed-${n}">Breed</label><input id="breed-${n}" name="breed-${n}" type="text" oninput="const err=document.getElementById('petBreedError${n}'); if(err && this.value.trim()) err.style.display='none';"><span class="date-error" id="petBreedError${n}">Please enter your pet's breed.</span></div>
               <div class="field"><label for="age-${n}">Age</label><input id="age-${n}" name="age-${n}" type="text"></div>
               <div class="field"><label for="weight-${n}">Weight</label><input id="weight-${n}" name="weight-${n}" type="text"></div>
               <div class="field"><label for="spayed-${n}">Spayed/Neutered?</label><select id="spayed-${n}"><option>Select</option><option>Yes</option><option>No</option></select></div>
@@ -531,7 +535,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
     <div class="form-section">
       <h2 class="form-section-title">Schedule Your Meet & Greet</h2>
-      <p class="section-copy">First time booking with us? Select a date and time that works for you. Available slots are shown in green.</p>
+      <p class="section-copy" id="mgIntroCopy">First time booking with us? Select a date and time that works for you. Available slots are shown in green.</p>
 
       <div id="meetGreetCalendar" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;">
 
@@ -567,11 +571,13 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       </div>
 
       <div id="mgLoadingMsg" style="font-size:13px;color:var(--text-light);padding:12px 0;">Loading availability...</div>
+      <div id="mgNoAvailMsg" style="font-size:13px;color:var(--rust);padding:12px 0;display:none;">No availability set yet. We'll reach out to schedule your meet & greet after you submit.</div>
     </div>
 
     <div class="form-section">
       <h2 class="form-section-title">Payment Method</h2>
       <p class="section-copy">We'll securely save your card on file through Stripe. You won't be charged today. Payment is collected once your request is confirmed.</p>
+      <div class="field" style="max-width:320px;margin-bottom:24px;"><label for="referralCode">Referral code <span style="font-weight:400;">(optional)</span></label><input id="referralCode" type="text"></div>
       <div id="card-element" style="padding:14px 16px;border:1px solid rgba(0,0,0,0.15);border-radius:6px;background:white;max-width:480px;"></div>
       <div id="card-errors" role="alert" style="color:var(--rust);font-size:13px;margin-top:8px;"></div>
     </div>
@@ -787,6 +793,32 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       }
     }
     dateError.style.display = 'none';
+
+    // Pet name and breed are required for every pet card present — same
+    // block-and-show-inline-error pattern as the date checks above. A
+    // missing name or breed means the sitter/walker can't be briefed on
+    // an unfamiliar pet.
+    let firstInvalidPetField = null;
+    for (let i = 1; i <= dogCount; i++) {
+      const card = document.getElementById(`dogCard${i}`);
+      if (!card) continue;
+      const nameInput = card.querySelector(`[name="pet-name-${i}"]`);
+      const breedInput = card.querySelector(`[name="breed-${i}"]`);
+      const nameError = document.getElementById(`petNameError${i}`);
+      const breedError = document.getElementById(`petBreedError${i}`);
+      const nameMissing = !nameInput?.value.trim();
+      const breedMissing = !breedInput?.value.trim();
+      if (nameError) nameError.style.display = nameMissing ? 'block' : 'none';
+      if (breedError) breedError.style.display = breedMissing ? 'block' : 'none';
+      if (!firstInvalidPetField && nameMissing) firstInvalidPetField = nameInput;
+      if (!firstInvalidPetField && breedMissing) firstInvalidPetField = breedInput;
+    }
+    if (firstInvalidPetField) {
+      firstInvalidPetField.focus();
+      firstInvalidPetField.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+
     btn.textContent = 'Sending...'; btn.disabled = true;
     try {
       const ownerName = document.getElementById('name')?.value || '';
