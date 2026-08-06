@@ -2858,6 +2858,14 @@ function renderServiceRequestReview(item) {
       <div class="form-field" id="rev-visits-field" style="display:none;"><label>Visits/Day</label><input type="number" min="1" id="rev-visits" value="${escapeHtml(item.visitsPerDay || 1)}" onchange="reviewRecalcService()"></div>
       <div class="form-field"><label>Start Date</label><input type="date" id="rev-start" value="${escapeHtml(toDateInputValue(item.startDate))}" onchange="reviewRecalcService()"></div>
       <div class="form-field" id="rev-end-field"><label>End Date</label><input type="date" id="rev-end" value="${escapeHtml(toDateInputValue(item.endDate))}" onchange="reviewRecalcService()"></div>
+      <div class="form-field" id="rev-timeslot-field" style="display:none;"><label>Time Slot</label>
+        <select id="rev-timeslot">
+          <option value="" ${!item.timeSlot ? 'selected' : ''}>Not set</option>
+          <option value="morning" ${item.timeSlot === 'morning' ? 'selected' : ''}>Morning (8–11am)</option>
+          <option value="early-afternoon" ${item.timeSlot === 'early-afternoon' ? 'selected' : ''}>Early Afternoon (11am–2pm)</option>
+          <option value="late-afternoon" ${item.timeSlot === 'late-afternoon' ? 'selected' : ''}>Late Afternoon (2–5pm)</option>
+        </select>
+      </div>
     </div>
     <div style="display:flex;gap:20px;margin-top:14px;">
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;">
@@ -2885,6 +2893,7 @@ window.reviewRecalcService = () => {
   const isWalk = info.unit === 'walk';
   const isDropIn = service === 'drop-in-visit';
   document.getElementById('rev-end-field').style.display = isWalk ? 'none' : 'flex';
+  document.getElementById('rev-timeslot-field').style.display = isWalk ? 'flex' : 'none';
   document.getElementById('rev-visits-field').style.display = isDropIn ? 'flex' : 'none';
 
   const visitsPerDay = isDropIn ? (parseInt(document.getElementById('rev-visits')?.value, 10) || 1) : 1;
@@ -3075,6 +3084,10 @@ window.confirmServiceRequest = async (submissionId, item) => {
     const visitsPerDay = parseInt(document.getElementById('rev-visits')?.value, 10) || 1;
     const extraPet = document.getElementById('rev-extra-pet')?.checked || false;
     const medication = document.getElementById('rev-medication')?.checked || false;
+    // Only meaningful for standard-walk/extended-walk (rev-timeslot-field is
+    // hidden otherwise) — '' from the "Not set" option normalizes to null,
+    // same null-tolerant shape as startDate/endDate above.
+    const timeSlot = document.getElementById('rev-timeslot')?.value || null;
     const dogs = item.dogs || [];
     const { total: amountInDollars, unitCount } = calculateServiceTotal({
       serviceKey: service, startDate: startDateStr, endDate: endDateStr, visitsPerDay, extraPet, medication,
@@ -3166,6 +3179,7 @@ window.confirmServiceRequest = async (submissionId, item) => {
       service,
       startDate,
       endDate,
+      timeSlot,
       extraPet,
       medication,
       estimatedTotal: amountInDollars,
@@ -3205,10 +3219,11 @@ window.confirmServiceRequest = async (submissionId, item) => {
         firstName, dogNames: petNames,
         walkTypeLabel: serviceInfo?.name || 'Walk',
         durationMinutes: serviceKey === 'extended-walk' ? 45 : 30,
-        // No time-of-day is ever captured for a one-time walk booking
-        // (service-request.html has no time-slot field, only dates) — the
-        // template degrades to a date-only line when slot is null.
-        walks: [{ dateStr: resolvedStartStr, slot: null }],
+        // timeSlot is admin-reviewed above (rev-timeslot), same as
+        // service/dates — a submission with none set (old data, or admin
+        // left it blank) sends null, and the template degrades to a
+        // date-only line exactly as it already did before this field existed.
+        walks: [{ dateStr: resolvedStartStr, slot: timeSlot }],
       } : {
         firstName, petNames,
         serviceLabel: serviceInfo?.name || service,

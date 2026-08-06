@@ -355,6 +355,14 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           <label for="end-date">End Date</label>
           <input id="end-date" name="end-date" type="date">
         </div>
+        <div class="field" id="time-slot-field">
+          <label for="time-slot">Time Slot</label>
+          <select id="time-slot" name="time-slot">
+            <option value="morning">Morning (8-11am)</option>
+            <option value="early-afternoon">Early Afternoon (11am-2pm)</option>
+            <option value="late-afternoon">Late Afternoon (2-5pm)</option>
+          </select>
+        </div>
         <div class="field full"><span class="date-error" id="dateError"></span></div>
         <div class="field" id="visits-field">
           <label for="visits">Visits Per Day</label>
@@ -653,6 +661,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     const isWalk      = service === 'standard-walk' || service === 'extended-walk';
     const isPetSitting = service === 'drop-in-visit' || service === 'overnight-stay';
     document.getElementById('end-date-field').style.display  = isWalk ? 'none' : 'flex';
+    document.getElementById('time-slot-field').style.display = isWalk ? 'flex' : 'none';
     document.getElementById('visits-field').style.display    = service === 'drop-in-visit' ? 'flex' : 'none';
     document.getElementById('addons-field').style.display    = isPetSitting ? 'flex' : 'none';
     // Clear any stale date error (e.g. an end-date message when switching to a walk)
@@ -797,11 +806,13 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         }
       }
 
+      const isWalk = serviceSelect.value === 'standard-walk' || serviceSelect.value === 'extended-walk';
       const data = {
         type: 'service_request',
         service: serviceSelect.value,
         startDate: localDateToTimestamp(startInput.value),
         endDate: localDateToTimestamp(endInput.value),
+        timeSlot: isWalk ? (document.getElementById('time-slot')?.value || null) : null,
         visitsPerDay: document.getElementById('visits')?.value || '',
         extraPet: document.getElementById('addon-extra-pet')?.checked || false,
         medication: document.getElementById('addon-medication')?.checked || false,
