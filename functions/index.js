@@ -528,102 +528,163 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
   }
 
   const stripe = stripeClient(STRIPE_SECRET_KEY.value());
-  const subDoc = await db.collection('submissions').doc(submissionId).get();
-  const sub = subDoc.data();
 
-  if (!sub || !sub.stripeCustomerId) {
-    throw new HttpsError('failed-precondition', 'No saved card found for this submission.');
+  // Everything below this point either succeeds with a real subscription or
+  // throws — no more early "not an error" returns past this line. On any
+  // throw, needsReview is set on the billing subdoc before rethrowing:
+  // saveMember still creates the member on a failure here (see its own
+  // subscriptionSkipped handling), so without this the member is left
+  // active and unbilled with nothing durable pointing that out beyond a
+  // one-time modal warning. See dismissBillingReview for how this clears.
+  try {
+    const subDoc = await db.collection('submissions').doc(submissionId).get();
+    const sub = subDoc.data();
+
+    if (!sub || !sub.stripeCustomerId) {
+      throw new HttpsError('failed-precondition', 'No saved card found for this submission.');
+    }
+
+    const paymentMethods = await stripe.paymentMethods.list({ customer: sub.stripeCustomerId, type: 'card' });
+    if (!paymentMethods.data.length) {
+      throw new HttpsError('failed-precondition', 'Customer has no saved payment method.');
+    }
+
+    // Set as the default payment method for invoices on this customer, and tag
+    // the customer with the Firestore memberId — stripeWebhook's Stripe-side
+    // fallback lookup (see findMemberIdByStripeCustomerId) reads this back when
+    // the Firestore-side lookup (billing.stripeCustomerId) can't resolve it.
+    await stripe.customers.update(sub.stripeCustomerId, {
+      metadata: { memberId },
+      invoice_settings: { default_payment_method: paymentMethods.data[0].id },
+    });
+
+    // Target billing month: the 1st of next calendar month — used below both
+    // for the walk-day quantity (that first period this subscription is
+    // actually billed for) and as the date billing_cycle_anchor lands on.
+    const now = new Date();
+    const nextFirst = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+
+    // 6:00 PM ET on the 1st, not midnight — gives syncMonthlyWalkQuantities
+    // (which runs at 12:05 AM ET that same day) an ~18-hour buffer to push the
+    // correct quantity before Stripe actually generates this invoice. Deliberately
+    // kept under the UTC day boundary (18:00 ET is 22:00-23:00 UTC depending on
+    // DST) so Stripe's dashboard — which displays in UTC — also shows the 1st,
+    // not the 2nd, even though the underlying instant is what actually matters.
+    const billingCycleAnchor = Math.floor(
+      easternTimeToUtc(nextFirst.getUTCFullYear(), nextFirst.getUTCMonth(), 1, 18, 0).getTime() / 1000
+    );
+
+    // If the member's requested start date (submission.startDate, a Firestore
+    // Timestamp — written as local noon so its UTC calendar-date components
+    // never roll over a day boundary) falls inside the anchor month, that
+    // first invoice is a partial month — only count walk days from that date
+    // through month end. Any other case (no start date given, or it falls
+    // outside the anchor month entirely) bills the full month, same as every
+    // month after.
+    const fromDay = firstBilledMonthFromDay(sub.startDate, nextFirst.getUTCFullYear(), nextFirst.getUTCMonth());
+    const quantity = countWalkDaysInMonth(member.defaultWalkDays, nextFirst.getUTCFullYear(), nextFirst.getUTCMonth(), fromDay);
+
+    if (!quantity) {
+      throw new HttpsError('failed-precondition', 'This member has no scheduled walk days next month — set defaultWalkDays before starting billing.');
+    }
+
+    const subscription = await stripe.subscriptions.create({
+      customer: sub.stripeCustomerId,
+      items: [{ price: priceId, quantity }],
+      billing_cycle_anchor: billingCycleAnchor,
+      proration_behavior: 'none',
+    });
+
+    // membershipStartDate is copied onto the member so the scheduled jobs on
+    // the 1st can honor a mid-month start. It lived only on the submission
+    // before, which those jobs never read — which is exactly why they used to
+    // revert the proration set here.
+    const startDate = toDateOrNull(sub.startDate);
+    // Atomic split write. The 4 billing fields go to the protected subdoc; the
+    // member doc keeps membershipStartDate (scheduled jobs read it) and gains
+    // hasActiveSubscription — a NON-sensitive boolean the crons filter on in
+    // place of the now-relocated stripeSubscriptionItemId.
+    const batch = db.batch();
+    batch.set(db.collection('members').doc(memberId), {
+      hasActiveSubscription: true,
+      ...(startDate ? { membershipStartDate: Timestamp.fromDate(startDate) } : {}),
+    }, { merge: true });
+    batch.set(billingRef(memberId), {
+      stripeCustomerId: sub.stripeCustomerId,
+      stripeSubscriptionId: subscription.id,
+      stripeSubscriptionItemId: subscription.items.data[0].id,
+      billingStatus: 'active',
+      // Referral credit intake: carried over from the originating submission
+      // so the first-payment credit logic (chargeCurrentMonthWalks /
+      // stripeWebhook's invoice.paid handler) can find it without ever having
+      // to read the submissions collection itself. referralSubmissionId is
+      // this same submissionId — stashed here because credit issuance needs
+      // it to address the matching referralCodes/{code}/redemptions/{id} doc,
+      // and by then it only has memberId to start from, not this submission.
+      referredByCode: sub.referredByCode || null,
+      referralSubmissionId: submissionId,
+    }, { merge: true });
+    await batch.commit();
+
+    // TODO(cancel): a future cancellation flow MUST do all three together:
+    //   (a) set hasActiveSubscription: false on the member doc
+    //   (b) delete or null the billing subdoc (members/{id}/private/billing)
+    //   (c) stripe.subscriptions.cancel(...)
+    // Missing (a) or (b) will leave crons trying to bill a cancelled member.
+
+    return { success: true, subscriptionId: subscription.id, quantity };
+  } catch (e) {
+    // Best-effort — a failure to write this flag must never hide the real
+    // error above from the admin who needs to see and act on it.
+    await billingRef(memberId).set({
+      needsReview: true, needsReviewReason: 'subscription_creation_failed',
+    }, { merge: true }).catch(writeErr => {
+      console.error(`createMembershipSubscription: failed to write needsReview for ${memberId}:`, writeErr.message);
+    });
+    throw e;
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 3a-review. Clears billing.needsReview/needsReviewReason on a member's
+// billing subdoc. Generic across every reason that flag gets set for
+// (subscription_creation_failed here, plus runFirstPaymentReferralCredit's
+// possible_self_referral/partner_code_already_redeemed and the walk
+// extension credit failure) — same acknowledgment posture as the
+// tier_change "Mark Applied" and walker_incident "Mark Done" actions in
+// admin/dashboard.html: admin has resolved it themselves (in Stripe, in
+// Firestore, wherever the actual fix lives — there's no in-app retry for
+// any of these yet), and is manually clearing the flag, not the app
+// verifying the underlying problem is actually fixed.
+// ─────────────────────────────────────────────────────────────────────────
+exports.dismissBillingReview = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+
+  const { memberId } = request.data || {};
+  if (!memberId) {
+    throw new HttpsError('invalid-argument', 'memberId is required.');
   }
 
-  const paymentMethods = await stripe.paymentMethods.list({ customer: sub.stripeCustomerId, type: 'card' });
-  if (!paymentMethods.data.length) {
-    throw new HttpsError('failed-precondition', 'Customer has no saved payment method.');
+  // Without this, set({merge:true}) on an unknown memberId would silently
+  // create a fresh billing subdoc at a path with no member behind it,
+  // rather than failing — same not-found check createMembershipSubscription
+  // does just above.
+  const memberDoc = await db.collection('members').doc(memberId).get();
+  if (!memberDoc.data()) {
+    throw new HttpsError('not-found', 'Member record not found.');
   }
 
-  // Set as the default payment method for invoices on this customer, and tag
-  // the customer with the Firestore memberId — stripeWebhook's Stripe-side
-  // fallback lookup (see findMemberIdByStripeCustomerId) reads this back when
-  // the Firestore-side lookup (billing.stripeCustomerId) can't resolve it.
-  await stripe.customers.update(sub.stripeCustomerId, {
-    metadata: { memberId },
-    invoice_settings: { default_payment_method: paymentMethods.data[0].id },
-  });
-
-  // Target billing month: the 1st of next calendar month — used below both
-  // for the walk-day quantity (that first period this subscription is
-  // actually billed for) and as the date billing_cycle_anchor lands on.
-  const now = new Date();
-  const nextFirst = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-
-  // 6:00 PM ET on the 1st, not midnight — gives syncMonthlyWalkQuantities
-  // (which runs at 12:05 AM ET that same day) an ~18-hour buffer to push the
-  // correct quantity before Stripe actually generates this invoice. Deliberately
-  // kept under the UTC day boundary (18:00 ET is 22:00-23:00 UTC depending on
-  // DST) so Stripe's dashboard — which displays in UTC — also shows the 1st,
-  // not the 2nd, even though the underlying instant is what actually matters.
-  const billingCycleAnchor = Math.floor(
-    easternTimeToUtc(nextFirst.getUTCFullYear(), nextFirst.getUTCMonth(), 1, 18, 0).getTime() / 1000
-  );
-
-  // If the member's requested start date (submission.startDate, a Firestore
-  // Timestamp — written as local noon so its UTC calendar-date components
-  // never roll over a day boundary) falls inside the anchor month, that
-  // first invoice is a partial month — only count walk days from that date
-  // through month end. Any other case (no start date given, or it falls
-  // outside the anchor month entirely) bills the full month, same as every
-  // month after.
-  const fromDay = firstBilledMonthFromDay(sub.startDate, nextFirst.getUTCFullYear(), nextFirst.getUTCMonth());
-  const quantity = countWalkDaysInMonth(member.defaultWalkDays, nextFirst.getUTCFullYear(), nextFirst.getUTCMonth(), fromDay);
-
-  if (!quantity) {
-    throw new HttpsError('failed-precondition', 'This member has no scheduled walk days next month — set defaultWalkDays before starting billing.');
-  }
-
-  const subscription = await stripe.subscriptions.create({
-    customer: sub.stripeCustomerId,
-    items: [{ price: priceId, quantity }],
-    billing_cycle_anchor: billingCycleAnchor,
-    proration_behavior: 'none',
-  });
-
-  // membershipStartDate is copied onto the member so the scheduled jobs on
-  // the 1st can honor a mid-month start. It lived only on the submission
-  // before, which those jobs never read — which is exactly why they used to
-  // revert the proration set here.
-  const startDate = toDateOrNull(sub.startDate);
-  // Atomic split write. The 4 billing fields go to the protected subdoc; the
-  // member doc keeps membershipStartDate (scheduled jobs read it) and gains
-  // hasActiveSubscription — a NON-sensitive boolean the crons filter on in
-  // place of the now-relocated stripeSubscriptionItemId.
-  const batch = db.batch();
-  batch.set(db.collection('members').doc(memberId), {
-    hasActiveSubscription: true,
-    ...(startDate ? { membershipStartDate: Timestamp.fromDate(startDate) } : {}),
+  // dismissedBy/dismissedAt: this flag means "a human manually verified the
+  // underlying issue was fixed elsewhere" — worth knowing who and when,
+  // same accountability reasoning as meetGreetCompletedAt on membership
+  // requests. Last-write-wins across repeat dismissals, same as every other
+  // single-attempt field in this file (e.g. lastChargeAttempt) — acceptable
+  // since only the most recent dismissal is ever actionable.
+  await billingRef(memberId).set({
+    needsReview: false, needsReviewReason: null,
+    dismissedBy: request.auth.uid, dismissedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
-  batch.set(billingRef(memberId), {
-    stripeCustomerId: sub.stripeCustomerId,
-    stripeSubscriptionId: subscription.id,
-    stripeSubscriptionItemId: subscription.items.data[0].id,
-    billingStatus: 'active',
-    // Referral credit intake: carried over from the originating submission
-    // so the first-payment credit logic (chargeCurrentMonthWalks /
-    // stripeWebhook's invoice.paid handler) can find it without ever having
-    // to read the submissions collection itself. referralSubmissionId is
-    // this same submissionId — stashed here because credit issuance needs
-    // it to address the matching referralCodes/{code}/redemptions/{id} doc,
-    // and by then it only has memberId to start from, not this submission.
-    referredByCode: sub.referredByCode || null,
-    referralSubmissionId: submissionId,
-  }, { merge: true });
-  await batch.commit();
-
-  // TODO(cancel): a future cancellation flow MUST do all three together:
-  //   (a) set hasActiveSubscription: false on the member doc
-  //   (b) delete or null the billing subdoc (members/{id}/private/billing)
-  //   (c) stripe.subscriptions.cancel(...)
-  // Missing (a) or (b) will leave crons trying to bill a cancelled member.
-
-  return { success: true, subscriptionId: subscription.id, quantity };
+  return { success: true };
 });
 
 // ─────────────────────────────────────────────────────────────────────────

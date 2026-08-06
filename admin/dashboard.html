@@ -1263,7 +1263,12 @@ function subscribeMembers() {
     const entries = await Promise.all(allMembers.map(async m => {
       const billingSnap = await getDoc(doc(db, 'members', m.id, 'private', 'billing'));
       const data = billingSnap.exists() ? billingSnap.data() : {};
-      return [m.id, { billingStatus: data.billingStatus, needsReview: !!data.needsReview }];
+      // needsReviewReason was missing here — renderBillingBadge reads it to
+      // pick the reason-specific NEEDS_REVIEW_LABELS entry, so without it
+      // every reason silently fell back to the generic "Needs review" text
+      // on this table (the member detail modal fetches billing directly and
+      // was unaffected).
+      return [m.id, { billingStatus: data.billingStatus, needsReview: !!data.needsReview, needsReviewReason: data.needsReviewReason || null }];
     }));
     memberBilling = Object.fromEntries(entries);
     renderMembersTable();
@@ -1779,13 +1784,13 @@ function renderAvailabilityGrid() {
 // that's a different, non-alarming state from "unknown"/"in trouble".
 // billing.needsReview appends a second badge regardless of billingStatus —
 // set by runFirstPaymentReferralCredit (functions/index.js) when referral
-// credit issuance was skipped and needs a human look. billing.needsReviewReason
-// distinguishes why: 'possible_self_referral' (member-referral code, same
-// phone as the referrer) vs. 'partner_code_already_redeemed' (apartment/agent
-// code — meant for one lead — redeemed a second time by a different member).
-// No credit was auto-issued in either case; this is the only surfacing of
-// that until it's manually resolved (there's no review workflow built yet,
-// deliberately).
+// credit issuance was skipped and needs a human look, by createMembershipSubscription
+// when it fails after the member was already created, or by a walk-extension
+// credit failure. billing.needsReviewReason distinguishes why: see each key
+// below. Cleared by dismissBillingReview once admin has resolved it — that's
+// a manual "I fixed this" acknowledgment (in Stripe, in Firestore, wherever
+// the actual fix lives), not the app re-verifying anything, since none of
+// these have an in-app retry yet.
 const NEEDS_REVIEW_LABELS = {
   possible_self_referral: {
     label: 'Possible self-referral',
@@ -1798,6 +1803,10 @@ const NEEDS_REVIEW_LABELS = {
   walk_extension_credit_failed: {
     label: 'Extension credit failed',
     title: 'A walk extension credit (owed after a schedule change dropped a paid extension) failed to issue — see the Walk Extension Update in Requests for the specific date and error. Issue the credit manually in Stripe.',
+  },
+  subscription_creation_failed: {
+    label: 'Subscription not started',
+    title: "Subscription wasn't created, this member is unbilled — no recurring charge, and no walks were auto-generated for them either. Start the subscription manually in Stripe (and set hasActiveSubscription) once the underlying issue (missing card, no walk days set, etc.) is fixed.",
   },
 };
 function renderBillingBadge(billing) {
@@ -3931,14 +3940,18 @@ window.saveMember = async () => {
       // The server resolves this member's tier to a Stripe price. A tier with
       // no subscription price (Travel) comes back skipped:true rather than as
       // an error, and gets no walks generated — same outcome as before, minus
-      // the client-side price table. A billing *failure* still generates walks:
-      // the two calls stay independent.
+      // the client-side price table. A billing *failure* must ALSO skip walk
+      // generation below (subscriptionSkipped=true on the catch path too) —
+      // otherwise a member with no subscription still gets a full month of
+      // real walks generated and an attempted current-month charge, with
+      // nothing about either indicating they're unbilled.
       let subscriptionSkipped = false;
       try {
         const createMembershipSubscription = httpsCallable(fns, 'createMembershipSubscription');
         const res = await createMembershipSubscription({ submissionId: window._addMemberSubmissionId, memberId: uid });
         subscriptionSkipped = !!(res && res.data && res.data.skipped);
       } catch (e) {
+        subscriptionSkipped = true;
         warnings.push(`Membership billing wasn't started: ${e.message}`);
       }
 
@@ -4100,15 +4113,48 @@ window.openMemberDetail = async (id) => {
 
   const dogsHTML = renderMemberDogCards(getMemberDogs(member));
 
+  // Manual "I fixed this" clear for billing.needsReview — see
+  // dismissBillingReview (functions/index.js) and NEEDS_REVIEW_LABELS above.
+  // Only shown when the flag is actually set; nothing to dismiss otherwise.
+  const reviewInfo = NEEDS_REVIEW_LABELS[billing.needsReviewReason] || { title: 'Referral credit issuance was skipped for this member and needs a manual look.' };
+  const reviewDismissHTML = billing.needsReview ? `
+    <div style="font-size:12px;color:#b45309;background:#fffbeb;border-radius:6px;padding:8px 12px;margin-top:4px;margin-bottom:12px;">
+      ${escapeHtml(reviewInfo.title)}
+      <button class="btn-secondary" style="display:block;margin-top:8px;padding:4px 12px;font-size:12px;" onclick="dismissMemberBillingReview('${member.id}')">Dismiss review flag</button>
+    </div>` : '';
+
   document.getElementById('memberDetailModalTitle').textContent = member.name || 'Member Details';
   document.getElementById('memberDetailModalContent').innerHTML = `
     <div class="form-grid">${fieldHTML}</div>
+    ${reviewDismissHTML}
     <button class="btn-secondary" style="margin-top:4px;" onclick="openMemberPortalPreview('${member.id}')">Preview Member Portal</button>
     <hr class="modal-divider">
     <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Dogs</div>
     ${dogsHTML}
   `;
   document.getElementById('memberDetailModal').classList.add('open');
+};
+
+// Manually clears billing.needsReview once admin has resolved the
+// underlying issue themselves (in Stripe, in Firestore, wherever the fix
+// actually lives) — there's no in-app retry for any needsReview reason yet,
+// so this is an acknowledgment, not a re-verification. Re-opens the member
+// detail modal on success so the badge disappears immediately, and updates
+// memberBilling so the members-table badge clears without waiting for the
+// next onSnapshot tick.
+window.dismissMemberBillingReview = async (memberId) => {
+  if (!confirm('Dismiss this review flag? Only do this once the underlying issue has actually been fixed.')) return;
+  try {
+    const dismissBillingReview = httpsCallable(fns, 'dismissBillingReview');
+    await dismissBillingReview({ memberId });
+    if (memberBilling[memberId]) {
+      memberBilling[memberId] = { ...memberBilling[memberId], needsReview: false, needsReviewReason: null };
+      renderMembersTable();
+    }
+    openMemberDetail(memberId);
+  } catch (e) {
+    alert(`Couldn't dismiss the review flag: ${e.message}`);
+  }
 };
 
 // Opens a read-only preview of exactly what this member sees in their own
