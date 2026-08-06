@@ -846,7 +846,7 @@ import { getAuth, onAuthStateChanged, signOut as fbSignOut } from 'https://www.g
 import {
   getFirestore, collection, query, orderBy, onSnapshot,
   doc, getDoc, getDocs, addDoc, updateDoc, setDoc, where,
-  serverTimestamp, Timestamp, writeBatch
+  serverTimestamp, Timestamp, writeBatch, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { getStorage, ref as storageRef, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
@@ -3074,6 +3074,12 @@ window.confirmServiceRequest = async (submissionId, item) => {
   btn.textContent = 'Confirming…'; btn.disabled = true;
   try {
     const service = document.getElementById('rev-service')?.value || item.service;
+    // Hoisted so both the walk-doc-creation block below and the
+    // booking-confirmed email further down share one resolution — was
+    // previously only computed inside the email's try block.
+    const serviceKey = resolveServiceKey(service);
+    const serviceInfo = SERVICE_PRICES[serviceKey];
+    const isWalk = serviceInfo?.unit === 'walk';
     // Keep the raw "YYYY-MM-DD" strings for the pricing calc (getDaysBetween
     // expects a Date-parseable value), and separately convert to Timestamp
     // — same split confirmOvernight() already uses — before writing back to
@@ -3151,6 +3157,14 @@ window.confirmServiceRequest = async (submissionId, item) => {
           accountWarning = acctErr.message.includes('EMAIL_EXISTS')
             ? 'An account with this email already exists, so no new portal account was created. Link it manually if the customer needs portal access.'
             : `Portal account wasn't created (${acctErr.message}). The service was still confirmed and charged.`;
+          // memberId stays '' below — the walk-doc block further down is
+          // gated on memberId (dogs/pet profile only ever live on a real
+          // member doc, never on the submission or a walk doc), so this is
+          // the one case a walk booking gets confirmed and charged with no
+          // walk doc at all. Same underlying condition as accountWarning
+          // itself, so it's folded into that one message rather than a
+          // second, easy-to-miss warning.
+          if (isWalk) accountWarning += ' No walk was scheduled either — use Add Walk once the account issue is resolved.';
         }
       }
     }
@@ -3186,6 +3200,81 @@ window.confirmServiceRequest = async (submissionId, item) => {
       read: true,
     });
 
+    // Walk doc — a one-time standard-walk/extended-walk booking previously
+    // had NO walks/{id} doc at all: confirming and charging it here never
+    // wrote to the walks collection, so a walker's dashboard and admin's
+    // own calendar had nothing to show for a booking the customer was just
+    // told (and charged) was booked. Placed here — after the submission is
+    // marked confirmed, before the charge below — matching this file's own
+    // principle (see the comment on chargeAndTrackPayment two blocks down):
+    // confirming the underlying booking happens before charging, so a
+    // Stripe hiccup never leaves a charge-less walk doc in limbo, and a
+    // walk-doc failure here never blocks a chargeable booking from being
+    // charged.
+    //
+    // Gated on memberId, not just isWalk: a dog's name/breed/notes live
+    // only on the member doc, keyed by memberId — never on the submission
+    // or a walk doc — so the one case memberId is still '' here (the
+    // account-creation failure above) correctly gets no walk doc rather
+    // than one no walker view could ever resolve a pet from. That case's
+    // warning is already folded into accountWarning above.
+    //
+    // Same field shape as generateWalksForMember (functions/index.js) and
+    // the manual Add Walk modal (submitAddWalk, this file) — walkerId stays
+    // null, same unassigned default submitAddWalk uses. Same deterministic
+    // ${memberId}_${dateStr} doc ID as generateWalksForMember too, written
+    // via a transaction that mirrors that function's .create() semantics
+    // (the modular web SDK has no bare .create()): fails instead of
+    // silently overwriting on a retry, which matters here because a walk
+    // doc that already exists may already have a walkerId an admin assigned
+    // by hand — a .set() retry would wipe that out. Because these two call
+    // sites now share one key space, `date` is built the exact same way
+    // generateWalksForMember builds it — Date.UTC at noon from the raw
+    // YYYY-MM-DD components, NOT startDate (computed above via
+    // `${startDateStr}T12:00:00`, which is noon in the admin's OWN browser
+    // timezone, not UTC) — so a walk for this member/date written from
+    // either call site is the same instant, not just the same calendar day.
+    let walkDocWarning = '';
+    if (isWalk && memberId) {
+      const walkId = `${memberId}_${startDateStr}`;
+      const [walkYear, walkMonth, walkDay] = startDateStr.split('-').map(Number);
+      const walkDate = Timestamp.fromDate(new Date(Date.UTC(walkYear, walkMonth - 1, walkDay, 12, 0, 0)));
+      try {
+        await runTransaction(db, async (tx) => {
+          const walkSnap = await tx.get(doc(db, 'walks', walkId));
+          if (walkSnap.exists()) {
+            const err = new Error('Walk already exists');
+            err.code = 'already-exists';
+            throw err;
+          }
+          tx.set(doc(db, 'walks', walkId), {
+            memberId,
+            date: walkDate,
+            timeSlot,
+            walkerId: null,
+            notes: '',
+            status: 'scheduled',
+            createdAt: serverTimestamp(),
+            // Extended-walk triple — same three fields updateWalkSchedule's
+            // move-resolution path already sets (functions/index.js).
+            // Without these, portal-dashboard.html and the walker calendar
+            // both default to "30-minute walk" — silently understating what
+            // this booking was actually charged and confirmed at.
+            ...(serviceKey === 'extended-walk' ? {
+              extended: true, extendedStatus: 'confirmed', duration: '45-minute walk',
+            } : {}),
+          });
+        });
+      } catch (e) {
+        // Hitting the existing doc IS success here, not a failure — it means
+        // this is a retry of an already-created walk (re-click, or a retry
+        // after this function threw somewhere later), not a duplicate.
+        if (e.code !== 'already-exists') {
+          walkDocWarning = `The walk wasn't added to the schedule (${e.message}). Use Add Walk to schedule it manually.`;
+        }
+      }
+    }
+
     // Charge the saved card for this one-time service. A card is only on
     // file if the requester went through createSetupIntent at signup —
     // chargeAndTrackPayment treats a non-positive amount as "nothing to
@@ -3210,9 +3299,6 @@ window.confirmServiceRequest = async (submissionId, item) => {
       const petNames = (dogs.length ? dogs : (memberRecord?.dogs || [])).map(d => d?.name).filter(Boolean);
       const resolvedStartStr = startDateStr || toDateInputValue(startDate);
       const resolvedEndStr = endDateStr || toDateInputValue(endDate);
-      const serviceKey = resolveServiceKey(service);
-      const serviceInfo = SERVICE_PRICES[serviceKey];
-      const isWalk = serviceInfo?.unit === 'walk';
 
       const template = isWalk ? 'walk-confirmed' : 'portal-service-confirmed';
       const data = isWalk ? {
@@ -3252,7 +3338,7 @@ window.confirmServiceRequest = async (submissionId, item) => {
     // Surface any non-fatal warnings (account not created, billing not
     // linked, email not sent) after the success toast — the service itself
     // is confirmed and charged.
-    const warns = [accountWarning, billingLinkWarning, emailWarning].filter(Boolean);
+    const warns = [accountWarning, billingLinkWarning, walkDocWarning, emailWarning].filter(Boolean);
     if (warns.length) alert(warns.join('\n\n'));
   } catch (e) {
     btn.textContent = 'Confirm & Charge'; btn.disabled = false;
