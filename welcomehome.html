@@ -110,6 +110,7 @@
 </style>
 <script src="/js/meta-pixel.js" defer></script>
 <script src="/js/attribution.js" defer></script>
+<script src="/js/ga4.js" defer></script>
 </head>
 <body>
 <noscript><img height="1" width="1" style="display:none"
@@ -327,6 +328,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       }
 
       const result = await window._generateReferralCode(payload);
+      window.pclcTrack('PartnerReferralSubmitted');
       showConfirmation(payload.submittedName, result.data.code);
     } catch (err) {
       console.error(err);
