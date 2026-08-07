@@ -341,6 +341,7 @@
 </style>
 <script src="/js/meta-pixel.js" defer></script>
 <script src="/js/attribution.js" defer></script>
+<script src="/js/ga4.js" defer></script>
 </head>
 <body>
 <noscript><img height="1" width="1" style="display:none"
@@ -353,7 +354,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   <ul class="nav-links" id="navLinks">
     <li><a href="/faq">FAQ</a></li>
     <li><a href="/portal-login">Login</a></li>
-    <li><a class="btn-nav" href="/membership-request">Join The Leash Club</a></li>
+    <li><a class="btn-nav" href="/membership-request" data-cta="nav">Join The Leash Club</a></li>
   </ul>
   <div class="hamburger" id="hamburger" onclick="toggleNav()" style="display:none;">
     <span></span><span></span><span></span>
@@ -368,7 +369,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       <h1 class="hero-headline">Your dog's <br>routine, <br>handled.</h1>
       <p class="hero-sub">Now reserving for our September 1 launch.</p>
       <div class="hero-ctas">
-        <a class="btn-primary" href="/membership-request">Join the Leash Club</a>
+        <a class="btn-primary" href="/membership-request" data-cta="hero">Join the Leash Club</a>
       </div>
     </div>
     <div class="hero-visual" style="border-radius:8px;overflow:hidden;height:360px;">
@@ -467,7 +468,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           <li>Adjust dates anytime</li>
         </ul>
         <div class="tier-price"><div class="tier-price-amount">$28</div><div class="tier-price-walk">/walk</div></div>
-        <a class="btn-tier btn-tier-outline" href="/membership-request?plan=essential">Get started</a>
+        <a class="btn-tier btn-tier-outline" href="/membership-request?plan=essential" data-cta="tier_essential">Get started</a>
       </div>
       <div class="tier-card featured">
         <div class="tier-badge">Most Popular</div>
@@ -481,7 +482,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           <li>Welcome gift</li>
         </ul>
         <div class="tier-price"><div class="tier-price-amount">$26</div><div class="tier-price-walk">/walk</div></div>
-        <a class="btn-tier btn-tier-solid" href="/membership-request?plan=standard">Get started</a>
+        <a class="btn-tier btn-tier-solid" href="/membership-request?plan=standard" data-cta="tier_standard">Get started</a>
       </div>
       <div class="tier-card">
         <div class="tier-discount-banner">20% off</div>
@@ -496,7 +497,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           <li>Priority scheduling</li>
         </ul>
         <div class="tier-price"><div class="tier-price-amount">$24</div><div class="tier-price-walk">/walk</div></div>
-        <a class="btn-tier btn-tier-outline" href="/membership-request?plan=daily">Get started</a>
+        <a class="btn-tier btn-tier-outline" href="/membership-request?plan=daily" data-cta="tier_daily">Get started</a>
       </div>
     </div>
 
@@ -606,7 +607,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
       <!-- Result: in service -->
       <div id="result-in" class="search-result-in" style="margin-bottom:16px;display:none;">
-        ✓ Great news, we serve your neighborhood. <a href="/membership-request" style="color:var(--navy);font-weight:500;margin-left:4px;">Join the Leash Club</a>
+        ✓ Great news, we serve your neighborhood. <a href="/membership-request" data-cta="zone_check_success" style="color:var(--navy);font-weight:500;margin-left:4px;">Join the Leash Club</a>
       </div>
 
       <!-- Result: out of service -->
@@ -633,7 +634,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     <p class="section-eyebrow">Ready to Join?</p>
     <h2 class="section-headline">Your dog deserves a team they know.</h2>
     <div style="display:flex;justify-content:center;margin-bottom:20px;">
-      <a class="btn-primary" href="/membership-request" style="font-size:15px;padding:16px 36px;">Join the Leash Club</a>
+      <a class="btn-primary" href="/membership-request" data-cta="bottom_cta" style="font-size:15px;padding:16px 36px;">Join the Leash Club</a>
     </div>
     <p style="text-align:center;font-size:13px;color:rgba(255,255,255,0.5);">Have questions? <a href="/faq" style="color:rgba(255,255,255,0.8);text-decoration:underline;text-underline-offset:3px;">View our FAQ</a></p>
   </div>
