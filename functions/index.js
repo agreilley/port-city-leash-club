@@ -395,6 +395,8 @@ exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (reques
       success: true, alreadyCharged: true,
       paymentIntentId: sub.lastChargeId || null,
       creditApplied: sub.referralCreditApplied || 0,
+      referralDiscountApplied: sub.referralDiscountApplied || 0,
+      referralCreditCarriedForward: sub.referralCreditCarriedForward || 0,
     };
   }
 
@@ -408,15 +410,50 @@ exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (reques
   const memberId = sub.memberId || null;
   const amountInCentsRequested = Math.round(amountInDollars * 100);
   let creditAppliedCents = 0;
+  let billingData = null;
   if (memberId) {
     const billingSnap = await billingRef(memberId).get();
-    const pendingCredit = billingSnap.data()?.pendingReferralCredit || 0;
+    billingData = billingSnap.data() || {};
+    const pendingCredit = billingData.pendingReferralCredit || 0;
     if (pendingCredit > 0) {
       creditAppliedCents = Math.min(Math.round(pendingCredit * 100), amountInCentsRequested);
     }
   }
-  const chargeAmountInCents = amountInCentsRequested - creditAppliedCents;
+
+  // New-member referral discount — a separate mechanism from pendingReferralCredit
+  // above (that one only ever holds a balance from a PRIOR completed payment; a
+  // brand-new Travel-tier member has nothing pending yet). Decided fresh right
+  // here, a pure read that commits nothing (see resolveNewMemberReferralDiscount),
+  // so a retried/failed charge safely re-evaluates instead of trusting a stale
+  // decision. Gated on billingData.referralCreditChecked: once this member's
+  // first-payment outcome has ever been recorded, every later chargeSavedCard
+  // call (a returning Travel-tier client's next booking) must never re-discount
+  // them again. Capped at 50% of the ORIGINAL requested amount — never more than
+  // half off any one charge — and separately bounded by whatever's left after
+  // the pendingReferralCredit application above, so the two mechanisms can never
+  // combine to charge less than $0. Whatever either cap leaves unused carries
+  // forward — see finalizeNewMemberReferralDiscount — so the member still
+  // gets the full $50 promised externally, just not always all in one charge.
+  let referralDiscount = null;
+  let discountCents = 0;
+  let carryForwardCents = 0;
+  if (memberId && billingData && !billingData.referralCreditChecked) {
+    const memberSnap = await db.collection('members').doc(memberId).get();
+    const memberData = memberSnap.data();
+    if (memberData) {
+      referralDiscount = await resolveNewMemberReferralDiscount(memberId, billingData, memberData);
+      if (referralDiscount.decision === 'approved') {
+        const cappedAtHalf = Math.floor(amountInCentsRequested / 2);
+        const remainingAfterPendingCredit = Math.max(0, amountInCentsRequested - creditAppliedCents);
+        discountCents = Math.min(referralDiscount.discountCents, cappedAtHalf, remainingAfterPendingCredit);
+        carryForwardCents = referralDiscount.discountCents - discountCents;
+      }
+    }
+  }
+
+  const chargeAmountInCents = amountInCentsRequested - creditAppliedCents - discountCents;
   const creditApplied = creditAppliedCents / 100;
+  const referralDiscountApplied = discountCents / 100;
   const chargeAmountInDollars = chargeAmountInCents / 100;
 
   let paymentIntent = null;
@@ -474,6 +511,8 @@ exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (reques
       chargedAt: FieldValue.serverTimestamp(),
     },
     ...(creditApplied > 0 ? { referralCreditApplied: creditApplied } : {}),
+    ...(referralDiscountApplied > 0 ? { referralDiscountApplied } : {}),
+    ...(carryForwardCents > 0 ? { referralCreditCarriedForward: carryForwardCents / 100 } : {}),
   }, { merge: true });
 
   if (creditAppliedCents > 0 && memberId) {
@@ -482,18 +521,23 @@ exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (reques
     }, { merge: true });
   }
 
-  // First-payment referral credit check — see runFirstPaymentReferralCredit.
-  // This is Travel-tier's equivalent of stripeWebhook's invoice.paid branch:
-  // Travel-tier clients are charged via a one-off PaymentIntent, never a
-  // Stripe Invoice, so invoice.paid never fires for them at all. Runs after
-  // the charge above is already recorded and never throws (it catches and
-  // logs its own errors) — a referral-credit bug must never make a
-  // successfully charged booking look failed to the admin who confirmed it.
-  if (memberId) {
-    await runFirstPaymentReferralCredit(stripe, memberId);
+  // Post-charge commit for the discount decided above — see
+  // finalizeNewMemberReferralDiscount. This is Travel-tier's equivalent of
+  // stripeWebhook's invoice.paid branch: Travel-tier clients are charged via
+  // a one-off PaymentIntent, never a Stripe Invoice, so invoice.paid never
+  // fires for them at all. Only called when referralDiscount was actually
+  // computed above (i.e. this genuinely might be the member's first
+  // payment) — never throws, never re-decides eligibility, only records
+  // what was already applied to the charge that just succeeded.
+  if (referralDiscount) {
+    await finalizeNewMemberReferralDiscount(stripe, memberId, billingData.referralSubmissionId || null, referralDiscount, discountCents, carryForwardCents);
   }
 
-  return { success: true, paymentIntentId: paymentIntent ? paymentIntent.id : null, creditApplied };
+  return {
+    success: true, paymentIntentId: paymentIntent ? paymentIntent.id : null,
+    creditApplied, referralDiscountApplied,
+    referralCreditCarriedForward: carryForwardCents / 100,
+  };
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1320,6 +1364,31 @@ exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async
     throw new HttpsError('failed-precondition', `Price ${priceId} has no unit_amount — cannot charge for this month.`);
   }
 
+  // New-member referral discount, decided fresh right here rather than after
+  // the charge — see resolveNewMemberReferralDiscount. A pure read, nothing
+  // committed yet, so a retried/failed charge safely re-evaluates instead of
+  // trusting a stale decision. Gated on billingData.referralCreditChecked
+  // (already in hand from the dual-read above): once a member's first-payment
+  // outcome has ever been recorded — by this function or by
+  // runFirstPaymentReferralCredit on a LATER month's regular subscription
+  // invoice — every later chargeCurrentMonthWalks call must never re-discount
+  // them again. Flat $50 entitlement, capped at 50% of THIS charge so a
+  // small prorated first month is never more than half off (and never
+  // reaches $0 — Stripe won't allow a $0 PaymentIntent). Whatever the cap
+  // leaves unused carries forward — see finalizeNewMemberReferralDiscount —
+  // so the member still gets the full $50 promised externally, just not
+  // always all in this one charge.
+  const referralDiscount = billingData.referralCreditChecked
+    ? null
+    : await resolveNewMemberReferralDiscount(memberId, billingData, member);
+  const discountCents = (referralDiscount && referralDiscount.decision === 'approved')
+    ? Math.min(referralDiscount.discountCents, Math.floor(amountInCents / 2))
+    : 0;
+  const carryForwardCents = (referralDiscount && referralDiscount.decision === 'approved')
+    ? referralDiscount.discountCents - discountCents
+    : 0;
+  const chargeAmountInCents = amountInCents - discountCents;
+
   const monthName = new Date(Date.UTC(year, monthIndex, 1))
     .toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
   const description = `Port City Leash Club - ${member.tier} Membership (${monthName} ${days[0]}-${days[days.length - 1]}, ${days.length} walk${days.length === 1 ? '' : 's'})`;
@@ -1327,7 +1396,7 @@ exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async
   let paymentIntent;
   try {
     paymentIntent = await stripe.paymentIntents.create({
-      amount: amountInCents,
+      amount: chargeAmountInCents,
       currency: price.currency || 'usd',
       customer: billingData.stripeCustomerId,
       payment_method: paymentMethods.data[0].id,
@@ -1344,7 +1413,7 @@ exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async
   } catch (e) {
     await billing.set({
       currentMonthCharge: {
-        periodKey, walkCount: days.length, amount: amountInCents / 100,
+        periodKey, walkCount: days.length, amount: chargeAmountInCents / 100,
         status: 'failed', reason: e.message, failedAt: FieldValue.serverTimestamp(),
       },
     }, { merge: true }).catch(() => {});
@@ -1353,28 +1422,33 @@ exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async
 
   await billing.set({
     currentMonthCharge: {
-      periodKey, walkCount: days.length, amount: amountInCents / 100,
+      periodKey, walkCount: days.length, amount: chargeAmountInCents / 100,
       status: 'charged', paymentIntentId: paymentIntent.id,
       chargedAt: FieldValue.serverTimestamp(),
+      ...(discountCents > 0 ? { referralDiscountApplied: discountCents / 100 } : {}),
+      ...(carryForwardCents > 0 ? { referralCreditCarriedForward: carryForwardCents / 100 } : {}),
     },
   }, { merge: true });
 
-  // First-payment referral credit check — see runFirstPaymentReferralCredit.
-  // For a brand-new membership member this one-off charge (the prorated
-  // remainder of their signup month) is almost always their REAL first
-  // payment — their subscription's own first Stripe Invoice isn't until the
-  // 1st of next month (billing_cycle_anchor, set in createMembershipSubscription),
-  // which is why this call exists alongside stripeWebhook's invoice.paid
-  // branch rather than relying on that alone. Never throws, and runs after
-  // the charge above is already recorded — a referral-credit bug must never
-  // make a successfully charged month look failed to the admin who
-  // triggered it.
-  await runFirstPaymentReferralCredit(stripe, memberId);
+  // Post-charge commit for the discount decided above — see
+  // finalizeNewMemberReferralDiscount. For a brand-new membership member
+  // this one-off charge (the prorated remainder of their signup month) is
+  // almost always their REAL first payment — their subscription's own first
+  // Stripe Invoice isn't until the 1st of next month (billing_cycle_anchor,
+  // set in createMembershipSubscription). Only called when referralDiscount
+  // was actually computed above (i.e. this genuinely might be the member's
+  // first payment) — never throws, never re-decides eligibility, only
+  // records what was already applied to the charge that just succeeded.
+  if (referralDiscount) {
+    await finalizeNewMemberReferralDiscount(stripe, memberId, billingData.referralSubmissionId || null, referralDiscount, discountCents, carryForwardCents);
+  }
 
   return {
     success: true, periodKey, walkCount: days.length,
-    amount: amountInCents / 100, fromDay, dates: days,
+    amount: chargeAmountInCents / 100, fromDay, dates: days,
     paymentIntentId: paymentIntent.id,
+    ...(discountCents > 0 ? { referralDiscountApplied: discountCents / 100 } : {}),
+    ...(carryForwardCents > 0 ? { referralCreditCarriedForward: carryForwardCents / 100 } : {}),
   };
 });
 
@@ -1833,13 +1907,21 @@ exports.issueRefund = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) =
 //        is what flips hasActiveSubscription: false, which both monthly
 //        crons already gate walk generation on (see 3c/3d above).
 //      - invoice.paid: triggers runFirstPaymentReferralCredit — see that
-//        function. In practice this fires a membership member's SECOND real
-//        payment more often than their first (their subscription's first
-//        Invoice isn't until the 1st of the month after signup;
-//        chargeCurrentMonthWalks' one-off charge for the remainder of their
-//        signup month is what usually lands first) — runFirstPaymentReferralCredit's
-//        own per-member flag is what actually decides "first," not which
-//        event delivered it.
+//        function. Usually a membership member's SECOND real payment, not
+//        their first: their subscription's first Invoice isn't until the
+//        1st of the month after signup, and chargeCurrentMonthWalks' one-off
+//        charge for the remainder of their signup month (which now resolves
+//        and applies the new member's own referral discount pre-charge —
+//        see resolveNewMemberReferralDiscount) is what usually lands first
+//        and claims that member's referralCreditChecked flag. This handler
+//        is the fallback for the one case chargeCurrentMonthWalks can't
+//        cover: a member who signs up with zero remaining walk days this
+//        month skips that charge entirely, so THIS invoice really is their
+//        first payment — and since Stripe has already finalized and paid it
+//        by the time this fires, there's no pre-charge hook available, so
+//        that member's $50 still arrives as old-style forward credit rather
+//        than an upfront discount. referralCreditChecked (not which event
+//        delivered it) is what actually decides "first" either way.
 //    Everything else — payment_succeeded logging, disputes, a real
 //    cancellation flow, subscription.updated — is explicitly out of scope.
 //
@@ -1894,13 +1976,18 @@ async function issueStripeBalanceCredit(stripe, stripeCustomerId, amountCents, d
 }
 
 // ── Referral credit issuance ────────────────────────────────────────────
-// $50 issued to a single member, via whichever mechanism matches their OWN
-// tier — never the tier of whoever they were credited in relation to. A
-// membership-tier referrer still gets their $50 as a Stripe balance credit
-// even when the new member they referred is Travel-tier, and vice versa.
-// Throws on failure (never swallows) — the caller (runFirstPaymentReferralCredit)
-// is what decides how a failure here affects creditIssued/redemption status.
-async function issueReferralCredit(stripe, memberId, memberData) {
+// amountCents issued to a single member, via whichever mechanism matches
+// their OWN tier — never the tier of whoever they were credited in relation
+// to. A membership-tier referrer still gets their credit as a Stripe balance
+// credit even when the new member they referred is Travel-tier, and vice
+// versa. Defaults to the full $50 (5000 cents) — every existing caller
+// issues the whole flat amount; finalizeNewMemberReferralDiscount's
+// carry-forward step is the one caller that passes a partial amount.
+// Throws on failure (never swallows) — the caller (runFirstPaymentReferralCredit
+// for the invoice.paid fallback, finalizeNewMemberReferralDiscount for the
+// pre-charge path's referrer-credit and carry-forward issuance) is what
+// decides how a failure here affects creditIssued/redemption status.
+async function issueReferralCredit(stripe, memberId, memberData, amountCents = 5000) {
   const isMembershipTier = !!TIER_PRICE_IDS[memberData.tier];
   if (isMembershipTier) {
     const billingSnap = await billingRef(memberId).get();
@@ -1908,58 +1995,256 @@ async function issueReferralCredit(stripe, memberId, memberData) {
     if (!stripeCustomerId) {
       throw new Error(`Membership-tier member ${memberId} has no stripeCustomerId on file — cannot issue a Stripe balance credit.`);
     }
-    await issueStripeBalanceCredit(stripe, stripeCustomerId, 5000, 'Port City Leash Club referral credit ($50)');
+    await issueStripeBalanceCredit(stripe, stripeCustomerId, amountCents, `Port City Leash Club referral credit ($${(amountCents / 100).toFixed(2)})`);
   } else {
     // Travel-tier: no ongoing subscription for a Stripe balance credit to
     // apply against, so it accrues here instead and is applied as a
     // discount the next time chargeSavedCard charges this member (see
-    // there for the apply/decrement logic).
+    // there for the apply/decrement logic). pendingReferralCredit is stored
+    // in DOLLARS, not cents — same unit chargeSavedCard reads it back in.
     await billingRef(memberId).set({
-      pendingReferralCredit: FieldValue.increment(50),
+      pendingReferralCredit: FieldValue.increment(amountCents / 100),
     }, { merge: true });
   }
 }
 
+// Pure read: decides whether memberId's referral code entitles them to the
+// new-member $50 discount, WITHOUT committing anything (no writes anywhere).
+// Safe to call on every retry of a not-yet-charged attempt — the "this
+// member's first-payment outcome is now decided" state is only ever
+// committed afterward, by finalizeNewMemberReferralDiscount (the pre-charge
+// callers, chargeCurrentMonthWalks/chargeSavedCard) or inline below in
+// runFirstPaymentReferralCredit (stripeWebhook's invoice.paid, which has no
+// pre-charge hook to use — see that function's own comment). Both paths
+// share this exact lookup rather than each re-implementing it, so a
+// self-referral or duplicate-partner-code case is judged identically no
+// matter which path a given member's first payment happens to take.
+//
+// billingData/memberData are passed in rather than fetched here since every
+// caller already has them in hand from its own dual-read.
+async function resolveNewMemberReferralDiscount(memberId, billingData, memberData) {
+  const referredByCode = billingData.referredByCode || null;
+  const NONE = { referredByCode, decision: 'none', flagReason: null, discountCents: 0, isMemberReferral: false, referrerId: null };
+  if (!referredByCode) return NONE;
+
+  const codeSnap = await db.collection('referralCodes').doc(referredByCode).get();
+  if (!codeSnap.exists || codeSnap.data().status !== 'active') {
+    console.warn(`resolveNewMemberReferralDiscount: referredByCode ${referredByCode} not found or inactive for member ${memberId} — no discount.`);
+    return NONE;
+  }
+  const codeData = codeSnap.data();
+  const isMemberReferral = codeData.source === 'member_referral' && !!codeData.referrerId;
+  const isPartnerCode = codeData.source === 'apartment' || codeData.source === 'agent';
+
+  // Single-redemption enforcement: only meaningful for partner
+  // (apartment/agent) codes — each one is generated for ONE specific lead
+  // (generateReferralCode/runGenerateReferralCode), unlike a member's own
+  // evergreen code, which is designed to be shared with and redeemed by
+  // many different friends. redeemedByMemberId is set once a partner code's
+  // first successful discount/credit lands; a SECOND, different member
+  // reaching this point with the same code (photographed/shared physical
+  // card, genuine duplicate entry, etc.) gets flagged instead of silently
+  // benefiting a second time.
+  if (isPartnerCode && codeData.creditIssued && codeData.redeemedByMemberId
+      && codeData.redeemedByMemberId !== memberId) {
+    console.warn(`resolveNewMemberReferralDiscount: partner code ${referredByCode} was already redeemed by member ${codeData.redeemedByMemberId} — member ${memberId} flagged, no discount.`);
+    return { referredByCode, decision: 'flagged', flagReason: 'partner_code_already_redeemed', discountCents: 0, isMemberReferral, referrerId: null };
+  }
+
+  // Self-referral check: only meaningful for member_referral codes, which
+  // have an actual referring member (referrerId) with their own phone
+  // number to compare against. Partner (apartment/agent) codes have no
+  // referrer, so there's nothing to self-refer.
+  if (isMemberReferral) {
+    const referrerSnap = await db.collection('members').doc(codeData.referrerId).get();
+    const referrerData = referrerSnap.data();
+    if (referrerData) {
+      const newPhone = memberData.phoneDigits || normalizePhoneDigits(memberData.phone);
+      const referrerPhone = referrerData.phoneDigits || normalizePhoneDigits(referrerData.phone);
+      if (newPhone && referrerPhone && newPhone === referrerPhone) {
+        console.warn(`resolveNewMemberReferralDiscount: possible self-referral — member ${memberId} and referrer ${codeData.referrerId} share phone digits ${newPhone}. Flagged, no discount.`);
+        return { referredByCode, decision: 'flagged', flagReason: 'possible_self_referral', discountCents: 0, isMemberReferral, referrerId: codeData.referrerId };
+      }
+    }
+  }
+
+  return {
+    referredByCode, decision: 'approved', flagReason: null,
+    // Flat $50 entitlement — callers cap this against their own charge
+    // amount (currently: never more than 50% of that one charge).
+    discountCents: 5000,
+    isMemberReferral, referrerId: isMemberReferral ? codeData.referrerId : null,
+  };
+}
+
+// Post-charge commit for the pre-charge discount path (chargeCurrentMonthWalks,
+// chargeSavedCard). The discount itself was already decided by
+// resolveNewMemberReferralDiscount and subtracted from the charge BEFORE this
+// runs — nothing here can undo that — so this only ever records what already
+// happened and issues the referrer's own credit (member_referral codes only;
+// the new member's own $50 was already realized as the charge-time discount,
+// not a separate issuance here). The claim transaction below mirrors
+// runFirstPaymentReferralCredit's, but happens here, post-charge, rather than
+// pre-decision — the discount decision itself has to stay a repeatable,
+// non-committing read (see resolveNewMemberReferralDiscount), since claiming
+// it before a charge that might then fail would permanently strand a
+// legitimate retry with no discount and no way to reclaim it.
+//
+// referralSubmissionId may be null (a discount decision with no code, or no
+// submission on file) — every write below is skipped in that case, same as
+// the 'none' decision.
+//
+// carryForwardCents is the gap between the flat $50 entitlement and
+// appliedDiscountCents (whatever the 50%-of-charge cap actually let through)
+// — issued below via issueReferralCredit so the new member still gets the
+// full $50 of value promised everywhere externally (gift cards, email,
+// /welcomehome), just not always all at once. Goes through the SAME
+// tier-branching issueReferralCredit already uses for referrer credit: a
+// Stripe balance credit (auto-applies to the member's own next invoice) for
+// a membership-tier new member, pendingReferralCredit (applied on their next
+// chargeSavedCard) for Travel-tier — pendingReferralCredit alone would never
+// actually be spent by a membership-tier member, since nothing in their
+// billing path ever reads it back.
+async function finalizeNewMemberReferralDiscount(stripe, memberId, referralSubmissionId, discount, appliedDiscountCents, carryForwardCents) {
+  const billing = billingRef(memberId);
+  let claimed;
+  try {
+    claimed = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(billing);
+      if (snap.data()?.referralCreditChecked) return false;
+      tx.set(billing, { referralCreditChecked: true }, { merge: true });
+      return true;
+    });
+  } catch (e) {
+    console.error(`finalizeNewMemberReferralDiscount: claim transaction failed for member ${memberId}:`, e.message);
+    return;
+  }
+  if (!claimed) {
+    // Extremely narrow race: some other path (stripeWebhook's invoice.paid,
+    // in practice — chargeCurrentMonthWalks never produces an invoice.paid
+    // event of its own, so this is not a realistic concern between the two
+    // pre-charge callers) already recorded this member's first-payment
+    // outcome between our pre-charge read and now. The discount already
+    // applied to THIS charge can't be undone — logged for admin visibility,
+    // not thrown, since the charge itself already succeeded correctly.
+    console.warn(`finalizeNewMemberReferralDiscount: referral outcome for member ${memberId} was already recorded elsewhere — the $${(appliedDiscountCents / 100).toFixed(2)} discount already applied to this charge is not re-recorded.`);
+    return;
+  }
+
+  if (discount.decision === 'none') return; // no code entered — nothing to record
+
+  if (discount.decision === 'flagged') {
+    if (referralSubmissionId) {
+      await db.collection('referralCodes').doc(discount.referredByCode)
+        .collection('redemptions').doc(referralSubmissionId)
+        .set({ status: 'flagged_review', needsReview: true }, { merge: true });
+    }
+    // Also mirrored onto the new member's own billing doc, purely so the
+    // admin Members table (which already subscribes to every member's
+    // billing doc for the existing billing-status badge) can surface this
+    // without a new query — see renderBillingBadge in admin/dashboard.html.
+    await billing.set({ needsReview: true, needsReviewReason: discount.flagReason }, { merge: true });
+    return;
+  }
+
+  let stage = 'code-bookkeeping';
+  try {
+    // redeemedByMemberId is written for every source, not just partner
+    // codes — harmless bookkeeping for member_referral (never read back for
+    // gating, since reuse is intended there), and it's what the
+    // single-redemption check in resolveNewMemberReferralDiscount compares
+    // against for apartment/agent.
+    await db.collection('referralCodes').doc(discount.referredByCode)
+      .set({ creditIssued: true, redeemedByMemberId: memberId }, { merge: true });
+    if (referralSubmissionId) {
+      await db.collection('referralCodes').doc(discount.referredByCode)
+        .collection('redemptions').doc(referralSubmissionId)
+        .set({ status: 'credit_applied', creditIssued: true, discountAppliedCents: appliedDiscountCents }, { merge: true });
+    }
+
+    if (carryForwardCents > 0) {
+      stage = 'carry-forward-credit';
+      const memberSnap = await db.collection('members').doc(memberId).get();
+      const memberData = memberSnap.data();
+      if (!memberData) {
+        // The charge-time discount already succeeded — this throw stops
+        // short of implying the full $50 was honored when part of it
+        // wasn't, same "stuck case, needs a human" reasoning as the missing-
+        // referrer throw below.
+        throw new Error(`Member ${memberId} not found — cannot carry forward the remaining $${(carryForwardCents / 100).toFixed(2)} referral credit.`);
+      }
+      await issueReferralCredit(stripe, memberId, memberData, carryForwardCents);
+    }
+
+    if (discount.isMemberReferral && discount.referrerId) {
+      stage = 'referrer-credit';
+      const referrerSnap = await db.collection('members').doc(discount.referrerId).get();
+      const referrerData = referrerSnap.data();
+      if (!referrerData) {
+        // The new member's discount is already baked into the charge that
+        // already succeeded — this throw deliberately stops short of
+        // marking anything further done: a missing referrer is exactly the
+        // "stuck case" an admin needs to see and resolve manually.
+        throw new Error(`Referrer member ${discount.referrerId} not found — cannot issue their credit (new member ${memberId}'s discount was already applied at charge time).`);
+      }
+      await issueReferralCredit(stripe, discount.referrerId, referrerData);
+    }
+  } catch (e) {
+    console.error(`finalizeNewMemberReferralDiscount: failed at stage '${stage}' for member ${memberId} (code ${discount.referredByCode}):`, e.message);
+    await billing.set({
+      creditIssuanceError: `[${stage}] ${e.message}`,
+      creditIssuanceFailedAt: FieldValue.serverTimestamp(),
+    }, { merge: true }).catch((writeErr) => {
+      console.error(`finalizeNewMemberReferralDiscount: failed to record creditIssuanceError for member ${memberId}:`, writeErr.message);
+    });
+  }
+}
+
 // Runs once per member, on whichever payment genuinely lands first for
-// them — stripeWebhook's invoice.paid (membership members' recurring
-// subscription), chargeCurrentMonthWalks' one-off charge for the remainder
-// of their signup month (in practice a NEW membership member's actual first
-// payment — their subscription's own first Stripe Invoice isn't until the
-// 1st of the following month), or chargeSavedCard (Travel-tier's only
-// payment mechanism, which never produces a Stripe Invoice at all). All
-// three call this the same way; whichever fires first for a given member
-// wins, and every call after that is a fast, cheap no-op.
+// them via stripeWebhook's invoice.paid — the ONLY remaining caller of this
+// function. chargeCurrentMonthWalks and chargeSavedCard used to call this
+// too, but now resolve+apply the new member's own discount pre-charge (see
+// resolveNewMemberReferralDiscount / finalizeNewMemberReferralDiscount) and
+// no longer need it. This function keeps the old post-charge-credit
+// behavior intact for the one case that still needs it: a membership member
+// whose signup lands with zero remaining walk days this month (no prorated
+// remainder for chargeCurrentMonthWalks to charge at all — it skips
+// entirely), so their real first payment is their subscription's own
+// Stripe-generated invoice. Stripe has already finalized and paid that
+// invoice by the time this webhook fires — there's no "before the charge"
+// point available the way there is in the other two functions — so this
+// member's $50 still arrives as forward credit (a Stripe balance credit, or
+// pendingReferralCredit for Travel-tier) rather than an upfront discount.
+// Rare, and considered acceptable: see the design discussion this replaced.
 //
 // The member's own private/billing.referralCreditChecked flag is BOTH the
 // "is this genuinely the first payment" check and the idempotency guard
 // against re-running this for a later payment (or a retried/duplicate
 // delivery of whichever event triggered this call) — deliberately one
-// mechanism, not two. It's flipped true INSIDE the transaction that reads
-// it, before any credit is actually issued, so a failure partway through
-// issuance (Step 6) never causes an automatic retry on the member's next
-// payment — that's intentional: this pass surfaces a stuck case clearly
-// (console.error + a creditIssuanceError breadcrumb on the billing doc) for
-// an admin to resolve manually, rather than risking a double-credit via
-// automatic retry logic.
+// mechanism, not two, and the SAME flag finalizeNewMemberReferralDiscount
+// claims for the other two functions' pre-charge path — whichever path gets
+// there first for a given member locks the other out. It's flipped true
+// INSIDE the transaction that reads it, before any credit is actually
+// issued, so a failure partway through issuance never causes an automatic
+// retry on the member's next payment — that's intentional: this pass
+// surfaces a stuck case clearly (console.error + a creditIssuanceError
+// breadcrumb on the billing doc) for an admin to resolve manually, rather
+// than risking a double-credit via automatic retry logic.
 //
-// Never throws — every caller runs this after their own success and must
+// Never throws — the caller runs this after its own success and must
 // never have a referral-credit bug make that success look like a failure.
 async function runFirstPaymentReferralCredit(stripe, memberId) {
   const billing = billingRef(memberId);
-  let proceed, referredByCode, referralSubmissionId;
+  let proceed, billingData;
   try {
-    ({ proceed, referredByCode, referralSubmissionId } = await db.runTransaction(async (tx) => {
+    ({ proceed, billingData } = await db.runTransaction(async (tx) => {
       const snap = await tx.get(billing);
       const data = snap.data() || {};
       if (data.referralCreditChecked) {
         return { proceed: false };
       }
       tx.set(billing, { referralCreditChecked: true }, { merge: true });
-      return {
-        proceed: true,
-        referredByCode: data.referredByCode || null,
-        referralSubmissionId: data.referralSubmissionId || null,
-      };
+      return { proceed: true, billingData: data };
     }));
   } catch (e) {
     console.error(`runFirstPaymentReferralCredit: first-payment flag transaction failed for member ${memberId}:`, e.message);
@@ -1968,17 +2253,11 @@ async function runFirstPaymentReferralCredit(stripe, memberId) {
 
   // Not the first payment (flag was already set), or the first payment but
   // no referral code was ever entered — either way, nothing more to do.
-  if (!proceed || !referredByCode) return;
+  if (!proceed || !billingData.referredByCode) return;
+  const referralSubmissionId = billingData.referralSubmissionId || null;
 
   let stage = 'lookup';
   try {
-    const codeSnap = await db.collection('referralCodes').doc(referredByCode).get();
-    if (!codeSnap.exists || codeSnap.data().status !== 'active') {
-      console.warn(`runFirstPaymentReferralCredit: referredByCode ${referredByCode} not found or inactive for member ${memberId} — no credit issued.`);
-      return;
-    }
-    const codeData = codeSnap.data();
-
     const memberSnap = await db.collection('members').doc(memberId).get();
     const memberData = memberSnap.data();
     if (!memberData) {
@@ -1986,87 +2265,45 @@ async function runFirstPaymentReferralCredit(stripe, memberId) {
       return;
     }
 
-    const isMemberReferral = codeData.source === 'member_referral' && !!codeData.referrerId;
-    const isPartnerCode = codeData.source === 'apartment' || codeData.source === 'agent';
+    const discount = await resolveNewMemberReferralDiscount(memberId, billingData, memberData);
 
-    // Single-redemption enforcement: only meaningful for partner
-    // (apartment/agent) codes — each one is generated for ONE specific lead
-    // (generateReferralCode/runGenerateReferralCode), unlike a member's own
-    // evergreen code, which is designed to be shared with and redeemed by
-    // many different friends. redeemedByMemberId is set below once a
-    // partner code's first successful credit lands; a SECOND, different
-    // member reaching this point with the same code (photographed/shared
-    // physical card, genuine duplicate entry, etc.) gets flagged instead of
-    // silently credited a second time. This can only be a different member:
-    // the per-member referralCreditChecked flag already guarantees this
-    // exact member has never passed this point before.
-    if (isPartnerCode && codeData.creditIssued && codeData.redeemedByMemberId
-        && codeData.redeemedByMemberId !== memberId) {
-      stage = 'duplicate-redemption-check';
-      console.warn(`runFirstPaymentReferralCredit: partner code ${referredByCode} was already redeemed by member ${codeData.redeemedByMemberId} — member ${memberId} flagged for review, no credit issued.`);
+    if (discount.decision === 'flagged') {
+      stage = 'flagged';
       if (referralSubmissionId) {
-        await db.collection('referralCodes').doc(referredByCode)
+        await db.collection('referralCodes').doc(discount.referredByCode)
           .collection('redemptions').doc(referralSubmissionId)
           .set({ status: 'flagged_review', needsReview: true }, { merge: true });
       }
-      await billing.set({ needsReview: true, needsReviewReason: 'partner_code_already_redeemed' }, { merge: true });
+      // Also mirrored onto the new member's own billing doc, purely so the
+      // admin Members table (which already subscribes to every member's
+      // billing doc for the existing billing-status badge) can surface this
+      // without a new query — see renderBillingBadge in admin/dashboard.html.
+      await billing.set({ needsReview: true, needsReviewReason: discount.flagReason }, { merge: true });
       return;
     }
-
-    // Self-referral check: only meaningful for member_referral codes, which
-    // have an actual referring member (referrerId) with their own phone
-    // number to compare against. Partner (apartment/agent) codes have no
-    // referrer, so there's nothing to self-refer.
-    if (isMemberReferral) {
-      stage = 'self-referral-check';
-      const referrerSnap = await db.collection('members').doc(codeData.referrerId).get();
-      const referrerData = referrerSnap.data();
-      if (referrerData) {
-        const newPhone = memberData.phoneDigits || normalizePhoneDigits(memberData.phone);
-        const referrerPhone = referrerData.phoneDigits || normalizePhoneDigits(referrerData.phone);
-        if (newPhone && referrerPhone && newPhone === referrerPhone) {
-          console.warn(`runFirstPaymentReferralCredit: possible self-referral — member ${memberId} and referrer ${codeData.referrerId} share phone digits ${newPhone}. Flagging for review, no credit issued.`);
-          if (referralSubmissionId) {
-            await db.collection('referralCodes').doc(referredByCode)
-              .collection('redemptions').doc(referralSubmissionId)
-              .set({ status: 'flagged_review', needsReview: true }, { merge: true });
-          }
-          // Also mirrored onto the new member's own billing doc, purely so
-          // the admin Members table (which already subscribes to every
-          // member's billing doc for the existing billing-status badge) can
-          // surface this without a new query — see renderBillingBadge in
-          // admin/dashboard.html.
-          await billing.set({ needsReview: true, needsReviewReason: 'possible_self_referral' }, { merge: true });
-          return;
-        }
-      }
-    }
+    if (discount.decision !== 'approved') return; // 'none' — no valid code, nothing more to do
 
     stage = 'new-member-credit';
     await issueReferralCredit(stripe, memberId, memberData);
 
-    if (isMemberReferral) {
+    if (discount.isMemberReferral && discount.referrerId) {
       stage = 'referrer-credit';
-      const referrerSnap = await db.collection('members').doc(codeData.referrerId).get();
+      const referrerSnap = await db.collection('members').doc(discount.referrerId).get();
       const referrerData = referrerSnap.data();
       if (!referrerData) {
         // The new member has already been credited above — this throw
         // deliberately stops short of marking creditIssued/credit_applied
         // (Step 6): half a payout going out is exactly the "stuck case" an
         // admin needs to see and resolve manually, not silently call done.
-        throw new Error(`Referrer member ${codeData.referrerId} not found — cannot issue their credit (new member ${memberId} was already credited).`);
+        throw new Error(`Referrer member ${discount.referrerId} not found — cannot issue their credit (new member ${memberId} was already credited).`);
       }
-      await issueReferralCredit(stripe, codeData.referrerId, referrerData);
+      await issueReferralCredit(stripe, discount.referrerId, referrerData);
     }
 
     stage = 'bookkeeping';
-    // redeemedByMemberId is written for every source, not just partner
-    // codes — harmless bookkeeping for member_referral (never read back for
-    // gating, since reuse is intended there), and it's what the
-    // single-redemption check above compares against for apartment/agent.
-    await db.collection('referralCodes').doc(referredByCode).set({ creditIssued: true, redeemedByMemberId: memberId }, { merge: true });
+    await db.collection('referralCodes').doc(discount.referredByCode).set({ creditIssued: true, redeemedByMemberId: memberId }, { merge: true });
     if (referralSubmissionId) {
-      await db.collection('referralCodes').doc(referredByCode)
+      await db.collection('referralCodes').doc(discount.referredByCode)
         .collection('redemptions').doc(referralSubmissionId)
         .set({ status: 'credit_applied', creditIssued: true }, { merge: true });
     }
@@ -2076,7 +2313,7 @@ async function runFirstPaymentReferralCredit(stripe, memberId) {
     // yet" from "the money already moved and only the bookkeeping failed"
     // — the latter needs an admin to reconcile Stripe/Firestore state by
     // hand, not re-run this (which would issue a second $50).
-    console.error(`runFirstPaymentReferralCredit: failed at stage '${stage}' for member ${memberId} (code ${referredByCode}):`, e.message);
+    console.error(`runFirstPaymentReferralCredit: failed at stage '${stage}' for member ${memberId}:`, e.message);
     await billing.set({
       creditIssuanceError: `[${stage}] ${e.message}`,
       creditIssuanceFailedAt: FieldValue.serverTimestamp(),
