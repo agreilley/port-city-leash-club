@@ -96,6 +96,8 @@
   .table-search { border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; padding: 7px 12px; font-size: 13px; font-family: 'DM Sans', sans-serif; width: 220px; }
   table { width: 100%; border-collapse: collapse; }
   th { padding: 10px 16px; text-align: left; font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-light); background: var(--sand); border-bottom: 1px solid rgba(0,0,0,0.07); }
+  th.sortable-th { cursor: pointer; user-select: none; }
+  th.sortable-th:hover { color: var(--navy); }
   td { padding: 12px 16px; border-bottom: 1px solid rgba(0,0,0,0.05); font-size: 13px; color: var(--text-dark); }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: rgba(0,0,0,0.015); }
@@ -110,8 +112,8 @@
 
   /* ── REQUESTS ── */
   .request-filters { display: flex; gap: 8px; margin-bottom: 20px; }
-  .request-filter, .request-status-filter, .conversation-filter, .conversation-category-filter { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
-  .request-filter.active, .request-status-filter.active, .conversation-filter.active, .conversation-category-filter.active { background: var(--navy); color: white; border-color: var(--navy); }
+  .request-filter, .request-status-filter, .conversation-filter, .conversation-category-filter, .referral-filter { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
+  .request-filter.active, .request-status-filter.active, .conversation-filter.active, .conversation-category-filter.active, .referral-filter.active { background: var(--navy); color: white; border-color: var(--navy); }
   .list-row { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 20px; margin-bottom: 12px; cursor: pointer; transition: box-shadow 0.15s; }
   .list-row:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
   .list-row.unread { border-left: 3px solid var(--rust); }
@@ -345,6 +347,10 @@
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M1 5.5l7 4 7-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     Requests
     <span class="badge" id="requestsBadge" style="display:none;">0</span>
+  </a>
+  <a class="nav-item" data-view="referrals" onclick="switchView('referrals')">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1 8.5l3-3 2 2 5-5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 2.5h3v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M1 12.5h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    Referral Codes
   </a>
   <a class="nav-item" data-view="conversations" onclick="switchView('conversations')">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h11A1.5 1.5 0 0 1 15 3.5v6A1.5 1.5 0 0 1 13.5 11H6l-3 3v-3H2.5A1.5 1.5 0 0 1 1 9.5v-6Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
@@ -585,6 +591,37 @@
       <div id="requestsList"><div class="loading-spinner">Loading...</div></div>
     </div>
 
+    <!-- REFERRAL CODES VIEW (read-only reporting — no writes, matches the
+         portal-referrals.html load-once pattern rather than onSnapshot,
+         since usage here changes slowly compared to walks/messages) -->
+    <div class="view" id="view-referrals">
+      <div class="request-filters">
+        <button class="referral-filter active" onclick="filterReferralSource('all', this)">All</button>
+        <button class="referral-filter" onclick="filterReferralSource('apartment', this)">Apartment</button>
+        <button class="referral-filter" onclick="filterReferralSource('agent', this)">Agent</button>
+        <button class="referral-filter" onclick="filterReferralSource('member_referral', this)">Member Referral</button>
+      </div>
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">Referral Codes</div>
+          <input class="table-search" type="text" placeholder="Search building, agent, code..." oninput="filterReferralSearch(this.value)">
+        </div>
+        <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th>Code</th>
+            <th>Source</th>
+            <th class="sortable-th" onclick="sortReferralBy('label')">Building / Agent ⇅</th>
+            <th>Status</th>
+            <th class="sortable-th" onclick="sortReferralBy('count')">Redemptions ⇅</th>
+            <th>Credit Issued</th>
+          </tr></thead>
+          <tbody id="referralCodesTable"><tr><td colspan="6" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+
     <!-- CONVERSATIONS VIEW -->
     <div class="view" id="view-conversations">
       <div style="display:flex;justify-content:space-between;align-items:center;padding:0 20px 12px;">
@@ -629,6 +666,15 @@
     <button class="modal-close" onclick="closeModal('memberDetailModal')">×</button>
     <div class="modal-title" id="memberDetailModalTitle">Member Details</div>
     <div id="memberDetailModalContent"></div>
+  </div>
+</div>
+
+<!-- REFERRAL CODE DETAIL MODAL (read-only) -->
+<div class="modal-overlay" id="referralCodeDetailModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('referralCodeDetailModal')">×</button>
+    <div class="modal-title" id="referralCodeDetailModalTitle">Referral Code Details</div>
+    <div id="referralCodeDetailModalContent"></div>
   </div>
 </div>
 
@@ -844,7 +890,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import {
-  getFirestore, collection, query, orderBy, onSnapshot,
+  getFirestore, collection, collectionGroup, query, orderBy, onSnapshot,
   doc, getDoc, getDocs, addDoc, updateDoc, setDoc, where,
   serverTimestamp, Timestamp, writeBatch, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
@@ -900,6 +946,16 @@ let currentRequestFilter = 'all';
 let currentStatusFilter = 'pending';
 let allOvernights = [];
 let allPayouts = [];
+// Referral Codes view — loaded once on first tab visit (see switchView),
+// not onSnapshot, matching portal-referrals.html's own load-once choice for
+// this same data. allReferralRedemptions is every redemption doc across
+// every code (fetched via a single collectionGroup query, not one query per
+// code — see loadReferralCodes), each tagged with codeId so it can be
+// grouped/counted client-side.
+let allReferralCodes = [], allReferralRedemptions = [];
+let currentReferralSourceFilter = 'all';
+let currentReferralSearch = '';
+let referralSortCol = 'count', referralSortDir = 'desc';
 
 // A submission counts as resolved once it's reached any of these terminal
 // statuses — covers every type's own vocabulary ('confirmed'/'declined'
@@ -1888,6 +1944,167 @@ window.filterRequestStatus = (status, btn) => {
   document.querySelectorAll('.request-status-filter').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderRequests();
+};
+
+// ── REFERRAL CODES (read-only reporting) ──────────────────────────────────────
+// Loads every referralCodes doc plus every redemption across every code in
+// exactly 2 reads total (collection + collectionGroup), regardless of how
+// many codes exist — deliberately not N queries, one per code. Rules already
+// grant admins unconditioned read on both (firestore.rules:507-525), so this
+// needs no new Cloud Function and no rules change.
+async function loadReferralCodes(isRefresh) {
+  const tbody = document.getElementById('referralCodesTable');
+  if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr>`;
+  try {
+    const [codesSnap, redemptionsSnap] = await Promise.all([
+      getDocs(collection(db, 'referralCodes')),
+      getDocs(collectionGroup(db, 'redemptions')),
+    ]);
+    allReferralCodes = codesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // codeId comes from the redemption doc's own path (redemptions is only
+    // ever nested under referralCodes/{code} — see functions/index.js — so
+    // parent.parent.id is always that code, never a foreign collection).
+    allReferralRedemptions = redemptionsSnap.docs.map(d => ({ id: d.id, codeId: d.ref.parent.parent.id, ...d.data() }));
+    renderReferralCodesTable();
+  } catch (e) {
+    console.error('Failed to load referral codes:', e.message);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-light);padding:24px;">Couldn't load referral codes right now.</td></tr>`;
+  }
+}
+
+const REFERRAL_SOURCE_LABELS = { apartment: 'Apartment', agent: 'Agent', member_referral: 'Member Referral' };
+const REFERRAL_REDEMPTION_STATUS_LABELS = { invited: 'Invited', flagged_review: 'Flagged for Review', credit_applied: 'Credit Applied' };
+
+function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : '–'; }
+
+// building/agent/brokerage/referrerName are all attacker-reachable (public
+// unauthenticated forms — same surface the H-1 XSS audit covered), so this
+// label is built from raw fields here and escaped once at the render call
+// site below, not escaped per-field — same pattern as item.email/item.dogName
+// in renderRequests().
+function referralCodeLabel(c) {
+  if (c.source === 'apartment') return c.building || '–';
+  if (c.source === 'agent') return [c.agent, c.brokerage].filter(Boolean).join(' — ') || '–';
+  return c.referrerName ? `Referred by ${c.referrerName}` : '–';
+}
+
+function buildReferralRows() {
+  const countByCode = {};
+  allReferralRedemptions.forEach(r => { countByCode[r.codeId] = (countByCode[r.codeId] || 0) + 1; });
+  return allReferralCodes.map(c => ({ ...c, redemptionCount: countByCode[c.id] || 0, label: referralCodeLabel(c) }));
+}
+
+function renderReferralCodesTable() {
+  const tbody = document.getElementById('referralCodesTable');
+  if (!tbody) return;
+  let rows = buildReferralRows().filter(r => currentReferralSourceFilter === 'all' || r.source === currentReferralSourceFilter);
+  if (currentReferralSearch) {
+    const q = currentReferralSearch.toLowerCase();
+    rows = rows.filter(r =>
+      (r.label || '').toLowerCase().includes(q)
+      || (r.code || r.id || '').toLowerCase().includes(q)
+      || (r.referrerName || '').toLowerCase().includes(q)
+    );
+  }
+  rows.sort((a, b) => {
+    const [av, bv] = referralSortCol === 'count' ? [a.redemptionCount, b.redemptionCount] : [(a.label || '').toLowerCase(), (b.label || '').toLowerCase()];
+    if (av < bv) return referralSortDir === 'asc' ? -1 : 1;
+    if (av > bv) return referralSortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-light);padding:24px;">No referral codes match.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr style="cursor:pointer;" onclick="openReferralCodeDetail('${escapeHtml(r.id)}')">
+      <td>${escapeHtml(r.code || r.id)}</td>
+      <td>${escapeHtml(REFERRAL_SOURCE_LABELS[r.source] || r.source || '–')}</td>
+      <td>${escapeHtml(r.label)}</td>
+      <td><span class="status-badge ${r.status === 'active' ? 'active' : 'completed'}">${escapeHtml(capitalize(r.status))}</span></td>
+      <td>${r.redemptionCount}</td>
+      <td><span class="status-badge ${r.creditIssued ? 'active' : 'pending'}">${r.creditIssued ? 'Yes' : 'No'}</span></td>
+    </tr>
+  `).join('');
+}
+
+window.filterReferralSource = (source, btn) => {
+  currentReferralSourceFilter = source;
+  document.querySelectorAll('.referral-filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderReferralCodesTable();
+};
+
+window.filterReferralSearch = (val) => {
+  currentReferralSearch = val;
+  renderReferralCodesTable();
+};
+
+window.sortReferralBy = (col) => {
+  if (referralSortCol === col) {
+    referralSortDir = referralSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    referralSortCol = col;
+    referralSortDir = col === 'count' ? 'desc' : 'asc';
+  }
+  renderReferralCodesTable();
+};
+
+window.openReferralCodeDetail = (codeId) => {
+  const code = allReferralCodes.find(c => c.id === codeId);
+  if (!code) return;
+  const redemptions = allReferralRedemptions
+    .filter(r => r.codeId === codeId)
+    .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+
+  const fields = [
+    { label: 'Code', value: code.code || code.id },
+    { label: 'Source', value: REFERRAL_SOURCE_LABELS[code.source] || code.source || '–' },
+    { label: code.source === 'member_referral' ? 'Referrer' : 'Building / Agent', value: referralCodeLabel(code) },
+    { label: 'Status', value: capitalize(code.status) },
+    { label: 'Credit Issued', value: code.creditIssued ? 'Yes' : 'No' },
+    { label: 'Redemptions', value: String(redemptions.length) },
+  ];
+  const fieldHTML = fields.map(f =>
+    `<div class="modal-field"><div class="modal-label">${escapeHtml(f.label)}</div><div class="modal-value">${escapeHtml(f.value)}</div></div>`
+  ).join('');
+
+  // discountAppliedCents is only present on redemptions that went through
+  // the new pre-charge discount path (finalizeNewMemberReferralDiscount) —
+  // the old post-charge path (runFirstPaymentReferralCredit) and Scenario
+  // 7's fallback never write it. Shown only when present, never "undefined".
+  const redemptionsHTML = redemptions.length ? `
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Date</th></tr></thead>
+      <tbody>
+        ${redemptions.map(r => {
+          const date = r.createdAt?.toDate ? r.createdAt.toDate().toLocaleDateString() : '–';
+          const statusClass = r.status === 'credit_applied' ? 'active' : r.status === 'flagged_review' ? 'unassigned' : 'pending';
+          const discountLine = typeof r.discountAppliedCents === 'number'
+            ? `<div style="font-size:11px;color:var(--text-light);margin-top:2px;">Discount: $${escapeHtml((r.discountAppliedCents / 100).toFixed(2))}</div>`
+            : '';
+          return `<tr>
+            <td>${escapeHtml(r.name || '–')}${discountLine}</td>
+            <td>${escapeHtml(r.submissionType || '–')}</td>
+            <td><span class="status-badge ${statusClass}">${escapeHtml(REFERRAL_REDEMPTION_STATUS_LABELS[r.status] || r.status || 'Invited')}</span></td>
+            <td>${escapeHtml(date)}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>
+  ` : `<div class="empty-state">No redemptions yet.</div>`;
+
+  document.getElementById('referralCodeDetailModalTitle').textContent = code.code || code.id;
+  document.getElementById('referralCodeDetailModalContent').innerHTML = `
+    <div class="form-grid">${fieldHTML}</div>
+    <hr class="modal-divider">
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Redemptions</div>
+    ${redemptionsHTML}
+  `;
+  document.getElementById('referralCodeDetailModal').classList.add('open');
 };
 
 // ── WALK MODAL (ASSIGN) ───────────────────────────────────────────────────────
@@ -4680,7 +4897,7 @@ window.avSelectDate = avSelectDate;
 
 
 
-const viewTitles = { overview: 'Overview', calendar: 'Walk Calendar', walkers: 'Walkers', payouts: 'Payouts', members: 'Members', availability: 'Meet & Greet Availability', requests: 'Requests', conversations: 'Messages' };
+const viewTitles = { overview: 'Overview', calendar: 'Walk Calendar', walkers: 'Walkers', payouts: 'Payouts', members: 'Members', availability: 'Meet & Greet Availability', requests: 'Requests', referrals: 'Referral Codes', conversations: 'Messages' };
 window.toggleSidebar = (force) => {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebarOverlay');
@@ -4702,11 +4919,13 @@ window.switchView = (view) => {
   const btnSchedule = '<button class="btn-secondary" onclick="openAddWalkModal()">+ Schedule Walk</button>';
   const btnMember = '<button class="btn-primary" onclick="openAddMemberModal()">+ Add Member</button>';
   const btnWalker = '<button class="btn-primary" onclick="openAddWalkerModal()">+ Add Walker</button>';
+  const btnRefreshReferrals = '<button class="btn-secondary" onclick="loadReferralCodes(true)">Refresh</button>';
   const viewActions = {
     overview: btnSchedule + btnMember,
     calendar: btnSchedule,
     walkers: btnWalker,
     members: btnMember,
+    referrals: btnRefreshReferrals,
   };
   actions.innerHTML = viewActions[view] || '';
 
@@ -4719,6 +4938,14 @@ window.switchView = (view) => {
       renderAvCalendar();
       renderAvUpcoming();
     }
+  }
+
+  // Referral Codes: load once on first visit, matching portal-referrals.html's
+  // load-once (not onSnapshot) choice — usage data doesn't need to be live,
+  // and the Refresh button above covers "check again."
+  if (view === 'referrals' && !window._referralsInit) {
+    window._referralsInit = true;
+    loadReferralCodes();
   }
 };
 </script>
