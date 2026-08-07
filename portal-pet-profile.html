@@ -187,6 +187,10 @@
       box-shadow: 0 0 0 3px rgba(143, 168, 162, 0.1);
     }
 
+    .checkbox-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .checkbox-pill { border: 1px solid #E5E0D8; border-radius: 6px; padding: 10px 12px; font-size: 13px; color: #0D1B2A; display: flex; gap: 8px; align-items: center; background: white; }
+    .checkbox-pill input { width: auto; }
+
     /* Photo Section */
     .photo-section {
       display: flex;
@@ -293,6 +297,10 @@
 
     @media (max-width: 768px) {
       .field-row {
+        grid-template-columns: 1fr;
+      }
+
+      .checkbox-row {
         grid-template-columns: 1fr;
       }
 
@@ -496,7 +504,7 @@ onAuthStateChanged(auth, async (user) => {
       // Normalise to dogs array
       currentDogs = memberData.dogs?.length
         ? memberData.dogs.map(d => ({ ...d }))
-        : [{ name: memberData.dogName || '', breed: memberData.petBreed || '', age: memberData.petAge ? `${memberData.petAge} years` : '', weight: memberData.petWeight || '', notes: memberData.dogNotes || '', temperament: memberData.temperament || '', walkingPrefs: memberData.walkingPrefs || '', triggers: memberData.triggers || '', medications: memberData.medications || '', allergies: memberData.allergies || '' }];
+        : [{ name: memberData.dogName || '', breed: memberData.petBreed || '', age: memberData.petAge ? `${memberData.petAge} years` : '', weight: memberData.petWeight || '', notes: memberData.dogNotes || '', temperament: memberData.temperament || '', walkingPrefs: memberData.walkingPrefs || '', triggers: memberData.triggers || '', medications: memberData.medications || '', allergies: memberData.allergies || '', species: 'Dog', spayed: '', friendlyWithPeople: false, friendlyWithDogs: false, pullsOnLeash: false, takesMedication: false }];
       renderPage();
     }
   } catch(e) {
@@ -572,6 +580,7 @@ function renderDogCards() {
 function dogCardHTML(dog, i) {
   const isOnly = currentDogs.length === 1;
   const label = isOnly ? 'Your Pet' : `Pet ${i + 1}${dog.name ? `: ${esc(dog.name)}` : ''}`;
+  const isCat = (dog.species || 'Dog') === 'Cat';
   return `
     <div class="section-card" id="dogCard${i}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
@@ -583,8 +592,25 @@ function dogCardHTML(dog, i) {
         <div class="field-group"><label class="field-label">Breed</label><div class="field-value"><input type="text" id="dog_breed_${i}" value="${esc(dog.breed || '')}" placeholder="Breed"></div></div>
       </div>
       <div class="field-row">
+        <div class="field-group"><label class="field-label">Pet Type</label><div class="field-value"><select id="dog_species_${i}" onchange="updateDogSpeciesFields(${i})"><option value="Dog"${!isCat ? ' selected' : ''}>Dog</option><option value="Cat"${isCat ? ' selected' : ''}>Cat</option></select></div></div>
+        <div class="field-group"><label class="field-label">Spayed/Neutered?</label><div class="field-value"><select id="dog_spayed_${i}"><option${dog.spayed ? '' : ' selected'}>Select</option><option${dog.spayed === 'Yes' ? ' selected' : ''}>Yes</option><option${dog.spayed === 'No' ? ' selected' : ''}>No</option></select></div></div>
+      </div>
+      <div class="field-row">
         <div class="field-group"><label class="field-label">Age</label><div class="field-value"><input type="text" id="dog_age_${i}" value="${esc(dog.age || '')}" placeholder="e.g. 4 years"></div></div>
         <div class="field-group"><label class="field-label">Weight</label><div class="field-value"><input type="text" id="dog_weight_${i}" value="${esc(dog.weight || '')}" placeholder="e.g. 55 lbs"></div></div>
+      </div>
+      <div class="field-row full">
+        <div class="field-group">
+          <label class="field-label">Helpful Context</label>
+          <div class="checkbox-row">
+            <label class="checkbox-pill"><input type="checkbox" id="dog_friendlyWithPeople_${i}"${dog.friendlyWithPeople ? ' checked' : ''}> Friendly with people</label>
+            <label class="checkbox-pill" id="dog_friendlyWithDogs_wrap_${i}" style="display:${isCat ? 'none' : 'flex'};"><input type="checkbox" id="dog_friendlyWithDogs_${i}"${dog.friendlyWithDogs ? ' checked' : ''}> Friendly with other dogs</label>
+            <label class="checkbox-pill" id="dog_pullsOnLeash_wrap_${i}" style="display:${isCat ? 'none' : 'flex'};"><input type="checkbox" id="dog_pullsOnLeash_${i}"${dog.pullsOnLeash ? ' checked' : ''}> Pulls on leash</label>
+            <label class="checkbox-pill" id="dog_indoorOnly_wrap_${i}" style="display:${isCat ? 'flex' : 'none'};"><input type="checkbox" id="dog_indoorOnly_${i}"${dog.indoorOnly ? ' checked' : ''}> Indoor only (do not let outside)</label>
+            <label class="checkbox-pill" id="dog_comfortableHandled_wrap_${i}" style="display:${isCat ? 'flex' : 'none'};"><input type="checkbox" id="dog_comfortableHandled_${i}"${dog.comfortableHandled ? ' checked' : ''}> Comfortable being picked up/handled</label>
+            <label class="checkbox-pill"><input type="checkbox" id="dog_takesMedication_${i}"${dog.takesMedication ? ' checked' : ''}> Takes medication</label>
+          </div>
+        </div>
       </div>
       <div class="field-row full"><div class="field-group"><label class="field-label">Notes</label><div class="field-value"><textarea id="dog_notes_${i}" placeholder="Anything else worth knowing…">${esc(dog.notes || '')}</textarea></div></div></div>
       <div class="field-row full"><div class="field-group"><label class="field-label">Temperament</label><div class="field-value"><textarea id="dog_temperament_${i}" placeholder="Friendly, energetic, shy…">${esc(dog.temperament || '')}</textarea></div></div></div>
@@ -599,24 +625,58 @@ function dogCardHTML(dog, i) {
 }
 
 function collectCurrentFormValues() {
-  return currentDogs.map((_, i) => ({
-    name:         document.getElementById(`dog_name_${i}`)?.value || '',
-    breed:        document.getElementById(`dog_breed_${i}`)?.value || '',
-    age:          document.getElementById(`dog_age_${i}`)?.value || '',
-    weight:       document.getElementById(`dog_weight_${i}`)?.value || '',
-    notes:        document.getElementById(`dog_notes_${i}`)?.value || '',
-    temperament:  document.getElementById(`dog_temperament_${i}`)?.value || '',
-    walkingPrefs: document.getElementById(`dog_walkingPrefs_${i}`)?.value || '',
-    triggers:     document.getElementById(`dog_triggers_${i}`)?.value || '',
-    medications:  document.getElementById(`dog_medications_${i}`)?.value || '',
-    allergies:    document.getElementById(`dog_allergies_${i}`)?.value || '',
-  }));
+  return currentDogs.map((_, i) => {
+    const species = document.getElementById(`dog_species_${i}`)?.value || 'Dog';
+    const isCat = species === 'Cat';
+    const dog = {
+      name:         document.getElementById(`dog_name_${i}`)?.value || '',
+      species,
+      breed:        document.getElementById(`dog_breed_${i}`)?.value || '',
+      age:          document.getElementById(`dog_age_${i}`)?.value || '',
+      weight:       document.getElementById(`dog_weight_${i}`)?.value || '',
+      spayed:       document.getElementById(`dog_spayed_${i}`)?.value || '',
+      notes:        document.getElementById(`dog_notes_${i}`)?.value || '',
+      temperament:  document.getElementById(`dog_temperament_${i}`)?.value || '',
+      walkingPrefs: document.getElementById(`dog_walkingPrefs_${i}`)?.value || '',
+      triggers:     document.getElementById(`dog_triggers_${i}`)?.value || '',
+      medications:  document.getElementById(`dog_medications_${i}`)?.value || '',
+      allergies:    document.getElementById(`dog_allergies_${i}`)?.value || '',
+      friendlyWithPeople: document.getElementById(`dog_friendlyWithPeople_${i}`)?.checked || false,
+      takesMedication:    document.getElementById(`dog_takesMedication_${i}`)?.checked || false,
+    };
+    if (isCat) {
+      dog.indoorOnly = document.getElementById(`dog_indoorOnly_${i}`)?.checked || false;
+      dog.comfortableHandled = document.getElementById(`dog_comfortableHandled_${i}`)?.checked || false;
+    } else {
+      dog.friendlyWithDogs = document.getElementById(`dog_friendlyWithDogs_${i}`)?.checked || false;
+      dog.pullsOnLeash = document.getElementById(`dog_pullsOnLeash_${i}`)?.checked || false;
+    }
+    return dog;
+  });
 }
+
+// "Friendly with other dogs" / "Pulls on leash" don't apply to cats;
+// "Indoor only" / "Comfortable being picked up/handled" don't apply to
+// dogs. Both pairs stay in the DOM either way (see dogCardHTML) — this
+// just toggles which one is visible, so nothing already filled in
+// elsewhere on the card gets wiped by a species change.
+function updateDogSpeciesFields(i) {
+  const isCat = document.getElementById(`dog_species_${i}`)?.value === 'Cat';
+  const dogsWrap = document.getElementById(`dog_friendlyWithDogs_wrap_${i}`);
+  const leashWrap = document.getElementById(`dog_pullsOnLeash_wrap_${i}`);
+  const indoorWrap = document.getElementById(`dog_indoorOnly_wrap_${i}`);
+  const handledWrap = document.getElementById(`dog_comfortableHandled_wrap_${i}`);
+  if (dogsWrap) dogsWrap.style.display = isCat ? 'none' : 'flex';
+  if (leashWrap) leashWrap.style.display = isCat ? 'none' : 'flex';
+  if (indoorWrap) indoorWrap.style.display = isCat ? 'flex' : 'none';
+  if (handledWrap) handledWrap.style.display = isCat ? 'flex' : 'none';
+}
+window.updateDogSpeciesFields = updateDogSpeciesFields;
 
 window.addDog = () => {
   // Snapshot current form values before re-render so nothing is lost
   currentDogs = collectCurrentFormValues();
-  currentDogs.push({ name: '', breed: '', age: '', weight: '', notes: '', temperament: '', walkingPrefs: '', triggers: '', medications: '', allergies: '' });
+  currentDogs.push({ name: '', breed: '', age: '', weight: '', notes: '', temperament: '', walkingPrefs: '', triggers: '', medications: '', allergies: '', species: 'Dog', spayed: '', friendlyWithPeople: false, friendlyWithDogs: false, pullsOnLeash: false, takesMedication: false });
   renderDogCards();
   updateSidebar();
   updatePageHeader();

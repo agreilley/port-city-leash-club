@@ -924,28 +924,6 @@ function memberDogNames(member) {
   return getMemberDogs(member).map(d => d.name).filter(Boolean).join(', ');
 }
 
-// Shared by openMemberDetail and the overnight_request/walk_extension
-// request views (both static and review) — a member's canonical dogs[]
-// profile (name/breed/age/weight/notes/temperament/walkingPrefs/triggers/
-// medications/allergies), rendered identically everywhere it's shown so
-// admin sees the same pet safety info regardless of which screen they're
-// looking at it from.
-function renderMemberDogCards(dogs) {
-  if (!dogs.length) return '<div style="font-size:13px;color:var(--text-light);">No dogs on file.</div>';
-  return dogs.map((dog, i) => {
-    const dogFields = [
-      ['Name', dog.name], ['Breed', dog.breed], ['Age', dog.age], ['Weight', dog.weight],
-      ['Notes', dog.notes], ['Temperament', dog.temperament], ['Care Preferences', dog.walkingPrefs],
-      ['Known Triggers', dog.triggers], ['Medications', dog.medications], ['Allergies', dog.allergies],
-    ].filter(([, v]) => v);
-    return `
-      <div style="border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:12px;margin-bottom:10px;">
-        <div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:8px;">${dogs.length > 1 ? `Dog ${i + 1}` : 'Dog'}</div>
-        ${dogFields.length ? dogFields.map(([label, value]) => `<div style="font-size:13px;color:var(--text-mid);margin-bottom:4px;"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</div>`).join('') : '<div style="font-size:13px;color:var(--text-light);">No details on file.</div>'}
-      </div>`;
-  }).join('');
-}
-
 // Address/phone + full dog profiles for an existing member, looked up by
 // memberId — used by overnight_request and walk_extension, neither of
 // which capture pet/contact details on the submission itself (those live
@@ -963,18 +941,21 @@ function renderMemberContextHTML(memberId) {
   return `
     <div class="form-grid">${infoHTML}</div>
     <div style="font-weight:500;font-size:13px;color:var(--navy);margin:14px 0 8px;">Dogs on File</div>
-    ${renderMemberDogCards(getMemberDogs(member))}
+    ${renderPetDetailCards(getMemberDogs(member))}
   `;
 }
 
-// service_request's public one-time form captures its own pet-profile
-// shape (species/spayed/friendlyWithPeople/takesMedication/notes, plus
-// friendlyWithDogs+pullsOnLeash for dogs OR indoorOnly+comfortableHandled
-// for cats — only one pair is ever present per pet) directly on the
-// submission — different from the member canonical shape above, since
-// the requester may not be an existing member yet. Shared between the
-// static resolved view and the live review UI so the two can't show
-// different info for the same pets.
+// Shared pet-detail renderer for every admin surface that shows a pet's
+// profile — member detail, overnight_request/walk_extension context, and
+// service_request submissions (static resolved view + live review UI).
+// A pet's shape varies by origin (the member canonical shape carries
+// walkingPrefs/triggers/medications/allergies; service_request's public
+// one-time form additionally captures species/spayed/friendlyWithPeople/
+// takesMedication, plus friendlyWithDogs+pullsOnLeash for dogs OR
+// indoorOnly+comfortableHandled for cats — only one pair is ever present
+// per pet) — this renders the union of every field and filters out
+// whichever aren't present on a given pet, so admin sees the same
+// complete picture regardless of where the data originated.
 function renderPetDetailCards(dogs) {
   if (!dogs || !dogs.length) return '<div style="font-size:13px;color:var(--text-light);">No pets on file.</div>';
   return dogs.map((dog, i) => {
@@ -988,6 +969,10 @@ function renderPetDetailCards(dogs) {
       ['Indoor Only', bool(dog.indoorOnly)],
       ['Comfortable Being Handled', bool(dog.comfortableHandled)],
       ['Takes Medication', bool(dog.takesMedication)],
+      ['Care Preferences', dog.walkingPrefs],
+      ['Known Triggers', dog.triggers],
+      ['Medications', dog.medications],
+      ['Allergies', dog.allergies],
       ['Behavioral/Medical Notes', dog.notes],
     ].filter(([, v]) => v !== null && v !== undefined && v !== '');
     return `
@@ -4255,7 +4240,7 @@ window.openMemberDetail = async (id) => {
     `<div class="modal-field"><div class="modal-label">${escapeHtml(f.label)}</div><div class="modal-value">${f.html || escapeHtml(f.value)}</div></div>`
   ).join('');
 
-  const dogsHTML = renderMemberDogCards(getMemberDogs(member));
+  const dogsHTML = renderPetDetailCards(getMemberDogs(member));
 
   // Manual "I fixed this" clear for billing.needsReview — see
   // dismissBillingReview (functions/index.js) and NEEDS_REVIEW_LABELS above.

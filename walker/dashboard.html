@@ -690,25 +690,43 @@ function renderDogProfiles(member) {
   if (!dogs.length) return '<div style="font-size:13px;color:#7A7A7A;padding:8px 0;">No dog info on file.</div>';
 
   return dogs.map((dog, i) => {
+    const isCat = dog.species === 'Cat';
     const fields = [
       dog.breed && `${dog.breed}`,
       dog.age && `${dog.age}`,
       dog.weight && `${dog.weight}`,
+      dog.spayed === 'Yes' && 'Spayed/neutered',
+      dog.spayed === 'No' && 'Not spayed/neutered',
     ].filter(Boolean).join(' · ');
 
-    // Flags that matter for safety get their own prominent lines —
-    // a walker shouldn't have to scan a paragraph to find out if a dog
-    // is reactive or on medication.
+    // Lower-stakes context — worth knowing, but not safety-critical enough
+    // to warrant its own alert box like triggers/medications/allergies below.
+    const context = [
+      dog.friendlyWithPeople && 'Friendly with people',
+      dog.friendlyWithDogs && 'Friendly with other dogs',
+      dog.pullsOnLeash && 'Pulls on leash',
+      dog.comfortableHandled && 'Comfortable being handled',
+    ].filter(Boolean).join(' · ');
+
+    // Flags that matter for safety get their own prominent lines — a
+    // walker shouldn't have to scan a paragraph to find out if a pet is
+    // reactive, indoor-only, or on medication. takesMedication (a checkbox
+    // on the intake forms) and medications (free text) can both be set
+    // independently, so both get their own line when present rather than
+    // one being folded into the other.
     const alerts = [
+      dog.indoorOnly && `<div style="background:#FEF3C7;border-radius:6px;padding:8px 10px;font-size:13px;color:#92400E;margin-top:6px;">⚠️ <strong>Indoor only</strong> — do not let outside</div>`,
       dog.triggers && `<div style="background:#FEF3C7;border-radius:6px;padding:8px 10px;font-size:13px;color:#92400E;margin-top:6px;">⚠️ <strong>Triggers:</strong> ${escapeHtml(dog.triggers)}</div>`,
+      dog.takesMedication && `<div style="background:#EEF2FF;border-radius:6px;padding:8px 10px;font-size:13px;color:#3730A3;margin-top:6px;">💊 <strong>Takes medication</strong></div>`,
       dog.medications && `<div style="background:#EEF2FF;border-radius:6px;padding:8px 10px;font-size:13px;color:#3730A3;margin-top:6px;">💊 <strong>Medications:</strong> ${escapeHtml(dog.medications)}</div>`,
       dog.allergies && `<div style="background:#FFF0EE;border-radius:6px;padding:8px 10px;font-size:13px;color:#8B2E22;margin-top:6px;">🚫 <strong>Allergies:</strong> ${escapeHtml(dog.allergies)}</div>`,
     ].filter(Boolean).join('');
 
     return `
       <div style="background:var(--sand);border-radius:8px;padding:14px 16px;margin-bottom:10px;">
-        <div style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:2px;">${escapeHtml(dog.name || 'Unnamed dog')}${dogs.length > 1 ? ` <span style="font-weight:400;color:#7A7A7A;font-size:12px;">(${i+1} of ${dogs.length})</span>` : ''}</div>
+        <div style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:2px;">${escapeHtml(dog.name || 'Unnamed pet')}${isCat ? ' <span style="font-weight:400;color:#7A7A7A;font-size:12px;">(Cat)</span>' : ''}${dogs.length > 1 ? ` <span style="font-weight:400;color:#7A7A7A;font-size:12px;">(${i+1} of ${dogs.length})</span>` : ''}</div>
         ${fields ? `<div style="font-size:13px;color:#4A4A4A;margin-bottom:4px;">${escapeHtml(fields)}</div>` : ''}
+        ${context ? `<div style="font-size:13px;color:#4A4A4A;margin-top:4px;">${escapeHtml(context)}</div>` : ''}
         ${dog.notes ? `<div style="font-size:13px;color:#4A4A4A;margin-top:4px;"><strong>Notes:</strong> ${escapeHtml(dog.notes)}</div>` : ''}
         ${dog.temperament ? `<div style="font-size:13px;color:#4A4A4A;margin-top:4px;"><strong>Temperament:</strong> ${escapeHtml(dog.temperament)}</div>` : ''}
         ${dog.walkingPrefs ? `<div style="font-size:13px;color:#4A4A4A;margin-top:2px;"><strong>Preferences:</strong> ${escapeHtml(dog.walkingPrefs)}</div>` : ''}
@@ -736,6 +754,8 @@ window.openWalkDetail = (walkId) => {
   document.getElementById('walkModalContent').innerHTML = `
     ${renderDogProfiles(member)}
     <div class="detail-row"><span class="detail-label">Owner</span><span class="detail-value">${escapeHtml(member?.name) || '–'}</span></div>
+    <div class="detail-row"><span class="detail-label">Phone</span><span class="detail-value">${escapeHtml(member?.phone) || '–'}</span></div>
+    <div class="detail-row"><span class="detail-label">Email</span><span class="detail-value">${escapeHtml(member?.email) || '–'}</span></div>
     <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${escapeHtml(member?.address) || '–'}</span></div>
     <div class="detail-row"><span class="detail-label">Access</span><span class="detail-value">${escapeHtml(member?.accessNotes) || 'None'}</span></div>
     <div class="detail-row"><span class="detail-label">Time Slot</span><span class="detail-value">${slotLabel}</span></div>

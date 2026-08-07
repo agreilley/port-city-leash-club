@@ -67,11 +67,28 @@ Existence of a document at `admins/{uid}` **is** the admin authorization check �
     age: string
     weight: string
     notes: string
-    temperament: string
+    temperament: string          // free text everywhere it's collected (member-facing forms and both
+                                  // public request forms) — was a fixed dropdown on service-request.html
+                                  // until this was unified
     walkingPrefs: string
     triggers: string             // free text — safety-relevant, shown prominently to walkers
     medications: string
     allergies: string
+    // Added to portal-pet-profile.html (member self-service, fully
+    // editable) and admin/dashboard.html's read-only views (member detail,
+    // service_request display — via renderPetDetailCards) — same field set
+    // as the public request forms' dogs[] shape below. NOT editable in
+    // admin's Add Member modal, which deliberately still only creates the
+    // 10-field shape above; a pet only gets these fields via the member
+    // portal or a service_request's direct copy (confirmServiceRequest).
+    species: string               // "Dog" | "Cat"
+    spayed: string                // "Yes" | "No" | ""
+    friendlyWithPeople: boolean
+    friendlyWithDogs: boolean     // dog-only
+    pullsOnLeash: boolean         // dog-only
+    indoorOnly: boolean           // cat-only
+    comfortableHandled: boolean   // cat-only
+    takesMedication: boolean
   }
   // Legacy flat fields — only present on member docs created before the
   // dogs[] array existed. Never written by new code; read as a fallback
@@ -238,7 +255,7 @@ attribution: object | null   // first-touch marketing attribution — see note b
                               // never set on the member-portal booking path — portal-request-extras.html
                               // is an authenticated page and deliberately loads no capture script
 ```
-Note: the public form's `dogs[]` shape (species/spayed/friendly-with-people/etc.) is genuinely different from `membership_request`'s simpler shape and from `members.dogs[]`'s canonical shape — three different pet-object shapes exist in this codebase depending on which form produced them, admin's request-detail modal renders each correctly for its own submission type.
+Note: `membership_request`'s `dogs[]` shape (name/breed/age/weight/notes only) is still genuinely simpler than everywhere else — that form only ever collects the basics. Everywhere else (`service_request`'s public form, `members.dogs[]`, portal-pet-profile.html, and admin's Add Member modal) now shares the same full field set (species/spayed/friendly-with-people/etc. alongside the older walkingPrefs/triggers/medications/allergies), so a pet's profile carries over intact regardless of which of those surfaces last touched it. A pet from an OLDER membership_request or a pre-existing member record may still be missing some of these fields — every renderer (`renderPetDetailCards`, portal-pet-profile.html, admin's Add Member modal) treats an absent field as blank/unset rather than requiring it.
 
 **Attribution blob** (`attribution`, on `membership_request` and `service_request` only — never on `overnight_request` or any authenticated-portal-originated submission) — first-touch marketing attribution, captured client-side in `js/attribution.js` and read back at submission via `window.pclcReadAttribution()`:
 ```
