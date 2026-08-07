@@ -31,6 +31,7 @@ const TEMPLATES = {
   'walk-confirmed': require('../templates/walk-confirmed'),
   'portal-walk-request-received': require('../templates/portal-walk-request-received'),
   'member-welcome': require('../templates/member-welcome'),
+  'referral-code-delivery': require('../templates/referral-code-delivery'),
 };
 
 const MAX_ATTEMPTS = 3;

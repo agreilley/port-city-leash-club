@@ -3698,10 +3698,24 @@ async function runGenerateReferralCode(payload = {}) {
     creditIssued: false,
   });
 
+  // Fire-and-forget, same contract as every other sendEmail() caller: never
+  // throws, never blocks the code (already created above) from being
+  // returned to the client. idempotencyKey is the code itself — it's unique
+  // per created doc (createReferralCodeDoc uses .create(), which throws on
+  // collision), so it's already a clean dedupe key with nothing extra to
+  // compose it from.
+  const emailResult = await sendEmail({
+    to: submittedEmail,
+    template: 'referral-code-delivery',
+    data: { firstName: submittedName.split(/\s+/)[0] || 'there', code },
+    idempotencyKey: `referral-code-delivery:${code}`,
+  });
+  if (!emailResult.ok) console.error(`runGenerateReferralCode: referral-code-delivery failed for ${code}:`, emailResult.error);
+
   return { code };
 }
 
-exports.generateReferralCode = onCall({}, async (request) => {
+exports.generateReferralCode = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
   return runGenerateReferralCode(request.data || {});
 });
 // Exposed directly, same reasoning as runGenerateWalkerPayout — testable

@@ -274,6 +274,18 @@ const RENDERS = [
       portalSetupLink: 'https://www.portcityleashclub.com/reset?oobCode=demo-welcome-multi',
     },
   },
+
+  // ── referral-code-delivery ────────────────────────────────────────────
+  {
+    template: 'referral-code-delivery',
+    variant: 'apartment-referral',
+    label: 'Partner referral (apartment intake)',
+    petCount: 0,
+    data: {
+      firstName: 'Jordan',
+      code: 'PCLC-7X9K2M',
+    },
+  },
 ];
 
 // ── render ────────────────────────────────────────────────────────────────
