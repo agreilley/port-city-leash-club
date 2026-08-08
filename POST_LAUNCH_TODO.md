@@ -56,14 +56,30 @@ September" pile.
 - **Why deferred:** low practical impact (photos aren't sensitive; abuse is
   bounded by the size/type checks).
 
-## 5. Emergency contact on pet profile
+## 5. Emergency contact on pet profile — SUPERSEDED
 
-- **What:** a per-**household** emergency contact (NOT per-dog), stored on the
-  member doc as `emergencyContact: { name, phone, relationship }`.
-- **Context:** The `firestore.rules` member-update allowlist **already permits**
-  `emergencyContact`, so **no rule change is needed** — just build the UI and
-  wire it into the existing pet-profile / account save flow.
-- **Why deferred:** post-security-work feature, not urgent.
+- Built 2026-08-07 as `vet` (object) + `emergencyContacts` (array, max 2) on
+  the member doc, surfaced on portal-pet-profile.html, portal-dashboard.html
+  (incomplete-profile banner), walker/dashboard.html (emergency block), and
+  admin/dashboard.html (read-only display + dedicated edit modal). The
+  singular `emergencyContact` field this item originally planned was never
+  built against and has been replaced in `firestore.rules` by the plural
+  `emergencyContacts` + `vet` allowlist entries.
+
+## 6. No admin edit path for core member fields
+
+- **What:** `admin/dashboard.html`'s member detail modal is still read-only
+  for everything except vet/emergency contacts (added 2026-08-07 via a
+  dedicated modal, see item 5). There's no `updateDoc` path anywhere for
+  correcting an existing member's name, phone, address, tier, zone, walk
+  schedule, etc. — only creation (`saveMember`, `confirmServiceRequest`)
+  exists. Today those corrections happen directly in Firestore.
+- **Context:** deliberately not built as part of the vet/emergency-contacts
+  work — that work scoped its admin editor narrowly on purpose rather than
+  building a general member-field editor.
+- **Why deferred:** real gap, but not urgent enough to justify designing a
+  general editor (field-level validation, audit trail considerations, etc.)
+  without a concrete need driving the scope.
 
 ---
 

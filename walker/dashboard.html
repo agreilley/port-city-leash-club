@@ -356,6 +356,11 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
+// Last-resort fallback for the "In an emergency" block below when a member
+// hasn't filled in a vet yet — this is the one number a walker can always
+// reach someone on, so it must never be blank.
+const ALISON_PHONE = '(919) 368-0605';
+
 let walkerDoc = null;
 let myWalks = [];
 let myOvernights = [];
@@ -635,6 +640,7 @@ window.openOvernightDetail = (overnightId) => {
     <div class="detail-row"><span class="detail-label">Email</span><span class="detail-value">${escapeHtml(member?.email) || '–'}</span></div>
     <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${escapeHtml(member?.address) || '–'}</span></div>
     <div class="detail-row"><span class="detail-label">Access</span><span class="detail-value">${escapeHtml(member?.accessNotes) || 'None'}</span></div>
+    ${renderEmergencyBlock(member)}
     <div class="detail-row"><span class="detail-label">Start Date</span><span class="detail-value">${fmtFullDate(o.startDate)}</span></div>
     <div class="detail-row"><span class="detail-label">End Date</span><span class="detail-value">${fmtFullDate(o.endDate)}</span></div>
     ${o.extraPet ? `<div class="detail-row"><span class="detail-label">Multiple Pets</span><span class="detail-value">Yes</span></div>` : ''}
@@ -775,6 +781,42 @@ function renderDogProfiles(member) {
   }).join('');
 }
 
+// Collapsed-by-default emergency block, shared by openWalkDetail and
+// openOvernightDetail. Every phone number is a tel: link. Vet is required
+// so this can render before it's filled in — falls back to Alison's number
+// (ALISON_PHONE, set above) rather than a dead end.
+function renderEmergencyBlock(member) {
+  const vet = member?.vet || {};
+  const hasVet = !!(vet.practiceName || vet.phone);
+  const contacts = (member?.emergencyContacts || []).filter(c => c.name || c.phone);
+
+  const vetHTML = hasVet
+    ? `<div style="margin-bottom:10px;">
+        <div style="font-weight:600;font-size:13px;color:var(--navy);margin-bottom:2px;">Vet</div>
+        <div style="font-size:13px;color:#4A4A4A;">${escapeHtml(vet.practiceName) || 'Vet'}${vet.phone ? ` · <a href="tel:${escapeHtml(vet.phone)}" style="color:#C17B6F;">${escapeHtml(vet.phone)}</a>` : ''}</div>
+        ${vet.address ? `<div style="font-size:12px;color:#7A7A7A;">${escapeHtml(vet.address)}</div>` : ''}
+        ${vet.afterHoursPhone ? `<div style="font-size:12px;color:#7A7A7A;margin-top:2px;">After hours${vet.afterHoursName ? `: ${escapeHtml(vet.afterHoursName)}` : ''} · <a href="tel:${escapeHtml(vet.afterHoursPhone)}" style="color:#C17B6F;">${escapeHtml(vet.afterHoursPhone)}</a></div>` : ''}
+      </div>`
+    : `<div style="margin-bottom:10px;font-size:13px;color:#4A4A4A;">No vet on file — call Alison${ALISON_PHONE ? ` <a href="tel:${escapeHtml(ALISON_PHONE)}" style="color:#C17B6F;">${escapeHtml(ALISON_PHONE)}</a>` : ''}.</div>`;
+
+  const contactsHTML = contacts.length
+    ? contacts.map(c => `
+        <div style="margin-bottom:6px;font-size:13px;color:#4A4A4A;">
+          <strong>${escapeHtml(c.name)}</strong>${c.relationship ? ` (${escapeHtml(c.relationship)})` : ''}${c.authorized ? ' · Authorized to approve care decisions' : ''}${c.phone ? ` · <a href="tel:${escapeHtml(c.phone)}" style="color:#C17B6F;">${escapeHtml(c.phone)}</a>` : ''}
+        </div>`).join('')
+    : `<div style="font-size:13px;color:#7A7A7A;">None on file.</div>`;
+
+  return `
+    <details style="margin-top:12px;margin-bottom:12px;border:1px solid #92400E;background:#FEF3C7;border-radius:8px;padding:10px 14px;">
+      <summary style="cursor:pointer;font-weight:600;font-size:13px;color:#92400E;">In an emergency</summary>
+      <div style="margin-top:10px;">
+        ${vetHTML}
+        <div style="font-weight:600;font-size:13px;color:var(--navy);margin-bottom:4px;">Emergency Contacts</div>
+        ${contactsHTML}
+      </div>
+    </details>`;
+}
+
 window.openWalkDetail = (walkId) => {
   const walk = myWalks.find(w => w.id === walkId);
   if (!walk) return;
@@ -798,6 +840,7 @@ window.openWalkDetail = (walkId) => {
     <div class="detail-row"><span class="detail-label">Email</span><span class="detail-value">${escapeHtml(member?.email) || '–'}</span></div>
     <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${escapeHtml(member?.address) || '–'}</span></div>
     <div class="detail-row"><span class="detail-label">Access</span><span class="detail-value">${escapeHtml(member?.accessNotes) || 'None'}</span></div>
+    ${renderEmergencyBlock(member)}
     <div class="detail-row"><span class="detail-label">Time Slot</span><span class="detail-value">${slotLabel}</span></div>
     <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted ? '✓ Completed' : isToday ? 'Today' : isPastDay ? 'Past' : 'Scheduled'}</span></div>
     ${isCompleted ? `

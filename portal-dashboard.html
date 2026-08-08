@@ -397,6 +397,39 @@
       letter-spacing: 0.01em;
     }
 
+    .incomplete-profile-banner {
+      display: none;
+      background: #FEF3C7;
+      border: 1px solid #92400E;
+      color: #92400E;
+      padding: 16px 20px;
+      border-radius: 12px;
+      margin-bottom: 24px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .incomplete-profile-banner a {
+      color: #C17B6F;
+      font-weight: 500;
+      text-decoration: underline;
+      margin-left: 4px;
+    }
+
+    .incomplete-profile-banner .dismiss-btn {
+      background: none;
+      border: none;
+      font-size: 20px;
+      line-height: 1;
+      color: #92400E;
+      cursor: pointer;
+      padding: 4px 8px;
+      flex-shrink: 0;
+    }
+
     @media (max-width: 768px) {
       .portal-container {
         flex-direction: column;
@@ -556,6 +589,15 @@
         <div class="preview-banner" id="previewBanner">Admin preview — <span id="previewBannerName"></span> (read-only)</div>
         <div class="page-header">
           <h1 id="welcomeHeader">Welcome back</h1>
+        </div>
+
+        <!-- Incomplete Profile Banner: shown when vet or emergencyContacts is
+             missing/incomplete. Dismissible per session (sessionStorage);
+             reappears next session until both blocks are filled, then never
+             renders again (recomputed from the member doc, not a stored flag). -->
+        <div class="incomplete-profile-banner" id="incompleteProfileBanner">
+          <div>Complete your pet profile before your first walk. We still need your vet and emergency contact.<a href="portal-pet-profile.html">Update now</a></div>
+          <button type="button" class="dismiss-btn" onclick="dismissProfileBanner()" aria-label="Dismiss">&times;</button>
         </div>
 
         <!-- Walk Schedule Banner -->
@@ -933,7 +975,36 @@ function populateMemberUI() {
   document.getElementById('bannerSchedule').textContent = isTravelOnly
     ? 'No recurring walks on file'
     : (days && slot ? `${days} • ${slot}` : 'Schedule pending');
+
+  renderIncompleteProfileBanner();
 }
+
+// Vet block counts as "filled" once its two required fields are present;
+// emergencyContacts counts as "filled" once at least one contact has all
+// three required fields. Purely a UI nudge — walk assignment isn't blocked.
+function isProfileIncomplete() {
+  const vet = memberData.vet || {};
+  const vetComplete = !!(vet.practiceName && vet.phone);
+  const contacts = memberData.emergencyContacts || [];
+  const contactsComplete = contacts.some(c => c.name && c.relationship && c.phone);
+  return !vetComplete || !contactsComplete;
+}
+
+function renderIncompleteProfileBanner() {
+  const banner = document.getElementById('incompleteProfileBanner');
+  if (!banner) return;
+  if (isPreviewMode || !isProfileIncomplete() || sessionStorage.getItem('profileBannerDismissed') === '1') {
+    banner.style.display = 'none';
+    return;
+  }
+  banner.style.display = 'flex';
+}
+
+window.dismissProfileBanner = () => {
+  sessionStorage.setItem('profileBannerDismissed', '1');
+  const banner = document.getElementById('incompleteProfileBanner');
+  if (banner) banner.style.display = 'none';
+};
 
 // ── ADMIN PREVIEW: disable every outbound action/link ───────────────────────
 // Buttons/links are disabled, never hidden or removed — the admin should see

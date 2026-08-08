@@ -98,6 +98,28 @@ Existence of a document at `admins/{uid}` **is** the admin authorization check �
   dogAge: string
   dogNotes: string
 
+  // Vet + emergency contacts — household-level (not per-dog), member
+  // self-service via portal-pet-profile.html, admin-editable backstop via
+  // admin/dashboard.html's dedicated Vet & Emergency Contacts modal.
+  // Walkers can read both (unrestricted members/{id} read, same as
+  // name/phone/address) — surfaced in a collapsed "In an emergency" block
+  // on the walk detail modal. Neither field is required to exist; a member
+  // doc predating this feature simply has neither key.
+  vet: object {
+    practiceName: string          // required if the vet block is filled in at all
+    phone: string                 // required if the vet block is filled in at all
+    address: string                // optional
+    afterHoursName: string         // optional
+    afterHoursPhone: string        // optional
+  }
+  emergencyContacts: array<object> // max 2 entries
+  {
+    name: string                  // required
+    relationship: string          // required, free text
+    phone: string                 // required
+    authorized: boolean           // "authorized to approve care decisions if I can't be reached"
+  }
+
   // Stripe billing (Travel-tier / one-time-service-only members may lack these)
   stripeCustomerId: string
   stripeSubscriptionId: string

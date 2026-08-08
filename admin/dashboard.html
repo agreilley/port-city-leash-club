@@ -669,6 +669,35 @@
   </div>
 </div>
 
+<!-- EDIT VET & EMERGENCY CONTACTS MODAL — dedicated backstop editor, scoped
+     to just these two blocks. Not a general member-field editor; see
+     POST_LAUNCH_TODO.md for that broader gap. -->
+<div class="modal-overlay" id="editVetEmergencyModal">
+  <div class="modal-box" style="width:520px;max-height:90vh;overflow-y:auto;">
+    <button class="modal-close" onclick="closeModal('editVetEmergencyModal')">×</button>
+    <div class="modal-title">Vet &amp; Emergency Contacts</div>
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:12px;">Vet</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <div class="form-field"><label>Practice name</label><input type="text" id="eve-vet-practiceName" placeholder="Coastal Animal Hospital"></div>
+      <div class="form-field"><label>Phone</label><input type="tel" id="eve-vet-phone" placeholder="(000) 000-0000"></div>
+    </div>
+    <div class="form-field" style="margin-bottom:12px;"><label>Address</label><input type="text" id="eve-vet-address" placeholder="Vet practice address"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <div class="form-field"><label>After-hours contact name</label><input type="text" id="eve-vet-afterHoursName" placeholder="If different from above"></div>
+      <div class="form-field"><label>After-hours phone</label><input type="tel" id="eve-vet-afterHoursPhone" placeholder="(000) 000-0000"></div>
+    </div>
+    <hr class="modal-divider">
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:12px;">Emergency Contacts</div>
+    <div id="eve-contacts-container"></div>
+    <button type="button" class="btn-secondary" onclick="addEditContactRow()" style="margin-bottom:16px;">+ Add contact</button>
+    <div id="eve-error" style="color:var(--rust);font-size:13px;margin-bottom:12px;display:none;"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-primary" style="flex:1;" onclick="saveVetEmergency()">Save</button>
+      <button class="btn-secondary" onclick="closeModal('editVetEmergencyModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- REFERRAL CODE DETAIL MODAL (read-only) -->
 <div class="modal-overlay" id="referralCodeDetailModal">
   <div class="modal">
@@ -978,6 +1007,17 @@ function getMemberDogs(member) {
 }
 function memberDogNames(member) {
   return getMemberDogs(member).map(d => d.name).filter(Boolean).join(', ');
+}
+// Mirrors the completeness check in portal-dashboard.html's incomplete-profile
+// banner — computed client-side, no stored flag. Vet is complete once its two
+// required fields are set; emergencyContacts is complete once at least one
+// contact has all three required fields.
+function isMemberProfileIncomplete(member) {
+  const vet = member?.vet || {};
+  const vetComplete = !!(vet.practiceName && vet.phone);
+  const contacts = member?.emergencyContacts || [];
+  const contactsComplete = contacts.some(c => c.name && c.relationship && c.phone);
+  return !vetComplete || !contactsComplete;
 }
 
 // Address/phone + full dog profiles for an existing member, looked up by
@@ -1874,7 +1914,7 @@ function renderMembersTable(filter = '') {
     const walker = allWalkers.find(w => w.id === m.assignedWalkerId);
     const since = m.createdAt?.toDate?.() ? m.createdAt.toDate().toLocaleDateString('en-US', {month:'short', year:'numeric'}) : '–';
     return `<tr>
-      <td data-label="Name"><strong>${escapeHtml(m.name)}</strong><br><span style="font-size:11px;color:var(--text-light);">${escapeHtml(m.email)}</span></td>
+      <td data-label="Name"><strong>${escapeHtml(m.name)}</strong>${isMemberProfileIncomplete(m) ? ` <span class="status-badge unassigned" title="Vet and/or emergency contact info missing">Incomplete</span>` : ''}<br><span style="font-size:11px;color:var(--text-light);">${escapeHtml(m.email)}</span></td>
       <td data-label="Dog">${escapeHtml(memberDogNames(m) || '–')}</td>
       <td data-label="Tier"><span class="status-badge active">${escapeHtml(m.tier || 'Standard')}</span></td>
       <td data-label="Billing">${renderBillingBadge(memberBilling[m.id])}</td>
@@ -4417,9 +4457,10 @@ window.openAddWalkerModal = (prefill, submissionId) => {
   document.getElementById('aw-zones').value = prefill?.neighborhood || '';
   document.getElementById('addWalkerModal').classList.add('open');
 };
-// Read-only — no save button, no editable fields. Corrections happen
-// directly in Firestore for now; this is a stopgap, not something to
-// build around.
+// Read-only, except for the dedicated Vet & Emergency Contacts editor
+// (openEditVetEmergency) — every other field here still has no save path;
+// corrections happen directly in Firestore for now. See POST_LAUNCH_TODO.md
+// for the broader gap (no edit path exists for core member fields at all).
 window.openMemberDetail = async (id) => {
   const member = allMembers.find(m => m.id === id);
   if (!member) return;
@@ -4477,9 +4518,35 @@ window.openMemberDetail = async (id) => {
     <hr class="modal-divider">
     <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Dogs</div>
     ${dogsHTML}
+    <hr class="modal-divider">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div style="font-weight:500;font-size:13px;color:var(--navy);">Vet &amp; Emergency Contacts</div>
+      <button class="btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="openEditVetEmergency('${member.id}')">Edit</button>
+    </div>
+    ${renderVetEmergencyDetail(member)}
   `;
   document.getElementById('memberDetailModal').classList.add('open');
 };
+
+// Read-only display for the member-detail modal — mirrors the tel:-link
+// emergency block in walker/dashboard.html but without links (admin doesn't
+// need to dial from here) and with an explicit "missing" state per field
+// rather than the walker-facing "call Alison" fallback.
+function renderVetEmergencyDetail(member) {
+  const vet = member.vet || {};
+  const contacts = member.emergencyContacts || [];
+  const vetHTML = (vet.practiceName || vet.phone)
+    ? `<div style="font-size:13px;color:var(--text-mid);margin-bottom:8px;">
+        <strong>${escapeHtml(vet.practiceName) || 'Vet'}</strong>${vet.phone ? ` · ${escapeHtml(vet.phone)}` : ''}
+        ${vet.address ? `<div style="font-size:12px;color:var(--text-light);">${escapeHtml(vet.address)}</div>` : ''}
+        ${vet.afterHoursPhone ? `<div style="font-size:12px;color:var(--text-light);">After hours${vet.afterHoursName ? `: ${escapeHtml(vet.afterHoursName)}` : ''} · ${escapeHtml(vet.afterHoursPhone)}</div>` : ''}
+      </div>`
+    : `<div style="font-size:13px;color:var(--text-light);margin-bottom:8px;">No vet on file.</div>`;
+  const contactsHTML = contacts.length
+    ? contacts.map(c => `<div style="font-size:13px;color:var(--text-mid);margin-bottom:4px;"><strong>${escapeHtml(c.name) || 'Unnamed'}</strong>${c.relationship ? ` (${escapeHtml(c.relationship)})` : ''}${c.phone ? ` · ${escapeHtml(c.phone)}` : ''}${c.authorized ? ' · Authorized' : ''}</div>`).join('')
+    : `<div style="font-size:13px;color:var(--text-light);">No emergency contacts on file.</div>`;
+  return vetHTML + contactsHTML;
+}
 
 // Manually clears billing.needsReview once admin has resolved the
 // underlying issue themselves (in Stripe, in Firestore, wherever the fix
@@ -4500,6 +4567,130 @@ window.dismissMemberBillingReview = async (memberId) => {
     openMemberDetail(memberId);
   } catch (e) {
     alert(`Couldn't dismiss the review flag: ${e.message}`);
+  }
+};
+
+// ── EDIT VET & EMERGENCY CONTACTS (admin backstop) ────────────────────────
+// Dedicated editor scoped to just these two blocks — deliberately not a
+// general member-field editor (see POST_LAUNCH_TODO.md). Same array-of-rows
+// pattern as addDogRow/collectAddMemberDogRows, capped at 2 contacts.
+let editingVetEmergencyMemberId = null;
+let editContacts = [];
+
+window.openEditVetEmergency = (id) => {
+  const member = allMembers.find(m => m.id === id);
+  if (!member) return;
+  editingVetEmergencyMemberId = id;
+  const vet = member.vet || {};
+  document.getElementById('eve-vet-practiceName').value = vet.practiceName || '';
+  document.getElementById('eve-vet-phone').value = vet.phone || '';
+  document.getElementById('eve-vet-address').value = vet.address || '';
+  document.getElementById('eve-vet-afterHoursName').value = vet.afterHoursName || '';
+  document.getElementById('eve-vet-afterHoursPhone').value = vet.afterHoursPhone || '';
+  editContacts = (member.emergencyContacts || []).map(c => ({ ...c }));
+  renderEditContactRows();
+  document.getElementById('eve-error').style.display = 'none';
+  document.getElementById('editVetEmergencyModal').classList.add('open');
+};
+
+function editContactRowHTML(c, i) {
+  return `
+    <div style="border:1px solid rgba(0,0,0,0.08);border-radius:8px;padding:12px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div style="font-size:12px;font-weight:500;color:var(--text-light);">${i === 0 ? 'Primary' : 'Secondary'}</div>
+        <button type="button" onclick="removeEditContactRow(${i})" style="background:none;border:none;color:var(--text-light);cursor:pointer;font-size:12px;">Remove</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+        <div class="form-field"><label>Name</label><input type="text" id="eve-ec-name-${i}" value="${escapeHtml(c.name || '')}"></div>
+        <div class="form-field"><label>Relationship</label><input type="text" id="eve-ec-relationship-${i}" value="${escapeHtml(c.relationship || '')}"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end;">
+        <div class="form-field"><label>Phone</label><input type="tel" id="eve-ec-phone-${i}" value="${escapeHtml(c.phone || '')}"></div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-mid);"><input type="checkbox" id="eve-ec-authorized-${i}"${c.authorized ? ' checked' : ''}> Authorized</label>
+      </div>
+    </div>`;
+}
+
+function renderEditContactRows() {
+  document.getElementById('eve-contacts-container').innerHTML = editContacts.map((c, i) => editContactRowHTML(c, i)).join('');
+  const addBtn = document.querySelector('#editVetEmergencyModal button[onclick="addEditContactRow()"]');
+  if (addBtn) addBtn.style.display = editContacts.length >= 2 ? 'none' : '';
+}
+
+function collectEditContacts() {
+  return editContacts.map((_, i) => ({
+    name:         document.getElementById(`eve-ec-name-${i}`)?.value || '',
+    relationship: document.getElementById(`eve-ec-relationship-${i}`)?.value || '',
+    phone:        document.getElementById(`eve-ec-phone-${i}`)?.value || '',
+    authorized:   document.getElementById(`eve-ec-authorized-${i}`)?.checked || false,
+  }));
+}
+
+window.addEditContactRow = () => {
+  if (editContacts.length >= 2) return;
+  editContacts = collectEditContacts();
+  editContacts.push({ name: '', relationship: '', phone: '', authorized: false });
+  renderEditContactRows();
+};
+
+window.removeEditContactRow = (i) => {
+  const name = document.getElementById(`eve-ec-name-${i}`)?.value;
+  if (!confirm(`Remove ${name || 'this contact'} as an emergency contact?`)) return;
+  editContacts = collectEditContacts();
+  editContacts.splice(i, 1);
+  renderEditContactRows();
+};
+
+// Same required-field rule as portal-pet-profile.html's
+// validateVetAndEmergency: vet's two required fields are only required once
+// any field in the vet block is filled in; each emergency contact row
+// requires all three of its fields once the row exists. Kept identical to
+// the member-portal rule deliberately — the admin backstop must not be able
+// to produce a state the member path can't.
+function vetEmergencyValidationError(vet, contacts) {
+  const vetFilled = vet.practiceName || vet.phone || vet.address || vet.afterHoursName || vet.afterHoursPhone;
+  if (vetFilled && (!vet.practiceName || !vet.phone)) {
+    return 'Vet practice name and phone are required if any vet info is entered.';
+  }
+  for (let i = 0; i < contacts.length; i++) {
+    const c = contacts[i];
+    if (!c.name || !c.relationship || !c.phone) {
+      return `Contact ${i + 1}: name, relationship, and phone are all required.`;
+    }
+  }
+  return null;
+}
+
+window.saveVetEmergency = async () => {
+  if (!editingVetEmergencyMemberId) return;
+  const vet = {
+    practiceName:    document.getElementById('eve-vet-practiceName').value,
+    phone:           document.getElementById('eve-vet-phone').value,
+    address:         document.getElementById('eve-vet-address').value,
+    afterHoursName:  document.getElementById('eve-vet-afterHoursName').value,
+    afterHoursPhone: document.getElementById('eve-vet-afterHoursPhone').value,
+  };
+  const emergencyContacts = collectEditContacts();
+  const errEl = document.getElementById('eve-error');
+  errEl.style.display = 'none';
+
+  const validationError = vetEmergencyValidationError(vet, emergencyContacts);
+  if (validationError) {
+    errEl.textContent = validationError;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  try {
+    await updateDoc(doc(db, 'members', editingVetEmergencyMemberId), { vet, emergencyContacts });
+    const localMember = allMembers.find(m => m.id === editingVetEmergencyMemberId);
+    if (localMember) { localMember.vet = vet; localMember.emergencyContacts = emergencyContacts; }
+    closeModal('editVetEmergencyModal');
+    renderMembersTable();
+    openMemberDetail(editingVetEmergencyMemberId);
+  } catch (e) {
+    errEl.textContent = `Couldn't save: ${e.message}`;
+    errEl.style.display = 'block';
   }
 };
 

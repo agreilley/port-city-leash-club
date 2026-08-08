@@ -44,13 +44,13 @@ service cloud.firestore {
       // rejected and can only change via admin or a Cloud Function.
       // Fields written by the two self-service portal pages that touch the
       // member doc directly: portal-account.html (name/phone/address) and
-      // portal-pet-profile.html (dogs + the denormalized dogName/petBreed and
-      // the home-access fields). All are non-billing profile/access data.
-      // emergencyContact is included for a planned profile field; harmless if
-      // unused. Deliberately EXCLUDED (admin- or Cloud-Function-only): tier,
-      // status, billingStatus, currentMonthCharge, membershipStartDate,
-      // pauseStartDate, pauseEndDate, defaultWalkDays, assignedWalkerId, and
-      // every stripe* key.
+      // portal-pet-profile.html (dogs + the denormalized dogName/petBreed,
+      // the home-access fields, vet, and emergencyContacts). All are
+      // non-billing profile/access data. Deliberately EXCLUDED (admin- or
+      // Cloud-Function-only): tier, status, billingStatus,
+      // currentMonthCharge, membershipStartDate, pauseStartDate,
+      // pauseEndDate, defaultWalkDays, assignedWalkerId, and every stripe*
+      // key.
       allow update: if request.auth != null
         && request.auth.uid == id
         && request.resource.data.diff(resource.data).affectedKeys()
@@ -64,7 +64,8 @@ service cloud.firestore {
                 'parkingNotes',
                 'entryCode',
                 'accessNotes',
-                'emergencyContact'
+                'vet',
+                'emergencyContacts'
               ]);
 
       // ── Billing (M-1) ──────────────────────────────────────────────────

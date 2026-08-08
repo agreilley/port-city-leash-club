@@ -191,6 +191,13 @@
     .checkbox-pill { border: 1px solid #E5E0D8; border-radius: 6px; padding: 10px 12px; font-size: 13px; color: #0D1B2A; display: flex; gap: 8px; align-items: center; background: white; }
     .checkbox-pill input { width: auto; }
 
+    .required-mark { color: #C17B6F; margin-left: 2px; }
+    .field-value.has-error input,
+    .field-value.has-error textarea {
+      border-color: #C17B6F;
+      box-shadow: 0 0 0 3px rgba(193, 123, 111, 0.15);
+    }
+
     /* Photo Section */
     .photo-section {
       display: flex;
@@ -464,6 +471,44 @@
         </div>
       </div>
 
+      <!-- Vet Info -->
+      <div class="section-card" id="vetCard" style="display:none;">
+        <h2 class="section-title">Vet Info</h2>
+        <div class="field-row">
+          <div class="field-group">
+            <label class="field-label">Practice Name<span class="required-mark">*</span></label>
+            <div class="field-value"><input type="text" id="vet_practiceName" placeholder="Vet practice name"></div>
+          </div>
+          <div class="field-group">
+            <label class="field-label">Phone<span class="required-mark">*</span></label>
+            <div class="field-value"><input type="tel" id="vet_phone" placeholder="(555) 555-5555"></div>
+          </div>
+        </div>
+        <div class="field-row full">
+          <div class="field-group">
+            <label class="field-label">Address</label>
+            <div class="field-value"><input type="text" id="vet_address" placeholder="Vet practice address"></div>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field-group">
+            <label class="field-label">After-Hours Contact Name</label>
+            <div class="field-value"><input type="text" id="vet_afterHoursName" placeholder="If different from above"></div>
+          </div>
+          <div class="field-group">
+            <label class="field-label">After-Hours Phone</label>
+            <div class="field-value"><input type="tel" id="vet_afterHoursPhone" placeholder="(555) 555-5555"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Emergency Contacts -->
+      <div class="section-card" id="emergencyContactsCard" style="display:none;">
+        <h2 class="section-title">Emergency Contacts</h2>
+        <div id="emergencyContactsContainer"></div>
+        <button type="button" id="addContactBtn" onclick="addEmergencyContact()" style="margin-top:4px;background:#8FA8A2;border:none;border-radius:6px;padding:12px 20px;font-size:13px;font-weight:500;color:white;cursor:pointer;font-family:inherit;letter-spacing:0.02em;" onmouseover="this.style.background='#7a9690'" onmouseout="this.style.background='#8FA8A2'">+ Add emergency contact</button>
+      </div>
+
       <div class="form-actions" id="formActions" style="display:none;">
         <button type="button" class="btn btn-primary" onclick="saveProfile()">Save Changes</button>
         <button type="button" class="btn btn-secondary" onclick="window.history.back()">Cancel</button>
@@ -493,6 +538,7 @@ const db = getFirestore(app);
 let userId = null;
 let memberData = null;
 let currentDogs = []; // live working copy — add/remove edits this
+let currentEmergencyContacts = []; // live working copy — add/remove edits this
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.href = 'portal-login.html'; return; }
@@ -505,6 +551,7 @@ onAuthStateChanged(auth, async (user) => {
       currentDogs = memberData.dogs?.length
         ? memberData.dogs.map(d => ({ ...d }))
         : [{ name: memberData.dogName || '', breed: memberData.petBreed || '', age: memberData.petAge ? `${memberData.petAge} years` : '', weight: memberData.petWeight || '', notes: memberData.dogNotes || '', temperament: memberData.temperament || '', walkingPrefs: memberData.walkingPrefs || '', triggers: memberData.triggers || '', medications: memberData.medications || '', allergies: memberData.allergies || '', species: 'Dog', spayed: '', friendlyWithPeople: false, friendlyWithDogs: false, pullsOnLeash: false, takesMedication: false }];
+      currentEmergencyContacts = (memberData.emergencyContacts || []).map(c => ({ ...c }));
       renderPage();
     }
   } catch(e) {
@@ -522,6 +569,17 @@ function renderPage() {
   document.getElementById('entryCode').value = memberData.entryCode || '';
   document.getElementById('accessNotes').value = memberData.accessNotes || '';
   document.getElementById('homeAccessCard').style.display = '';
+  // Vet info
+  const vet = memberData.vet || {};
+  document.getElementById('vet_practiceName').value = vet.practiceName || '';
+  document.getElementById('vet_phone').value = vet.phone || '';
+  document.getElementById('vet_address').value = vet.address || '';
+  document.getElementById('vet_afterHoursName').value = vet.afterHoursName || '';
+  document.getElementById('vet_afterHoursPhone').value = vet.afterHoursPhone || '';
+  document.getElementById('vetCard').style.display = '';
+  // Emergency contacts
+  renderEmergencyContactCards();
+  document.getElementById('emergencyContactsCard').style.display = '';
   document.getElementById('formActions').style.display = '';
 }
 
@@ -695,12 +753,104 @@ window.removeDog = (i) => {
   updatePageHeader();
 };
 
+function emergencyContactCardHTML(contact, i) {
+  return `
+    <div class="section-card" id="contactCard${i}" style="background:white;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h3 style="font-size:15px;font-weight:500;margin:0;">${i === 0 ? 'Primary Contact' : 'Secondary Contact'}</h3>
+        <button type="button" onclick="removeEmergencyContact(${i})" style="background:none;border:none;font-size:13px;color:#7A7A7A;cursor:pointer;padding:4px 8px;border-radius:4px;font-family:inherit;" onmouseover="this.style.color='#C17B6F'" onmouseout="this.style.color='#7A7A7A'">Remove</button>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><label class="field-label">Name<span class="required-mark">*</span></label><div class="field-value"><input type="text" id="ec_name_${i}" value="${esc(contact.name || '')}" placeholder="Full name"></div></div>
+        <div class="field-group"><label class="field-label">Relationship<span class="required-mark">*</span></label><div class="field-value"><input type="text" id="ec_relationship_${i}" value="${esc(contact.relationship || '')}" placeholder="e.g. Sister, Neighbor, Friend"></div></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><label class="field-label">Phone<span class="required-mark">*</span></label><div class="field-value"><input type="tel" id="ec_phone_${i}" value="${esc(contact.phone || '')}" placeholder="(555) 555-5555"></div></div>
+        <div class="field-group">
+          <label class="field-label">&nbsp;</label>
+          <label class="checkbox-pill" style="width:fit-content;"><input type="checkbox" id="ec_authorized_${i}"${contact.authorized ? ' checked' : ''}> Authorized to approve care decisions if I can't be reached</label>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderEmergencyContactCards() {
+  const container = document.getElementById('emergencyContactsContainer');
+  container.innerHTML = currentEmergencyContacts.map((c, i) => emergencyContactCardHTML(c, i)).join('');
+  const addBtn = document.getElementById('addContactBtn');
+  addBtn.style.display = currentEmergencyContacts.length >= 2 ? 'none' : '';
+}
+
+function collectEmergencyContacts() {
+  return currentEmergencyContacts.map((_, i) => ({
+    name:         document.getElementById(`ec_name_${i}`)?.value || '',
+    relationship: document.getElementById(`ec_relationship_${i}`)?.value || '',
+    phone:        document.getElementById(`ec_phone_${i}`)?.value || '',
+    authorized:   document.getElementById(`ec_authorized_${i}`)?.checked || false,
+  }));
+}
+
+window.addEmergencyContact = () => {
+  if (currentEmergencyContacts.length >= 2) return;
+  currentEmergencyContacts = collectEmergencyContacts();
+  currentEmergencyContacts.push({ name: '', relationship: '', phone: '', authorized: false });
+  renderEmergencyContactCards();
+};
+
+window.removeEmergencyContact = (i) => {
+  const name = document.getElementById(`ec_name_${i}`)?.value;
+  if (!confirm(`Remove ${name || 'this contact'} as an emergency contact?`)) return;
+  currentEmergencyContacts = collectEmergencyContacts();
+  currentEmergencyContacts.splice(i, 1);
+  renderEmergencyContactCards();
+};
+
+// Marks required-but-empty vet/emergency-contact fields inline. The vet
+// block is only required once any field in it is filled in (per-block
+// "required when filled"); emergency contact cards are required in full
+// once the card exists (added via "+ Add emergency contact").
+function markFieldError(id) {
+  document.getElementById(id)?.closest('.field-value')?.classList.add('has-error');
+}
+
+function validateVetAndEmergency(vet, contacts) {
+  document.querySelectorAll('.field-value.has-error').forEach(el => el.classList.remove('has-error'));
+  let valid = true;
+  const vetFilled = vet.practiceName || vet.phone || vet.address || vet.afterHoursName || vet.afterHoursPhone;
+  if (vetFilled) {
+    if (!vet.practiceName) { markFieldError('vet_practiceName'); valid = false; }
+    if (!vet.phone) { markFieldError('vet_phone'); valid = false; }
+  }
+  contacts.forEach((c, i) => {
+    if (!c.name) { markFieldError(`ec_name_${i}`); valid = false; }
+    if (!c.relationship) { markFieldError(`ec_relationship_${i}`); valid = false; }
+    if (!c.phone) { markFieldError(`ec_phone_${i}`); valid = false; }
+  });
+  return valid;
+}
+
 window.saveProfile = async () => {
   if (!userId || !memberData) return;
   const updatedDogs = collectCurrentFormValues();
   const previousDogNames = (memberData.dogs || [{ name: memberData.dogName }]).map(d => d.name).filter(Boolean).sort().join(', ');
   const newDogNames = updatedDogs.map(d => d.name).filter(Boolean).sort().join(', ');
   const dogsChanged = previousDogNames !== newDogNames;
+
+  const vet = {
+    practiceName:    document.getElementById('vet_practiceName').value,
+    phone:           document.getElementById('vet_phone').value,
+    address:         document.getElementById('vet_address').value,
+    afterHoursName:  document.getElementById('vet_afterHoursName').value,
+    afterHoursPhone: document.getElementById('vet_afterHoursPhone').value,
+  };
+  const emergencyContacts = collectEmergencyContacts();
+
+  if (!validateVetAndEmergency(vet, emergencyContacts)) {
+    showError('Please fill in the highlighted required fields, or remove the incomplete card.');
+    document.querySelector('.field-value.has-error')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
 
   try {
     await updateDoc(doc(db, 'members', userId), {
@@ -711,6 +861,8 @@ window.saveProfile = async () => {
       parkingNotes: document.getElementById('parkingNotes').value,
       entryCode:    document.getElementById('entryCode').value,
       accessNotes:  document.getElementById('accessNotes').value,
+      vet,
+      emergencyContacts,
     });
 
     // Notify admin if dog roster changed
@@ -730,7 +882,10 @@ window.saveProfile = async () => {
     // Update local state
     memberData.dogs = updatedDogs;
     memberData.dogName = updatedDogs[0].name;
+    memberData.vet = vet;
+    memberData.emergencyContacts = emergencyContacts;
     currentDogs = updatedDogs.map(d => ({ ...d }));
+    currentEmergencyContacts = emergencyContacts.map(c => ({ ...c }));
     updateSidebar();
     updatePageHeader();
     showSuccess('Profile saved!');
