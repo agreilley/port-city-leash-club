@@ -55,7 +55,7 @@ function html(data) {
     <p style="margin:0 0 20px;font-family:'Cormorant Garamond', Georgia, 'Times New Roman', serif;font-weight:400;font-size:28px;line-height:1.25;color:${NAVY};">Your $50 credit is ready.</p>
     <p style="margin:0 0 20px;">Thanks for signing up, ${escapeHtml(data.firstName || 'there')}. Here's your code, ready whenever you are.</p>
     ${codeBlockHtml(data.code)}
-    <p style="margin:20px 0 0;">Use this code for $50 off when you sign up for a Leash Club membership or book a pet sitting reservation.</p>
+    <p style="margin:20px 0 0;">Use this code when you sign up for a membership or book pet sitting, and you'll get $50 toward your first charge.</p>
     ${renderButtonHtml({ href: GET_STARTED_URL, label: 'Get Started' })}
     <p style="margin:20px 0 0;">Questions? Just reply to this email.</p>
     ${renderSignoffHtml(TEAM_SIGNOFF)}
@@ -75,7 +75,7 @@ function text(data) {
     '',
     codeBlockText(data.code),
     '',
-    `Use this code for $50 off when you sign up for a Leash Club membership or book a pet sitting reservation.`,
+    `Use this code when you sign up for a membership or book pet sitting, and you'll get $50 toward your first charge.`,
     '',
     `Get started: ${GET_STARTED_URL}`,
     '',

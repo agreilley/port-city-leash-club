@@ -373,7 +373,7 @@
 
         <div class="refer-hero">
           <h2>Give $50, Get $50.</h2>
-          <p>Share your code with a friend or neighbor. When they sign up for a membership or book pet sitting, they get $50 off their first month — and once their first payment goes through, you get $50 in account credit too.</p>
+          <p>Share your code with a friend or neighbor. When they sign up for a membership or book pet sitting, they get $50 toward their first charge. Once their first payment goes through, you get $50 in account credit toward your next one.</p>
         </div>
 
         <div class="code-card">
@@ -434,10 +434,10 @@ const STATUS_LABELS = { invited: 'Invited', joined: 'Joined', credit_applied: 'C
 function renderCode(code) {
   document.getElementById('referralCodeValue').textContent = code;
   const mailBody = `Hey! I've been using Port City Leash Club for dog walking and pet sitting and thought you'd love it too.\n\n`
-    + `Use my referral code ${code} when you sign up and you'll get $50 off your first month — and I'll get $50 in credit too.\n\n`
+    + `Use my referral code ${code} when you sign up and you'll get $50 toward your first charge. Once your first payment goes through, I'll get $50 in credit too.\n\n`
     + `https://www.portcityleashclub.com/membership-request`;
   document.getElementById('shareEmailBtn').href =
-    'mailto:?subject=' + encodeURIComponent('Try Port City Leash Club — $50 off your first month!')
+    'mailto:?subject=' + encodeURIComponent('Port City Leash Club, $50 toward your first charge')
     + '&body=' + encodeURIComponent(mailBody);
 }
 
