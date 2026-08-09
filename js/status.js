@@ -4,6 +4,7 @@
 //   import { showSuccess, showError, clearStatus } from '/js/status.js';
 //   showSuccess("Request submitted — we'll confirm within 24 hours.");
 //   showError("Couldn't submit your request. Please try again.");
+//   showError("Couldn't load this page.", { onRetry: () => location.reload() });
 //   clearStatus();
 //
 // Treatment: an inline banner in normal flow at the top of the form/card
@@ -67,6 +68,21 @@ const CSS = `
   font-family: 'Cormorant Garamond', serif;
   font-weight: 400;
 }
+
+.pcl-status__retry {
+  flex-shrink: 0;
+  margin-left: 8px;
+  padding: 5px 14px;
+  background: #C17B6F;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.pcl-status__retry:hover { background: #AD6B60; }
 
 .pcl-status__dismiss {
   flex-shrink: 0;
@@ -153,7 +169,7 @@ export function clearStatus() {
   banner = null;
 }
 
-function render(type, message) {
+function render(type, message, options = {}) {
   injectStyles();
   // Tear down whatever is showing first — guarantees a single banner (no stacking)
   // and a fresh live region so screen readers reliably re-announce.
@@ -178,6 +194,14 @@ function render(type, message) {
   el.appendChild(msg);
 
   if (type === 'error') {
+    if (options.onRetry) {
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'pcl-status__retry';
+      retry.textContent = 'Retry';
+      retry.addEventListener('click', options.onRetry);
+      el.appendChild(retry);
+    }
     const dismiss = document.createElement('button');
     dismiss.type = 'button';
     dismiss.className = 'pcl-status__dismiss';
@@ -203,6 +227,6 @@ export function showSuccess(message) {
   render('success', message);
 }
 
-export function showError(message) {
-  render('error', message);
+export function showError(message, options) {
+  render('error', message, options);
 }

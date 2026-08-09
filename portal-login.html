@@ -107,7 +107,7 @@
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, signInWithEmailAndPassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
@@ -119,7 +119,14 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig, 'member-app');
-const auth = getAuth(app);
+// Explicit persistence fallback chain — the SDK's default hierarchy probes
+// IndexedDB first, which hangs (never resolves, never rejects) under Safari
+// Private Browsing instead of failing fast, and would otherwise silently
+// break sign-in there too. This skips straight to localStorage-backed
+// persistence, falling back further only if unavailable.
+const auth = initializeAuth(app, {
+  persistence: [browserLocalPersistence, browserSessionPersistence, inMemoryPersistence]
+});
 
 // If already logged in, go straight to dashboard
 onAuthStateChanged(auth, (user) => {

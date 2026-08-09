@@ -518,8 +518,8 @@
 
   <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { initializeFirestore, memoryLocalCache, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { showSuccess, showError } from '/js/status.js';
 
 const firebaseConfig = {
@@ -532,15 +532,32 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig, 'member-app');
-const auth = getAuth(app);
-const db = getFirestore(app);
+// Explicit persistence fallback chain — the SDK's default hierarchy probes
+// IndexedDB first, which hangs (never resolves, never rejects) under Safari
+// Private Browsing instead of failing fast. This skips straight to
+// localStorage-backed persistence, falling back further only if unavailable.
+const auth = initializeAuth(app, {
+  persistence: [browserLocalPersistence, browserSessionPersistence, inMemoryPersistence]
+});
+// Firestore already defaults to memory-only cache with no persistence
+// configured; making it explicit documents the choice on purpose.
+const db = initializeFirestore(app, { localCache: memoryLocalCache() });
 
 let userId = null;
 let memberData = null;
 let currentDogs = []; // live working copy — add/remove edits this
 let currentEmergencyContacts = []; // live working copy — add/remove edits this
 
+// If auth never resolves, stop waiting and tell the member instead of
+// leaving the page stuck on "Loading…".
+let authResolved = false;
+const authTimeoutId = setTimeout(() => {
+  if (!authResolved) showError("This page didn't finish loading. Please try again.", { onRetry: () => location.reload() });
+}, 10000);
+
 onAuthStateChanged(auth, async (user) => {
+  authResolved = true;
+  clearTimeout(authTimeoutId);
   if (!user) { window.location.href = 'portal-login.html'; return; }
   userId = user.uid;
   try {
@@ -553,9 +570,14 @@ onAuthStateChanged(auth, async (user) => {
         : [{ name: memberData.dogName || '', breed: memberData.petBreed || '', age: memberData.petAge ? `${memberData.petAge} years` : '', weight: memberData.petWeight || '', notes: memberData.dogNotes || '', temperament: memberData.temperament || '', walkingPrefs: memberData.walkingPrefs || '', triggers: memberData.triggers || '', medications: memberData.medications || '', allergies: memberData.allergies || '', species: 'Dog', spayed: '', friendlyWithPeople: false, friendlyWithDogs: false, pullsOnLeash: false, takesMedication: false }];
       currentEmergencyContacts = (memberData.emergencyContacts || []).map(c => ({ ...c }));
       renderPage();
+    } else {
+      document.getElementById('pageSubtitle').textContent = '';
+      showError("We couldn't find your profile. Please try again.", { onRetry: () => location.reload() });
     }
   } catch(e) {
     console.error('Profile load error:', e.message);
+    document.getElementById('pageSubtitle').textContent = '';
+    showError("We couldn't load your profile. Please try again.", { onRetry: () => location.reload() });
   }
 });
 

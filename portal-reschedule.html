@@ -704,16 +704,33 @@
 </nav>
 <script type="module">
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { initializeFirestore, memoryLocalCache, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { showSuccess, showError } from '/js/status.js';
 const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
 const app = getApps().find(a => a.name === 'member-app') || initializeApp(cfg, 'member-app');
-const auth = getAuth(app);
-const db = getFirestore(app);
+// Explicit persistence fallback chain — the SDK's default hierarchy probes
+// IndexedDB first, which hangs (never resolves, never rejects) under Safari
+// Private Browsing instead of failing fast. This skips straight to
+// localStorage-backed persistence, falling back further only if unavailable.
+const auth = initializeAuth(app, {
+  persistence: [browserLocalPersistence, browserSessionPersistence, inMemoryPersistence]
+});
+// Firestore already defaults to memory-only cache with no persistence
+// configured; making it explicit documents the choice on purpose.
+const db = initializeFirestore(app, { localCache: memoryLocalCache() });
 let userId = null, memberData = null;
 
+// If auth never resolves, stop waiting and tell the member instead of
+// leaving the page stuck on nothing.
+let authResolved = false;
+const authTimeoutId = setTimeout(() => {
+  if (!authResolved) showError("This page didn't finish loading. Please try again.", { onRetry: () => location.reload() });
+}, 10000);
+
 onAuthStateChanged(auth, async (user) => {
+  authResolved = true;
+  clearTimeout(authTimeoutId);
   if (!user) { window.location.href = 'portal-login.html'; return; }
   userId = user.uid;
   try {
