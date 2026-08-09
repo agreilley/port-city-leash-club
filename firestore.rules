@@ -443,7 +443,62 @@ service cloud.firestore {
           && (request.resource.data.inArea == null || request.resource.data.inArea is bool);
       }
 
-      allow create: if request.auth != null
+      // Source: portal-request-extras.html:396-420 (submitExtrasRequest). The
+      // member-portal shape for overnight/check-in care requests — a
+      // DIFFERENT shape from service-request.html's anonymous 'service_request'
+      // (validService() above): no ownerName/email/phone/address/dogs, but
+      // adds memberId/memberName/stripeCustomerId/status, and different addon
+      // field names (addonExtraPet/addonMedication vs extraPet/medication), so
+      // validService() is not reusable here. memberId is pinned to the
+      // writer's own uid so one member can't submit a request under another
+      // member's identity. status/read are pinned to the only values the
+      // client ever writes, same pattern as the walks extended-walk update
+      // rule above.
+      //
+      // service is pinned to exactly the two values this form ever sends,
+      // and both the date-order guard and visitsPerDay branch on it: check-in
+      // is an inclusive day count (same-day is a valid 1-day visit — end >=
+      // start), overnight is exclusive nights (same-day is zero nights, not
+      // a real stay — end must be strictly after start). Same two date
+      // fields, opposite conventions, matching pricing.js's
+      // calculateServiceTotal split — see that file's comment. visitsPerDay
+      // is the member's per-day estimate input for check-ins only (1-6, the
+      // exact range portal-request-extras.html's select offers); overnight
+      // has no per-day concept, so it must be explicitly null there.
+      function validMemberServiceRequest() {
+        return request.resource.data.keys().hasOnly(
+            ['type', 'memberId', 'memberName', 'service', 'startDate', 'endDate',
+             'visitsPerDay', 'notes', 'addonExtraPet', 'addonMedication',
+             'estimatedTotal', 'stripeCustomerId', 'status', 'read', 'createdAt'])
+          && request.resource.data.memberId == request.auth.uid
+          && request.resource.data.memberName is string && request.resource.data.memberName.size() <= 200
+          && request.resource.data['service'] in ['overnight', 'checkin']
+          && request.resource.data.notes is string && request.resource.data.notes.size() <= 10000
+          && request.resource.data.addonExtraPet is bool
+          && request.resource.data.addonMedication is bool
+          && request.resource.data.estimatedTotal is number
+          && request.resource.data.estimatedTotal >= 0
+          && request.resource.data.estimatedTotal <= 100000
+          && request.resource.data.stripeCustomerId is string && request.resource.data.stripeCustomerId.size() <= 200
+          && request.resource.data.status == 'pending'
+          && request.resource.data.read == false
+          && request.resource.data.createdAt is timestamp
+          && (request.resource.data.startDate == null || request.resource.data.startDate is timestamp)
+          && (request.resource.data.endDate == null || request.resource.data.endDate is timestamp)
+          && (request.resource.data.startDate == null || request.resource.data.endDate == null
+              || (request.resource.data['service'] == 'checkin'
+                  ? request.resource.data.endDate >= request.resource.data.startDate
+                  : request.resource.data.endDate > request.resource.data.startDate))
+          && (request.resource.data['service'] == 'checkin'
+              ? (request.resource.data.visitsPerDay is number
+                  && request.resource.data.visitsPerDay >= 1
+                  && request.resource.data.visitsPerDay <= 6)
+              : request.resource.data.visitsPerDay == null);
+      }
+
+      allow create: if (request.auth != null
+                          && (!(request.resource.data.type in ['service_request', 'overnight_request'])
+                              || validMemberServiceRequest()))
         || (subBase() && (
               (request.resource.data.type == 'contact' && validContact())
            || (request.resource.data.type == 'membership_request' && validMembership())

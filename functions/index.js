@@ -3243,21 +3243,47 @@ exports.onOvernightCompleted = onDocumentUpdated({
   if (before.status === 'completed' || after.status !== 'completed') return;
   if (after.payout) return; // defense-in-depth, see onWalkCompleted's note on the equivalent check
 
-  const { calculateOvernightPayout, WALKER_RATES } = await import('./walker-pricing.js');
-  const payout = calculateOvernightPayout(after);
+  const overnightId = event.params.overnightId;
+  try {
+    const { calculateOvernightPayout, WALKER_RATES } = await import('./walker-pricing.js');
+    const payout = calculateOvernightPayout(after);
 
-  await event.data.after.ref.update({
-    payout: {
-      rateKey: payout.key,
-      rate: WALKER_RATES[payout.key],
-      days: payout.days,
-      baseTotal: payout.base,
-      extraPetTotal: payout.extraPetTotal,
-      medicationTotal: payout.medicationTotal,
-      amount: payout.total,
-      stampedAt: FieldValue.serverTimestamp(),
-    },
-  });
+    await event.data.after.ref.update({
+      payout: {
+        rateKey: payout.key,
+        rate: WALKER_RATES[payout.key],
+        days: payout.days,
+        baseTotal: payout.base,
+        extraPetTotal: payout.extraPetTotal,
+        medicationTotal: payout.medicationTotal,
+        amount: payout.total,
+        stampedAt: FieldValue.serverTimestamp(),
+      },
+    });
+  } catch (e) {
+    // A failed calc must never fail silently — with no payout stamped and no
+    // flag raised, a walker just doesn't get paid until they notice and ask.
+    // Log everything needed to find and fix the record by hand, then flag it
+    // the same way createMembershipSubscription/updateWalkSchedule already
+    // flag other silent-failure-prone billing paths: needsReview on the
+    // member's billing subdoc, surfaced by the existing badge in the admin
+    // Members table (renderBillingBadge) — no new UI, reusing what's already
+    // there and already checked. See dismissBillingReview for the clear side.
+    console.error(
+      `onOvernightCompleted: payout calculation failed for overnights/${overnightId} `
+      + `(memberId=${after.memberId || 'unknown'}, walkerId=${after.walkerId || 'unknown'}, `
+      + `startDate=${after.startDate?.toDate?.().toISOString() || after.startDate}, `
+      + `endDate=${after.endDate?.toDate?.().toISOString() || after.endDate}):`,
+      e.message
+    );
+    if (after.memberId) {
+      await billingRef(after.memberId).set({
+        needsReview: true, needsReviewReason: 'overnight_payout_calc_failed',
+      }, { merge: true }).catch(writeErr => {
+        console.error(`onOvernightCompleted: failed to write needsReview for ${after.memberId}:`, writeErr.message);
+      });
+    }
+  }
 });
 
 function isoDateStr(date) {

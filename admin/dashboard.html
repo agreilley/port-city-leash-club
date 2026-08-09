@@ -1889,6 +1889,10 @@ const NEEDS_REVIEW_LABELS = {
     label: 'Subscription not started',
     title: "Subscription wasn't created, this member is unbilled — no recurring charge, and no walks were auto-generated for them either. Start the subscription manually in Stripe (and set hasActiveSubscription) once the underlying issue (missing card, no walk days set, etc.) is fixed.",
   },
+  overnight_payout_calc_failed: {
+    label: 'Payout calc failed',
+    title: 'A completed overnight/check-in for this member failed to calculate a walker payout — see the Cloud Functions logs for onOvernightCompleted for the specific overnight and error. Fix the underlying overnight record, then stamp its payout manually.',
+  },
 };
 function renderBillingBadge(billing) {
   if (!billing) return '–';
@@ -3136,7 +3140,47 @@ function renderServiceRequestReview(item) {
     <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Pets</div>
     ${renderPetDetailCards(item.dogs)}
   `;
+  wireReviewDateGuard(reviewRecalcService);
   reviewRecalcService();
+}
+
+// Keeps "End Date" from disagreeing with "Start Date" in these review
+// modals — portal-request-extras.html guards the member-facing form the
+// same way (portal-request-extras.html:429-441), but that single-listener
+// (Start Date only) pattern is NOT safe to mirror here: the member form's
+// guard is UX layered on top of a real boundary (firestore.rules'
+// validMemberServiceRequest() enforces the same rule server-side). Admin
+// writes bypass firestore.rules entirely (isAdmin()), so this guard is the
+// ONLY check on this path — it has to catch every field that can produce
+// an invalid range: Start Date, End Date, AND the Service selector
+// (switching service after both dates are already set can turn a valid
+// same-day check-in into an invalid same-day "overnight").
+//
+// Check-in (resolves to 'drop-in-visit') is an inclusive day count —
+// same-day is a valid 1-day visit. Overnight is exclusive nights —
+// same-day is zero nights, not a real stay. Same rev-start/rev-end fields,
+// opposite conventions, matching firestore.rules' validMemberServiceRequest()
+// and pricing.js's calculateServiceTotal split.
+function wireReviewDateGuard(onChange) {
+  const startInput = document.getElementById('rev-start');
+  const endInput = document.getElementById('rev-end');
+  const serviceInput = document.getElementById('rev-service');
+  if (!startInput || !endInput) return;
+
+  const revalidate = () => {
+    endInput.min = startInput.value || '';
+    const isCheckinLike = resolveServiceKey(serviceInput?.value) === 'drop-in-visit';
+    const invalid = isCheckinLike
+      ? (endInput.value && endInput.value < startInput.value)
+      : (endInput.value && endInput.value <= startInput.value);
+    if (invalid) endInput.value = '';
+  };
+
+  revalidate(); // catch an already-invalid pre-filled range the moment the modal opens
+  const onFieldChange = () => { revalidate(); onChange(); };
+  startInput.addEventListener('change', onFieldChange);
+  endInput.addEventListener('change', onFieldChange);
+  if (serviceInput) serviceInput.addEventListener('change', onFieldChange);
 }
 
 window.reviewRecalcService = () => {
@@ -3193,6 +3237,7 @@ function renderOvernightReview(item) {
     <hr class="modal-divider">
     ${renderMemberContextHTML(item.memberId)}
   `;
+  wireReviewDateGuard(reviewRecalcOvernight);
   reviewRecalcOvernight();
 }
 

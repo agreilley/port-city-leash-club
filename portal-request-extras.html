@@ -318,6 +318,15 @@
     // Service spans full width for overnight, half width for check-in
     const sf = document.getElementById('serviceField');
     if (sf) sf.style.gridColumn = isCheckin ? '1' : '1 / -1';
+    // Re-check the existing end date against the newly-selected service's
+    // same-day rule (check-in allows it, overnight doesn't) — switching
+    // service after already picking matching dates shouldn't leave a
+    // now-invalid range sitting in the form.
+    const startInput = document.getElementById('startDate');
+    const endInput = document.getElementById('endDate');
+    if (!isCheckin && startInput.value && endInput.value && endInput.value <= startInput.value) {
+      endInput.value = '';
+    }
     updateSummary();
   }
 
@@ -399,6 +408,16 @@
         return Timestamp.fromDate(new Date(y, m - 1, d, 12, 0, 0)); // noon local time avoids DST issues
       }
 
+      // Overnight has no per-day-visits concept, so it's explicitly null
+      // rather than omitted — a reader of this doc shouldn't have to guess
+      // whether a missing field means "not applicable" or "written before
+      // this field existed". This is the member's ESTIMATE input (what
+      // priced their own summary), not the authoritative billing quantity —
+      // that comes from the per-day schedule in a later batch.
+      const visitsPerDay = isOvernight
+        ? null
+        : parseInt(document.getElementById('visitsField')?.querySelector('select')?.value || '1');
+
       const data = {
         type: isOvernight ? 'overnight_request' : 'service_request',
         memberId:   user.uid,
@@ -406,6 +425,7 @@
         service,
         startDate:  localDateToTimestamp(startStr),
         endDate:    localDateToTimestamp(endStr),
+        visitsPerDay,
         notes:      document.querySelector('textarea[name=notes]')?.value || '',
         addonExtraPet:   document.getElementById('addonExtraPet')?.checked  || false,
         addonMedication: document.getElementById('addonMedication')?.checked || false,
@@ -442,7 +462,14 @@
   endInput.min   = minDateStr;
   startInput.addEventListener('change', () => {
     endInput.min = startInput.value || minDateStr;
-    if (endInput.value && endInput.value <= startInput.value) endInput.value = '';
+    // Check-in is an inclusive day count — same-day is a valid 1-day visit.
+    // Overnight is exclusive nights — same-day is zero nights, not a real
+    // stay. Same two fields, opposite conventions (see pricing.js).
+    const isCheckin = document.getElementById('serviceSelect').value === 'checkin';
+    const invalid = isCheckin
+      ? (endInput.value && endInput.value < startInput.value)
+      : (endInput.value && endInput.value <= startInput.value);
+    if (invalid) endInput.value = '';
     updateSummary();
   });
 

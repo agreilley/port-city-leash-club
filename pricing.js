@@ -50,7 +50,11 @@ export function getDaysBetween(start, end) {
   if (!start || !end) return 0;
   const s = start instanceof Date ? start : new Date(start);
   const e = end instanceof Date ? end : new Date(end);
-  return Math.max(0, Math.round((e - s) / 86400000));
+  const days = Math.round((e - s) / 86400000);
+  // An inverted range must never silently price at $0 — fail loudly instead
+  // of clamping, so a bad range can't reach a charge path unnoticed.
+  if (days < 0) throw new Error('End date is before start date.');
+  return days;
 }
 
 // Computes the total for a one-time service (walk, drop-in visit, or
@@ -77,7 +81,24 @@ export function calculateServiceTotal({
 
   const isNightService = info.unit === 'night';
   const isDropIn = key === 'drop-in-visit';
-  const days = isNightService ? getDaysBetween(startDate, endDate) : 1;
+  // Overnight stays and drop-in/check-in visits share these same two date
+  // fields but need OPPOSITE day-count conventions, and getDaysBetween
+  // itself stays a plain exclusive diff (overnight-stay payout math and
+  // other callers depend on that) — the inclusive adjustment for check-ins
+  // happens only here, at this one call site:
+  //  - overnight-stay: nights = exclusive diff (Mon->Tue = 1 night; a
+  //    same-day range is 0 nights, not a real stay). getDaysBetween's
+  //    return value is exactly this — no adjustment.
+  //  - drop-in-visit (check-in): inclusive day count — every calendar day
+  //    in the range gets its own visit-count (Mon->Fri = 5 days, not the 4
+  //    the exclusive diff gives; a same-day range is 1 valid day, not 0).
+  //    +1 only applies once a real range exists (both dates present) — an
+  //    empty/incomplete range must still price at 0, not "1 day of nothing".
+  const exclusiveDays = isNightService ? getDaysBetween(startDate, endDate) : 0;
+  const hasFullRange = !!startDate && !!endDate;
+  const days = isNightService
+    ? (isDropIn && hasFullRange ? exclusiveDays + 1 : exclusiveDays)
+    : 1;
   const unitCount = isNightService ? (isDropIn ? days * Math.max(visitsPerDay, 1) : days) : 1;
   const serviceTotal = info.price * unitCount;
 
