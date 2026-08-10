@@ -51,17 +51,36 @@ export function calculateWalkPayout(walk) {
 // Days is at least 1 even if start/end land on the same calendar day —
 // getDaysBetween can return 0 for a same-day booking, and a confirmed
 // stay/visit is never worth $0.
+//
+// Check-in stays confirmed with a per-day visit schedule (visitSchedule —
+// see admin/dashboard.html's confirmServiceRequest) pay the base rate per
+// VISIT, not per day: three visits in one day is three round trips, and
+// WALKER_RATES.checkin is a per-visit rate, same as it's always been for a
+// single-visit day — a walker doing three visits earns three times what a
+// walker doing one does, not the same flat day-rate either way. Overnight
+// stays, and any check-in doc with no schedule yet (data written before
+// this existed, or an anonymous drop-in-visit booking not yet carrying
+// one), fall back to the original days-based rate, unchanged. Multiple
+// Pets / Medication Admin stay per-DAY regardless — that matches how the
+// member is actually charged for those add-ons (pricing.js's
+// calculateServiceTotal multiplies them by days, never by visit count),
+// so walker pay for them shouldn't diverge from that.
 export function calculateOvernightPayout(overnight) {
   const key = isCheckinType(overnight.serviceType) ? 'checkin' : 'overnight';
   const start = overnight.startDate?.toDate ? overnight.startDate.toDate() : overnight.startDate;
   const end = overnight.endDate?.toDate ? overnight.endDate.toDate() : overnight.endDate;
   const days = Math.max(getDaysBetween(start, end), 1);
 
-  const base = WALKER_RATES[key] * days;
+  const hasVisitSchedule = key === 'checkin' && Array.isArray(overnight.visitSchedule) && overnight.visitSchedule.length > 0;
+  const units = hasVisitSchedule
+    ? overnight.visitSchedule.reduce((sum, d) => sum + (d.visits || 0), 0)
+    : days;
+
+  const base = WALKER_RATES[key] * units;
   const extraPetTotal = overnight.extraPet ? WALKER_EXTRA_PET_FEE * days : 0;
   const medicationTotal = overnight.medication ? WALKER_MEDICATION_FEE * days : 0;
 
-  return { total: base + extraPetTotal + medicationTotal, key, base, extraPetTotal, medicationTotal, days };
+  return { total: base + extraPetTotal + medicationTotal, key, base, extraPetTotal, medicationTotal, days, units };
 }
 
 // Aggregates a walker's payout across a set of already-completed walks

@@ -925,7 +925,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { getStorage, ref as storageRef, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
-import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalkExtensionTotal, WALK_EXTENSION_PRICE } from '../pricing.js';
+import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalkExtensionTotal, WALK_EXTENSION_PRICE, EXTRA_PET_FEE, MEDICATION_FEE } from '../pricing.js';
 import { calculateEarnings } from '../walker-pricing.js';
 import { showError } from '/js/status.js';
 
@@ -1911,6 +1911,10 @@ const NEEDS_REVIEW_LABELS = {
     label: 'Payout calc failed',
     title: 'A completed overnight/check-in for this member failed to calculate a walker payout — see the Cloud Functions logs for onOvernightCompleted for the specific overnight and error. Fix the underlying overnight record, then stamp its payout manually.',
   },
+  reservation_charge_failed: {
+    label: 'Reservation charge failed',
+    title: "A confirmed pet sitting reservation's scheduled charge (24 hours after confirmation) failed — see the Cloud Functions logs for chargeScheduledReservations for the specific overnight and error, and the overnights doc's chargeAttempt field for the failure reason. Charge manually in Stripe once resolved.",
+  },
 };
 function renderBillingBadge(billing) {
   if (!billing) return '–';
@@ -1977,9 +1981,14 @@ function renderRequests() {
     else if (item.type === 'pause_membership') preview = `${shortDate(item.pauseStartDate)} – ${shortDate(item.pauseEndDate)}`; // shortDate() output is always a safe locale date string
     else if (item.type === 'vacation_hold_refund') preview = `${escapeHtml(item.cancelledWalkCount || 0)} walk${item.cancelledWalkCount === 1 ? '' : 's'} · suggested $${escapeHtml(item.suggestedRefundAmount || 0)}`;
     else preview = escapeHtml(item.email || '') + (item.dogName ? ' · ' + escapeHtml(item.dogName) : item.dogNames ? ' · ' + escapeHtml(item.dogNames) : '');
-    // paymentStatus is only ever written by chargeAndTrackPayment (a fixed
-    // 'charged'/'skipped'/'failed' enum) — never user-supplied, safe as-is.
-    const paymentBadge = item.paymentStatus && item.paymentStatus !== 'charged'
+    // paymentStatus is either chargeAndTrackPayment's fixed
+    // 'charged'/'skipped'/'failed' enum, or 'scheduled' (confirmServiceRequest/
+    // confirmOvernight's deferred-charge path for a check-in/overnight
+    // reservation — see chargeScheduledReservations, functions/index.js) —
+    // never user-supplied, safe as-is. 'scheduled' is excluded from this
+    // badge: a reservation waiting on its 24-hour charge window isn't a
+    // problem the way an actual failed/skipped charge is.
+    const paymentBadge = item.paymentStatus && item.paymentStatus !== 'charged' && item.paymentStatus !== 'scheduled'
       ? `<span class="status-badge ${item.paymentStatus === 'failed' ? 'unassigned' : 'pending'}" title="Payment status: ${item.paymentStatus}">${item.paymentStatus === 'failed' ? 'Charge Failed' : 'Unpaid'}</span>`
       : '';
     return `<div class="list-row ${item.read ? '' : 'unread'}" onclick="openRequestItem('${item.id}')">
@@ -2670,7 +2679,10 @@ window.openRequestItem = async (id) => {
       { label: 'Payment Method Status', value: item.paymentMethodStatus || '–' },
     ];
   } else if (item.type === 'service_request') {
-    const serviceInfo = SERVICE_PRICES[item.service];
+    // resolveServiceKey handles the member-portal alias names ('checkin',
+    // 'overnight') as well as the public form's direct SERVICE_PRICES keys —
+    // same gap as renderServiceRequestReview's Service dropdown, same fix.
+    const serviceInfo = SERVICE_PRICES[resolveServiceKey(item.service)];
     fields = [
       { label: 'Owner Name', value: item.ownerName || '–' },
       { label: 'Email', value: item.email || '–' },
@@ -3018,12 +3030,17 @@ window.openRequestItem = async (id) => {
     actionBtn.textContent = 'Add as Walker'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => { closeModal('requestModal'); openAddWalkerModal(item, item.id); };
   } else if (isUnresolvedServiceRequest) {
-    actionBtn.textContent = 'Confirm & Charge'; actionBtn.style.display = 'block';
+    // Check-ins schedule the charge for 24 hours out (see confirmServiceRequest)
+    // rather than charging now — walks and anonymous overnight-stay bookings
+    // still charge immediately, so they keep the original label.
+    actionBtn.textContent = resolveServiceKey(item.service) === 'drop-in-visit' ? 'Confirm and schedule charge' : 'Confirm & Charge';
+    actionBtn.style.display = 'block';
     actionBtn.onclick = () => confirmServiceRequest(item.id, item);
     declineBtn.style.display = 'block';
     declineBtn.onclick = () => declineServiceRequest(item.id, item);
   } else if (isUnresolvedOvernight) {
-    actionBtn.textContent = 'Confirm & Charge'; actionBtn.style.display = 'block';
+    // Always schedules the charge for 24 hours out now — see confirmOvernight.
+    actionBtn.textContent = 'Confirm and schedule charge'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => confirmOvernight(item.id, item);
     declineBtn.style.display = 'block';
     declineBtn.onclick = () => declineOvernightRequest(item.id, item);
@@ -3092,6 +3109,79 @@ window.openRequestItem = async (id) => {
 let _reviewWalkIds = [];    // walk_extension only — the request's original walkIds
 let _reviewTotalTouched = false; // overnight_request only — has admin manually edited the override total?
 
+// ── drop-in-visit per-day schedule editor state ──
+// service_request review only. Keyed by 'YYYY-MM-DD' -> visit count for
+// that day. Reset each time renderServiceRequestReview opens a new item;
+// persists across a Start/End Date edit so a day that survives the edit
+// keeps whatever count was already set for it, rather than resetting to
+// the member's flat estimate every time a date field changes.
+let _reviewVisitSchedule = {};
+let _reviewItemVisitsPerDay = 1; // the member's own estimate — default for any newly-added day
+
+// Rebuilds _reviewVisitSchedule and the #rev-visit-schedule rows to match
+// the current Start/End Date range — one row per calendar day, inclusive
+// of both bounds (drop-in-visit is priced as an inclusive day count, same
+// convention as calculateServiceTotal). A date already in
+// _reviewVisitSchedule keeps its count; a newly in-range date (or the
+// modal's first render) defaults to defaultVisits. Dates no longer in
+// range are dropped so a later widen-then-narrow doesn't resurrect a
+// stale count for a day that isn't being billed.
+function syncVisitScheduleRows(defaultVisits) {
+  const container = document.getElementById('rev-visit-schedule');
+  if (!container) return;
+  const startStr = document.getElementById('rev-start')?.value;
+  const endStr = document.getElementById('rev-end')?.value;
+  if (!startStr || !endStr || endStr < startStr) { container.innerHTML = ''; _reviewVisitSchedule = {}; return; }
+
+  const dates = [];
+  const cursor = new Date(`${startStr}T12:00:00`);
+  const end = new Date(`${endStr}T12:00:00`);
+  while (cursor <= end) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  const nextSchedule = {};
+  dates.forEach(d => { nextSchedule[d] = _reviewVisitSchedule[d] !== undefined ? _reviewVisitSchedule[d] : defaultVisits; });
+  _reviewVisitSchedule = nextSchedule;
+
+  container.innerHTML = dates.map(d => {
+    const label = new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0;">
+      <span style="font-size:13px;color:var(--navy);">${label}</span>
+      <input type="number" min="0" value="${_reviewVisitSchedule[d]}" style="width:64px;" onchange="updateVisitScheduleCount('${d}', this.value)">
+    </div>`;
+  }).join('');
+}
+
+window.updateVisitScheduleCount = (dateStr, value) => {
+  _reviewVisitSchedule[dateStr] = Math.max(0, parseInt(value, 10) || 0);
+  reviewRecalcService();
+};
+
+// Shared by reviewRecalcService (live preview) and confirmServiceRequest
+// (the actual charge amount) — computes a drop-in-visit's total from the
+// admin-edited per-day schedule (_reviewVisitSchedule) rather than days x a
+// flat visitsPerDay rate. Multiple Pets / Medication Admin stay per-day
+// (days = the number of scheduled rows), matching how calculateServiceTotal
+// already prices those add-ons for every other service — only the base
+// rate switches from a flat multiplier to a true sum of confirmed per-day
+// counts.
+function computeDropInVisitTotal(extraPet, medication) {
+  const info = SERVICE_PRICES['drop-in-visit'];
+  const days = Object.keys(_reviewVisitSchedule).length || 1;
+  const totalVisits = Object.values(_reviewVisitSchedule).reduce((a, b) => a + b, 0);
+  const serviceTotal = info.price * totalVisits;
+  const extraPetTotal = extraPet ? EXTRA_PET_FEE * days : 0;
+  const medicationTotal = medication ? MEDICATION_FEE * days : 0;
+  const breakdown = [
+    { label: info.name, amount: serviceTotal },
+    ...(extraPet ? [{ label: 'Multiple pets', amount: extraPetTotal }] : []),
+    ...(medication ? [{ label: 'Medication admin', amount: medicationTotal }] : []),
+  ];
+  return { total: serviceTotal + extraPetTotal + medicationTotal, breakdown, totalVisits, days };
+}
+
 function toDateInputValue(val) {
   if (!val) return '';
   if (typeof val === 'string') return val.slice(0, 10);
@@ -3114,6 +3204,8 @@ function renderReviewBreakdown(breakdown, total) {
 // the new member record as originally submitted, not something this
 // review UI edits.
 function renderServiceRequestReview(item) {
+  _reviewVisitSchedule = {};
+  _reviewItemVisitsPerDay = item.visitsPerDay || 1;
   document.getElementById('requestModalContent').innerHTML = `
     <div class="form-grid">
       <div class="modal-field"><div class="modal-label">Owner</div><div class="modal-value">${escapeHtml(item.ownerName || '–')}${item.email ? ' · ' + escapeHtml(item.email) : ''}</div></div>
@@ -3121,10 +3213,10 @@ function renderServiceRequestReview(item) {
       <div class="modal-field"><div class="modal-label">Address</div><div class="modal-value">${escapeHtml(item.address || '–')}</div></div>
       <div class="form-field"><label>Service</label>
         <select id="rev-service" onchange="reviewRecalcService()">
-          ${Object.entries(SERVICE_PRICES).map(([key, info]) => `<option value="${key}" ${item.service === key ? 'selected' : ''}>${info.name}</option>`).join('')}
+          ${Object.entries(SERVICE_PRICES).map(([key, info]) => `<option value="${key}" ${resolveServiceKey(item.service) === key ? 'selected' : ''}>${info.name}</option>`).join('')}
         </select>
       </div>
-      <div class="form-field" id="rev-visits-field" style="display:none;"><label>Visits/Day</label><input type="number" min="1" id="rev-visits" value="${escapeHtml(item.visitsPerDay || 1)}" onchange="reviewRecalcService()"></div>
+      <div class="form-field" id="rev-visits-field" style="display:none;grid-column:1 / -1;"><label>Visit Schedule</label><div id="rev-visit-schedule"></div></div>
       <div class="form-field"><label>Start Date</label><input type="date" id="rev-start" value="${escapeHtml(toDateInputValue(item.startDate))}" onchange="reviewRecalcService()"></div>
       <div class="form-field" id="rev-end-field"><label>End Date</label><input type="date" id="rev-end" value="${escapeHtml(toDateInputValue(item.endDate))}" onchange="reviewRecalcService()"></div>
       <div class="form-field" id="rev-timeslot-field" style="display:none;"><label>Time Slot</label>
@@ -3210,14 +3302,20 @@ window.reviewRecalcService = () => {
   document.getElementById('rev-timeslot-field').style.display = isWalk ? 'flex' : 'none';
   document.getElementById('rev-visits-field').style.display = isDropIn ? 'flex' : 'none';
 
-  const visitsPerDay = isDropIn ? (parseInt(document.getElementById('rev-visits')?.value, 10) || 1) : 1;
   const startDate = document.getElementById('rev-start').value;
   const endDate = document.getElementById('rev-end').value;
   const extraPet = document.getElementById('rev-extra-pet').checked;
   const medication = document.getElementById('rev-medication').checked;
 
+  if (isDropIn) {
+    syncVisitScheduleRows(_reviewItemVisitsPerDay);
+    const { total, breakdown } = computeDropInVisitTotal(extraPet, medication);
+    renderReviewBreakdown(breakdown, total);
+    return;
+  }
+
   const { total, breakdown } = calculateServiceTotal({
-    serviceKey: service, startDate, endDate, visitsPerDay, extraPet, medication,
+    serviceKey: service, startDate, endDate, extraPet, medication,
   });
   renderReviewBreakdown(breakdown, total);
 };
@@ -3402,7 +3500,6 @@ window.confirmServiceRequest = async (submissionId, item) => {
     // format on a doc that was created with a Timestamp.
     const startDateStr = document.getElementById('rev-start')?.value;
     const endDateStr = document.getElementById('rev-end')?.value;
-    const visitsPerDay = parseInt(document.getElementById('rev-visits')?.value, 10) || 1;
     const extraPet = document.getElementById('rev-extra-pet')?.checked || false;
     const medication = document.getElementById('rev-medication')?.checked || false;
     // Only meaningful for standard-walk/extended-walk (rev-timeslot-field is
@@ -3410,9 +3507,22 @@ window.confirmServiceRequest = async (submissionId, item) => {
     // same null-tolerant shape as startDate/endDate above.
     const timeSlot = document.getElementById('rev-timeslot')?.value || null;
     const dogs = item.dogs || [];
-    const { total: amountInDollars, unitCount } = calculateServiceTotal({
-      serviceKey: service, startDate: startDateStr, endDate: endDateStr, visitsPerDay, extraPet, medication,
-    });
+    // Check-in (drop-in-visit) prices off the admin-confirmed per-day
+    // schedule (_reviewVisitSchedule, built by the review UI's Visit
+    // Schedule editor), not a flat visitsPerDay x days multiplier — see
+    // computeDropInVisitTotal. Every other service keeps the existing
+    // calculateServiceTotal path unchanged.
+    const isDropIn = serviceKey === 'drop-in-visit';
+    const { total: amountInDollars, unitCount } = isDropIn
+      ? (() => { const r = computeDropInVisitTotal(extraPet, medication); return { total: r.total, unitCount: r.totalVisits }; })()
+      : calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet, medication });
+    // Confirmed per-day counts, carried onto the overnights doc below so the
+    // scheduled charge (chargeScheduledReservations) and walker payout
+    // (calculateOvernightPayout) both read the same admin-confirmed numbers
+    // the member was actually priced on, not the original estimate.
+    const visitSchedule = isDropIn
+      ? Object.entries(_reviewVisitSchedule).map(([date, visits]) => ({ date, visits })).sort((a, b) => (a.date < b.date ? -1 : 1))
+      : null;
     const startDate = startDateStr ? Timestamp.fromDate(new Date(`${startDateStr}T12:00:00`)) : (item.startDate || null);
     const endDate = endDateStr ? Timestamp.fromDate(new Date(`${endDateStr}T12:00:00`)) : (item.endDate || null);
 
@@ -3591,11 +3701,54 @@ window.confirmServiceRequest = async (submissionId, item) => {
       }
     }
 
+    // Check-in reservations don't charge immediately — confirming schedules
+    // the charge for 24 hours out (chargeScheduledFor), giving the member a
+    // real window to change plans before their card is touched.
+    // chargeScheduledReservations (functions/index.js) is the scheduled
+    // function that actually charges once that time passes, reading
+    // confirmedTotalCents/chargeScheduledFor off this overnights doc. This
+    // also fixes a pre-existing gap: a drop-in-visit confirmation
+    // previously wrote no overnights doc at all (only the submission), so
+    // there was nowhere for a per-day schedule — or a walker payout derived
+    // from one — to live. Written for both a member and a brand-new
+    // one-time customer (memberId may have just been created above).
+    let chargeScheduledFor = null;
+    if (isDropIn) {
+      chargeScheduledFor = Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
+      const memberRecordForDoc = memberId ? allMembers.find(m => m.id === memberId) : null;
+      await addDoc(collection(db, 'overnights'), {
+        memberId: memberId || '',
+        memberName: item.ownerName || memberRecordForDoc?.name || '',
+        dogName: dogs[0]?.name || '',
+        startDate,
+        endDate,
+        serviceType: 'checkin',
+        notes: item.notes || '',
+        status: 'confirmed',
+        confirmedAt: serverTimestamp(),
+        submissionId,
+        walkerId: '',
+        extraPet,
+        medication,
+        visitSchedule,
+        confirmedTotalCents: Math.round(amountInDollars * 100),
+        chargeScheduledFor,
+        chargePending: true,
+      });
+    }
+
     // Charge the saved card for this one-time service. A card is only on
     // file if the requester went through createSetupIntent at signup —
     // chargeAndTrackPayment treats a non-positive amount as "nothing to
     // charge" and records paymentStatus: 'skipped' without calling Stripe.
-    const paymentStatus = await chargeAndTrackPayment(submissionId, item.stripeCustomerId ? amountInDollars : 0, serviceChargeDescription(service, item));
+    // Check-ins skip this entirely — see chargeScheduledFor above.
+    let paymentStatus;
+    if (isDropIn) {
+      paymentStatus = 'scheduled';
+      await updateDoc(doc(db, 'submissions', submissionId), { paymentStatus });
+    } else {
+      paymentStatus = await chargeAndTrackPayment(submissionId, item.stripeCustomerId ? amountInDollars : 0, serviceChargeDescription(service, item));
+    }
 
     // Booking-confirmed email — every confirmation gets one now, new
     // account or existing member alike. Replaces the old
@@ -3616,8 +3769,19 @@ window.confirmServiceRequest = async (submissionId, item) => {
       const resolvedStartStr = startDateStr || toDateInputValue(startDate);
       const resolvedEndStr = endDateStr || toDateInputValue(endDate);
 
-      const template = isWalk ? 'walk-confirmed' : 'portal-service-confirmed';
-      const data = isWalk ? {
+      // Check-ins get the deferred-charge template (states the exact amount
+      // and date the card will be charged, plus the confirmed per-day visit
+      // schedule); walks and everything else keep their existing templates
+      // unchanged — those still charge immediately, above.
+      const template = isDropIn ? 'portal-reservation-confirmed' : (isWalk ? 'walk-confirmed' : 'portal-service-confirmed');
+      const data = isDropIn ? {
+        firstName, petNames,
+        serviceLabel: serviceInfo?.name || service,
+        startDateStr: resolvedStartStr, endDateStr: resolvedEndStr,
+        totalDollars: amountInDollars,
+        chargeDateStr: toDateInputValue(chargeScheduledFor),
+        visitSchedule,
+      } : isWalk ? {
         firstName, dogNames: petNames,
         walkTypeLabel: serviceInfo?.name || 'Walk',
         durationMinutes: serviceKey === 'extended-walk' ? 45 : 30,
@@ -3657,7 +3821,8 @@ window.confirmServiceRequest = async (submissionId, item) => {
     const warns = [accountWarning, billingLinkWarning, walkDocWarning, emailWarning].filter(Boolean);
     if (warns.length) alert(warns.join('\n\n'));
   } catch (e) {
-    btn.textContent = 'Confirm & Charge'; btn.disabled = false;
+    btn.textContent = resolveServiceKey(item.service) === 'drop-in-visit' ? 'Confirm and schedule charge' : 'Confirm & Charge';
+    btn.disabled = false;
     alert('Error: ' + e.message);
   }
 };
@@ -3730,6 +3895,13 @@ window.confirmOvernight = async (submissionId, item) => {
 
     const startDate = startDateStr ? Timestamp.fromDate(new Date(`${startDateStr}T12:00:00`)) : (item.startDate || null);
     const endDate = endDateStr ? Timestamp.fromDate(new Date(`${endDateStr}T12:00:00`)) : (item.endDate || null);
+    // Same deferred-charge window as confirmServiceRequest's check-in path —
+    // confirming schedules the charge 24 hours out (chargeScheduledFor)
+    // rather than charging immediately, giving the member a real window to
+    // change plans before their card is touched. No visitSchedule here —
+    // overnight stays keep the exclusive-nights model, never a per-day
+    // count.
+    const chargeScheduledFor = Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
 
     // Write to overnights collection
     // Resolve member/dog names live from allMembers by memberId — the
@@ -3758,8 +3930,14 @@ window.confirmOvernight = async (submissionId, item) => {
       walkerId:    '',
       extraPet:    addonExtraPet,
       medication:  addonMedication,
+      confirmedTotalCents: Math.round(amountInDollars * 100),
+      chargeScheduledFor,
+      chargePending: true,
     });
-    // Mark submission as confirmed, with the admin-reviewed details
+    // Mark submission as confirmed, with the admin-reviewed details.
+    // paymentStatus: 'scheduled' rather than the charged/skipped/failed
+    // chargeAndTrackPayment writes — the actual charge doesn't happen until
+    // chargeScheduledFor passes (chargeScheduledReservations, functions/index.js).
     await updateDoc(doc(db, 'submissions', submissionId), {
       status: 'confirmed',
       service,
@@ -3768,34 +3946,35 @@ window.confirmOvernight = async (submissionId, item) => {
       addonExtraPet,
       addonMedication,
       estimatedTotal: amountInDollars,
+      paymentStatus: 'scheduled',
       read: true,
     });
 
-    await chargeAndTrackPayment(submissionId, item.stripeCustomerId ? amountInDollars : 0, serviceChargeDescription(service, item));
-
     // Booking-confirmed email — overnights are always pet-sitting family
-    // (this flow has no walk equivalent), so always portal-service-confirmed.
-    // Never blocks the confirmed, charged stay; a failure is surfaced as a
-    // warning rather than an error, same posture as confirmServiceRequest.
+    // (this flow has no walk equivalent). portal-reservation-confirmed
+    // states the exact amount and date the card will be charged, since
+    // confirming no longer charges immediately. Never blocks the confirmed
+    // stay; a failure is surfaced as a warning rather than an error, same
+    // posture as confirmServiceRequest.
     let emailWarning = '';
     try {
       if (!item.memberId) throw new Error('no member on this request to email');
       const firstName = memberName.trim().split(/\s+/)[0] || 'there';
       const petNames = getMemberDogs(confirmMember).map(d => d?.name).filter(Boolean);
-      const { unitCount } = calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet: addonExtraPet, medication: addonMedication });
       const serviceInfo = SERVICE_PRICES[resolveServiceKey(service)];
 
       const sendBookingConfirmedEmail = httpsCallable(fns, 'sendBookingConfirmedEmail');
       await sendBookingConfirmedEmail({
         memberId: item.memberId,
-        template: 'portal-service-confirmed',
+        template: 'portal-reservation-confirmed',
         data: {
           firstName, petNames,
           serviceLabel: serviceInfo?.name || service,
           startDateStr: startDateStr || toDateInputValue(startDate),
           endDateStr: endDateStr || toDateInputValue(endDate),
-          unitCount: Math.max(unitCount || 1, 1),
-          unitNoun: resolveServiceKey(service) === 'drop-in-visit' ? 'visit' : 'night',
+          totalDollars: amountInDollars,
+          chargeDateStr: toDateInputValue(chargeScheduledFor),
+          visitSchedule: null,
         },
         isNewAccount: false, // overnight_request only ever comes from an existing member
         idempotencyKey: `booking-confirmed:${submissionId}`,
@@ -3813,7 +3992,7 @@ window.confirmOvernight = async (submissionId, item) => {
     setTimeout(() => msg.remove(), 3000);
     if (emailWarning) alert(emailWarning);
   } catch(e) {
-    btn.textContent = 'Confirm & Charge'; btn.disabled = false;
+    btn.textContent = 'Confirm and schedule charge'; btn.disabled = false;
     alert('Error: ' + e.message);
   }
 };

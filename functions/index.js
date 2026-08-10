@@ -353,32 +353,21 @@ exports.linkServiceRequestBilling = onCall({}, async (request) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// 2. Charge the saved card for a one-time service (drop-in visit,
-//    overnight stay, standard/extended walk). Admin-triggered only —
-//    call this from the admin dashboard's "Confirm" button, after the
-//    meet & greet (first-time clients) or immediately (returning clients).
+// Core one-time-charge logic, extracted from chargeSavedCard below so it can
+// be shared with chargeScheduledReservations (the 24h-delayed reservation
+// charge) — a scheduled function has no request.auth, so it can never call
+// an onCall function like chargeSavedCard directly. Everything here is
+// byte-for-byte what chargeSavedCard used to do inline, with `sub` renamed
+// to `docData` and the hardcoded `db.collection('submissions').doc(submissionId)`
+// replaced by a caller-supplied `docRef` — chargeSavedCard passes its
+// submission ref and gets identical behavior; chargeScheduledReservations
+// passes an overnights ref instead. attemptField defaults to
+// 'lastChargeAttempt' (chargeSavedCard's original field name, unchanged);
+// the scheduled function passes 'chargeAttempt', matching the overnights
+// schema.
 // ─────────────────────────────────────────────────────────────────────────
-exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
-  await assertIsAdmin(request.auth);
-
-  const { submissionId, amountInDollars, description, chargeKey: chargeKeyInput } = request.data || {};
-  if (!submissionId || !amountInDollars) {
-    throw new HttpsError('invalid-argument', 'submissionId and amountInDollars are required.');
-  }
-  // Defaults to submissionId — correct for every caller except
-  // confirmWalkExtension, which confirms a checked SUBSET of a submission's
-  // walks at a time. A later confirm of the remaining walks from that same
-  // submission is a legitimate second charge, not a duplicate, so that
-  // caller passes a finer key (submissionId + the sorted walk ids) instead.
-  // See the idempotencyKey note on sendBookingConfirmedEmail in
-  // confirmWalkExtension for the same problem solved the same way.
-  const chargeKey = chargeKeyInput || submissionId;
-
-  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
-  const subDoc = await db.collection('submissions').doc(submissionId).get();
-  const sub = subDoc.data();
-
-  if (!sub || !sub.stripeCustomerId) {
+async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountInDollars, description, attemptField = 'lastChargeAttempt' }) {
+  if (!docData || !docData.stripeCustomerId) {
     throw new HttpsError('failed-precondition', 'No saved card found for this submission.');
   }
 
@@ -389,14 +378,14 @@ exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (reques
   // prior 'charged' outcome for this exact key — never on 'failed', so a
   // transient Stripe error can always be retried rather than permanently
   // wedging a legitimate charge.
-  const priorAttempt = sub.lastChargeAttempt;
+  const priorAttempt = docData[attemptField];
   if (priorAttempt && priorAttempt.chargeKey === chargeKey && priorAttempt.status === 'charged') {
     return {
       success: true, alreadyCharged: true,
-      paymentIntentId: sub.lastChargeId || null,
-      creditApplied: sub.referralCreditApplied || 0,
-      referralDiscountApplied: sub.referralDiscountApplied || 0,
-      referralCreditCarriedForward: sub.referralCreditCarriedForward || 0,
+      paymentIntentId: docData.lastChargeId || null,
+      creditApplied: docData.referralCreditApplied || 0,
+      referralDiscountApplied: docData.referralDiscountApplied || 0,
+      referralCreditCarriedForward: docData.referralCreditCarriedForward || 0,
     };
   }
 
@@ -407,7 +396,7 @@ exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (reques
   // Whatever's pending gets applied here, on their next charge, capped at
   // this charge's own amount (never a negative charge, never over-applies).
   // Cents throughout to avoid floating-point drift on the subtraction.
-  const memberId = sub.memberId || null;
+  const memberId = docData.memberId || null;
   const amountInCentsRequested = Math.round(amountInDollars * 100);
   let creditAppliedCents = 0;
   let billingData = null;
@@ -460,7 +449,7 @@ exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (reques
   if (chargeAmountInCents > 0) {
     // Off-session because the client isn't present re-entering their card —
     // they authorized this charge when they saved the card at signup.
-    const customer = await stripe.customers.retrieve(sub.stripeCustomerId);
+    const customer = await stripe.customers.retrieve(docData.stripeCustomerId);
     const paymentMethods = await stripe.paymentMethods.list({ customer: customer.id, type: 'card' });
     if (!paymentMethods.data.length) {
       throw new HttpsError('failed-precondition', 'Customer has no saved payment method.');
@@ -486,10 +475,18 @@ exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (reques
       // Durable failure record, not a block — the guard above only ever
       // matches on status 'charged', so this same chargeKey stays retryable
       // rather than getting permanently wedged by one transient Stripe error.
-      await db.collection('submissions').doc(submissionId).set({
-        lastChargeAttempt: {
+      // failureCount tracks consecutive failures for this exact chargeKey —
+      // chargeScheduledReservations reads it to cap automatic retries (see
+      // MAX_SCHEDULED_CHARGE_ATTEMPTS below); chargeSavedCard's callers don't
+      // read it, it's just harmless metadata for them. Resets to 1 rather
+      // than carrying forward if priorAttempt belongs to a different
+      // chargeKey (e.g. confirmWalkExtension charging a different subset of
+      // walks) — that's a distinct logical charge, not a retry of this one.
+      await docRef.set({
+        [attemptField]: {
           chargeKey, status: 'failed', amount: chargeAmountInDollars,
           reason: e.message, failedAt: FieldValue.serverTimestamp(),
+          failureCount: (priorAttempt?.chargeKey === chargeKey ? (priorAttempt.failureCount || 0) : 0) + 1,
         },
       }, { merge: true }).catch(() => {});
       throw new HttpsError('internal', `Card charge failed: ${e.message}`);
@@ -498,14 +495,14 @@ exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (reques
   // chargeAmountInCents === 0 means the referral credit fully covered this
   // charge — Stripe doesn't allow a $0 PaymentIntent, so it's skipped
   // entirely rather than attempted; paymentIntent stays null and the
-  // submission is still marked charged, since nothing further is owed.
+  // doc is still marked charged, since nothing further is owed.
 
-  await db.collection('submissions').doc(submissionId).set({
+  await docRef.set({
     paymentMethodStatus: 'charged',
     lastChargeId: paymentIntent ? paymentIntent.id : null,
     lastChargeAmount: chargeAmountInDollars,
     lastChargedAt: FieldValue.serverTimestamp(),
-    lastChargeAttempt: {
+    [attemptField]: {
       chargeKey, status: 'charged', amount: chargeAmountInDollars,
       paymentIntentId: paymentIntent ? paymentIntent.id : null,
       chargedAt: FieldValue.serverTimestamp(),
@@ -538,6 +535,149 @@ exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (reques
     creditApplied, referralDiscountApplied,
     referralCreditCarriedForward: carryForwardCents / 100,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 2. Charge the saved card for a one-time service (drop-in visit,
+//    overnight stay, standard/extended walk). Admin-triggered only —
+//    call this from the admin dashboard's "Confirm" button, after the
+//    meet & greet (first-time clients) or immediately (returning clients).
+//    Thin onCall wrapper around chargeCustomerCard above — auth check and
+//    request-payload validation only; the charging logic itself is shared
+//    with chargeScheduledReservations.
+// ─────────────────────────────────────────────────────────────────────────
+exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  await assertIsAdmin(request.auth);
+
+  const { submissionId, amountInDollars, description, chargeKey: chargeKeyInput } = request.data || {};
+  if (!submissionId || !amountInDollars) {
+    throw new HttpsError('invalid-argument', 'submissionId and amountInDollars are required.');
+  }
+  // Defaults to submissionId — correct for every caller except
+  // confirmWalkExtension, which confirms a checked SUBSET of a submission's
+  // walks at a time. A later confirm of the remaining walks from that same
+  // submission is a legitimate second charge, not a duplicate, so that
+  // caller passes a finer key (submissionId + the sorted walk ids) instead.
+  // See the idempotencyKey note on sendBookingConfirmedEmail in
+  // confirmWalkExtension for the same problem solved the same way.
+  const chargeKey = chargeKeyInput || submissionId;
+
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+  const subRef = db.collection('submissions').doc(submissionId);
+  const subDoc = await subRef.get();
+  const sub = subDoc.data();
+
+  return chargeCustomerCard(stripe, subRef, sub, { chargeKey, amountInDollars, description });
+});
+
+// A reservation whose card keeps failing stops being retried automatically
+// after this many consecutive failures (roughly 1 hour at the 15-minute
+// schedule below) — a declined card doesn't get better by asking again every
+// 15 minutes for a full day. needsReview is already set by the first failed
+// attempt and stays set, so admin isn't relying on the retries themselves for
+// visibility; once capped, resolution is manual via chargeSavedCard once the
+// card issue is sorted out.
+const MAX_SCHEDULED_CHARGE_ATTEMPTS = 4;
+
+// Only these statuses are safe to charge — an allowlist, not a denylist, so
+// any future status this doc might carry (e.g. a cancellation status, if one
+// is ever added) fails safe by default instead of becoming chargeable by
+// accident. Both values are real, current states: 'confirmed' is set at
+// write time (confirmServiceRequest/confirmOvernight) and 'completed' is set
+// by the walker's "Mark as Completed" action (walker/dashboard.html) — a
+// walker finishing early shouldn't be able to make a reservation invisible
+// to its own scheduled charge.
+const CHARGEABLE_OVERNIGHT_STATUSES = ['confirmed', 'completed'];
+
+// ─────────────────────────────────────────────────────────────────────────
+// 2b. Charge pet-sitting reservations (check-in visits and overnight stays)
+//    24 hours after admin confirms them — confirmServiceRequest/confirmOvernight
+//    (admin/dashboard.html) write chargeScheduledFor, confirmedTotalCents, and
+//    chargePending: true onto the overnights doc at confirm time, but never
+//    charge immediately; this is what actually charges the card later.
+//
+//    Query filters on chargePending == true — a single equality filter, so
+//    no composite index is needed, same reasoning as resumePausedMemberships'
+//    single-filter pattern above. Deliberately NOT filtered on status: an
+//    earlier version filtered on status == 'confirmed', which meant a walker
+//    marking the reservation 'completed' before the 24-hour window elapsed
+//    silently dropped it out of this query forever — an unpaid, completed
+//    service with no error and no flag. chargePending is set true exactly
+//    while a charge is owed and cleared the instant one succeeds, so it
+//    tracks "is money owed" independently of the reservation's service-status
+//    lifecycle. The "is it due yet" (chargeScheduledFor) and "is this status
+//    safe to charge" (CHARGEABLE_OVERNIGHT_STATUSES) checks both happen in JS
+//    inside the loop, same codebase convention.
+//
+//    Each candidate gets a FRESH .get() immediately before charging, not
+//    just the query snapshot from the top of the run — admin may have
+//    cancelled or modified this exact reservation sometime in the 24-hour
+//    window, and a long-running batch can go stale by the time it reaches
+//    a given doc.
+//
+//    Uses chargeCustomerCard (shared with chargeSavedCard above) with
+//    attemptField: 'chargeAttempt' — the overnights-doc idempotency guard,
+//    same shape and semantics as chargeSavedCard's lastChargeAttempt and
+//    chargeCurrentMonthWalks' currentMonthCharge, just a different field
+//    name so it reads clearly on this collection. chargePending is cleared
+//    here, not inside chargeCustomerCard, so the shared helper stays
+//    collection-agnostic — chargeSavedCard's submissions docs have no such
+//    field.
+//
+//    A charge failure is not re-thrown past this loop (this is a scheduled
+//    job, nothing is waiting to catch it) — chargeCustomerCard's own
+//    failure branch already durably records the attempt (including
+//    failureCount, which the cap above reads) on the overnights doc; on top
+//    of that, this flags the member's billing record the same way
+//    onOvernightCompleted already does for a payout-calc failure, so a
+//    failed automated charge is visible on the admin Members table instead
+//    of silently vanishing — see NEEDS_REVIEW_LABELS.reservation_charge_failed
+//    in admin/dashboard.html.
+// ─────────────────────────────────────────────────────────────────────────
+exports.chargeScheduledReservations = onSchedule({
+  schedule: 'every 15 minutes',
+  secrets: [STRIPE_SECRET_KEY],
+}, async () => {
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+  const now = new Date();
+  const dueSnap = await db.collection('overnights').where('chargePending', '==', true).get();
+
+  for (const candidate of dueSnap.docs) {
+    const data = candidate.data();
+    const scheduledFor = data.chargeScheduledFor?.toDate ? data.chargeScheduledFor.toDate() : null;
+    if (!scheduledFor || scheduledFor > now) continue;
+    if (data.chargeAttempt?.status === 'charged') continue; // cheap skip before the fresh re-read below
+    if (data.chargeAttempt?.status === 'failed' && (data.chargeAttempt.failureCount || 0) >= MAX_SCHEDULED_CHARGE_ATTEMPTS) continue; // capped — needsReview already flagged, leave for manual resolution
+
+    // Fresh read immediately before charging — see comment above.
+    const freshSnap = await candidate.ref.get();
+    const freshData = freshSnap.data();
+    if (!freshData || !CHARGEABLE_OVERNIGHT_STATUSES.includes(freshData.status)) continue;
+
+    const isCheckin = freshData.serviceType === 'checkin' || freshData.serviceType === 'drop-in-visit';
+    try {
+      await chargeCustomerCard(stripe, candidate.ref, freshData, {
+        chargeKey: `scheduled-reservation:${candidate.id}`,
+        amountInDollars: (freshData.confirmedTotalCents || 0) / 100,
+        description: `Port City Leash Club - ${isCheckin ? 'Check-In Visits' : 'Overnight Stay'}`,
+        attemptField: 'chargeAttempt',
+      });
+      await candidate.ref.set({ chargePending: false }, { merge: true });
+    } catch (e) {
+      console.error(
+        `chargeScheduledReservations: charge failed for overnights/${candidate.id} `
+        + `(memberId=${freshData.memberId || 'unknown'}, amount=${(freshData.confirmedTotalCents || 0) / 100}):`,
+        e.message
+      );
+      if (freshData.memberId) {
+        await billingRef(freshData.memberId).set({
+          needsReview: true, needsReviewReason: 'reservation_charge_failed',
+        }, { merge: true }).catch(writeErr => {
+          console.error(`chargeScheduledReservations: failed to write needsReview for ${freshData.memberId}:`, writeErr.message);
+        });
+      }
+    }
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -3253,6 +3393,11 @@ exports.onOvernightCompleted = onDocumentUpdated({
         rateKey: payout.key,
         rate: WALKER_RATES[payout.key],
         days: payout.days,
+        // For a check-in paid per visit, baseTotal is rate * units (total
+        // visits), not rate * days — units is stamped alongside days so the
+        // record stays self-consistent instead of implying baseTotal ==
+        // rate * days the way it always used to.
+        units: payout.units,
         baseTotal: payout.base,
         extraPetTotal: payout.extraPetTotal,
         medicationTotal: payout.medicationTotal,

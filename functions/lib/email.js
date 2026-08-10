@@ -28,6 +28,7 @@ const TEMPLATES = {
   'service-request-received': require('../templates/service-request-received'),
   'portal-service-request-received': require('../templates/portal-service-request-received'),
   'portal-service-confirmed': require('../templates/portal-service-confirmed'),
+  'portal-reservation-confirmed': require('../templates/portal-reservation-confirmed'),
   'walk-confirmed': require('../templates/walk-confirmed'),
   'portal-walk-request-received': require('../templates/portal-walk-request-received'),
   'member-welcome': require('../templates/member-welcome'),
