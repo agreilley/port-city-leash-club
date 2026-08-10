@@ -162,7 +162,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
             <label>How did you hear about us?</label>
             <select id="how-heard" name="how-heard" required>
               <option value="">Select</option>
-              <option>Apartment Community</option>
+              <option>Apartment community</option>
               <option>Real estate agent</option>
             </select>
           </div>
@@ -230,7 +230,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   // any other value (including no params at all) falls through to the open
   // two-option dropdown, since this page is partner-only — no member-referral
   // option here, that's a separate portal-only flow.
-  const HOW_HEARD_LABEL = { apartment: 'Apartment Community', agent: 'Real estate agent' };
+  const HOW_HEARD_LABEL = { apartment: 'Apartment community', agent: 'Real estate agent' };
 
   function showConditional(kind) {
     const buildingField = document.getElementById('building-field');
@@ -270,7 +270,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     } else {
       showConditional(null);
       howHeard.addEventListener('change', () => {
-        if (howHeard.value === 'Apartment Community') showConditional('apartment');
+        if (howHeard.value === 'Apartment community') showConditional('apartment');
         else if (howHeard.value === 'Real estate agent') showConditional('agent');
         else showConditional(null);
       });
@@ -307,7 +307,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         throw new Error('Firebase not ready');
       }
       const howHeardVal = document.getElementById('how-heard').value;
-      const source = howHeardVal === 'Apartment Community' ? 'apartment'
+      const source = howHeardVal === 'Apartment community' ? 'apartment'
         : howHeardVal === 'Real estate agent' ? 'agent' : '';
       if (!source) {
         throw new Error('Please select how you heard about us.');
