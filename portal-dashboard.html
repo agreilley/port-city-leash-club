@@ -116,6 +116,36 @@
       margin: 0;
     }
 
+    /* Refer/Care entry points — nav is behind the drawer now (js/portal-nav.js)
+       instead of always visible in a bottom bar, so these two stay prominent
+       near the top rather than requiring a scroll past the calendar. Same
+       color-block visual family as the Walk Schedule Banner above, but a
+       lighter 2-up treatment rather than two more full-width banners, which
+       would read as a stacked wall of color blocks doing three different jobs. */
+    .dashboard-cta-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+
+    .dashboard-cta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px;
+      border-radius: 12px;
+      color: white;
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    .dashboard-cta svg { flex-shrink: 0; }
+
+    .dashboard-cta-refer { background: #8FA8A2; }
+    .dashboard-cta-care { background: #C17B6F; }
+
     .metric-cards {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -464,54 +494,23 @@
     }
   
   /* ── PORTAL MOBILE ─────────────────────────────────────────────────────── */
-  .mobile-bottom-nav { display: none; }
-
   @media (max-width: 768px) {
     html, body { overflow-x: hidden; }
 
-    /* Hide sidebar, expand main */
+    /* Hide sidebar, expand main — the shared drawer (js/portal-nav.js)
+       takes over navigation below this same breakpoint. */
     .sidebar { display: none !important; }
     .portal-container { display: block !important; }
-    .main-content { margin-left: 0 !important; padding: 20px 16px 90px !important; }
+    .main-content { margin-left: 0 !important; padding: 20px 16px !important; }
     .main { margin-left: 0 !important; }
-    .content { padding: 20px 16px 90px !important; }
+    .content { padding: 20px 16px !important; }
 
-    /* Bottom nav */
-    .mobile-bottom-nav {
-      display: flex;
-      position: fixed;
-      bottom: 0; left: 0; right: 0;
-      background: #0D1B2A;
-      border-top: 1px solid rgba(255,255,255,0.08);
-      z-index: 200;
-      padding-bottom: env(safe-area-inset-bottom);
-    }
-    .mobile-tab {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-      padding: 10px 4px 12px;
-      text-decoration: none;
-      color: rgba(255,255,255,0.45);
-      font-size: 10px;
-      font-family: "DM Sans", sans-serif;
-      font-weight: 500;
-      letter-spacing: 0.02em;
-      transition: color 0.15s;
-    }
-    .mobile-tab.active { color: #C17B6F; }
-    .mobile-tab svg { opacity: 0.7; }
-    .mobile-tab.active svg { opacity: 1; }
-
-    /* Topbar */
-    .topbar { padding: 0 16px; height: 52px; }
-    .topbar-title { font-size: 18px; }
-    .topbar-actions { gap: 8px; }
-    .topbar-actions .btn-primary { padding: 7px 14px; font-size: 12px; }
-    .topbar-actions .btn-secondary { padding: 7px 14px; font-size: 12px; }
+    /* Refer/Care CTAs — stays 2-up at every mobile width on purpose (not
+       collapsed to 1 column like .metric-cards below), just tightened so
+       icon + short label both fit down to a 375px viewport. */
+    .dashboard-cta-row { gap: 8px; }
+    .dashboard-cta { padding: 12px 10px; font-size: 13px; gap: 8px; }
+    .dashboard-cta svg { width: 18px; height: 18px; }
 
     /* Cards + tables */
     .stats-row { grid-template-columns: 1fr 1fr !important; gap: 10px; }
@@ -532,7 +531,7 @@
     .calendar-weekdays { width: 100%; }
     .calendar-day { min-height: 52px; padding: 3px 2px; overflow: hidden; }
     .walk-chip { font-size: 8px; padding: 1px 2px; overflow: hidden; text-overflow: ellipsis; }
-    .content { padding: 16px 12px 90px !important; }
+    .content { padding: 16px 12px !important; }
     .calendar-legend { flex-wrap: wrap; gap: 8px; }
 
     /* Forms */
@@ -607,6 +606,18 @@
             <div style="font-size: 18px; font-weight: 500;" id="bannerSchedule">–</div>
           </div>
           <a href="portal-account.html#walk-schedule" style="background: white; color: #C17B6F; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px; ">Change Schedule</a>
+        </div>
+
+        <!-- Refer/Care entry points -->
+        <div class="dashboard-cta-row">
+          <a class="dashboard-cta dashboard-cta-refer" href="portal-referrals.html">
+            <svg width="20" height="20" viewBox="0 0 22 22" fill="none"><path d="M11 3l2.2 4.46 4.92.72-3.56 3.47.84 4.9L11 14.98l-4.4 2.31.84-4.9-3.56-3.47 4.92-.72L11 3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            <span>Refer a friend</span>
+          </a>
+          <a class="dashboard-cta dashboard-cta-care" href="portal-extras.html">
+            <svg width="20" height="20" viewBox="0 0 22 22" fill="none"><path d="M11 4v14M4 11h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            <span>Request care</span>
+          </a>
         </div>
 
         <!-- Metric Cards -->
@@ -1040,11 +1051,14 @@ function applyPreviewModeUI() {
     banner.style.display = '';
   }
 
-  // Sidebar + mobile nav — every item leads to a different portal page that
+  // Sidebar + drawer nav — every item leads to a different portal page that
   // isn't part of this read-only preview and isn't gated the same way, so
   // all of them (including "Dashboard" itself, to avoid silently dropping
-  // out of preview mode on a stray click) are disabled.
-  document.querySelectorAll('.sidebar-nav .nav-item, .mobile-bottom-nav .mobile-tab').forEach(el => {
+  // out of preview mode on a stray click) are disabled. .pn-item covers the
+  // shared drawer's links AND its Log Out button (js/portal-nav.js) —
+  // pointerEvents:none blocks the click before either this page's own
+  // listener below or the drawer's own click handler can run.
+  document.querySelectorAll('.sidebar-nav .nav-item, .pn-drawer .pn-item').forEach(el => {
     el.style.pointerEvents = 'none';
     el.style.opacity = '0.5';
     el.setAttribute('aria-disabled', 'true');
@@ -1062,8 +1076,8 @@ function applyPreviewModeUI() {
     changeScheduleLink.addEventListener('click', e => e.preventDefault());
   }
 
-  // Sign-out buttons (sidebar's is a real <button>; mobile's is covered by
-  // the nav-item loop above since it's an <a class="mobile-tab">)
+  // Sign-out buttons (sidebar's is a real <button>; the drawer's Log Out
+  // button is covered by the nav-item loop above since it's also .pn-item)
   document.querySelectorAll('.btn-signout').forEach(el => el.setAttribute('disabled', ''));
 
   // Modal Reschedule/Extend buttons are static in the DOM (not re-templated
@@ -1386,15 +1400,6 @@ function updateMetrics() {
 
     generateCalendar();
   </script>
-<!-- Mobile Bottom Nav -->
-<nav class="mobile-bottom-nav">
-  <a class="mobile-tab active" href="portal-dashboard.html"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="2" y="2" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="2" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="12" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="12" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg><span>Home</span></a>
-  <a class="mobile-tab " href="portal-walk-history.html"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M4 11h14M4 6h14M4 16h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>Walks</span></a>
-  <a class="mobile-tab " href="portal-extras.html"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 4v14M4 11h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>Care</span></a>
-  <a class="mobile-tab" href="portal-referrals.html"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 3l2.2 4.46 4.92.72-3.56 3.47.84 4.9L11 14.98l-4.4 2.31.84-4.9-3.56-3.47 4.92-.72L11 3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><span>Refer</span></a>
-  <a class="mobile-tab " href="portal-pet-profile.html"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M3 20c0-4.418 3.582-7 8-7s8 2.582 8 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>Profile</span></a>
-  <a class="mobile-tab " href="portal-account.html"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>Account</span></a>
-  <a class="mobile-tab" href="#" onclick="signOutMember(); return false;"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M8.5 3H4.5a1 1 0 00-1 1v14a1 1 0 001 1h4M14 15l4-4-4-4M18 11H7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Log Out</span></a>
-</nav>
+<script type="module" src="/js/portal-nav.js"></script>
 </body>
 </html>
