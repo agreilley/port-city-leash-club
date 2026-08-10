@@ -4048,6 +4048,45 @@ exports.getOrCreateMemberReferralCode = onCall({}, async (request) => {
   });
 });
 
+// Member's own referral credit balance, as one combined number — see
+// issueReferralCredit's tier split: membership-tier credit lives as a real
+// Stripe customer-balance credit (negative balance = credit, per
+// issueStripeBalanceCredit above), Travel-tier credit lives in
+// pendingReferralCredit on the billing subdoc (no ongoing subscription for a
+// Stripe balance to apply against). A member could in principle have a
+// nonzero amount in either depending on tier history, so both are summed
+// rather than branching on current tier. Reads Stripe live rather than
+// mirroring a field into Firestore, so this can never drift from what
+// Stripe actually has — one Stripe API call per page visit is an acceptable
+// cost for a tab a member checks occasionally, not on every page load.
+// Same auth-gated, no-client-payload pattern as getOrCreateMemberReferralCode
+// above: request.auth.uid IS the member, never a client-supplied id.
+// A Stripe error is allowed to propagate (not caught here) — the caller
+// must see a load failure, never silently render $0.00 for a read that
+// actually failed.
+exports.getMemberCreditBalance = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'You must be signed in.');
+  }
+  const uid = request.auth.uid;
+  const billingSnap = await billingRef(uid).get();
+  const billingData = billingSnap.exists ? billingSnap.data() : {};
+
+  const pendingCreditCents = Math.round((billingData.pendingReferralCredit || 0) * 100);
+
+  let stripeCreditCents = 0;
+  if (billingData.stripeCustomerId) {
+    const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+    const customer = await stripe.customers.retrieve(billingData.stripeCustomerId);
+    // A deleted customer resolves with { deleted: true } and no balance
+    // field — treat as no Stripe-side credit rather than a crash.
+    const balance = customer.deleted ? 0 : (customer.balance || 0);
+    stripeCreditCents = Math.max(0, -balance);
+  }
+
+  return { creditCents: pendingCreditCents + stripeCreditCents };
+});
+
 // Signup-form code validation (membership-request.html / service-request.html).
 // referralCodes has no public read rule (see firestore.rules), so the client
 // can't check a code directly — this callable is the narrow, PII-free

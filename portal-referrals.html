@@ -241,6 +241,22 @@
       color: #888;
     }
 
+    /* Shared by the credit-balance and referral-list error states below —
+       both sit side by side in .info-row, so a load failure in either one
+       needs the same recovery affordance, not one with a retry and one
+       without. */
+    .inline-retry {
+      background: none;
+      border: none;
+      padding: 0;
+      margin-left: 4px;
+      color: #C17B6F;
+      font-weight: 600;
+      text-decoration: underline;
+      cursor: pointer;
+      font: inherit;
+    }
+
     .referral-list-card {
       background: white;
       border: 0.5px solid #ddd;
@@ -359,8 +375,8 @@
         <div class="info-row">
           <div class="info-box">
             <div class="info-label">Credit Balance</div>
-            <div class="info-value">Coming Soon</div>
-            <div class="info-sub">We're building automatic credit tracking — check back soon.</div>
+            <div class="info-value" id="creditBalanceValue">Loading&hellip;</div>
+            <div class="info-sub" id="creditBalanceSub"></div>
           </div>
 
           <div class="referral-list-card">
@@ -424,8 +440,13 @@ document.getElementById('copyCodeBtn').addEventListener('click', async () => {
   }
 });
 
+// Set once the code is resolved in onAuthStateChanged below — lets
+// retryReferralList() re-run this without re-resolving auth/the code.
+let currentReferralCode = null;
+
 async function loadReferralList(code) {
   const listEl = document.getElementById('referralList');
+  listEl.innerHTML = '<div class="empty-state">Loading&hellip;</div>';
   try {
     const q = query(collection(db, 'referralCodes', code, 'redemptions'), orderBy('createdAt', 'desc'));
     const snap = await getDocs(q);
@@ -445,9 +466,34 @@ async function loadReferralList(code) {
     }).join('');
   } catch (e) {
     console.error('Failed to load referrals:', e.message);
-    listEl.innerHTML = '<div class="empty-state">Couldn\'t load your referrals right now.</div>';
+    listEl.innerHTML = '<div class="empty-state">Couldn\'t load your referrals right now. <button type="button" class="inline-retry" onclick="retryReferralList()">Retry</button></div>';
   }
 }
+window.retryReferralList = () => { if (currentReferralCode) loadReferralList(currentReferralCode); };
+
+async function loadCreditBalance() {
+  const valueEl = document.getElementById('creditBalanceValue');
+  const subEl = document.getElementById('creditBalanceSub');
+  valueEl.textContent = 'Loading…';
+  subEl.innerHTML = '';
+  try {
+    const result = await httpsCallable(functions, 'getMemberCreditBalance')();
+    const cents = result.data?.creditCents || 0;
+    valueEl.textContent = '$' + (cents / 100).toFixed(2);
+    // Framed as applying to the next charge, not as a spendable balance —
+    // there's nothing here for a member to withdraw or transfer.
+    subEl.textContent = cents > 0
+      ? 'Applies automatically to your next charge.'
+      : 'Credit from referrals will show up here.';
+  } catch (e) {
+    console.error('Failed to load credit balance:', e.message);
+    // Never $0.00 on a failed read — that would read as "you have no
+    // credit" when the truth is just "we couldn't check."
+    valueEl.textContent = 'Unable to load';
+    subEl.innerHTML = 'Couldn\'t load your credit balance right now. <button type="button" class="inline-retry" onclick="retryCreditBalance()">Retry</button>';
+  }
+}
+window.retryCreditBalance = () => loadCreditBalance();
 
 // If auth never resolves, stop waiting and tell the member instead of
 // leaving the page stuck on "Loading…".
@@ -460,11 +506,14 @@ onAuthStateChanged(auth, async (user) => {
   authResolved = true;
   clearTimeout(authTimeoutId);
   if (!user) { window.location.href = 'portal-login.html'; return; }
+  // Independent of the referral-code/list flow below — its own load state,
+  // its own failure state, doesn't block or get blocked by the other.
+  loadCreditBalance();
   try {
     const snap = await getDoc(doc(db, 'members', user.uid));
     if (!snap.exists()) {
       document.getElementById('referralCodeValue').textContent = 'Unavailable';
-      document.getElementById('referralList').innerHTML = '<div class="empty-state">Couldn\'t load your referrals right now.</div>';
+      document.getElementById('referralList').innerHTML = '<div class="empty-state">Couldn\'t load your account. <button type="button" class="inline-retry" onclick="location.reload()">Retry</button></div>';
       return;
     }
     const m = snap.data();
@@ -487,12 +536,13 @@ onAuthStateChanged(auth, async (user) => {
       const result = await httpsCallable(functions, 'getOrCreateMemberReferralCode')();
       code = result.data.code;
     }
+    currentReferralCode = code;
     renderCode(code);
     await loadReferralList(code);
   } catch(e) {
     console.error('Referral tab load failed:', e.message);
     document.getElementById('referralCodeValue').textContent = 'Unavailable';
-    document.getElementById('referralList').innerHTML = '<div class="empty-state">Couldn\'t load your referrals right now.</div>';
+    document.getElementById('referralList').innerHTML = '<div class="empty-state">Couldn\'t load your account. <button type="button" class="inline-retry" onclick="location.reload()">Retry</button></div>';
   }
 });
 </script>
