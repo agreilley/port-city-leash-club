@@ -335,10 +335,11 @@
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getAuth, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { getFirestore, collection, query, where, onSnapshot, doc, getDoc, updateDoc, getDocs, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { initializeFirestore, memoryLocalCache, collection, query, where, onSnapshot, doc, getDoc, updateDoc, getDocs, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 import { calculateEarnings, WALKER_RATES, WALKER_EXTRA_PET_FEE, WALKER_MEDICATION_FEE } from '../walker-pricing.js';
+import { showError } from '/js/status.js';
 
 // ─── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────────────
 const firebaseConfig = {
@@ -352,8 +353,16 @@ const firebaseConfig = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const app = initializeApp(firebaseConfig, "walker-app");
-const auth = getAuth(app);
-const db = getFirestore(app);
+// Explicit persistence fallback chain — the SDK's default hierarchy probes
+// IndexedDB first, which hangs (never resolves, never rejects) under Safari
+// Private Browsing instead of failing fast. This skips straight to
+// localStorage-backed persistence, falling back further only if unavailable.
+const auth = initializeAuth(app, {
+  persistence: [browserLocalPersistence, browserSessionPersistence, inMemoryPersistence]
+});
+// Firestore already defaults to memory-only cache with no persistence
+// configured; making it explicit documents the choice on purpose.
+const db = initializeFirestore(app, { localCache: memoryLocalCache() });
 const storage = getStorage(app);
 
 // Last-resort fallback for the "In an emergency" block below when a member
@@ -373,8 +382,17 @@ function escapeHtml(str) {
 let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth();
 
+// If auth never resolves, stop waiting and tell the walker instead of
+// leaving the page stuck on nothing.
+let authResolved = false;
+const authTimeoutId = setTimeout(() => {
+  if (!authResolved) showError("This page didn't finish loading. Please try again.", { onRetry: () => location.reload() });
+}, 10000);
+
 // ── AUTH GUARD ────────────────────────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
+  authResolved = true;
+  clearTimeout(authTimeoutId);
   if (!user) { window.location.href = 'index.html'; return; }
   try {
     // Try UID doc first (new walkers)

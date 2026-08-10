@@ -78,10 +78,11 @@
 
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-  import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+  import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
   import {
-    getFirestore, collection, getDocs, doc, getDoc, deleteDoc
+    initializeFirestore, memoryLocalCache, collection, getDocs, doc, getDoc, deleteDoc
   } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+  import { showError } from '/js/status.js';
 
   const firebaseConfig = {
     apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
@@ -93,11 +94,28 @@
   };
 
   const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getFirestore(app);
+  // Explicit persistence fallback chain — the SDK's default hierarchy probes
+  // IndexedDB first, which hangs (never resolves, never rejects) under Safari
+  // Private Browsing instead of failing fast. This skips straight to
+  // localStorage-backed persistence, falling back further only if unavailable.
+  const auth = initializeAuth(app, {
+    persistence: [browserLocalPersistence, browserSessionPersistence, inMemoryPersistence]
+  });
+  // Firestore already defaults to memory-only cache with no persistence
+  // configured; making it explicit documents the choice on purpose.
+  const db = initializeFirestore(app, { localCache: memoryLocalCache() });
+
+  // If auth never resolves, stop waiting and tell the admin instead of
+  // leaving the page stuck on nothing.
+  let authResolved = false;
+  const authTimeoutId = setTimeout(() => {
+    if (!authResolved) showError("This page didn't finish loading. Please try again.", { onRetry: () => location.reload() });
+  }, 10000);
 
   // ── AUTH GUARD ──
   onAuthStateChanged(auth, async (user) => {
+    authResolved = true;
+    clearTimeout(authTimeoutId);
     if (!user) { window.location.href = '/admin'; return; }
     const snap = await getDoc(doc(db, 'admins', user.uid));
     if (!snap.exists()) { window.location.href = '/admin'; return; }
