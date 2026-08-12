@@ -139,8 +139,12 @@
   .membership-list-col { text-align: center; }
   .membership-list-heading { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.7); margin-bottom: 14px; }
   .membership-features { list-style: none; }
+  /* No bullet here — centered text with a ragged bullet column read as
+     accidental, and "What's included" already signals it's a list.
+     Restored on mobile below, where the list is left-aligned and the
+     bullets form a real column again. */
   .membership-features li { font-size: 13px; color: rgba(255,255,255,0.92); padding: 5px 0; display: flex; justify-content: center; align-items: flex-start; gap: 8px; line-height: 1.4; }
-  .membership-features li::before { content: '·'; color: rgba(255,255,255,0.6); font-size: 18px; line-height: 1; flex-shrink: 0; }
+  .membership-features li::before { content: none; }
   .membership-card-side { text-align: right; }
   .membership-price { display: flex; align-items: baseline; justify-content: flex-end; gap: 6px; margin-bottom: 6px; }
   .membership-price-notes { margin-bottom: 20px; }
@@ -317,9 +321,18 @@
        between two left-aligned neighbors either side — once everything
        stacks to a single column there are no neighbors to balance
        against, so it reverts to left-aligned like the rest of the stack. */
-    .membership-card { grid-template-columns: 1fr !important; gap: 24px; padding: 28px 24px; background: linear-gradient(to bottom, #C17B6F 0%, #8FA8A2 100%); }
+    /* Row-gap tightened from the desktop column-gap value (24px) to 16px —
+       .membership-header's own margin-bottom is zeroed below so the
+       name-to-prose gap is just this one gap, not the two stacked on top
+       of each other (20px header margin + 24px grid gap read as one
+       oversized gap that looked like leftover desktop spacing). */
+    .membership-card { grid-template-columns: 1fr !important; gap: 16px; padding: 28px 24px; background: linear-gradient(to bottom, #C17B6F 0%, #8FA8A2 100%); }
+    .membership-header { margin-bottom: 0; }
     .membership-list-col { text-align: left; }
     .membership-features li { justify-content: flex-start; }
+    /* Bullet restored — left-aligned on mobile, so it forms a real column
+       again instead of the ragged centered version on desktop. */
+    .membership-features li::before { content: '·'; color: rgba(255,255,255,0.6); font-size: 18px; line-height: 1; flex-shrink: 0; }
     .membership-card-side { text-align: left; }
     .membership-price { justify-content: flex-start; }
     .btn-membership { display: block; width: 100%; }
@@ -542,7 +555,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         <div class="membership-price"><div class="membership-price-amount">$27</div><div class="membership-price-unit">/walk</div></div>
         <div class="membership-price-notes">
           <div class="membership-price-compare">10% off our $30 single walk rate</div>
-          <div class="membership-price-compare">45-minute walks available for $12 more</div>
+          <div class="membership-price-compare" style="font-style:italic;">45-minute walks available</div>
         </div>
         <a class="btn-membership" href="/membership-request" data-cta="tier_membership">Get started</a>
       </div>
