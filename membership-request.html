@@ -245,7 +245,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
               <label class="day-chip"><input type="checkbox" name="days" value="Saturday">Sat</label>
               <label class="day-chip"><input type="checkbox" name="days" value="Sunday">Sun</label>
             </div>
-            <span class="date-error" id="daysError">Choose at least 1 walk day, up to 5 per week.</span>
+            <span class="date-error" id="daysError">Choose at least 1 walk day, up to 7 per week.</span>
           </div>
           <div>
             <label class="field-label" style="display:block;margin-bottom:10px;">Preferred time window</label>
@@ -511,14 +511,14 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       return;
     }
 
-    // D: 1-5 walk days required. There's no tier default to fall back on
-    // anymore, so an empty selection must block submission rather than
-    // silently going out as a 0-day request — and the removed auto-upgrade
-    // mechanic used to be the only thing capping a selection at 5 (this
-    // day-chip grid has 7 options, Monday through Sunday), so that ceiling
-    // needs an explicit check now too.
+    // D: at least 1 walk day is required. There's no tier default to fall
+    // back on anymore, so an empty selection must block submission rather
+    // than silently going out as a 0-day request. The upper bound is 7 —
+    // this day-chip grid already has exactly 7 options (Monday through
+    // Sunday), so the check is really just guarding the minimum; the max
+    // can never actually be exceeded by the UI itself.
     const checkedDayCount = document.querySelectorAll('input[name="days"]:checked').length;
-    if (checkedDayCount < 1 || checkedDayCount > 5) {
+    if (checkedDayCount < 1 || checkedDayCount > 7) {
       if (daysError) {
         daysError.style.display = 'block';
         daysError.scrollIntoView({ block: 'center', behavior: 'smooth' });
