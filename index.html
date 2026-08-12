@@ -132,9 +132,14 @@
   .membership-header { grid-column: 1 / -1; margin-bottom: 20px; }
   .membership-name { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 400; color: white; }
   .membership-prose { font-size: 14px; color: rgba(255,255,255,0.92); line-height: 1.6; }
+  .membership-prose + .membership-prose { margin-top: 10px; }
+  /* Center column: heading and list both centered, not left-aligned like
+     the prose/price columns either side — left, center, right reads
+     balanced, where left/left/right (the original layout) read lopsided. */
+  .membership-list-col { text-align: center; }
   .membership-list-heading { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.7); margin-bottom: 14px; }
   .membership-features { list-style: none; }
-  .membership-features li { font-size: 13px; color: rgba(255,255,255,0.92); padding: 5px 0; display: flex; align-items: flex-start; gap: 8px; line-height: 1.4; }
+  .membership-features li { font-size: 13px; color: rgba(255,255,255,0.92); padding: 5px 0; display: flex; justify-content: center; align-items: flex-start; gap: 8px; line-height: 1.4; }
   .membership-features li::before { content: '·'; color: rgba(255,255,255,0.6); font-size: 18px; line-height: 1; flex-shrink: 0; }
   .membership-card-side { text-align: right; }
   .membership-price { display: flex; align-items: baseline; justify-content: flex-end; gap: 6px; margin-bottom: 6px; }
@@ -305,11 +310,16 @@
     .how-works-section { padding-top: 10px; }
 
     /* Membership: card stacks to one column — the three grid columns
-       (features, features, price/CTA) stack in DOM order, so the two
-       benefit lists read as one continuous 6-item list before the price.
-       Gradient rotates to top-to-bottom here — a left-to-right diagonal
-       only reads once the card stacks to one column. */
+       (prose, benefit list, price/CTA) stack in DOM order. Gradient
+       rotates to top-to-bottom here — a left-to-right diagonal only reads
+       once the card stacks to one column. The center column's centered
+       text/list is a desktop-only balance choice (left/center/right)
+       between two left-aligned neighbors either side — once everything
+       stacks to a single column there are no neighbors to balance
+       against, so it reverts to left-aligned like the rest of the stack. */
     .membership-card { grid-template-columns: 1fr !important; gap: 24px; padding: 28px 24px; background: linear-gradient(to bottom, #C17B6F 0%, #8FA8A2 100%); }
+    .membership-list-col { text-align: left; }
+    .membership-features li { justify-content: flex-start; }
     .membership-card-side { text-align: left; }
     .membership-price { justify-content: flex-start; }
     .btn-membership { display: block; width: 100%; }
@@ -515,8 +525,11 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       <div class="membership-header">
         <div class="membership-name">Leash Club Membership</div>
       </div>
-      <p class="membership-prose">Set the days that work for your week. We'll take care of the rest.</p>
-      <div>
+      <div class="membership-prose-col">
+        <p class="membership-prose">Set the days that work for your week, and we'll take care of the rest.</p>
+        <p class="membership-prose">Membership includes recurring 30-minute walks.</p>
+      </div>
+      <div class="membership-list-col">
         <div class="membership-list-heading">What's included</div>
         <ul class="membership-features">
           <li>Welcome gift</li>
