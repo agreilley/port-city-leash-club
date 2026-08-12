@@ -106,7 +106,7 @@
      story; the full double-padding gap between them read as an accidental
      empty section rather than a continuous flow. See how-works-section's
      matching padding-top below. */
-  .membership-section { background: var(--warm-white); padding-bottom: 32px; }
+  .membership-section { background: var(--sand-light); padding-bottom: 32px; }
   .how-works-section { padding-top: 32px; }
   .membership-card { max-width: 840px; margin: 0 auto 16px; background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 40px 44px; display: grid; grid-template-columns: 1fr 1fr; column-gap: 40px; align-items: start; }
   .membership-header { grid-column: 1 / -1; }
@@ -142,6 +142,17 @@
   .step-inline { padding: 22px; background: white; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06); }
   .step-inline .step-num { font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 300; color: var(--seafoam-light); line-height: 1; margin-bottom: 10px; }
   .step-inline .step-text { font-size: 13px; color: var(--text-mid); line-height: 1.7; }
+  /* Staggered scroll-reveal for the 4 steps. Deliberately NOT opacity:0 by
+     default — .pre-animate (added by JS right before observing) is what
+     hides them, so if JS never runs at all, steps stay visible. See the
+     step-reveal script for the timeout that also guarantees .animate-in
+     lands even if the IntersectionObserver itself never fires. */
+  .step-inline.pre-animate { opacity: 0; transform: translateY(24px); }
+  .step-inline.animate-in { opacity: 1; transform: translateY(0); transition: opacity 0.6s ease, transform 0.6s ease; }
+  @media (prefers-reduced-motion: reduce) {
+    .step-inline.pre-animate { opacity: 1; transform: none; }
+    .step-inline.animate-in { transition: none; }
+  }
   /* HOW IT WORKS - sits inside membership section visually */
   .how-section { background: var(--sand-light); padding-top: 0; }
   .steps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
@@ -307,15 +318,19 @@
     .founder-layout { display: flex; flex-direction: column; }
     /* Membership and how-it-works share one color deliberately (one story,
        not two sections) — that's the one break in an otherwise-alternating
-       rhythm. With .why-section hidden on mobile, founder needs its own
-       override to keep the rest of the rhythm going: how-works-section and
-       .map-section both carry the color this order needs as their own base
-       rule (warm and sand respectively) at every breakpoint, so neither
-       needs a mobile override of its own — only founder does, since it's
-       the one section whose correct color differs between the desktop
-       chain (why included) and the mobile chain (why skipped).
-       Result: services(sand) membership(warm) how-it-works(warm) map(sand)
-       founder(warm) cta(navy). */
+       rhythm. Membership sits right after hero here, which has no section
+       background of its own (just the plain warm-white page background),
+       so the merged pair has to be sand to stay visible against it — the
+       opposite of when the pair sat after sand-services instead. With
+       .why-section hidden on mobile, founder needs its own override to
+       keep the rest of the rhythm going: how-works-section, #services, and
+       .map-section all carry the color this order needs as their own base
+       rule at every breakpoint, so none of them needs a mobile override —
+       only founder does, since it's the one section whose correct color
+       differs between the desktop chain (why included) and the mobile
+       chain (why skipped).
+       Result: hero(warm) membership(sand) how-it-works(sand) services(warm)
+       map(sand) founder(warm) cta(navy). */
     .founder-section { background: var(--warm-white); }
 
     /* Map */
@@ -466,8 +481,72 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   </div>
 </div>
 
-<!-- 2. ONE-TIME SERVICES -->
-<section id="services" style="background: var(--sand-light);">
+<!-- 2. MEMBERSHIP -->
+<section class="membership-section" id="membership">
+  <div class="section-inner">
+    <p class="section-eyebrow">The Leash Club</p>
+    <h2 class="section-headline">Simple, recurring walks from day one.</h2>
+    <p class="section-sub">Set the days that work for your week. We'll take care of the rest.</p>
+
+    <div class="membership-card">
+      <div class="membership-header">
+        <div class="membership-badge">10% off</div>
+        <div class="membership-name">Leash Club Membership</div>
+        <div class="membership-meta">Recurring weekly walks</div>
+      </div>
+      <ul class="membership-features">
+        <li>30-minute walks</li>
+        <li>Walk photos &amp; notes</li>
+        <li>Easy date adjustments in the portal</li>
+        <li>Welcome gift</li>
+        <li>$50 credit every 50 walks</li>
+      </ul>
+      <div class="membership-card-side">
+        <div class="membership-price"><div class="membership-price-amount">$27</div><div class="membership-price-unit">/walk</div></div>
+        <a class="btn-membership" href="/membership-request" data-cta="tier_membership">Get started</a>
+      </div>
+    </div>
+
+    <div class="single-walk-banner">Not ready to commit? <a href="/service-request?service=standard-walk" style="color:var(--navy);font-weight:500;">One-time walks start at $30</a>, no membership required.</div>
+  </div>
+</section>
+
+
+<!-- 3. HOW THE LEASH CLUB WORKS -->
+<section class="how-works-section" style="background: var(--sand-light);">
+  <div class="section-inner">
+    <div id="how-it-works"></div>
+    <p class="section-eyebrow" style="margin-bottom:24px;">How The Leash Club Works</p>
+
+    <!-- 4 steps -->
+    <div class="steps-row" style="margin-bottom:16px;">
+      <div class="step-inline">
+        <div class="step-num">01</div>
+        <div class="step-title">Choose Your Schedule</div>
+        <div class="step-text">Pick the days that work for your week and a preferred time window.</div>
+      </div>
+      <div class="step-inline">
+        <div class="step-num">02</div>
+        <div class="step-title">Meet &amp; Greet</div>
+        <div class="step-text">We'll get to know you and your dog, learn your routine, and answer any questions before your first walk.</div>
+      </div>
+      <div class="step-inline">
+        <div class="step-num">03</div>
+        <div class="step-title">Manage Everything Online</div>
+        <div class="step-text">View upcoming walks, update your dog's information, and make schedule changes through the member portal.</div>
+      </div>
+      <div class="step-inline">
+        <div class="step-num">04</div>
+        <div class="step-title">Leave the Logistics to Us</div>
+        <div class="step-text">Once your schedule is in place, we'll take care of the rest. Focus on your day, knowing your dog's routine is covered.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- 4. ONE-TIME SERVICES -->
+<section id="services" style="background: var(--warm-white);">
   <div class="section-inner">
     <p class="section-eyebrow">Pet Sitting Services</p>
     <h2 class="section-headline">For trips, long days, and everything in between.</h2>
@@ -499,70 +578,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
     </div>
 
-  </div>
-</section>
-
-
-<!-- 3. MEMBERSHIP -->
-<section class="membership-section" id="membership">
-  <div class="section-inner">
-    <p class="section-eyebrow">The Leash Club</p>
-    <h2 class="section-headline">Simple, recurring walks from day one.</h2>
-    <p class="section-sub">Set the days that work for your week. We'll take care of the rest.</p>
-
-    <div class="membership-card">
-      <div class="membership-header">
-        <div class="membership-badge">10% off</div>
-        <div class="membership-name">Leash Club Membership</div>
-        <div class="membership-meta">Recurring weekly walks</div>
-      </div>
-      <ul class="membership-features">
-        <li>30-minute walks</li>
-        <li>Walk photos &amp; notes</li>
-        <li>Easy date adjustments in the portal</li>
-        <li>Welcome gift</li>
-        <li>$50 credit every 50 walks</li>
-      </ul>
-      <div class="membership-card-side">
-        <div class="membership-price"><div class="membership-price-amount">$27</div><div class="membership-price-unit">/walk</div></div>
-        <a class="btn-membership" href="/membership-request" data-cta="tier_membership">Get started</a>
-      </div>
-    </div>
-
-    <div class="single-walk-banner">Not ready to commit? <a href="/service-request?service=standard-walk" style="color:var(--navy);font-weight:500;">One-time walks start at $30</a>, no membership required.</div>
-  </div>
-</section>
-
-
-<!-- 4. HOW THE LEASH CLUB WORKS -->
-<section class="how-works-section" style="background: var(--warm-white);">
-  <div class="section-inner">
-    <div id="how-it-works"></div>
-    <p class="section-eyebrow" style="margin-bottom:24px;">How The Leash Club Works</p>
-
-    <!-- 4 steps -->
-    <div class="steps-row" style="margin-bottom:16px;">
-      <div class="step-inline">
-        <div class="step-num">01</div>
-        <div class="step-title">Choose Your Schedule</div>
-        <div class="step-text">Pick the days that work for your week and a preferred time window.</div>
-      </div>
-      <div class="step-inline">
-        <div class="step-num">02</div>
-        <div class="step-title">Meet &amp; Greet</div>
-        <div class="step-text">We'll get to know you and your dog, learn your routine, and answer any questions before your first walk.</div>
-      </div>
-      <div class="step-inline">
-        <div class="step-num">03</div>
-        <div class="step-title">Manage Everything Online</div>
-        <div class="step-text">View upcoming walks, update your dog's information, and make schedule changes through the member portal.</div>
-      </div>
-      <div class="step-inline">
-        <div class="step-num">04</div>
-        <div class="step-title">Leave the Logistics to Us</div>
-        <div class="step-text">Once your schedule is in place, we'll take care of the rest. Focus on your day, knowing your dog's routine is covered.</div>
-      </div>
-    </div>
   </div>
 </section>
 
@@ -1055,6 +1070,35 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       notifyError.style.display = 'block';
     }
   });
+
+  // Scroll-triggered stagger for the "How The Leash Club Works" steps.
+  // Unlike the previous version of this effect, .step-inline is fully
+  // visible by default in CSS — this only ever HIDES steps (via
+  // .pre-animate) right before starting to observe them, and reveals them
+  // via .animate-in either when the IntersectionObserver fires or, if it
+  // never does for any reason, after a flat 4s timeout regardless. So the
+  // worst case is a max 4s delay before steps appear, never permanent
+  // invisibility.
+  const steps = document.querySelectorAll('.step-inline');
+  if (steps.length && 'IntersectionObserver' in window) {
+    steps.forEach(step => step.classList.add('pre-animate'));
+    let stepsRevealed = false;
+    function revealSteps() {
+      if (stepsRevealed) return;
+      stepsRevealed = true;
+      steps.forEach((step, i) => {
+        setTimeout(() => step.classList.add('animate-in'), i * 150);
+      });
+    }
+    const stepObserver = new IntersectionObserver((entries) => {
+      if (entries.some(entry => entry.isIntersecting)) {
+        revealSteps();
+        stepObserver.disconnect();
+      }
+    }, { threshold: 0.15, rootMargin: '0px 0px -50px 0px' });
+    steps.forEach(step => stepObserver.observe(step));
+    setTimeout(revealSteps, 4000);
+  }
 
   // FAQ accordion
   document.querySelectorAll('.faq-question').forEach(button => {
