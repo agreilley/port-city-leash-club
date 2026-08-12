@@ -167,14 +167,6 @@
   .search-result-in { background: #EAF4EE; border: 1px solid #B5D9C0; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #2D6A40; max-width: 540px; display: flex; align-items: center; gap: 8px; }
   .search-result-out { background: var(--sand-light); border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; padding: 12px 16px; font-size: 13px; color: var(--text-mid); max-width: 540px; }
   .notify-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; max-width: 540px; margin-top: 10px; }
-  /* ANIMATIONS */
-  @keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  .step-inline { opacity: 0; transform: translateY(24px); }
-  .step-inline.visible { opacity: 1; transform: translateY(0); transition: opacity 0.6s ease, transform 0.6s ease; }
-
 
   /* HOVER STATES */
   .btn-primary { transition: background 0.2s, transform 0.1s; }
@@ -1063,22 +1055,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       notifyError.style.display = 'block';
     }
   });
-
-  // Scroll-triggered fade-in for membership steps
-  const steps = document.querySelectorAll('.step-inline');
-  const stepObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        const index = Array.from(steps).indexOf(entry.target);
-        setTimeout(() => {
-          entry.target.classList.add('visible');
-        }, index * 150);
-        stepObserver.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.15, rootMargin: '0px 0px -50px 0px' });
-
-  steps.forEach(step => stepObserver.observe(step));
 
   // FAQ accordion
   document.querySelectorAll('.faq-question').forEach(button => {
