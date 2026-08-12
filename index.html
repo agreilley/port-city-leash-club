@@ -102,8 +102,8 @@
 
   /* MEMBERSHIP */
   .membership-section { background: var(--warm-white); }
-  .membership-card { max-width: 840px; margin: 0 auto 16px; background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 40px 44px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; transition: box-shadow 0.25s, transform 0.25s; }
-  .membership-card:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.08); transform: translateY(-2px); }
+  .membership-card { max-width: 840px; margin: 0 auto 16px; display: grid; grid-template-columns: 1fr 1fr; column-gap: 40px; align-items: start; }
+  .membership-header { grid-column: 1 / -1; }
   .membership-badge { display: inline-block; background: var(--seafoam-light); color: var(--navy); font-size: 11px; font-weight: 500; letter-spacing: 0.06em; padding: 3px 10px; border-radius: 20px; margin-bottom: 10px; }
   .membership-name { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 400; color: var(--navy); margin-bottom: 4px; }
   .membership-meta { font-size: 12px; color: var(--text-light); margin-bottom: 20px; }
@@ -143,12 +143,11 @@
   .step-num { font-family: 'Cormorant Garamond', serif; font-size: 48px; font-weight: 300; color: var(--seafoam-light); line-height: 1; margin-bottom: 20px; }
   .step-title { font-size: 16px; font-weight: 500; color: var(--navy); margin-bottom: 10px; }
   .step-text { font-size: 14px; color: var(--text-mid); line-height: 1.7; }
-  .how-divider { border: none; border-top: 1px solid rgba(0,0,0,0.08); margin: 0 0 64px 0; }
 
   a.btn-primary, a.btn-nav { display: inline-block; text-align: center; text-decoration: none; color: white !important; }
 
   /* SERVICE AREA */
-  .map-section { background: var(--sand-light); }
+  .map-section { background: var(--warm-white); }
   .map-container { border-radius: 8px; overflow: hidden; border: 1px solid rgba(0,0,0,0.08); margin-bottom: 32px; height: 340px; background: var(--sand); position: relative; display: flex; align-items: center; justify-content: center; }
   .map-placeholder { text-align: center; }
   .map-placeholder-label { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-light); margin-bottom: 12px; }
@@ -303,13 +302,18 @@
     .founder-copy { padding: 28px 20px; order: 1; }
     .founder-quote-mark { font-size: 90px; top: -28px; left: 20px; }
     .founder-layout { display: flex; flex-direction: column; }
-    /* With .why-section hidden on mobile, restore bg alternation via a 2-section
-       cascade: founder warm-white -> sand-light, and map sand-light -> warm-white.
-       Result: services(sand) membership(warm) founder(sand) map(warm) cta(navy). */
+    /* With .why-section hidden on mobile, founder needs its own override to
+       keep bg alternation going. how-works-section and .map-section both
+       carry the color this order needs as their own base rule (sand and
+       warm respectively) at every breakpoint, so neither needs a mobile
+       override of its own — only founder does, since it's the one section
+       whose correct color differs between the desktop chain (why included)
+       and the mobile chain (why skipped).
+       Result: services(sand) membership(warm) how-it-works(sand) map(warm)
+       founder(sand) cta(navy). */
     .founder-section { background: var(--sand-light); }
 
     /* Map */
-    .map-section { padding: 48px 20px; background: var(--warm-white); }
     .address-search-row { grid-template-columns: 1fr !important; }
     .search-btn { width: 100%; }
 
@@ -457,7 +461,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   </div>
 </div>
 
-<!-- 4. ONE-TIME SERVICES -->
+<!-- 2. ONE-TIME SERVICES -->
 <section id="services" style="background: var(--sand-light);">
   <div class="section-inner">
     <p class="section-eyebrow">Pet Sitting Services</p>
@@ -494,7 +498,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 </section>
 
 
-<!-- 2. MEMBERSHIP + HOW IT WORKS -->
+<!-- 3. MEMBERSHIP -->
 <section class="membership-section" id="membership">
   <div class="section-inner">
     <p class="section-eyebrow">The Leash Club</p>
@@ -502,18 +506,18 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     <p class="section-sub">Set the days that work for your week. We'll take care of the rest.</p>
 
     <div class="membership-card">
-      <div>
+      <div class="membership-header">
         <div class="membership-badge">10% off</div>
         <div class="membership-name">Leash Club Membership</div>
         <div class="membership-meta">Recurring weekly walks</div>
-        <ul class="membership-features">
-          <li>30-minute walks</li>
-          <li>Walk photos &amp; notes</li>
-          <li>Easy date adjustments in the portal</li>
-          <li>Welcome gift</li>
-          <li>$50 credit every 50 walks</li>
-        </ul>
       </div>
+      <ul class="membership-features">
+        <li>30-minute walks</li>
+        <li>Walk photos &amp; notes</li>
+        <li>Easy date adjustments in the portal</li>
+        <li>Welcome gift</li>
+        <li>$50 credit every 50 walks</li>
+      </ul>
       <div class="membership-card-side">
         <div class="membership-price"><div class="membership-price-amount">$27</div><div class="membership-price-unit">/walk</div></div>
         <a class="btn-membership" href="/membership-request" data-cta="tier_membership">Get started</a>
@@ -521,8 +525,13 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     </div>
 
     <div class="single-walk-banner">Not ready to commit? <a href="/service-request?service=standard-walk" style="color:var(--navy);font-weight:500;">One-time walks start at $30</a>, no membership required.</div>
+  </div>
+</section>
 
-    <hr class="how-divider" style="margin:64px 0 48px 0;">
+
+<!-- 4. HOW THE LEASH CLUB WORKS -->
+<section class="how-works-section" style="background: var(--sand-light);">
+  <div class="section-inner">
     <div id="how-it-works"></div>
     <p class="section-eyebrow" style="margin-bottom:24px;">How The Leash Club Works</p>
 
@@ -553,7 +562,44 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 </section>
 
 
-<!-- 5. WHY US -->
+<!-- 5. SERVICE AREA -->
+<section class="map-section">
+  <div class="section-inner">
+    <p class="section-eyebrow">Where We Walk</p>
+    <h2 class="section-headline">Serving Wilmington's finest neighborhoods.</h2>
+
+    <!-- Centered search bar + map -->
+    <div style="max-width:700px;margin:32px auto;">
+      <p class="section-sub" style="text-align:center;max-width:700px;margin:0 auto 20px;">Wondering if we're in your neighborhood? Enter your address to find out.</p>
+      <div class="address-search-row" style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:16px;">
+        <input id="address-input" class="search-input" type="text" placeholder="Enter your address">
+        <button id="check-address-btn" class="search-btn">Check my address</button>
+      </div>
+
+      <!-- Result: in service -->
+      <div id="result-in" class="search-result-in" style="margin-bottom:16px;display:none;">
+        ✓ Great news, we serve your neighborhood. <a href="/membership-request" data-cta="zone_check_success" style="color:var(--navy);font-weight:500;margin-left:4px;">Join the Leash Club</a>
+      </div>
+
+      <!-- Result: out of service -->
+      <div id="result-out" class="search-result-out" style="display:none;">
+        We're not in your neighborhood yet, but sign up to be notified when we expand.
+        <div class="address-search-row" style="margin-top:12px;display:grid;grid-template-columns:1fr auto;gap:8px;">
+          <input id="notify-email" class="search-input" type="email" placeholder="Your email address">
+          <button id="notify-btn" class="search-btn">Notify me</button>
+        </div>
+        <div id="notify-confirm" style="margin-top:10px;color:#2D6A40;font-size:13px;display:none;">✓ Thanks! We'll notify you when we expand.</div>
+        <div id="notify-error" style="margin-top:10px;color:var(--rust);font-size:13px;display:none;">Sorry, something went wrong. Please try again, or email <a href="mailto:hello@portcityleashclub.com" style="color:var(--rust);">hello@portcityleashclub.com</a>.</div>
+      </div>
+
+      <div id="map" style="border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,0.08);aspect-ratio:1200/630;background:#e8e0d5;margin-top:16px;"></div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- 6. WHY US -->
 <section class="why-section">
   <div class="section-inner">
     <p class="section-eyebrow">Why Port City Leash Club</p>
@@ -613,44 +659,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 </section>
 
 
-<!-- 5. SERVICE AREA -->
-<section class="map-section">
-  <div class="section-inner">
-    <p class="section-eyebrow">Where We Walk</p>
-    <h2 class="section-headline">Serving Wilmington's finest neighborhoods.</h2>
-
-    <!-- Centered search bar + map -->
-    <div style="max-width:700px;margin:32px auto;">
-      <p class="section-sub" style="text-align:center;max-width:700px;margin:0 auto 20px;">Wondering if we're in your neighborhood? Enter your address to find out.</p>
-      <div class="address-search-row" style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:16px;">
-        <input id="address-input" class="search-input" type="text" placeholder="Enter your address">
-        <button id="check-address-btn" class="search-btn">Check my address</button>
-      </div>
-
-      <!-- Result: in service -->
-      <div id="result-in" class="search-result-in" style="margin-bottom:16px;display:none;">
-        ✓ Great news, we serve your neighborhood. <a href="/membership-request" data-cta="zone_check_success" style="color:var(--navy);font-weight:500;margin-left:4px;">Join the Leash Club</a>
-      </div>
-
-      <!-- Result: out of service -->
-      <div id="result-out" class="search-result-out" style="display:none;">
-        We're not in your neighborhood yet, but sign up to be notified when we expand.
-        <div class="address-search-row" style="margin-top:12px;display:grid;grid-template-columns:1fr auto;gap:8px;">
-          <input id="notify-email" class="search-input" type="email" placeholder="Your email address">
-          <button id="notify-btn" class="search-btn">Notify me</button>
-        </div>
-        <div id="notify-confirm" style="margin-top:10px;color:#2D6A40;font-size:13px;display:none;">✓ Thanks! We'll notify you when we expand.</div>
-        <div id="notify-error" style="margin-top:10px;color:var(--rust);font-size:13px;display:none;">Sorry, something went wrong. Please try again, or email <a href="mailto:hello@portcityleashclub.com" style="color:var(--rust);">hello@portcityleashclub.com</a>.</div>
-      </div>
-
-      <div id="map" style="border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,0.08);aspect-ratio:1200/630;background:#e8e0d5;margin-top:16px;"></div>
-    </div>
-
-  </div>
-</section>
-
-
-<!-- 6. CTA -->
+<!-- 7. CTA -->
 <section class="cta-section">
   <div class="section-inner">
     <p class="section-eyebrow">Ready to Join?</p>
