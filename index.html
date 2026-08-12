@@ -106,9 +106,17 @@
      story; the full double-padding gap between them read as an accidental
      empty section rather than a continuous flow. See how-works-section's
      matching padding-top below. */
-  .membership-section { background: var(--sand-light); padding-bottom: 32px; }
-  .how-works-section { padding-top: 32px; }
-  .membership-card { margin: 0 0 16px; background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 40px 44px; display: grid; grid-template-columns: 1fr 1fr; column-gap: 40px; align-items: center; }
+  .membership-section { background: var(--sand-light); padding-bottom: 16px; }
+  .how-works-section { padding-top: 16px; }
+  /* Gradient peaks in the middle (fills the empty gap between the two
+     columns) and fades back to white at both edges, rather than tinting
+     the price column solid — that put the rust CTA on the most saturated
+     part of the gradient, which clashed. Warmed toward seafoam rather
+     than diluting the raw --seafoam token, which reads cool/grey-blue at
+     this level of dilution. Width matches .why-layout's 990px (the page's
+     own measurement for a "wide but not edge-to-edge" content block)
+     rather than an arbitrary percentage or the full 1100px section width. */
+  .membership-card { max-width: 990px; margin: 0 0 16px; background: linear-gradient(to right, white 0%, #D5DED8 50%, white 100%); border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 40px 44px; display: grid; grid-template-columns: 1fr 1fr; column-gap: 40px; align-items: center; }
   .membership-header { grid-column: 1 / -1; }
   .membership-name { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 400; color: var(--navy); margin-bottom: 4px; }
   .membership-meta { font-size: 12px; color: var(--text-light); margin-bottom: 20px; }
@@ -117,7 +125,9 @@
   .membership-features li::before { content: '·'; color: var(--seafoam); font-size: 18px; line-height: 1; flex-shrink: 0; }
   .membership-card-side { text-align: right; }
   .membership-price { display: flex; align-items: baseline; justify-content: flex-end; gap: 6px; margin-bottom: 6px; }
-  .membership-price-compare { font-size: 13px; color: var(--text-light); margin-bottom: 20px; }
+  /* text-mid, not text-light — text-light fails contrast against the
+     tinted end of the gradient (and is borderline even on plain white). */
+  .membership-price-compare { font-size: 13px; color: var(--text-mid); margin-bottom: 20px; }
   .membership-price-amount { font-family: 'Cormorant Garamond', serif; font-size: 52px; font-weight: 400; color: var(--navy); line-height: 1; }
   .membership-price-unit { font-size: 16px; color: var(--text-light); }
   .btn-membership { display: inline-block; text-align: center; text-decoration: none; background: var(--rust); color: white !important; border: none; padding: 12px 32px; border-radius: 4px; font-size: 14px; font-family: 'DM Sans', sans-serif; cursor: pointer; font-weight: 500; transition: background 0.2s, transform 0.1s; }
@@ -278,14 +288,18 @@
     /* Same tightening as desktop — membership and how-works-section share
        a background now, so the stacked-padding gap between them needs to
        shrink proportionally to mobile's smaller base padding too. */
-    .membership-section { padding-bottom: 20px; }
-    .how-works-section { padding-top: 20px; }
+    .membership-section { padding-bottom: 10px; }
+    .how-works-section { padding-top: 10px; }
 
     /* Membership: card stacks to one column, features drop from 2 columns to
        1 (2 columns of 5 short items is cramped at phone width), and the CTA
        goes full-width now that it's the last thing in a single stack rather
        than a compact side block next to the price. */
-    .membership-card { grid-template-columns: 1fr !important; gap: 24px; padding: 28px 24px; }
+    /* Gradient rotates to top-to-bottom here — a left-to-right split only
+       reads once the card stacks to one column. Keeps the same peak-in-
+       the-middle shape as desktop (white at both ends) so the CTA at the
+       bottom still sits on white, not the tinted band. */
+    .membership-card { grid-template-columns: 1fr !important; gap: 24px; padding: 28px 24px; background: linear-gradient(to bottom, white 0%, #D5DED8 50%, white 100%); }
     .membership-features { columns: 1; }
     .membership-card-side { text-align: left; }
     .membership-price { justify-content: flex-start; }
