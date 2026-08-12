@@ -129,8 +129,6 @@
      price/button visually consistent with the real 32px column-gap,
      rather than reading as its own oversized fourth gap. */
   .membership-card { max-width: 990px; margin: 0 auto 16px; background: linear-gradient(135deg, #C17B6F 0%, #8FA8A2 100%); border: none; border-radius: 8px; padding: 40px 44px; display: grid; grid-template-columns: 1.25fr 1.25fr 1fr; column-gap: 32px; align-items: center; }
-  .membership-header { grid-column: 1 / -1; margin-bottom: 20px; }
-  .membership-name { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 400; color: white; }
   .membership-prose { font-size: 14px; color: rgba(255,255,255,0.92); line-height: 1.6; }
   .membership-prose + .membership-prose { margin-top: 10px; }
   /* Center column: heading and list both centered, not left-aligned like
@@ -321,13 +319,8 @@
        between two left-aligned neighbors either side — once everything
        stacks to a single column there are no neighbors to balance
        against, so it reverts to left-aligned like the rest of the stack. */
-    /* Row-gap tightened from the desktop column-gap value (24px) to 16px —
-       .membership-header's own margin-bottom is zeroed below so the
-       name-to-prose gap is just this one gap, not the two stacked on top
-       of each other (20px header margin + 24px grid gap read as one
-       oversized gap that looked like leftover desktop spacing). */
+    /* Row-gap tightened from the desktop column-gap value (24px) to 16px. */
     .membership-card { grid-template-columns: 1fr !important; gap: 16px; padding: 28px 24px; background: linear-gradient(to bottom, #C17B6F 0%, #8FA8A2 100%); }
-    .membership-header { margin-bottom: 0; }
     .membership-list-col { text-align: left; }
     .membership-features li { justify-content: flex-start; }
     /* Bullet restored — left-aligned on mobile, so it forms a real column
@@ -392,7 +385,6 @@
     /* Misc */
     .section-headline { font-size: 32px; }
     .cta-section .section-headline { font-size: 40px; }
-    .membership-name { font-size: 24px; }
     .sitting-card-title { font-size: 22px; }
     .sitting-card-price { font-size: 28px; }
     * { max-width: 100%; }
@@ -406,7 +398,6 @@
     .hero-headline { font-size: 42px; }
     .section-headline { font-size: 28px; }
     .cta-section .section-headline { font-size: 34px; }
-    .membership-name { font-size: 22px; }
     .sitting-card-title { font-size: 20px; }
     .sitting-card-price { font-size: 26px; }
   }
@@ -532,12 +523,9 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 <!-- 2. MEMBERSHIP -->
 <section class="membership-section" id="membership">
   <div class="section-inner">
-    <p class="section-eyebrow">The Leash Club</p>
-    <h2 class="section-headline">Simple, recurring walks from day one.</h2>
+    <p class="section-eyebrow">Dog Walking Membership</p>
+    <h2 class="section-headline">The Leash Club</h2>
     <div class="membership-card">
-      <div class="membership-header">
-        <div class="membership-name">Leash Club Membership</div>
-      </div>
       <div class="membership-prose-col">
         <p class="membership-prose">Set the days that work for your week, and we'll take care of the rest.</p>
         <p class="membership-prose">Membership includes recurring 30-minute walks.</p>
