@@ -128,16 +128,19 @@
      extra space instead keeps the gutter in front of the right-aligned
      price/button visually consistent with the real 32px column-gap,
      rather than reading as its own oversized fourth gap. */
-  .membership-card { max-width: 990px; margin: 0 auto 16px; background: linear-gradient(135deg, #C17B6F 0%, #8FA8A2 100%); border: none; border-radius: 8px; padding: 40px 44px; display: grid; grid-template-columns: 1.4fr 1.4fr 1fr; column-gap: 32px; align-items: center; }
-  .membership-header { grid-column: 1 / -1; }
-  .membership-name { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 400; color: white; margin-bottom: 4px; }
-  .membership-meta { font-size: 12px; color: rgba(255,255,255,0.8); margin-bottom: 20px; }
+  .membership-card { max-width: 990px; margin: 0 auto 16px; background: linear-gradient(135deg, #C17B6F 0%, #8FA8A2 100%); border: none; border-radius: 8px; padding: 40px 44px; display: grid; grid-template-columns: 1.25fr 1.25fr 1fr; column-gap: 32px; align-items: center; }
+  .membership-header { grid-column: 1 / -1; margin-bottom: 20px; }
+  .membership-name { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 400; color: white; }
+  .membership-prose { font-size: 14px; color: rgba(255,255,255,0.92); line-height: 1.6; }
+  .membership-list-heading { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.7); margin-bottom: 14px; }
   .membership-features { list-style: none; }
   .membership-features li { font-size: 13px; color: rgba(255,255,255,0.92); padding: 5px 0; display: flex; align-items: flex-start; gap: 8px; line-height: 1.4; }
   .membership-features li::before { content: '·'; color: rgba(255,255,255,0.6); font-size: 18px; line-height: 1; flex-shrink: 0; }
   .membership-card-side { text-align: right; }
   .membership-price { display: flex; align-items: baseline; justify-content: flex-end; gap: 6px; margin-bottom: 6px; }
-  .membership-price-compare { font-size: 13px; color: rgba(255,255,255,0.85); margin-bottom: 20px; }
+  .membership-price-notes { margin-bottom: 20px; }
+  .membership-price-compare { font-size: 13px; color: rgba(255,255,255,0.85); }
+  .membership-price-compare + .membership-price-compare { margin-top: 3px; }
   .membership-price-amount { font-family: 'Cormorant Garamond', serif; font-size: 52px; font-weight: 400; color: white; line-height: 1; }
   .membership-price-unit { font-size: 16px; color: rgba(255,255,255,0.75); }
   .btn-membership { display: inline-block; text-align: center; text-decoration: none; background: white; color: #C17B6F; border: none; padding: 12px 32px; border-radius: 4px; font-size: 14px; font-family: 'DM Sans', sans-serif; cursor: pointer; font-weight: 500; transition: background 0.2s, transform 0.1s; }
@@ -508,26 +511,26 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   <div class="section-inner">
     <p class="section-eyebrow">The Leash Club</p>
     <h2 class="section-headline">Simple, recurring walks from day one.</h2>
-    <p class="section-sub">Set the days that work for your week. We'll take care of the rest.</p>
-
     <div class="membership-card">
       <div class="membership-header">
         <div class="membership-name">Leash Club Membership</div>
-        <div class="membership-meta">Recurring weekly walks</div>
       </div>
-      <ul class="membership-features">
-        <li>30-minute walks</li>
-        <li>Walk photos &amp; notes</li>
-        <li>Easy date adjustments in the portal</li>
-      </ul>
-      <ul class="membership-features">
-        <li>Welcome gift</li>
-        <li>$50 credit every 50 walks</li>
-        <li>Priority scheduling</li>
-      </ul>
+      <p class="membership-prose">Set the days that work for your week. We'll take care of the rest.</p>
+      <div>
+        <div class="membership-list-heading">What's included</div>
+        <ul class="membership-features">
+          <li>Welcome gift</li>
+          <li>Walk photos &amp; notes</li>
+          <li>Priority scheduling</li>
+          <li>$50 credit every 50 walks</li>
+        </ul>
+      </div>
       <div class="membership-card-side">
         <div class="membership-price"><div class="membership-price-amount">$27</div><div class="membership-price-unit">/walk</div></div>
-        <div class="membership-price-compare">10% off our $30 single walk rate</div>
+        <div class="membership-price-notes">
+          <div class="membership-price-compare">10% off our $30 single walk rate</div>
+          <div class="membership-price-compare">45-minute walks available for $12 more</div>
+        </div>
         <a class="btn-membership" href="/membership-request" data-cta="tier_membership">Get started</a>
       </div>
     </div>
