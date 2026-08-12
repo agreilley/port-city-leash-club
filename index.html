@@ -321,14 +321,31 @@
        against, so it reverts to left-aligned like the rest of the stack. */
     /* Row-gap tightened from the desktop column-gap value (24px) to 16px. */
     .membership-card { grid-template-columns: 1fr !important; gap: 16px; padding: 28px 24px; background: linear-gradient(to bottom, #C17B6F 0%, #8FA8A2 100%); }
-    .membership-list-col { text-align: left; }
+    .membership-list-col { text-align: left; order: 2; }
     .membership-features li { justify-content: flex-start; }
     /* Bullet restored — left-aligned on mobile, so it forms a real column
        again instead of the ragged centered version on desktop. */
     .membership-features li::before { content: '·'; color: rgba(255,255,255,0.6); font-size: 18px; line-height: 1; flex-shrink: 0; }
-    .membership-card-side { text-align: left; }
-    .membership-price { justify-content: flex-start; }
-    .btn-membership { display: block; width: 100%; }
+    /* .membership-prose-col and .membership-card-side both go display:
+       contents here — their own boxes disappear and their children become
+       direct grid items, so each can get its own `order` instead of the
+       two moving as fixed blocks. This is what lets the "45-minute walks
+       available" line (still written once, inside .membership-prose-col,
+       for desktop's left-column placement) relocate to sit under "10%
+       off..." and above the CTA on mobile, without a second copy of the
+       text anywhere. */
+    .membership-prose-col { display: contents; }
+    .membership-prose-col > .membership-prose:first-child { order: 1; }
+    .membership-card-side { display: contents; }
+    .membership-price { order: 3; justify-content: flex-start; }
+    .membership-price-notes { order: 4; text-align: left; }
+    /* Two classes to match (and beat, on source order) the specificity of
+       the base .membership-prose + .membership-prose sibling rule, which
+       would otherwise still apply its 10px margin-top here regardless of
+       order/display:contents — sibling selectors match on DOM adjacency,
+       not visual position. */
+    .membership-prose.membership-extend-note { order: 5; margin-top: -20px; }
+    .btn-membership { order: 6; display: block; width: 100%; }
     .steps-row { grid-template-columns: 1fr !important; gap: 16px; }
 
     /* Pet Sitting Services: stack cards on mobile */
@@ -528,7 +545,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     <div class="membership-card">
       <div class="membership-prose-col">
         <p class="membership-prose">Set the days that work for your week, and we'll take care of the rest. Membership includes recurring 30-minute walks.</p>
-        <p class="membership-prose" style="font-style:italic;">45-minute walks available.</p>
+        <p class="membership-prose membership-extend-note" style="font-style:italic;">45-minute walks available.</p>
       </div>
       <div class="membership-list-col">
         <div class="membership-list-heading">What's included</div>
