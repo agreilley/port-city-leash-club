@@ -101,8 +101,14 @@
   .section-sub { font-size: 15px; color: var(--text-mid); max-width: 620px; line-height: 1.7; margin-bottom: 48px; }
 
   /* MEMBERSHIP */
-  .membership-section { background: var(--warm-white); }
-  .membership-card { max-width: 840px; margin: 0 auto 16px; display: grid; grid-template-columns: 1fr 1fr; column-gap: 40px; align-items: start; }
+  /* padding-bottom tightened (generic `section` gives 80px) — membership
+     and how-works-section now share a background so they read as one
+     story; the full double-padding gap between them read as an accidental
+     empty section rather than a continuous flow. See how-works-section's
+     matching padding-top below. */
+  .membership-section { background: var(--warm-white); padding-bottom: 32px; }
+  .how-works-section { padding-top: 32px; }
+  .membership-card { max-width: 840px; margin: 0 auto 16px; background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 40px 44px; display: grid; grid-template-columns: 1fr 1fr; column-gap: 40px; align-items: start; }
   .membership-header { grid-column: 1 / -1; }
   .membership-badge { display: inline-block; background: var(--seafoam-light); color: var(--navy); font-size: 11px; font-weight: 500; letter-spacing: 0.06em; padding: 3px 10px; border-radius: 20px; margin-bottom: 10px; }
   .membership-name { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 400; color: var(--navy); margin-bottom: 4px; }
@@ -147,7 +153,7 @@
   a.btn-primary, a.btn-nav { display: inline-block; text-align: center; text-decoration: none; color: white !important; }
 
   /* SERVICE AREA */
-  .map-section { background: var(--warm-white); }
+  .map-section { background: var(--sand-light); }
   .map-container { border-radius: 8px; overflow: hidden; border: 1px solid rgba(0,0,0,0.08); margin-bottom: 32px; height: 340px; background: var(--sand); position: relative; display: flex; align-items: center; justify-content: center; }
   .map-placeholder { text-align: center; }
   .map-placeholder-label { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-light); margin-bottom: 12px; }
@@ -194,7 +200,7 @@
   .carousel-arrow { background:none; border:1px solid rgba(0,0,0,0.12); border-radius:50%; width:36px; height:36px; font-size:16px; cursor:pointer; color:var(--navy); display:flex; align-items:center; justify-content:center; transition:all 0.2s; font-family:inherit; }
   .carousel-arrow:hover { background:var(--navy); color:white; border-color:var(--navy); }
   /* WHY US */
-  .why-section { background: var(--sand-light); }
+  .why-section { background: var(--warm-white); }
   .why-card { padding: 32px 28px; background: white; border: 1px solid rgba(0,0,0,0.06); border-radius: 8px; }
   .why-title { font-size: 17px; font-weight: 500; color: var(--navy); margin-bottom: 10px; }
   .why-text { font-size: 14px; color: var(--text-mid); line-height: 1.7; }
@@ -212,7 +218,7 @@
   .footer-links a { font-size: 13px; color: rgba(255,255,255,0.5); text-decoration: none; }
 
   html { scroll-behavior: smooth; }
-  .founder-section { background: var(--warm-white); }
+  .founder-section { background: var(--sand-light); }
   .founder-layout { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 48px; align-items: stretch; }
   .founder-photo { border-radius: 8px; overflow: hidden; aspect-ratio: 1 / 1; align-self: center; background: var(--sand); border:1px solid rgba(0,0,0,0.06); }
   .founder-copy { background: white; border:1px solid rgba(0,0,0,0.06); border-radius:8px; padding: 44px 42px; display: flex; flex-direction: column; justify-content: center; position: relative; }
@@ -266,6 +272,11 @@
 
     /* Sections */
     section { padding: 48px 20px; }
+    /* Same tightening as desktop — membership and how-works-section share
+       a background now, so the stacked-padding gap between them needs to
+       shrink proportionally to mobile's smaller base padding too. */
+    .membership-section { padding-bottom: 20px; }
+    .how-works-section { padding-top: 20px; }
 
     /* Membership: card stacks to one column, features drop from 2 columns to
        1 (2 columns of 5 short items is cramped at phone width), and the CTA
@@ -302,16 +313,18 @@
     .founder-copy { padding: 28px 20px; order: 1; }
     .founder-quote-mark { font-size: 90px; top: -28px; left: 20px; }
     .founder-layout { display: flex; flex-direction: column; }
-    /* With .why-section hidden on mobile, founder needs its own override to
-       keep bg alternation going. how-works-section and .map-section both
-       carry the color this order needs as their own base rule (sand and
-       warm respectively) at every breakpoint, so neither needs a mobile
-       override of its own — only founder does, since it's the one section
-       whose correct color differs between the desktop chain (why included)
-       and the mobile chain (why skipped).
-       Result: services(sand) membership(warm) how-it-works(sand) map(warm)
-       founder(sand) cta(navy). */
-    .founder-section { background: var(--sand-light); }
+    /* Membership and how-it-works share one color deliberately (one story,
+       not two sections) — that's the one break in an otherwise-alternating
+       rhythm. With .why-section hidden on mobile, founder needs its own
+       override to keep the rest of the rhythm going: how-works-section and
+       .map-section both carry the color this order needs as their own base
+       rule (warm and sand respectively) at every breakpoint, so neither
+       needs a mobile override of its own — only founder does, since it's
+       the one section whose correct color differs between the desktop
+       chain (why included) and the mobile chain (why skipped).
+       Result: services(sand) membership(warm) how-it-works(warm) map(sand)
+       founder(warm) cta(navy). */
+    .founder-section { background: var(--warm-white); }
 
     /* Map */
     .address-search-row { grid-template-columns: 1fr !important; }
@@ -530,7 +543,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
 
 <!-- 4. HOW THE LEASH CLUB WORKS -->
-<section class="how-works-section" style="background: var(--sand-light);">
+<section class="how-works-section" style="background: var(--warm-white);">
   <div class="section-inner">
     <div id="how-it-works"></div>
     <p class="section-eyebrow" style="margin-bottom:24px;">How The Leash Club Works</p>
