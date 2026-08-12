@@ -23,6 +23,13 @@
 const STANDARD_WALK_PRICE = 30;
 export const WALK_EXTENSION_PRICE = 12;
 
+// Flat per-walk rate for every recurring member — replaces the old
+// Essential/Standard/Daily per-tier rates (functions/index.js's
+// MEMBER_PRICE_ID is the Stripe-side counterpart to this number; this is a
+// client-side DISPLAY estimate only, same posture as everything else in this
+// file — the real charge is computed server-side).
+export const MEMBER_WALK_RATE = 27;
+
 export const SERVICE_PRICES = {
   'standard-walk':  { name: 'Standard Walk',  price: STANDARD_WALK_PRICE,                        unit: 'walk' },
   'extended-walk':  { name: 'Extended Walk',  price: STANDARD_WALK_PRICE + WALK_EXTENSION_PRICE, unit: 'walk' },

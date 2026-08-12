@@ -63,7 +63,7 @@ const NAV_ITEMS = [
   {
     label: 'Account',
     href: 'portal-account.html',
-    match: ['portal-account', 'portal-membership-upgrade', 'portal-pause-membership'],
+    match: ['portal-account', 'portal-pause-membership'],
     icon: '<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
   },
 ];

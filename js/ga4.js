@@ -28,8 +28,7 @@
 //
 // Expected data-cta values (index.html) — an anchor added later without one
 // of these is silently uncounted, so keep this list in sync with the markup:
-//   nav, hero, tier_essential, tier_standard, tier_daily,
-//   zone_check_success, bottom_cta
+//   nav, hero, tier_membership, zone_check_success, bottom_cta
 //
 // No PII in any event parameter, ever — every param here is a fixed string
 // describing a UI location, never user input.

@@ -65,15 +65,10 @@
   h2 { font-family:'Cormorant Garamond',serif; font-weight:300; color:var(--navy); font-size:36px; line-height:1.1; margin-bottom: 10px; }
   .section-copy { font-size:14px; color:var(--text-mid); line-height:1.7; margin-bottom:24px; max-width: 680px; }
 
-  .membership-grid { display:grid; grid-template-columns: repeat(4,1fr); gap:14px; }
-  .plan-card, .day-chip, .time-card, .slot-card { border:1px solid rgba(0,0,0,0.1); background:#fff; border-radius:8px; padding:18px; cursor:pointer; transition: all .2s; position:relative; }
-  .plan-card:hover, .day-chip:hover, .time-card:hover, .slot-card:hover { transform: translateY(-1px); box-shadow:0 8px 24px rgba(0,0,0,.06); }
-  .plan-card input, .day-chip input, .time-card input, .slot-card input { position:absolute; opacity:0; pointer-events:none; }
-  .plan-card.selected, .day-chip.selected, .time-card.selected, .slot-card.selected { border-color:var(--rust); box-shadow:0 8px 28px rgba(193,123,111,.14); background:#fffaf8; }
-  .plan-name { font-family:'Cormorant Garamond',serif; font-size:25px; color:var(--navy); line-height:1.1; margin-bottom:5px; }
-  .plan-meta { font-size:12px; color:var(--text-light); margin-bottom:14px; }
-  .plan-price { font-size:18px; color:var(--navy); font-weight:500; }
-  .plan-note { font-size:12px; color:var(--text-mid); margin-top:6px; line-height:1.5; }
+  .day-chip, .time-card, .slot-card { border:1px solid rgba(0,0,0,0.1); background:#fff; border-radius:8px; padding:18px; cursor:pointer; transition: all .2s; position:relative; }
+  .day-chip:hover, .time-card:hover, .slot-card:hover { transform: translateY(-1px); box-shadow:0 8px 24px rgba(0,0,0,.06); }
+  .day-chip input, .time-card input, .slot-card input { position:absolute; opacity:0; pointer-events:none; }
+  .day-chip.selected, .time-card.selected, .slot-card.selected { border-color:var(--rust); box-shadow:0 8px 28px rgba(193,123,111,.14); background:#fffaf8; }
 
   .field-grid { display:grid; grid-template-columns: repeat(2,1fr); gap:18px; }
   .field-grid.three { grid-template-columns: repeat(3,1fr); }
@@ -139,14 +134,13 @@
     .trust-card { display:none; }
     .mobile-price-bar { display:flex; }
     body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
-    .membership-grid { grid-template-columns: repeat(2,1fr); }
     h1 { font-size:52px; }
   }
   @media (max-width: 640px) {
     nav { height:auto; padding:18px 20px; align-items:flex-start; gap:16px; }
     .nav-links { gap:16px; flex-wrap:wrap; justify-content:flex-end; }
     .page-hero, main { padding-left:20px; padding-right:20px; }
-    .membership-grid, .field-grid, .field-grid.three, .days-grid, .time-grid { grid-template-columns:1fr; }
+    .field-grid, .field-grid.three, .days-grid, .time-grid { grid-template-columns:1fr; }
     .form-section { padding:24px; }
     .submit-row { flex-direction:column; align-items:flex-start; }
   }
@@ -181,14 +175,11 @@
     .form-shell { grid-template-columns: 1fr; padding: 0 20px; }
     .order-sidebar { position: static; }
     .form-section { padding: 24px 20px; }
-    .membership-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
     .days-grid { grid-template-columns: repeat(3, 1fr); }
     #meetGreetCalendar { grid-template-columns: 1fr; }
     * { max-width: 100%; }
     .page-hero, main { padding-left: 20px; padding-right: 20px; }
     .form-shell { margin: 0; padding: 0; }
-    .membership-grid { grid-template-columns: 1fr 1fr; }
-    .plan-card { min-width: 0; }
     #meetGreetCalendar { grid-template-columns: 1fr !important; gap: 16px !important; }
     #mgTimePanel { min-height: auto !important; }
     .order-sidebar { max-width: 100%; }
@@ -242,40 +233,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         <h2>Build your dog's routine</h2>
 
         <div>
-          <div style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;color:var(--navy);margin-bottom:16px;">Choose your membership</div>
-          <div class="membership-grid" id="planGrid">
-            <label class="plan-card selected" data-plan="essential" data-rate="28" data-default="2">
-              <input type="radio" name="membership" value="Essential" checked>
-              <div class="plan-name">Essential</div>
-              <div class="plan-meta">1–2 walks / week</div>
-              <div class="plan-price">$28 / walk</div>
-              <div class="plan-note">Best for occasional weekly support.</div>
-            </label>
-            <label class="plan-card" data-plan="standard" data-rate="26" data-default="3">
-              <input type="radio" name="membership" value="Standard">
-              <div class="plan-name">Standard</div>
-              <div class="plan-meta">3–4 walks / week</div>
-              <div class="plan-price">$26 / walk</div>
-              <div class="plan-note">Our most popular recurring care plan.</div>
-            </label>
-            <label class="plan-card" data-plan="daily" data-rate="24" data-default="5">
-              <input type="radio" name="membership" value="Daily">
-              <div class="plan-name">Daily</div>
-              <div class="plan-meta">Every weekday</div>
-              <div class="plan-price">$24 / walk</div>
-              <div class="plan-note">For dogs who need a reliable daily routine.</div>
-            </label>
-            <label class="plan-card" data-plan="unsure" data-rate="0" data-default="0">
-              <input type="radio" name="membership" value="Not sure yet">
-              <div class="plan-name">Not Sure</div>
-              <div class="plan-meta">We'll recommend a fit</div>
-              <div class="plan-price">Let's talk</div>
-              <div class="plan-note">Choose this if you'd like guidance.</div>
-            </label>
-          </div>
-        </div>
-
-        <div style="margin-top:32px;padding-top:28px;border-top:1px solid rgba(0,0,0,0.08);">
           <div style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;color:var(--navy);margin-bottom:16px;">Choose your schedule</div>
           <div>
             <label class="field-label" style="display:block;margin-bottom:10px;">Preferred days</label>
@@ -288,6 +245,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
               <label class="day-chip"><input type="checkbox" name="days" value="Saturday">Sat</label>
               <label class="day-chip"><input type="checkbox" name="days" value="Sunday">Sun</label>
             </div>
+            <span class="date-error" id="daysError">Choose at least 1 walk day, up to 5 per week.</span>
           </div>
           <div>
             <label class="field-label" style="display:block;margin-bottom:10px;">Preferred time window</label>
@@ -411,11 +369,11 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     <aside class="sidebar">
       <div class="summary-card">
         <div class="summary-kicker">Estimated Monthly Investment</div>
-        <div class="summary-title" id="summaryPlan">Essential Membership</div>
-        <div class="investment" id="investmentAmount">$224</div>
+        <div class="summary-title">Membership</div>
+        <div class="investment" id="investmentAmount">TBD</div>
         <div class="investment-sub">Based on a 4-week month. Final monthly billing may vary slightly based on the calendar and approved schedule.</div>
-        <div class="summary-line"><span>Rate</span><strong id="summaryRate">$28 / walk</strong></div>
-        <div class="summary-line"><span>Walks / week</span><strong id="summaryWalks">2</strong></div>
+        <div class="summary-line"><span>Rate</span><strong id="summaryRate">$27 / walk</strong></div>
+        <div class="summary-line"><span>Walks / week</span><strong id="summaryWalks">TBD</strong></div>
         <div class="summary-line"><span>Preferred window</span><strong id="summaryWindow">Morning</strong></div>
       </div>
       <div class="trust-card">
@@ -432,33 +390,20 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   <!-- Mobile-only sticky price bar (Stage 1: markup, wired in Stage 2) -->
   <div class="mobile-price-bar" id="mobilePriceBar" aria-hidden="true">
     <span class="mpb-label">Est. monthly</span>
-    <span class="mpb-amount" id="barAmount">$224</span>
+    <span class="mpb-amount" id="barAmount">Est. TBD</span>
   </div>
 </main>
 
 <script>
-  const planCards = document.querySelectorAll('.plan-card');
   const dayChips = document.querySelectorAll('.day-chip');
   const timeCards = document.querySelectorAll('.time-card');
   const slotCards = document.querySelectorAll('.slot-card');
   const investmentAmount = document.getElementById('investmentAmount');
-  const summaryPlan = document.getElementById('summaryPlan');
   const summaryRate = document.getElementById('summaryRate');
   const summaryWalks = document.getElementById('summaryWalks');
   const summaryWindow = document.getElementById('summaryWindow');
-  // True once the visitor has clicked a day chip themselves, as opposed to
-  // days being set programmatically (page-load default or a tier-card
-  // click). Gates whether clicking a tier is still allowed to auto-populate
-  // its default day count — see the plan-card click handler below.
-  let daysManuallyEdited = false;
   const barAmount = document.getElementById('barAmount');
-
-  function enableDayPicker() {
-    dayChips.forEach(chip => {
-      chip.style.opacity = '1';
-      chip.style.pointerEvents = 'auto';
-    });
-  }
+  const daysError = document.getElementById('daysError');
 
   // Set minimum start date to 9/1/2026 (launch), or 2 days from today once that's later
   const startDateInput = document.getElementById('startDate');
@@ -475,130 +420,38 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       (!startDateInput.value || startDateInput.value < minDateStr) ? 'block' : 'none';
   });
 
-  function setDays(count) {
-    dayChips.forEach((chip, idx) => {
-      const input = chip.querySelector('input');
-      input.checked = idx < count;
-      chip.classList.toggle('selected', input.checked);
-    });
-  }
-
-  function clearTimeWindow() {
-    timeCards.forEach(card => {
-      card.classList.remove('selected');
-      card.querySelector('input').checked = false;
-    });
+  // Flat per-walk rate, bridged from pricing.js (window._MEMBER_WALK_RATE —
+  // see the Firebase module script below) so this page has exactly one
+  // number, same as every other price on this site. The module script
+  // itself triggers the first updateEstimate() call, right after setting
+  // window._MEMBER_WALK_RATE, so by the time this ever runs (that first
+  // paint, or any later user interaction) the real value is already in
+  // place. The || 27 below is purely defensive — it only matters if the
+  // module script fails to load or throws before reaching that line — not a
+  // path this page is expected to hit in normal operation.
+  function memberWalkRate() {
+    return window._MEMBER_WALK_RATE || 27;
   }
 
   function updateEstimate() {
-    const selectedPlan = document.querySelector('.plan-card.selected');
-    const plan = selectedPlan.dataset.plan;
-    const rate = Number(selectedPlan.dataset.rate);
-    const checkedDays = document.querySelectorAll('input[name="days"]:checked').length;
-    const walks = checkedDays;
+    const rate = memberWalkRate();
+    const walks = document.querySelectorAll('input[name="days"]:checked').length;
     const monthly = rate * walks * 4;
-    const label = selectedPlan.querySelector('.plan-name').textContent;
     const selectedTime = document.querySelector('input[name="timeWindow"]:checked')?.value || 'TBD';
 
-    summaryPlan.textContent = plan === 'unsure' ? 'Membership Fit Review' : label + ' Membership';
-    summaryRate.textContent = rate ? '$' + rate + ' / walk' : 'TBD';
+    summaryRate.textContent = '$' + rate + ' / walk';
     summaryWalks.textContent = walks || 'TBD';
     summaryWindow.textContent = selectedTime;
     investmentAmount.textContent = monthly ? '$' + monthly : 'TBD';
-    if (barAmount) barAmount.textContent = monthly ? '$' + monthly + '/mo' : 'Est. —';
-  }
-
-  planCards.forEach(card => {
-    card.addEventListener('click', () => {
-      planCards.forEach(c => c.classList.remove('selected'));
-      card.classList.add('selected');
-      card.querySelector('input').checked = true;
-      const plan = card.dataset.plan;
-
-      enableDayPicker();
-      // Only auto-populate a default day count until the visitor has
-      // clicked a day chip themselves. Before that, days are still just
-      // the page-load default (or whatever the last-clicked tier set), so
-      // browsing between tier cards keeps refreshing them freely. Once
-      // someone has deliberately picked specific days, clicking a
-      // different tier card just switches which one is highlighted — it
-      // no longer silently overwrites their selection. The reverse
-      // direction (days -> tier, below) stays fully live either way, so
-      // the tier shown always still matches the checked days.
-      if (!daysManuallyEdited) {
-        if (plan === 'essential') setDays(2);
-        if (plan === 'standard') setDays(3);
-        if (plan === 'daily') setDays(5); // Mon–Fri convenience default — still individually editable
-        if (plan === 'unsure') {
-          setDays(0);
-          clearTimeWindow();
-        }
-      }
-      updateEstimate();
-    });
-  });
-
-  function showNotification(msg) {
-    let notif = document.getElementById('tierNotif');
-    if (!notif) {
-      notif = document.createElement('div');
-      notif.id = 'tierNotif';
-      notif.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:var(--navy);color:white;padding:13px 24px;border-radius:6px;font-size:13px;font-weight:500;z-index:999;box-shadow:0 8px 24px rgba(0,0,0,0.2);transition:opacity 0.3s;white-space:nowrap;';
-      document.body.appendChild(notif);
-    }
-    notif.textContent = msg;
-    // Keep the toast clear of the mobile sticky price bar (fixed at bottom:0).
-    // offsetHeight includes its safe-area padding; fall back to 28px on desktop
-    // where the bar is display:none.
-    const bar = document.getElementById('mobilePriceBar');
-    const barVisible = bar && getComputedStyle(bar).display !== 'none';
-    notif.style.bottom = barVisible ? (bar.offsetHeight + 16) + 'px' : '28px';
-    notif.style.opacity = '1';
-    clearTimeout(notif._timeout);
-    notif._timeout = setTimeout(() => notif.style.opacity = '0', 3000);
-  }
-
-  function getCurrentPlan() {
-    return document.querySelector('.plan-card.selected')?.dataset.plan;
-  }
-
-  function selectPlan(planName) {
-    const card = document.querySelector(`.plan-card[data-plan="${planName}"]`);
-    if (!card) return;
-    planCards.forEach(c => c.classList.remove('selected'));
-    card.classList.add('selected');
-    card.querySelector('input').checked = true;
+    if (barAmount) barAmount.textContent = monthly ? '$' + monthly + '/mo' : 'Est. TBD';
   }
 
   dayChips.forEach(chip => {
     chip.addEventListener('click', () => {
-      daysManuallyEdited = true;
       setTimeout(() => {
         const input = chip.querySelector('input');
         chip.classList.toggle('selected', input.checked);
-
-        const selectedCount = document.querySelectorAll('input[name="days"]:checked').length;
-        const currentPlan = getCurrentPlan();
-
-        // Auto-upgrade logic
-        if (selectedCount >= 5 && currentPlan !== 'daily') {
-          selectPlan('daily');
-          setDays(5);
-          showNotification('You\'ve selected 5 days. Upgraded to Daily.');
-        } else if (selectedCount >= 3 && selectedCount < 5 && currentPlan === 'essential') {
-          selectPlan('standard');
-          showNotification('You\'ve selected 3 days. Upgraded to Standard.');
-        }
-
-        // Auto-downgrade logic
-        if (selectedCount <= 2 && currentPlan === 'standard') {
-          selectPlan('essential');
-          showNotification('Switched back to Essential.');
-        } else if (selectedCount < 5 && currentPlan === 'daily') {
-          selectPlan(selectedCount <= 2 ? 'essential' : 'standard');
-          showNotification('Switched back to ' + (selectedCount <= 2 ? 'Essential' : 'Standard') + '.');
-        }
-
+        if (daysError) daysError.style.display = 'none';
         updateEstimate();
       }, 0);
     });
@@ -658,6 +511,21 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       return;
     }
 
+    // D: 1-5 walk days required. There's no tier default to fall back on
+    // anymore, so an empty selection must block submission rather than
+    // silently going out as a 0-day request — and the removed auto-upgrade
+    // mechanic used to be the only thing capping a selection at 5 (this
+    // day-chip grid has 7 options, Monday through Sunday), so that ceiling
+    // needs an explicit check now too.
+    const checkedDayCount = document.querySelectorAll('input[name="days"]:checked').length;
+    if (checkedDayCount < 1 || checkedDayCount > 5) {
+      if (daysError) {
+        daysError.style.display = 'block';
+        daysError.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+      return;
+    }
+
     btn.textContent = 'Sending...'; btn.disabled = true;
     try {
       // Referral code is optional and never blocks submission — an invalid
@@ -697,7 +565,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
       const data = {
         type: 'membership_request',
-        plan: document.querySelector('input[name=membership]:checked')?.value || '',
         ownerName: document.getElementById('ownerName')?.value || '',
         email: document.getElementById('email')?.value || '',
         phone: document.getElementById('phone')?.value || '',
@@ -732,7 +599,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
       window._showSuccess('Request submitted! We\'ll be in touch within 24 hours.');
       // form.reset() alone isn't enough — it won't undo the JS-driven
-      // .selected highlighting on plan/day/time cards, won't collapse
+      // .selected highlighting on day/time cards, won't collapse
       // extra dog cards back to one, and can't reset the meet-greet
       // calendar widget's internal state. Reload for a guaranteed-clean form,
       // but only AFTER the success banner's full ~6s visible window so the
@@ -821,8 +688,12 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   // Initialize with one dog on load
   addDog();
 
-  setDays(2);
-  updateEstimate();
+  // No initial updateEstimate() call here — the Firebase module script below
+  // (deferred, runs after this classic script has already finished) calls
+  // window.updateEstimate() itself once window._MEMBER_WALK_RATE is actually
+  // set. Calling it here would run before that assignment and always hit
+  // memberWalkRate()'s || 27 fallback on every single page load, which
+  // defeats the point of bridging the rate from pricing.js at all.
 
   // Mobile: slide the sticky price bar out of the way only while a field that
   // raises the on-screen keyboard is focused. On iOS a position:fixed;bottom:0
@@ -868,6 +739,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
   import { getFirestore, collection, addDoc, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
   import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+  import { MEMBER_WALK_RATE } from './pricing.js';
   const firebaseConfig = {
     apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
     authDomain: "port-city-leash-club-827ab.firebaseapp.com",
@@ -884,6 +756,11 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   window._serverTimestamp = serverTimestamp;
   window._Timestamp = Timestamp;
   window._validateReferralCode = httpsCallable(getFunctions(app), 'validateReferralCode');
+  window._MEMBER_WALK_RATE = MEMBER_WALK_RATE; // bridge ES module -> classic estimate calculator
+  // Paint the estimate for the first time now that the real rate is in
+  // place — see the comment where the old init-time call used to be, in the
+  // classic script above, for why it can't happen there instead.
+  window.updateEstimate();
 </script>
 <script src="https://js.stripe.com/v3/"></script>
 <script type="module">

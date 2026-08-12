@@ -35,7 +35,7 @@ const RENDERS = [
     data: {
       firstName: 'Jamie',
       dogNames: ['Bailey', 'Max'],
-      tier: 'Standard',
+      tier: null, // sub.plan no longer exists client-side — sendMembershipRequestReceivedEmail always passes null now
       meetGreetDateStr: '2026-09-02',
       meetGreetSlot: '5:00pm',
       address: '412 Market St, Wilmington, NC 28401',
@@ -49,7 +49,7 @@ const RENDERS = [
     data: {
       firstName: 'Morgan',
       dogNames: ['Rex'],
-      tier: 'Essential',
+      tier: null, // sub.plan no longer exists client-side — sendMembershipRequestReceivedEmail always passes null now
       meetGreetDateStr: '',
       meetGreetSlot: '',
       address: '',
@@ -254,7 +254,7 @@ const RENDERS = [
     data: {
       firstName: 'Jamie',
       dogNames: ['Bailey'],
-      tier: 'Standard',
+      tier: 'Member',
       frequency: 'Monday, Wednesday, Friday',
       firstWalkDateStr: '2026-09-03',
       portalSetupLink: 'https://www.portcityleashclub.com/reset?oobCode=demo-welcome-one',
@@ -268,7 +268,7 @@ const RENDERS = [
     data: {
       firstName: 'Morgan',
       dogNames: ['Bailey', 'Max', 'Cooper'],
-      tier: 'Daily',
+      tier: 'Member',
       frequency: 'Monday, Tuesday, Wednesday, Thursday, Friday',
       firstWalkDateStr: null,
       portalSetupLink: 'https://www.portcityleashclub.com/reset?oobCode=demo-welcome-multi',

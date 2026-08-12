@@ -134,8 +134,8 @@ service cloud.firestore {
       //
       // SCOPE: only the ANONYMOUS branch is constrained here. The
       // request.auth != null branch stays permissive — authenticated portal /
-      // member / walker submissions cover ~8 other types (reschedule,
-      // dog_update, pause_membership, tier_change, overnight_request,
+      // member / walker submissions cover 7 other types (reschedule,
+      // dog_update, pause_membership, overnight_request,
       // walker_incident, walker_schedule_request, vacation_hold_refund) with
       // their own shapes, and M-2 is the unauthenticated vector. Tightening
       // that branch would risk breaking those forms for no in-scope benefit.
@@ -248,7 +248,7 @@ service cloud.firestore {
       // 'accessNotes' from the hasOnly() list and this whole check.
       function validMembership() {
         return request.resource.data.keys().hasOnly(
-            ['type', 'plan', 'ownerName', 'email', 'phone', 'address', 'accessNotes',
+            ['type', 'ownerName', 'email', 'phone', 'address', 'accessNotes',
              'dogs', 'dogName', 'startDate', 'timeWindow', 'days', 'meetGreetDateTime',
              'referredByCode', 'attribution', 'read', 'createdAt'])
           && request.resource.data.ownerName is string && request.resource.data.ownerName.size() <= 200
@@ -256,7 +256,6 @@ service cloud.firestore {
           && request.resource.data.address is string && request.resource.data.address.size() <= 1000
           && (!('accessNotes' in request.resource.data)
               || (request.resource.data.accessNotes is string && request.resource.data.accessNotes.size() <= 5000))
-          && request.resource.data.plan is string && request.resource.data.plan.size() <= 100
           && request.resource.data.timeWindow is string && request.resource.data.timeWindow.size() <= 100
           && request.resource.data.days is string && request.resource.data.days.size() <= 200
           && request.resource.data.dogName is string && request.resource.data.dogName.size() <= 200

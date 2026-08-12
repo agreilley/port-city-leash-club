@@ -773,14 +773,11 @@
       <div class="form-field"><label>Membership tier</label>
         <select id="am-tier">
           <option value="">Select a tier...</option>
-          <option value="Essential">Essential — $28/walk</option>
-          <option value="Standard">Standard — $26/walk</option>
-          <option value="Daily">Daily — $24/walk</option>
+          <option value="Member">Member, $27/walk</option>
           <option value="Travel">Travel (pet sitting only, no membership rate)</option>
         </select>
       </div>
     </div>
-    <div id="am-tier-warning" style="display:none;font-size:12px;color:var(--amber);background:var(--amber-light);border-radius:6px;padding:8px 12px;margin-bottom:12px;">Member wasn't sure about a tier — confirm with them before converting.</div>
     <div class="form-field" style="margin-bottom:12px;"><label>Address</label><input type="text" id="am-address" placeholder="123 Forest Hills Dr, Wilmington NC"></div>
     <div class="form-field" style="margin-bottom:12px;"><label>Access notes</label><input type="text" id="am-access" placeholder="Key under mat, gate code 1234"></div>
     <div class="form-field" style="margin-bottom:12px;"><label>Zone / Neighborhood</label><input type="text" id="am-zone" placeholder="Forest Hills"></div>
@@ -1942,7 +1939,7 @@ function renderMembersTable(filter = '') {
     return `<tr>
       <td data-label="Name"><strong>${escapeHtml(m.name)}</strong>${isMemberProfileIncomplete(m) ? ` <span class="status-badge unassigned" title="Vet and/or emergency contact info missing">Incomplete</span>` : ''}<br><span style="font-size:11px;color:var(--text-light);">${escapeHtml(m.email)}</span></td>
       <td data-label="Dog">${escapeHtml(memberDogNames(m) || '–')}</td>
-      <td data-label="Tier"><span class="status-badge active">${escapeHtml(m.tier || 'Standard')}</span></td>
+      <td data-label="Tier"><span class="status-badge active">${escapeHtml(m.tier || 'Member')}</span></td>
       <td data-label="Billing">${renderBillingBadge(memberBilling[m.id])}</td>
       <td data-label="Walks/Month">${m.walksThisMonth || 0}</td>
       <td data-label="Walker">${escapeHtml(walker?.name || '–')}</td>
@@ -1965,7 +1962,7 @@ function renderRequests() {
     container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📬</div><div class="empty-state-title">${emptyMsg}</div></div>`;
     return;
   }
-  const typeLabels = { membership_request: 'Membership', service_request: 'Service', application: 'Application', walker_screening: 'Screening', contact: 'Contact', dog_update: 'Dog Update', overnight_request: 'Overnight', walker_incident: 'Incident', walker_schedule_request: 'Schedule', tier_change: 'Tier Change', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Hold Refund', waitlist: 'Waitlist', walk_extension_reassignment: 'Extension Update' };
+  const typeLabels = { membership_request: 'Membership', service_request: 'Service', application: 'Application', walker_screening: 'Screening', contact: 'Contact', dog_update: 'Dog Update', overnight_request: 'Overnight', walker_incident: 'Incident', walker_schedule_request: 'Schedule', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Hold Refund', waitlist: 'Waitlist', walk_extension_reassignment: 'Extension Update' };
   const shortDate = (val) => val?.toDate ? val.toDate().toLocaleDateString('en-US', {month:'short',day:'numeric'}) : '–';
   container.innerHTML = filtered.map(item => {
     const time = item.createdAt?.toDate?.() ? item.createdAt.toDate().toLocaleDateString('en-US', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '–';
@@ -1977,9 +1974,8 @@ function renderRequests() {
     const typeClass = escapeHtml(item.type?.replace('_request','').replace('_','') || 'contact');
     let preview;
     if (item.type === 'walker_incident') preview = escapeHtml((item.message || '').slice(0, 80));
-    else if (item.type === 'tier_change') preview = `${escapeHtml(item.currentTier || '–')} → ${escapeHtml(item.newTier || '–')}`;
     else if (item.type === 'pause_membership') preview = `${shortDate(item.pauseStartDate)} – ${shortDate(item.pauseEndDate)}`; // shortDate() output is always a safe locale date string
-    else if (item.type === 'vacation_hold_refund') preview = `${escapeHtml(item.cancelledWalkCount || 0)} walk${item.cancelledWalkCount === 1 ? '' : 's'} · suggested $${escapeHtml(item.suggestedRefundAmount || 0)}`;
+    else if (item.type === 'vacation_hold_refund') preview = `${escapeHtml(item.cancelledWalkCount || 0)} walk${item.cancelledWalkCount === 1 ? '' : 's'} · ${item.status === 'needs_review' ? "refund couldn't be computed" : `suggested $${escapeHtml(item.suggestedRefundAmount || 0)}`}`;
     else preview = escapeHtml(item.email || '') + (item.dogName ? ' · ' + escapeHtml(item.dogName) : item.dogNames ? ' · ' + escapeHtml(item.dogNames) : '');
     // paymentStatus is either chargeAndTrackPayment's fixed
     // 'charged'/'skipped'/'failed' enum, or 'scheduled' (confirmServiceRequest/
@@ -2645,7 +2641,7 @@ window.openRequestItem = async (id) => {
   }
 
   // Build clean field list based on submission type
-  const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', walker_screening: 'Walker Screening', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report', walker_schedule_request: 'Walker Schedule Request', reschedule: 'Walk Reschedule Request', walk_extension: 'Walk Extension Request', walk_extension_reassignment: 'Walk Extension Update', tier_change: 'Membership Tier Change', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Vacation Hold Refund', waitlist: 'Waitlist Signup' };
+  const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', walker_screening: 'Walker Screening', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report', walker_schedule_request: 'Walker Schedule Request', reschedule: 'Walk Reschedule Request', walk_extension: 'Walk Extension Request', walk_extension_reassignment: 'Walk Extension Update', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Vacation Hold Refund', waitlist: 'Waitlist Signup' };
   const title = typeLabels[item.type] || 'Submission';
 
   let fields = [];
@@ -2662,7 +2658,6 @@ window.openRequestItem = async (id) => {
       { label: 'Owner Name', value: item.ownerName || '–' },
       { label: 'Email', value: item.email || '–' },
       { label: 'Phone', value: item.phone || '–' },
-      { label: 'Plan', value: item.plan || '–' },
       { label: 'Days', value: item.days || '–' },
       { label: 'Time Window', value: item.timeWindow || '–' },
       { label: 'Start Date', value: fmtDate(item.startDate) },
@@ -2761,14 +2756,6 @@ window.openRequestItem = async (id) => {
       { label: 'Requested Total', value: item.estimatedTotal ? `$${item.estimatedTotal}` : '–' },
       { label: 'Payment', value: item.paymentStatus ? item.paymentStatus.charAt(0).toUpperCase() + item.paymentStatus.slice(1) : 'Not yet confirmed' },
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
-    ];
-  } else if (item.type === 'tier_change') {
-    fields = [
-      { label: 'Member', value: item.memberName || item.memberId || '–' },
-      { label: 'Current Tier', value: item.currentTier || '–' },
-      { label: 'Requested Tier', value: item.newTier || '–' },
-      { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
-      { label: 'Submitted', value: fmtDate(item.createdAt) },
     ];
   } else if (item.type === 'pause_membership') {
     fields = [
@@ -3052,17 +3039,6 @@ window.openRequestItem = async (id) => {
     actionBtn.onclick = () => confirmWalkExtension(item.id, item);
     declineBtn.style.display = 'block';
     declineBtn.onclick = () => declineWalkExtension(item.id, item);
-  } else if (item.type === 'tier_change' && item.status !== 'applied') {
-    // Tier changes are applied manually (member's Stripe subscription price
-    // + members doc tier field are updated by hand, outside this app) — this
-    // just tracks that the request was seen and acted on, same as the
-    // walker_incident/walker_schedule_request "mark done" pattern below.
-    actionBtn.textContent = 'Mark Applied'; actionBtn.style.display = 'block';
-    actionBtn.onclick = async () => {
-      actionBtn.disabled = true; actionBtn.textContent = 'Updating...';
-      await updateDoc(doc(db, 'submissions', item.id), { status: 'applied', read: true });
-      closeModal('requestModal');
-    };
   } else if (item.type === 'vacation_hold_refund' && item.status === 'pending') {
     actionBtn.textContent = 'Confirm & Refund'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => confirmVacationHoldRefund(item.id, item);
@@ -4383,17 +4359,6 @@ window.removeDogRow = (i) => {
   renderDogRows();
 };
 
-// Daily tier's day-picker starts at Monday–Friday as a convenience default,
-// matching the preset membership-request.html applies for the same tier —
-// still individually editable afterward, not locked.
-function presetDailyWalkDays(e) {
-  if (e.target.value !== 'Daily') return;
-  const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-  Array.from(document.getElementById('am-walkdays').options).forEach(o => {
-    o.selected = weekdays.includes(o.value);
-  });
-}
-
 window.openAddMemberModal = (prefill, submissionId) => {
   // Restore the form if it was replaced by the success screen
   restoreAddMemberModal();
@@ -4428,16 +4393,13 @@ window.openAddMemberModal = (prefill, submissionId) => {
   document.getElementById('am-name').value = prefill?.ownerName || prefill?.name || '';
   document.getElementById('am-email').value = prefill?.email || '';
   document.getElementById('am-phone').value = prefill?.phone || '';
-  const validTiers = ['Essential','Standard','Daily','Travel'];
-  const tierUnclear = !!prefill?.plan && !validTiers.includes(prefill.plan); // e.g. "Not sure yet"
+  // A membership_request submission (the only source of a prefill besides a
+  // standalone Add Member with none at all) is unambiguously a recurring
+  // membership now that the three-tier picker is gone client-side — default
+  // straight to 'Member'. Standalone Add Member gets no default, same as
+  // before: admin must pick explicitly.
   const tierSelect = document.getElementById('am-tier');
-  tierSelect.value = tierUnclear ? '' : (validTiers.includes(prefill?.plan) ? prefill.plan : 'Standard');
-  document.getElementById('am-tier-warning').style.display = tierUnclear ? 'block' : 'none';
-  // am-tier's DOM node can be recreated by restoreAddMemberModal() between
-  // opens (innerHTML swap after a successful save) — remove+add guarantees
-  // exactly one listener on whatever node currently exists, no duplicates.
-  tierSelect.removeEventListener('change', presetDailyWalkDays);
-  tierSelect.addEventListener('change', presetDailyWalkDays);
+  tierSelect.value = prefill?.type === 'membership_request' ? 'Member' : '';
   document.getElementById('am-address').value = prefill?.address || '';
   document.getElementById('am-access').value = prefill?.accessNotes || '';
   document.getElementById('am-zone').value = '';

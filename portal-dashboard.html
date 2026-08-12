@@ -990,12 +990,16 @@ function populateMemberUI() {
   const dogNames = dogs.map(d => d.name).filter(Boolean).join(' & ') || 'your dog';
   document.getElementById('modalDog').textContent = dogNames;
 
-  // Tier card
-  const tier = memberData.tier || 'Standard';
-  const tierDetail = { Essential: '5 walks / month', Standard: '10 walks / month', Daily: 'Every weekday' };
+  // Tier card. metricTierDetail is derived from defaultWalkDays (same 4-week
+  // month convention used for the billing estimate elsewhere) rather than a
+  // static per-tier string — the old tierDetail map showed a fixed "10
+  // walks / month" for every Standard member regardless of their actual
+  // schedule, which was never accurate for a member on Tue/Thu, say.
+  const tier = memberData.tier || 'Member';
   const isTravelOnly = tier === 'Travel';
+  const walksPerWeek = (memberData.defaultWalkDays || []).length;
   document.getElementById('metricTier').textContent = isTravelOnly ? 'Pet Sitting' : tier;
-  document.getElementById('metricTierDetail').textContent = isTravelOnly ? 'No recurring walks' : (tierDetail[tier] || '');
+  document.getElementById('metricTierDetail').textContent = isTravelOnly ? 'No recurring walks' : (walksPerWeek ? `${walksPerWeek * 4} walks / month` : '');
 
   // Schedule banner — prefer stored field, else derive from walks
   const days = (memberData.defaultWalkDays || []).join(', ');

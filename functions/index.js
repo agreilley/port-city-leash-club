@@ -53,26 +53,37 @@ function stripeClient(key) {
   return require('stripe')(key);
 }
 
-// Per-walk Stripe Price IDs (LIVE mode) for the three billed membership
-// tiers. Travel-tier clients are one-time/service-based and never get a
-// subscription, so they're intentionally not in this map.
+// Per-walk Stripe Price ID (LIVE mode) for the flat member rate. Every
+// recurring member (tier: 'Member') is billed the same per-walk price now —
+// the old three-tier map (Essential/Standard/Daily) is retired. 'tier' still
+// carries a second, unrelated concept: 'Travel' means a one-time/pet-sitting
+// client with no recurring subscription at all, and is intentionally never
+// resolved against this constant.
 //
-// These are per-unit recurring monthly prices: the subscription is created
+// This is a per-unit recurring monthly price: the subscription is created
 // with an explicit quantity (walk days in the billed month) and
 // syncMonthlyWalkQuantities updates that quantity on the 1st. A metered
 // price would reject quantity and break both paths.
 //
-// This is the ONLY place Price IDs live. admin/dashboard.html used to keep a
+// This is the ONLY place the Price ID lives. admin/dashboard.html used to keep a
 // duplicate copy and pass priceId in with the call, which meant a tier missing
 // or stale on the client silently skipped billing for that member. The client
 // now sends nothing but the member, and the tier is resolved from the member
 // document here. (A literal shared module isn't possible: Firebase uploads only
 // the functions/ directory, and the browser can't import from it.)
-const TIER_PRICE_IDS = {
-  Essential: 'price_1TvJRSBYaaTA3vAvg7vjywOj', // $28 (amount edited in place, ID unchanged)
-  Standard: 'price_1Tw2uxBYaaTA3vAvunoJ0NYv',  // $26 (new Price object, new ID)
-  Daily: 'price_1TvJRJBYaaTA3vAvEokY5XJw',     // $24 (amount edited in place, ID unchanged)
-};
+const MEMBER_PRICE_ID = 'price_1U3NghBYaaTA3vAvHzpaaHmg'; // $27/walk flat rate
+
+// Resolves a member's tier to their per-walk Stripe Price ID. Returns null
+// for the expected, non-error case ('Travel' — one-time/pet-sitting clients
+// never get a subscription), and THROWS for anything else that isn't
+// 'Member' — a stale/garbage tier value is a data problem, not a normal
+// skip, and every caller below needs to know the difference rather than
+// silently treating both cases as "nothing to bill."
+function resolveMemberPriceId(tier) {
+  if (tier === 'Member') return MEMBER_PRICE_ID;
+  if (tier === 'Travel') return null;
+  throw new HttpsError('failed-precondition', `Unrecognized member tier "${tier || ''}" — expected "Member" or "Travel".`);
+}
 
 const WEEKDAY_NUMBERS = {
   sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
@@ -704,7 +715,10 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
     throw new HttpsError('not-found', 'Member record not found.');
   }
 
-  const priceId = TIER_PRICE_IDS[member.tier];
+  // resolveMemberPriceId throws for anything that isn't 'Member'/'Travel'.
+  // Nothing has been written yet at this point (this is still before the
+  // try block below), so propagating that throw is safe.
+  const priceId = resolveMemberPriceId(member.tier);
   if (!priceId) {
     // Not an error: this is the normal path for Travel-tier members. The
     // caller uses `skipped` to decide whether to generate walks.
@@ -958,12 +972,12 @@ exports.generateInitialWalks = onCall({}, async (request) => {
 // reason inline. Throws HttpsError only for no-auth and infrastructure faults.
 const VALID_WALK_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 const VALID_TIME_SLOTS = ['morning', 'early-afternoon', 'late-afternoon'];
-// Allowed day-count per tier. Daily is fixed at the full weekday set.
-const TIER_DAY_RULES = {
-  Essential: { min: 1, max: 2, label: 'Essential tier is limited to 2 days per week' },
-  Standard:  { min: 3, max: 4, label: 'Standard tier requires 3 to 4 days per week' },
-  Daily:     { min: 5, max: 5, label: 'Daily members are scheduled every weekday and cannot change their days' },
-};
+// Flat day-count rule for every recurring member. The old per-tier ranges
+// (Essential 1-2, Standard 3-4, Daily fixed at 5) are retired along with the
+// tiers themselves — this also lifts the previous restriction that Daily
+// members couldn't change their days at all; every recurring member can now
+// pick any 1-5 weekday count.
+const RECURRING_MEMBER_DAY_RULE = { min: 1, max: 5, label: 'Choose between 1 and 5 walk days per week' };
 
 exports.updateWalkSchedule = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
   // No auth context at all — callable convention is to throw (the client's
@@ -979,7 +993,7 @@ exports.updateWalkSchedule = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
   }
   const member = memberDoc.data() || {};
 
-  const rule = TIER_DAY_RULES[member.tier];
+  const rule = member.tier === 'Member' ? RECURRING_MEMBER_DAY_RULE : null;
   if (!rule) {
     return { success: false, error: `Your account tier (${member.tier || 'none'}) does not support schedule changes here. Please contact us.` };
   }
@@ -1423,7 +1437,11 @@ exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async
   if (!member) throw new HttpsError('not-found', 'Member record not found.');
   const billingData = billingDoc.data() || {};
 
-  const priceId = TIER_PRICE_IDS[member.tier];
+  // resolveMemberPriceId throws for anything that isn't 'Member'/'Travel'.
+  // Nothing has been written yet at this point — the idempotency guard, walk
+  // generation, and the charge itself all come after — so propagating that
+  // throw is safe.
+  const priceId = resolveMemberPriceId(member.tier);
   if (!priceId) {
     return { success: true, skipped: true, reason: 'no-subscription-tier', tier: member.tier || null };
   }
@@ -1895,7 +1913,40 @@ exports.submitVacationHold = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
   // creates a submission for admin to review.
   let suggestedRefundAmount = 0;
   if (currentPeriodCount > 0 && billingData.stripeSubscriptionItemId && billingData.stripeSubscriptionId) {
-    const priceId = TIER_PRICE_IDS[member.tier];
+    // Unlike createMembershipSubscription/chargeCurrentMonthWalks, this runs
+    // AFTER the pause/cancellation batch above has already committed — a
+    // throw here can't be undone and would show a real member a false error
+    // on a hold that actually succeeded. So an unresolvable tier is caught
+    // rather than propagated: logged loudly, AND left as an admin-visible
+    // submissions entry (same visibility goal as the billing.needsReview
+    // flags used elsewhere) so it doesn't silently disappear into Cloud
+    // Function logs nobody's watching. The hold itself is unaffected either
+    // way — only the refund suggestion is skipped.
+    let priceId = null;
+    try {
+      priceId = resolveMemberPriceId(member.tier);
+    } catch (e) {
+      console.error(`submitVacationHold: ${e.message} (member ${memberId}) — hold succeeded, refund suggestion skipped.`);
+      await db.collection('submissions').add({
+        type: 'vacation_hold_refund',
+        memberId,
+        memberName: member.name || '',
+        status: 'needs_review',
+        read: false,
+        needsReviewReason: e.message,
+        cancelledWalkCount: currentPeriodCount,
+        cancelledWalkDates: currentPeriodDates,
+        stripeCustomerId: billingData.stripeCustomerId || '',
+        stripeSubscriptionId: billingData.stripeSubscriptionId || '',
+        refundPeriodYear: currentYear,
+        refundPeriodMonth: currentMonth,
+        pauseStartDate: Timestamp.fromDate(startDate),
+        pauseEndDate: Timestamp.fromDate(endDate),
+        createdAt: FieldValue.serverTimestamp(),
+      }).catch(writeErr => {
+        console.error(`submitVacationHold: failed to write needs-review submission for ${memberId}:`, writeErr.message);
+      });
+    }
     if (priceId) {
       const stripe = stripeClient(STRIPE_SECRET_KEY.value());
       const price = await stripe.prices.retrieve(priceId);
@@ -2128,7 +2179,7 @@ async function issueStripeBalanceCredit(stripe, stripeCustomerId, amountCents, d
 // pre-charge path's referrer-credit and carry-forward issuance) is what
 // decides how a failure here affects creditIssued/redemption status.
 async function issueReferralCredit(stripe, memberId, memberData, amountCents = 5000) {
-  const isMembershipTier = !!TIER_PRICE_IDS[memberData.tier];
+  const isMembershipTier = memberData.tier === 'Member';
   if (isMembershipTier) {
     const billingSnap = await billingRef(memberId).get();
     const stripeCustomerId = billingSnap.data()?.stripeCustomerId;
@@ -2950,8 +3001,8 @@ exports.sendBookingConfirmedEmail = onCall({
 }, async (request) => {
   await assertIsAdmin(request.auth);
   const { memberId, template, data, isNewAccount, idempotencyKey } = request.data || {};
-  if (!['portal-service-confirmed', 'walk-confirmed'].includes(template)) {
-    throw new HttpsError('invalid-argument', 'template must be "portal-service-confirmed" or "walk-confirmed".');
+  if (!['portal-service-confirmed', 'walk-confirmed', 'portal-reservation-confirmed'].includes(template)) {
+    throw new HttpsError('invalid-argument', 'template must be "portal-service-confirmed", "walk-confirmed", or "portal-reservation-confirmed".');
   }
   if (!memberId) throw new HttpsError('invalid-argument', 'memberId is required.');
   if (!idempotencyKey) throw new HttpsError('invalid-argument', 'idempotencyKey is required.');
