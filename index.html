@@ -110,14 +110,14 @@
   .how-works-section { padding-top: 32px; }
   .membership-card { max-width: 840px; margin: 0 auto 16px; background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 40px 44px; display: grid; grid-template-columns: 1fr 1fr; column-gap: 40px; align-items: start; }
   .membership-header { grid-column: 1 / -1; }
-  .membership-badge { display: inline-block; background: var(--seafoam-light); color: var(--navy); font-size: 11px; font-weight: 500; letter-spacing: 0.06em; padding: 3px 10px; border-radius: 20px; margin-bottom: 10px; }
   .membership-name { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 400; color: var(--navy); margin-bottom: 4px; }
   .membership-meta { font-size: 12px; color: var(--text-light); margin-bottom: 20px; }
   .membership-features { list-style: none; }
   .membership-features li { font-size: 13px; color: var(--text-mid); padding: 5px 0; display: flex; align-items: flex-start; gap: 8px; line-height: 1.4; }
   .membership-features li::before { content: '·'; color: var(--seafoam); font-size: 18px; line-height: 1; flex-shrink: 0; }
   .membership-card-side { text-align: left; }
-  .membership-price { display: flex; align-items: baseline; gap: 6px; margin-bottom: 24px; }
+  .membership-price { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; }
+  .membership-price-compare { font-size: 13px; color: var(--text-light); margin-bottom: 20px; }
   .membership-price-amount { font-family: 'Cormorant Garamond', serif; font-size: 52px; font-weight: 400; color: var(--navy); line-height: 1; }
   .membership-price-unit { font-size: 16px; color: var(--text-light); }
   .btn-membership { display: inline-block; text-align: center; text-decoration: none; background: var(--rust); color: white !important; border: none; padding: 12px 32px; border-radius: 4px; font-size: 14px; font-family: 'DM Sans', sans-serif; cursor: pointer; font-weight: 500; transition: background 0.2s, transform 0.1s; }
@@ -436,7 +436,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     <div>
       <p class="hero-eyebrow">Dog Walking &amp; Pet Sitting · Wilmington, NC</p>
       <h1 class="hero-headline">Your dog's <br>routine, <br>handled.</h1>
-      <p class="hero-sub">Now reserving for our September 1 launch.</p>
+      <p class="hero-sub">Now reserving for new members.</p>
       <div class="hero-ctas">
         <a class="btn-primary" href="/membership-request" data-cta="hero">Join the Leash Club</a>
       </div>
@@ -490,7 +490,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
     <div class="membership-card">
       <div class="membership-header">
-        <div class="membership-badge">10% off</div>
         <div class="membership-name">Leash Club Membership</div>
         <div class="membership-meta">Recurring weekly walks</div>
       </div>
@@ -503,6 +502,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       </ul>
       <div class="membership-card-side">
         <div class="membership-price"><div class="membership-price-amount">$27</div><div class="membership-price-unit">/walk</div></div>
+        <div class="membership-price-compare">10% off our $30 single walk rate</div>
         <a class="btn-membership" href="/membership-request" data-cta="tier_membership">Get started</a>
       </div>
     </div>
@@ -568,7 +568,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       <a href="/service-request?service=overnight-stay" class="sitting-card">
         <div>
           <div class="sitting-card-title">Overnight Stay</div>
-          <div class="sitting-card-desc">Around-the-clock care for your dog: evening settling, overnight supervision, and daytime check-ins tailored to them.</div>
+          <div class="sitting-card-desc">Overnight care in your home: evening settling, overnight supervision, and daytime check-ins tailored to your dog.</div>
         </div>
         <div class="sitting-card-footer">
           <div class="sitting-card-price">$115</div>
