@@ -34,11 +34,18 @@ const SAND = '#E9E1D3';
 const SAND_LIGHT = '#F4F0EA';
 const CORAL = '#C17B6F';
 
-// Every template signs off as Alison, not "the team" — she's the sole
-// founder and operator, and several templates name her personally as who's
-// showing up or doing the work. One shared constant so every template
-// stays in lockstep if that ever changes.
+// Two sign-off identities, chosen per template by how personal the moment
+// is, not interchangeable defaults. Alison signs the high-touch moments —
+// she's the sole founder and operator, and templates like the meet & greet
+// confirmations and the portal-access email name her personally as who's
+// actually showing up or doing the work described. The team signs the
+// transactional moments — a generated referral code, an automated charge
+// notice — where naming her individually would overstate her personal
+// involvement in something automated. Two shared constants, one per
+// identity, so every template using either one stays in lockstep if either
+// name ever changes.
 const SIGNOFF_NAME = 'Alison';
+const TEAM_SIGNOFF = 'The Port City Leash Club team';
 
 const HEADING_FONT = "'Cormorant Garamond', Georgia, 'Times New Roman', serif";
 const BODY_FONT = "'DM Sans', Helvetica, Arial, sans-serif";
@@ -278,7 +285,7 @@ function wrapText({ bodyText }) {
 }
 
 module.exports = {
-  NAVY, SEAFOAM, SAND, SAND_LIGHT, CORAL, HEADING_FONT, BODY_FONT, SIGNOFF_NAME,
+  NAVY, SEAFOAM, SAND, SAND_LIGHT, CORAL, HEADING_FONT, BODY_FONT, SIGNOFF_NAME, TEAM_SIGNOFF,
   escapeHtml, formatCalendarDate, formatMeetGreetDate, formatMeetGreetSlot, formatWalkTimeSlot, formatDateRange,
   joinNames, meetClosingLine, pluralNoun, possessive, spellSmallNumber,
   renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml,

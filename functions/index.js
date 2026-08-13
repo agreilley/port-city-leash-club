@@ -2,20 +2,30 @@
 //
 // Port City Leash Club — Stripe payment backend.
 //
-// Payment model (per business decision, July 2026):
-//   - Card is collected and saved (zero charge) at signup, on both the
-//     membership request form and the one-time service request form.
-//   - First-ever booking for a new client: charge happens AFTER the meet
-//     & greet is confirmed by admin (not at signup, not at online submission).
-//   - Returning clients booking additional one-time services: charge at
-//     confirmation (admin approves the request in the inbox).
+// Payment model (revised August 2026 — see individual function comments for
+// the pieces that changed):
+//   - No card is ever collected on the public request forms. A meet & greet
+//     happens first; only once admin marks it complete does an account get
+//     created (completeMeetGreetAndCreateAccount) — no billing yet, just an
+//     account and a portal-access email.
+//   - The member adds a card themselves, in the portal, after that email
+//     (createAuthenticatedSetupIntent + confirmCardOnFile). That's the ONLY
+//     place a card is ever captured now — no request form does it anymore.
+//   - Billing then starts automatically the moment BOTH a card is on file
+//     AND (for a one-time service/overnight booking) dates are confirmed —
+//     whichever finishes second (finalizeSubmissionIfReady). A returning
+//     member already has a card, so in practice this fires the instant
+//     admin confirms their dates, same as before in effect, just routed
+//     through this shared path instead of charging inline.
 //   - Walk memberships: recurring monthly charge on the 1st of the month,
-//     starting the month after the membership is confirmed.
+//     starting the month after the membership is confirmed — unchanged.
 //
-// None of the charge functions below run automatically — they are all
-// triggered by an admin action (approving a submission in the admin
-// dashboard), which is the intended design: nothing gets charged without
-// a human confirming the booking first.
+// None of the charge functions below run automatically from an admin
+// click anymore in every case — finalizeSubmissionIfReady can also fire
+// from confirmCardOnFile, a MEMBER's own portal action. Every path still
+// requires a human confirmation somewhere upstream of it, though: the
+// meet & greet gate (server-enforced) before an account ever exists, and
+// dates admin-confirmed before a one-time booking is billable.
 
 const crypto = require('crypto');
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
@@ -231,52 +241,230 @@ async function assertIsAdmin(auth) {
   }
 }
 
+// createSetupIntent removed — card capture no longer happens at public-form
+// signup. Its only callers were membership-request.html and
+// service-request.html (via firebase-payments.js, also removed), both cut
+// over to the portal-based flow below in this same change. No submission
+// can carry stripeCustomerId anymore; see createAuthenticatedSetupIntent's
+// own header for the replacement flow.
+
 // ─────────────────────────────────────────────────────────────────────────
-// 1. Save a card on file with $0 charge (called from both public forms
-//    at the point of initial submission — no login required yet, since
-//    the person isn't a member/client until admin confirms).
+// 1a-ii/1a-iii. Authenticated card capture — the ONLY card-capture path now.
+// A card is added from the member portal AFTER account creation, never on
+// the public request forms — createSetupIntent and the forms' card-capture
+// UI were both removed together, in one deploy (an unbillable request in a
+// gap between the two would have been worse than the brief window of
+// leaving either one stale).
+//
+// AUTH BOUNDARY — read this before touching either function below. Neither
+// one EVER accepts a memberId/uid from the client. Both derive the member
+// entirely from request.auth.uid, the subject of the server-verified
+// Firebase Auth ID token — not a value the caller can set by passing
+// something different in the request body. There is no parameter on
+// either function through which a caller could name someone else's
+// account. A valid token only ever authenticates as its own subject; it
+// grants nothing toward another uid's billing, memberId or not.
 // ─────────────────────────────────────────────────────────────────────────
-exports.createSetupIntent = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
-  const { name, email, submissionId } = request.data || {};
-  if (!name || !email || !submissionId) {
-    throw new HttpsError('invalid-argument', 'name, email, and submissionId are required.');
-  }
+
+// createAuthenticatedSetupIntent: starts a card save for the CALLER's own
+// account. Reuses their existing Stripe customer (read from their own
+// billing subdoc) if they have one already — a repeat call, e.g. "replace
+// my card" — or creates a new one from their OWN member doc's name/email,
+// never client-supplied, so a caller can't cause a Stripe customer to be
+// created under someone else's name or email either.
+//
+// The only Firestore write here is stripeCustomerId, onto
+// members/{request.auth.uid}/private/billing — never cardOnFile:true. A
+// SetupIntent existing is not a card on file; that only becomes true once
+// Stripe confirms it succeeded, in confirmCardOnFile below. (Two rapid
+// double-clicks with no customer yet on file could each create a Stripe
+// customer before either write lands — a real but low-stakes race: worst
+// case is one harmless orphaned customer object, never a wrong-account
+// write, so not worth a transaction here.)
+exports.createAuthenticatedSetupIntent = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
+  const uid = request.auth.uid;
+
+  const memberSnap = await db.collection('members').doc(uid).get();
+  const member = memberSnap.data();
+  if (!member) throw new HttpsError('not-found', 'No member account found for this login.');
+  if (!member.email) throw new HttpsError('failed-precondition', 'This account has no email on file.');
 
   const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+  const billing = billingRef(uid);
+  const billingSnap = await billing.get();
+  let customerId = billingSnap.data()?.stripeCustomerId || null;
 
-  // Reuse a Stripe Customer if this email already has one on file
-  // (e.g. an existing member submitting a new one-time service request).
-  const existing = await stripe.customers.list({ email, limit: 1 });
-  const customer = existing.data[0] || await stripe.customers.create({ name, email });
+  if (!customerId) {
+    const customer = await stripe.customers.create({ name: member.name || undefined, email: member.email });
+    customerId = customer.id;
+    await billing.set({ stripeCustomerId: customerId }, { merge: true });
+  }
 
   const setupIntent = await stripe.setupIntents.create({
-    customer: customer.id,
+    customer: customerId,
     payment_method_types: ['card'],
   });
-
-  // Link the Stripe customer to the Firestore submission so admin can
-  // find it later when it's time to actually charge the card.
-  await db.collection('submissions').doc(submissionId).set({
-    stripeCustomerId: customer.id,
-    paymentMethodStatus: 'card_saved_not_charged',
-  }, { merge: true });
 
   return { clientSecret: setupIntent.client_secret };
 });
 
-// ─────────────────────────────────────────────────────────────────────────
-// 1b. Decline a membership request. A membership_request saves a card at
-//    signup (createSetupIntent above), so declining has to clean up the
-//    Stripe customer too — deleting the submission alone would orphan a live
-//    customer with a saved card. Runs server-side because it needs the Stripe
-//    secret key, which never goes to the client.
+// confirmCardOnFile: members/{id}/private/billing only ever accepts writes
+// from the Admin SDK (firestore.rules: allow write: if false), so this
+// exists purely to make that write — gated on independently verifying
+// with STRIPE, never trusting the client's say-so, that a real SetupIntent
+// actually succeeded AND belongs to the Stripe customer THIS uid's own
+// billing doc already points at (the one createAuthenticatedSetupIntent
+// wrote, from their own server-derived email).
 //
-//    The Stripe customer is deleted BEFORE the status is written: if the
-//    delete fails, this throws and the request stays pending for a retry,
-//    rather than being marked declined while the customer silently orphans.
-//    An already-deleted customer (resource_missing) is treated as success so
-//    a retry is safe.
+// That customer-match check is the actual security boundary: without it, a
+// caller who supplied a different, genuinely-succeeded setupIntentId — a
+// stale one of their own from before a customer change, or one obtained
+// some other way — could get their OWN account marked cardOnFile:true
+// without their own card ever having been attached to their own Stripe
+// customer. With it, the only thing this call can ever do is confirm a
+// SetupIntent this exact uid's own prior createAuthenticatedSetupIntent
+// call itself created.
+//
+// Also sets the newly-attached payment method as the Stripe customer's
+// default, so a "replace my card" call actually results in future charges
+// using the new card — chargeCurrentMonthWalks and chargeCustomerCard both
+// currently take paymentMethods.list()'s first result, which is otherwise
+// an ambiguous way to land on "the card just added" versus an older one.
+exports.confirmCardOnFile = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
+  const uid = request.auth.uid;
+  const { setupIntentId } = request.data || {};
+  if (!setupIntentId) throw new HttpsError('invalid-argument', 'setupIntentId is required.');
+
+  const billing = billingRef(uid);
+  const billingSnap = await billing.get();
+  const billingData = billingSnap.data();
+  if (!billingData?.stripeCustomerId) {
+    throw new HttpsError('failed-precondition', 'No card setup in progress for this account.');
+  }
+
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+  const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
+
+  if (setupIntent.status !== 'succeeded') {
+    throw new HttpsError('failed-precondition', `Card setup hasn't succeeded yet (status: ${setupIntent.status}).`);
+  }
+  if (setupIntent.customer !== billingData.stripeCustomerId) {
+    throw new HttpsError('permission-denied', "This card setup doesn't belong to this account.");
+  }
+
+  if (setupIntent.payment_method) {
+    await stripe.customers.update(setupIntent.customer, {
+      invoice_settings: { default_payment_method: setupIntent.payment_method },
+    });
+  }
+
+  await billing.set({
+    cardOnFile: true,
+    cardOnFileAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  // Card-on-file trigger for finalizeSubmissionIfReady (the other trigger
+  // is markDatesConfirmed, below). Member-scoped, not submission-scoped —
+  // this uid can have more than one submission waiting on a card
+  // (membership_request is ready the instant cardOnFile is true; a
+  // service_request/overnight_request also needs its OWN datesConfirmedAt)
+  // — so every one of this member's still-open submissions gets checked,
+  // not just a single id this function was never given.
+  //
+  // Two separate equality-only queries, not one query with
+  // status in ['pending', 'account_created'] — this file already leans on
+  // "equality-only compound queries need no composite index" elsewhere
+  // (see runGenerateWalkerPayout's walkerId+status query), a guarantee that
+  // doesn't extend as cleanly to an equality field combined with an `in`
+  // clause. Two known-safe queries avoid finding out the hard way against
+  // a live index.  finalizeSubmissionIfReady's own type/status re-checks
+  // make a doc showing up in both irrelevant — it can't.
+  const [pendingSnap, accountCreatedSnap] = await Promise.all([
+    db.collection('submissions').where('memberId', '==', uid).where('status', '==', 'pending').get(),
+    db.collection('submissions').where('memberId', '==', uid).where('status', '==', 'account_created').get(),
+  ]);
+  for (const doc of [...pendingSnap.docs, ...accountCreatedSnap.docs]) {
+    await finalizeSubmissionIfReady(doc.id);
+  }
+
+  return { success: true };
+});
+
 // ─────────────────────────────────────────────────────────────────────────
+// 1b. Decline a membership_request or service_request, cleaning up whatever
+//    orphan an account_created-but-never-billed request leaves behind.
+//
+//    Account creation (completeMeetGreetAndCreateAccount) now happens at
+//    meet-greet completion, well before a card exists, so a declined
+//    request can have a real orphaned Auth user + member doc, and possibly
+//    a Stripe customer too — createAuthenticatedSetupIntent writes
+//    stripeCustomerId to the member's OWN billing subdoc the moment they
+//    start adding a card in their portal, before confirmCardOnFile ever
+//    completes. So the Stripe customer to clean up (if any) lives on
+//    billing, keyed by memberId — no submission ever carries one; card
+//    capture only ever happens post-account, in the portal.
+//
+//    Blocked once status is 'confirmed' (billing actually started — nothing
+//    to decline anymore) or already 'declined'. Everything here runs
+//    BEFORE the status write: if any delete fails, this throws and the
+//    request stays pending for a retry, rather than marking declined while
+//    something silently orphans. An already-deleted Stripe customer/Auth
+//    user (resource_missing / auth/user-not-found) is treated as success so
+//    a retry after a partial failure is safe.
+// ─────────────────────────────────────────────────────────────────────────
+async function runDeclineRequestOrphanCleanup(stripe, subRef, sub) {
+  if (sub.status === 'confirmed') {
+    throw new HttpsError('failed-precondition', 'This request already has billing started — decline does not apply.');
+  }
+  if (sub.status === 'declined') {
+    throw new HttpsError('failed-precondition', 'This request was already declined.');
+  }
+
+  const memberId = sub.memberId || null;
+  let stripeCustomerDeleted = true; // stays true — "nothing to delete" — unless a real customer is found below
+
+  if (memberId) {
+    const billingSnap = await billingRef(memberId).get();
+    const stripeCustomerId = billingSnap.data()?.stripeCustomerId;
+    if (stripeCustomerId) {
+      try {
+        const res = await stripe.customers.del(stripeCustomerId);
+        stripeCustomerDeleted = !!res.deleted;
+      } catch (e) {
+        if (e.code === 'resource_missing') {
+          stripeCustomerDeleted = true;
+        } else {
+          throw new HttpsError('internal', `Could not delete the Stripe customer (${e.message}). The request was left pending — try again.`);
+        }
+      }
+    }
+
+    const { getAuth } = require('firebase-admin/auth');
+    try {
+      await getAuth().deleteUser(memberId);
+    } catch (e) {
+      if (e.code !== 'auth/user-not-found') {
+        throw new HttpsError('internal', `Could not delete the orphaned account (${e.message}). The request was left pending — try again.`);
+      }
+    }
+
+    await db.collection('members').doc(memberId).delete();
+    await billingRef(memberId).delete().catch(() => {});
+  }
+
+  await subRef.set({
+    status: 'declined',
+    read: true,
+    stripeCustomerDeleted,
+    accountDeleted: !!memberId,
+    declinedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  return { success: true, stripeCustomerDeleted, accountDeleted: !!memberId };
+}
+
 exports.declineMembershipRequest = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
   await assertIsAdmin(request.auth);
   const { submissionId } = request.data || {};
@@ -289,97 +477,73 @@ exports.declineMembershipRequest = onCall({ secrets: [STRIPE_SECRET_KEY] }, asyn
   if (sub.type !== 'membership_request') {
     throw new HttpsError('failed-precondition', `Expected a membership_request, got ${sub.type}.`);
   }
-  if (sub.memberId) {
-    throw new HttpsError('failed-precondition', 'This request was already converted to a member — decline does not apply.');
-  }
 
-  let customerDeleted = false;
-  if (sub.stripeCustomerId) {
-    const stripe = stripeClient(STRIPE_SECRET_KEY.value());
-    try {
-      const res = await stripe.customers.del(sub.stripeCustomerId);
-      customerDeleted = !!res.deleted;
-    } catch (e) {
-      // Already gone (from a prior partial decline) is fine — the goal is
-      // "no live customer", which is satisfied. Anything else is a real
-      // failure: do NOT mark declined, so no orphan is left behind silently.
-      if (e.code === 'resource_missing') {
-        customerDeleted = true;
-      } else {
-        throw new HttpsError('internal', `Could not delete the Stripe customer (${e.message}). The request was left pending — try again.`);
-      }
-    }
-  }
-
-  await subRef.set({
-    status: 'declined',
-    read: true,
-    stripeCustomerDeleted: customerDeleted,
-    declinedAt: FieldValue.serverTimestamp(),
-  }, { merge: true });
-
-  return { success: true, customerDeleted };
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+  return runDeclineRequestOrphanCleanup(stripe, subRef, sub);
 });
 
-// ─────────────────────────────────────────────────────────────────────────
-// 1b. Travel-tier billing link. Membership members get their billing subdoc
-//    (stripeCustomerId + referral intake) written by createMembershipSubscription
-//    above; Travel-tier / one-time clients never went through that function
-//    (their tier has no subscription price), so confirmServiceRequest calls
-//    this instead, right after resolving/creating their member doc. Fixes a
-//    real pre-existing gap: without this, a Travel-tier member's
-//    stripeCustomerId lived ONLY on the ephemeral submissions doc, which
-//    means findMemberIdByStripeCustomerId (stripeWebhook's own customer→
-//    member resolver) could never find them — invoice.payment_failed and
-//    customer.subscription.deleted couldn't act on them either, not just the
-//    new invoice.paid/referral-credit logic this now also enables.
-// ─────────────────────────────────────────────────────────────────────────
-exports.linkServiceRequestBilling = onCall({}, async (request) => {
+// service_request never carried this cleanup before — declining used to be
+// a plain client-side status update (admin/dashboard.html), safe only
+// because no account could exist yet at decline time under the old flow.
+// Same orphan-cleanup logic as declineMembershipRequest above, now that
+// completeMeetGreetAndCreateAccount can leave a net-new service_request
+// with a real account and no card. overnight_request is NOT covered here —
+// it never creates a new account (always an existing member), so its
+// decline stays the simple client-side status update it always was.
+exports.declineServiceRequest = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
   await assertIsAdmin(request.auth);
+  const { submissionId } = request.data || {};
+  if (!submissionId) throw new HttpsError('invalid-argument', 'submissionId is required.');
 
-  const { submissionId, memberId } = request.data || {};
-  if (!submissionId || !memberId) {
-    throw new HttpsError('invalid-argument', 'submissionId and memberId are required.');
+  const subRef = db.collection('submissions').doc(submissionId);
+  const subSnap = await subRef.get();
+  const sub = subSnap.data();
+  if (!sub) throw new HttpsError('not-found', 'Submission not found.');
+  if (sub.type !== 'service_request') {
+    throw new HttpsError('failed-precondition', `Expected a service_request, got ${sub.type}.`);
   }
 
-  const subDoc = await db.collection('submissions').doc(submissionId).get();
-  const sub = subDoc.data();
-  if (!sub || !sub.stripeCustomerId) {
-    // Not every service request has a saved card (e.g. one entered manually
-    // by admin with no createSetupIntent call) — nothing to link in that
-    // case, not an error.
-    return { success: true, linked: false };
-  }
-
-  // merge: true — never touches stripeSubscriptionId/billingStatus/etc. if
-  // this memberId already has a membership billing doc (e.g. an existing
-  // Standard member who also books a one-time overnight).
-  await billingRef(memberId).set({
-    stripeCustomerId: sub.stripeCustomerId,
-    referredByCode: sub.referredByCode || null,
-    referralSubmissionId: submissionId,
-  }, { merge: true });
-
-  return { success: true, linked: true };
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+  return runDeclineRequestOrphanCleanup(stripe, subRef, sub);
 });
+
+// linkServiceRequestBilling removed — its only caller was
+// confirmServiceRequest (admin/dashboard.html), which markDatesConfirmed/
+// confirmRequestDates replaced. stripeCustomerId now only ever lands on
+// billing via createAuthenticatedSetupIntent, and referral-field copying
+// moved to completeMeetGreetAndCreateAccount — see its own comment.
 
 // ─────────────────────────────────────────────────────────────────────────
 // Core one-time-charge logic, extracted from chargeSavedCard below so it can
 // be shared with chargeScheduledReservations (the 24h-delayed reservation
 // charge) — a scheduled function has no request.auth, so it can never call
-// an onCall function like chargeSavedCard directly. Everything here is
-// byte-for-byte what chargeSavedCard used to do inline, with `sub` renamed
-// to `docData` and the hardcoded `db.collection('submissions').doc(submissionId)`
-// replaced by a caller-supplied `docRef` — chargeSavedCard passes its
-// submission ref and gets identical behavior; chargeScheduledReservations
-// passes an overnights ref instead. attemptField defaults to
+// an onCall function like chargeSavedCard directly. attemptField defaults to
 // 'lastChargeAttempt' (chargeSavedCard's original field name, unchanged);
 // the scheduled function passes 'chargeAttempt', matching the overnights
 // schema.
+//
+// stripeCustomerId is resolved from members/{memberId}/private/billing, not
+// from docData — a submission or overnights doc no longer carries its own
+// copy (card capture now happens once, in the portal, after the account
+// exists). Both callers' docs always carry memberId by the time either can
+// reach a chargeable state: a submission only gets here via completeMeetGreet-
+// AndCreateAccount (public/net-new) or the authenticated portal create path
+// (already an existing member); an overnights doc is never created for
+// anyone but an existing member. So requiring memberId here, rather than a
+// per-doc stripeCustomerId, is strictly narrowing what this function trusts,
+// not widening it.
 // ─────────────────────────────────────────────────────────────────────────
 async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountInDollars, description, attemptField = 'lastChargeAttempt' }) {
-  if (!docData || !docData.stripeCustomerId) {
-    throw new HttpsError('failed-precondition', 'No saved card found for this submission.');
+  const memberId = docData?.memberId || null;
+  if (!memberId) {
+    throw new HttpsError('failed-precondition', 'No member linked to this charge.');
+  }
+
+  const billingSnap = await billingRef(memberId).get();
+  const billingData = billingSnap.data() || {};
+  const stripeCustomerId = billingData.stripeCustomerId;
+  if (!stripeCustomerId) {
+    throw new HttpsError('failed-precondition', 'No saved card found for this member.');
   }
 
   // Idempotency guard #1: never charge the same chargeKey twice, however
@@ -407,17 +571,11 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
   // Whatever's pending gets applied here, on their next charge, capped at
   // this charge's own amount (never a negative charge, never over-applies).
   // Cents throughout to avoid floating-point drift on the subtraction.
-  const memberId = docData.memberId || null;
   const amountInCentsRequested = Math.round(amountInDollars * 100);
   let creditAppliedCents = 0;
-  let billingData = null;
-  if (memberId) {
-    const billingSnap = await billingRef(memberId).get();
-    billingData = billingSnap.data() || {};
-    const pendingCredit = billingData.pendingReferralCredit || 0;
-    if (pendingCredit > 0) {
-      creditAppliedCents = Math.min(Math.round(pendingCredit * 100), amountInCentsRequested);
-    }
+  const pendingCredit = billingData.pendingReferralCredit || 0;
+  if (pendingCredit > 0) {
+    creditAppliedCents = Math.min(Math.round(pendingCredit * 100), amountInCentsRequested);
   }
 
   // New-member referral discount — a separate mechanism from pendingReferralCredit
@@ -437,7 +595,7 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
   let referralDiscount = null;
   let discountCents = 0;
   let carryForwardCents = 0;
-  if (memberId && billingData && !billingData.referralCreditChecked) {
+  if (!billingData.referralCreditChecked) {
     const memberSnap = await db.collection('members').doc(memberId).get();
     const memberData = memberSnap.data();
     if (memberData) {
@@ -459,8 +617,8 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
   let paymentIntent = null;
   if (chargeAmountInCents > 0) {
     // Off-session because the client isn't present re-entering their card —
-    // they authorized this charge when they saved the card at signup.
-    const customer = await stripe.customers.retrieve(docData.stripeCustomerId);
+    // they authorized this charge when they added the card in their portal.
+    const customer = await stripe.customers.retrieve(stripeCustomerId);
     const paymentMethods = await stripe.paymentMethods.list({ customer: customer.id, type: 'card' });
     if (!paymentMethods.data.length) {
       throw new HttpsError('failed-precondition', 'Customer has no saved payment method.');
@@ -693,18 +851,24 @@ exports.chargeScheduledReservations = onSchedule({
 
 // ─────────────────────────────────────────────────────────────────────────
 // 3. Start a recurring monthly membership subscription (Essential /
-//    Standard / Daily). Admin-triggered after confirming a new member.
-//    Uses billing_cycle_anchor so the recurring charge lands on the 1st
-//    of the month regardless of the day the membership actually starts.
+//    Standard / Daily). Triggered after a member's card is confirmed on
+//    file. Uses billing_cycle_anchor so the recurring charge lands on the
+//    1st of the month regardless of the day the membership actually starts.
+//
+//    Core logic lives in runCreateMembershipSubscription, a plain function,
+//    not inline in the onCall handler below — finalizeSubmissionIfReady (the
+//    card-on-file/dates-confirmed trigger) has no request.auth to hand an
+//    onCall function, the same reason chargeCustomerCard was already
+//    extracted from chargeSavedCard. The onCall export is now a thin
+//    wrapper kept for the still-live saveMember() admin flow during the
+//    build — removed once admin/dashboard.html is cut over to the new flow.
+//
+//    stripeCustomerId is resolved from members/{memberId}/private/billing,
+//    not from the submission — a submission no longer carries its own copy.
+//    submissionId is still used, for sub.startDate/referredByCode only —
+//    both unrelated to card capture and unaffected by that move.
 // ─────────────────────────────────────────────────────────────────────────
-exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
-  await assertIsAdmin(request.auth);
-
-  const { submissionId, memberId } = request.data || {};
-  if (!submissionId || !memberId) {
-    throw new HttpsError('invalid-argument', 'submissionId and memberId are required.');
-  }
-
+async function runCreateMembershipSubscription(submissionId, memberId) {
   // Resolve the member and their tier BEFORE touching the submission or
   // Stripe. Travel-tier (and any non-billed tier) has no subscription price,
   // and such a member may legitimately have no card on file — so that case
@@ -725,24 +889,42 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
     return { success: true, skipped: true, tier: member.tier || null };
   }
 
+  // Idempotency guard — required now that finalizeSubmissionIfReady is
+  // retryable (recordFinalizeFailure clears billingFinalized on failure).
+  // stripe.subscriptions.create() below has no Stripe-level idempotencyKey
+  // of its own, unlike every charge call in this file (chargeCustomerCard,
+  // runChargeCurrentMonthWalks) — so without this check, a retry after a
+  // LATER step in the same finalize run failed (generateInitialWalks,
+  // chargeCurrentMonthWalks, the email) would call it again and create a
+  // genuine second Stripe subscription for this member. stripeSubscriptionId
+  // only ever lands on billing via the batch.commit() below, which writes
+  // it together with everything else in ONE atomic commit — so its
+  // presence means that whole commit already succeeded; there is nothing
+  // left for a retry to do here.
+  const existingBillingSnap = await billingRef(memberId).get();
+  const existingSubscriptionId = existingBillingSnap.data()?.stripeSubscriptionId;
+  if (existingSubscriptionId) {
+    return { success: true, skipped: false, alreadyExists: true, subscriptionId: existingSubscriptionId };
+  }
+
   const stripe = stripeClient(STRIPE_SECRET_KEY.value());
 
   // Everything below this point either succeeds with a real subscription or
   // throws — no more early "not an error" returns past this line. On any
-  // throw, needsReview is set on the billing subdoc before rethrowing:
-  // saveMember still creates the member on a failure here (see its own
-  // subscriptionSkipped handling), so without this the member is left
-  // active and unbilled with nothing durable pointing that out beyond a
-  // one-time modal warning. See dismissBillingReview for how this clears.
+  // throw, needsReview is set on the billing subdoc before rethrowing, so a
+  // member left active with no subscription is never silently unbilled — see
+  // dismissBillingReview for how this clears.
   try {
     const subDoc = await db.collection('submissions').doc(submissionId).get();
     const sub = subDoc.data();
 
-    if (!sub || !sub.stripeCustomerId) {
-      throw new HttpsError('failed-precondition', 'No saved card found for this submission.');
+    const billingSnap = await billingRef(memberId).get();
+    const stripeCustomerId = billingSnap.data()?.stripeCustomerId;
+    if (!stripeCustomerId) {
+      throw new HttpsError('failed-precondition', 'No saved card found for this member.');
     }
 
-    const paymentMethods = await stripe.paymentMethods.list({ customer: sub.stripeCustomerId, type: 'card' });
+    const paymentMethods = await stripe.paymentMethods.list({ customer: stripeCustomerId, type: 'card' });
     if (!paymentMethods.data.length) {
       throw new HttpsError('failed-precondition', 'Customer has no saved payment method.');
     }
@@ -751,7 +933,7 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
     // the customer with the Firestore memberId — stripeWebhook's Stripe-side
     // fallback lookup (see findMemberIdByStripeCustomerId) reads this back when
     // the Firestore-side lookup (billing.stripeCustomerId) can't resolve it.
-    await stripe.customers.update(sub.stripeCustomerId, {
+    await stripe.customers.update(stripeCustomerId, {
       metadata: { memberId },
       invoice_settings: { default_payment_method: paymentMethods.data[0].id },
     });
@@ -779,7 +961,7 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
     // through month end. Any other case (no start date given, or it falls
     // outside the anchor month entirely) bills the full month, same as every
     // month after.
-    const fromDay = firstBilledMonthFromDay(sub.startDate, nextFirst.getUTCFullYear(), nextFirst.getUTCMonth());
+    const fromDay = firstBilledMonthFromDay(sub?.startDate, nextFirst.getUTCFullYear(), nextFirst.getUTCMonth());
     const quantity = countWalkDaysInMonth(member.defaultWalkDays, nextFirst.getUTCFullYear(), nextFirst.getUTCMonth(), fromDay);
 
     if (!quantity) {
@@ -787,7 +969,7 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
     }
 
     const subscription = await stripe.subscriptions.create({
-      customer: sub.stripeCustomerId,
+      customer: stripeCustomerId,
       items: [{ price: priceId, quantity }],
       billing_cycle_anchor: billingCycleAnchor,
       proration_behavior: 'none',
@@ -797,7 +979,7 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
     // the 1st can honor a mid-month start. It lived only on the submission
     // before, which those jobs never read — which is exactly why they used to
     // revert the proration set here.
-    const startDate = toDateOrNull(sub.startDate);
+    const startDate = toDateOrNull(sub?.startDate);
     // Atomic split write. The 4 billing fields go to the protected subdoc; the
     // member doc keeps membershipStartDate (scheduled jobs read it) and gains
     // hasActiveSubscription — a NON-sensitive boolean the crons filter on in
@@ -808,18 +990,16 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
       ...(startDate ? { membershipStartDate: Timestamp.fromDate(startDate) } : {}),
     }, { merge: true });
     batch.set(billingRef(memberId), {
-      stripeCustomerId: sub.stripeCustomerId,
+      stripeCustomerId,
       stripeSubscriptionId: subscription.id,
       stripeSubscriptionItemId: subscription.items.data[0].id,
       billingStatus: 'active',
-      // Referral credit intake: carried over from the originating submission
-      // so the first-payment credit logic (chargeCurrentMonthWalks /
-      // stripeWebhook's invoice.paid handler) can find it without ever having
-      // to read the submissions collection itself. referralSubmissionId is
-      // this same submissionId — stashed here because credit issuance needs
-      // it to address the matching referralCodes/{code}/redemptions/{id} doc,
-      // and by then it only has memberId to start from, not this submission.
-      referredByCode: sub.referredByCode || null,
+      // Referral credit intake: normally already written by
+      // completeMeetGreetAndCreateAccount at account-creation time — this is
+      // a redundant, idempotent re-write (merge:true, same values), kept as
+      // a safety net for the still-live old saveMember() flow during the
+      // build, which never calls that function.
+      referredByCode: sub?.referredByCode || null,
       referralSubmissionId: submissionId,
     }, { merge: true });
     await batch.commit();
@@ -841,6 +1021,15 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
     });
     throw e;
   }
+}
+
+exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { submissionId, memberId } = request.data || {};
+  if (!submissionId || !memberId) {
+    throw new HttpsError('invalid-argument', 'submissionId and memberId are required.');
+  }
+  return runCreateMembershipSubscription(submissionId, memberId);
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -893,15 +1082,12 @@ exports.dismissBillingReview = onCall({}, async (request) => {
 //    it's paired with. Records initialWalksGenerated on the member doc
 //    (true/false) so a failure is durable, checkable state rather than
 //    just a banner that disappears when the modal closes.
+//
+//    Extracted to a plain function for the same reason as
+//    runCreateMembershipSubscription above — finalizeSubmissionIfReady has
+//    no request.auth to hand an onCall function.
 // ─────────────────────────────────────────────────────────────────────────
-exports.generateInitialWalks = onCall({}, async (request) => {
-  await assertIsAdmin(request.auth);
-
-  const { submissionId, memberId } = request.data || {};
-  if (!submissionId || !memberId) {
-    throw new HttpsError('invalid-argument', 'submissionId and memberId are required.');
-  }
-
+async function runGenerateInitialWalks(submissionId, memberId) {
   try {
     const subDoc = await db.collection('submissions').doc(submissionId).get();
     const sub = subDoc.data() || {};
@@ -953,6 +1139,15 @@ exports.generateInitialWalks = onCall({}, async (request) => {
     await db.collection('members').doc(memberId).set({ initialWalksGenerated: false }, { merge: true }).catch(() => {});
     throw e;
   }
+}
+
+exports.generateInitialWalks = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { submissionId, memberId } = request.data || {};
+  if (!submissionId || !memberId) {
+    throw new HttpsError('invalid-argument', 'submissionId and memberId are required.');
+  }
+  return runGenerateInitialWalks(submissionId, memberId);
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1420,13 +1615,15 @@ function easternTodayParts() {
 //    only code path in the app that charges a card without an admin clicking
 //    a charge button, so it must not be able to take the conversion down
 //    with it.
+//
+//    Extracted to a plain function for the same reason as
+//    runCreateMembershipSubscription above — finalizeSubmissionIfReady has
+//    no request.auth to hand an onCall function. Already read
+//    stripeCustomerId from the billing subdoc, not the submission — no
+//    repoint needed here, unlike createMembershipSubscription/
+//    chargeCustomerCard.
 // ─────────────────────────────────────────────────────────────────────────
-exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
-  await assertIsAdmin(request.auth);
-
-  const { memberId } = request.data || {};
-  if (!memberId) throw new HttpsError('invalid-argument', 'memberId is required.');
-
+async function runChargeCurrentMonthWalks(memberId) {
   const memberRef = db.collection('members').doc(memberId);
   const billing = billingRef(memberId);
   // Dual-read: member doc (tier, schedule, membershipStartDate) + billing
@@ -1575,7 +1772,23 @@ exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async
         status: 'failed', reason: e.message, failedAt: FieldValue.serverTimestamp(),
       },
     }, { merge: true }).catch(() => {});
-    throw new HttpsError('internal', `Card charge for this month failed: ${e.message}`);
+    // isChargeFailure marked HERE, at the one point in this function where a
+    // real Stripe charge attempt actually failed — not by a wrapper further
+    // up the call stack that can't tell this apart from the five
+    // precondition throws above (no time slot, walk generation failed, no
+    // Stripe customer, no payment method, no unit_amount), none of which
+    // ever reach Stripe or write a currentMonthCharge record at all. Marking
+    // here, at the source, guarantees the two travel together: any caller
+    // that sees isChargeFailure can rely on amount/failedAt having just been
+    // written above in this same catch, not merely "usually" written by
+    // some other path. See finalizeSubmissionIfReady's outer catch for where
+    // this becomes finalizeErrorKind:'charge_failed', and
+    // retryFinalizeSubmission for why that distinction (real money attempted
+    // vs. a precondition that was never going to touch Stripe) has to be
+    // exact, not approximate.
+    const chargeError = new HttpsError('internal', `Card charge for this month failed: ${e.message}`);
+    chargeError.isChargeFailure = true;
+    throw chargeError;
   }
 
   await billing.set({
@@ -1608,6 +1821,13 @@ exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async
     ...(discountCents > 0 ? { referralDiscountApplied: discountCents / 100 } : {}),
     ...(carryForwardCents > 0 ? { referralCreditCarriedForward: carryForwardCents / 100 } : {}),
   };
+}
+
+exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { memberId } = request.data || {};
+  if (!memberId) throw new HttpsError('invalid-argument', 'memberId is required.');
+  return runChargeCurrentMonthWalks(memberId);
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -2126,9 +2346,10 @@ exports.issueRefund = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) =
 
 // Resolves a Stripe customer ID back to a Firestore memberId. Firestore is
 // checked FIRST: billing.stripeCustomerId is the original source of truth,
-// written at signup by createSetupIntent long before any subscription
-// exists, so querying it directly avoids a Stripe round-trip on every
-// webhook delivery and doesn't depend on customer metadata being set. Falls
+// written by createAuthenticatedSetupIntent when a member adds a card in
+// the portal, well before any subscription exists, so querying it directly
+// avoids a Stripe round-trip on every webhook delivery and doesn't depend
+// on customer metadata being set. Falls
 // back to Stripe customer metadata.memberId (set by createMembershipSubscription)
 // only if the Firestore lookup comes up empty — covers the collection-group
 // index not existing/still building, or a customer created before that
@@ -2980,6 +3201,1009 @@ exports.sendOnboardingEmail = onCall({
     throw new HttpsError('internal', `Welcome email failed to send: ${result.error}`);
   }
   return { success: true, sentTo: email };
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Meet & greet gate + account creation, server-enforced. Replaces the
+// account-creation portions of saveMember() (admin/dashboard.html, for
+// membership_request) and of confirmServiceRequest()'s new-account branch
+// (for a net-new, public-form service_request) — the only two submission
+// types that can still be missing a memberId at this point:
+//
+//   - overnight_request is rejected outright. There is no public form for
+//     it; every overnight_request is created by an already-authenticated
+//     existing member (portal-request-extras.html sets memberId at create
+//     time), so there is never an account to create for one.
+//   - A service_request that already carries a memberId (same reason: the
+//     authenticated portal path sets it at create time) is rejected too —
+//     that submitter already has an account and portal access.
+//
+// meetGreetCompleted is a required boolean, not an assumption — the same
+// affirmative gate the old client-side checkbox provided, now checked here
+// instead of only in the admin's browser. Combined with members/{id}'s
+// create rule denying direct client writes (firestore.rules), this
+// function becomes the ONLY path that can create a member account, and it
+// refuses to run it without that flag. meetGreetCompletedAt is stamped in
+// this same call, not read back from an earlier write — there is no
+// separate "mark meet & greet complete" step for these two types.
+//
+// Deliberately does nothing beyond account creation: no Stripe
+// subscription, no walk generation, no charge. Those now wait for a card
+// on file, added later in the portal — see the payment model note at the
+// top of this file, due for a rewrite once that lands.
+//
+// status: 'account_created' is a new, earlier state than 'confirmed' —
+// 'confirmed' now means "card on file AND dates confirmed", set by the
+// still-to-build finalize step, not by this function. Dashboard queries
+// that currently treat "no memberId and not declined" as the unresolved
+// queue will need a matching update when that lands; not done here.
+// ─────────────────────────────────────────────────────────────────────────
+exports.completeMeetGreetAndCreateAccount = onCall({
+  secrets: [RESEND_API_KEY],
+}, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { submissionId, meetGreetCompleted, overrides } = request.data || {};
+  if (!submissionId) throw new HttpsError('invalid-argument', 'submissionId is required.');
+  if (meetGreetCompleted !== true) {
+    throw new HttpsError('failed-precondition', 'Confirm the meet & greet happened before creating the account.');
+  }
+
+  const subRef = db.collection('submissions').doc(submissionId);
+  const subSnap = await subRef.get();
+  const sub = subSnap.data();
+  if (!sub) throw new HttpsError('not-found', 'Submission not found.');
+  if (sub.type === 'overnight_request') {
+    throw new HttpsError('failed-precondition', 'overnight_request only ever comes from an existing member — there is no account to create.');
+  }
+  if (!['membership_request', 'service_request'].includes(sub.type)) {
+    throw new HttpsError('failed-precondition', `Meet & greet account creation doesn't apply to type "${sub.type}".`);
+  }
+  if (sub.memberId) {
+    throw new HttpsError('failed-precondition', 'This submission already has an account.');
+  }
+  if (sub.status === 'declined') {
+    throw new HttpsError('failed-precondition', 'This request was declined.');
+  }
+  if (!sub.email) {
+    throw new HttpsError('failed-precondition', 'This submission has no email on file.');
+  }
+
+  const isMembership = sub.type === 'membership_request';
+  const ov = overrides || {};
+  if (isMembership && !ov.tier) {
+    throw new HttpsError('invalid-argument', 'overrides.tier is required for a membership account.');
+  }
+
+  const { getAuth } = require('firebase-admin/auth');
+  const authAdmin = getAuth();
+
+  // Never shown or typed anywhere — the portal-access email below is the
+  // only way in, via a set-password link. Same posture as saveMember()'s
+  // randomAccountPassword() and confirmServiceRequest's randomPw.
+  let uid;
+  try {
+    const userRecord = await authAdmin.createUser({
+      email: sub.email,
+      emailVerified: false,
+      password: 'PCLC-' + crypto.randomUUID(),
+    });
+    uid = userRecord.uid;
+  } catch (e) {
+    if (e.code === 'auth/email-already-exists') {
+      throw new HttpsError('already-exists', 'An account with this email already exists.');
+    }
+    throw new HttpsError('internal', `Couldn't create the account: ${e.message}`);
+  }
+
+  const emailNormalized = sub.email.toLowerCase();
+  const phoneDigits = (ov.phone || sub.phone || '').replace(/\D/g, '').replace(/^1/, '');
+
+  // Membership: admin-editable at this step, same fields saveMember()'s
+  // modal collects today (tier/zone/walker/schedule aren't on the
+  // submission at all — the public form never asks for them). Service:
+  // pass-through from the submission, same as confirmServiceRequest's
+  // new-account branch — Travel tier, no recurring schedule.
+  const memberDoc = isMembership
+    ? {
+        name: ov.name || sub.ownerName || '',
+        email: sub.email,
+        phone: ov.phone || sub.phone || '',
+        tier: ov.tier,
+        address: ov.address || sub.address || '',
+        accessNotes: ov.accessNotes || '',
+        zone: ov.zone || '',
+        defaultWalkDays: Array.isArray(ov.defaultWalkDays) ? ov.defaultWalkDays.map((d) => String(d).toLowerCase()) : [],
+        defaultTimeSlot: ov.defaultTimeSlot || null,
+        dogs: ov.dogs || sub.dogs || [],
+        assignedWalkerId: ov.assignedWalkerId || '',
+        walksThisMonth: 0,
+        status: 'active',
+        attribution: sub.attribution || null,
+      }
+    : {
+        name: sub.ownerName || '',
+        email: sub.email,
+        phone: sub.phone || '',
+        tier: 'Travel',
+        dogs: sub.dogs || [],
+        walksThisMonth: 0,
+        status: 'active',
+        attribution: sub.attribution || null,
+      };
+
+  await db.collection('members').doc(uid).set({
+    ...memberDoc,
+    uid,
+    emailNormalized,
+    phoneDigits,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  // Referral intake — the half of linkServiceRequestBilling's job that
+  // isn't stripeCustomerId (that field no longer lives on submissions once
+  // card capture moves to the portal, and this function never reads it).
+  // merge:true so this never clobbers a billing doc that
+  // createMembershipSubscription or issueReferralCredit populate later.
+  if (sub.referredByCode) {
+    await billingRef(uid).set({
+      referredByCode: sub.referredByCode,
+      referralSubmissionId: submissionId,
+    }, { merge: true });
+  }
+
+  await subRef.set({
+    memberId: uid,
+    status: 'account_created',
+    read: true,
+    meetGreetCompletedAt: FieldValue.serverTimestamp(),
+    accountCreatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  // Portal-access email — the entire point of this moment for the
+  // recipient: the meet & greet is done, here's how to get in and add a
+  // card. A thrown failure here is a real problem (the account exists with
+  // no way for its owner to discover it yet) but never unwinds the account
+  // itself — same "warn, don't roll back" contract as sendOnboardingEmail.
+  const portalUrl = `${BUSINESS_PORTAL_ORIGIN}/portal-login`;
+  const portalSetupLink = await authAdmin.generatePasswordResetLink(sub.email, { url: `${portalUrl}?welcome=1` });
+  const petNames = (memberDoc.dogs || []).map((d) => d && d.name).filter(Boolean);
+  const firstName = (memberDoc.name || '').trim().split(/\s+/)[0] || 'there';
+
+  let emailData;
+  if (isMembership) {
+    const orderedDays = VALID_WALK_DAYS.filter((d) => memberDoc.defaultWalkDays.includes(d));
+    emailData = {
+      firstName,
+      petNames,
+      kind: 'membership',
+      tier: memberDoc.tier,
+      frequency: orderedDays.length ? orderedDays.map((d) => d[0].toUpperCase() + d.slice(1)).join(', ') : null,
+      portalSetupLink,
+    };
+  } else {
+    const { SERVICE_PRICES, resolveServiceKey } = await import('./pricing.js');
+    const { formatDateRange } = require('./templates/_layout');
+    const serviceLabel = SERVICE_PRICES[resolveServiceKey(sub.service)]?.name || null;
+    const startStr = sub.startDate?.toDate ? isoDateStr(sub.startDate.toDate()) : null;
+    const endStr = sub.endDate?.toDate ? isoDateStr(sub.endDate.toDate()) : null;
+    const requestedDatesStr = startStr ? formatDateRange(startStr, endStr) : null;
+    emailData = {
+      firstName,
+      petNames,
+      kind: 'service',
+      serviceLabel,
+      requestedDatesStr,
+      portalSetupLink,
+    };
+  }
+
+  const emailResult = await sendEmail({
+    to: sub.email,
+    template: 'portal-access',
+    data: emailData,
+    idempotencyKey: `portal-access:${uid}`,
+  });
+
+  return {
+    success: true,
+    memberId: uid,
+    emailSent: emailResult.ok,
+    emailError: emailResult.error || null,
+  };
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// SECTION 1 — structure only. runServiceOrOvernightBookingDoc and
+// runServiceOrOvernightCharge implement the four charge branches ported
+// from confirmServiceRequest/confirmOvernight (admin/dashboard.html):
+//   (a) service_request, walk            -> walks/{id} doc, charged immediately
+//   (b) service_request, drop-in-visit   -> overnights/{id} doc, charge deferred 24h (cron)
+//   (c) service_request, anything else   -> no doc, charged immediately
+//       (overnight-stay booked via the public form — an EXISTING asymmetry
+//       with drop-in-visit, not something introduced here; see the comment
+//       inside runServiceOrOvernightBookingDoc)
+//   (d) overnight_request (any service)  -> overnights/{id} doc, charge deferred 24h (cron)
+// Pricing itself is NOT re-derived here — amountInDollars/visitSchedule
+// arrive via `reviewed`, already computed client-side by the admin's
+// review UI (calculateServiceTotal/computeDropInVisitTotal in pricing.js),
+// exactly as confirmServiceRequest/confirmOvernight already trust today.
+// This is the same trust boundary chargeSavedCard already has (admin-
+// supplied amountInDollars), not a new one.
+// ─────────────────────────────────────────────────────────────────────────
+
+// Server port of admin/dashboard.html's serviceChargeDescription — same
+// receipt-text logic (display name + dog name(s) when known), needed here
+// because the immediate-charge branches below build the Stripe description
+// themselves now, instead of the client doing it before calling
+// chargeSavedCard.
+function serviceChargeDescription(serviceKeyRaw, sub, servicePrices, resolveKey) {
+  const info = servicePrices[resolveKey(serviceKeyRaw)];
+  const label = info ? info.name : 'Service';
+  const dogs = (Array.isArray(sub?.dogs) ? sub.dogs.map((d) => d && d.name).filter(Boolean) : [])
+    .concat(sub?.dogName ? [sub.dogName] : [])
+    .filter((n, i, a) => a.indexOf(n) === i);
+  const who = dogs.length ? ` (${dogs.join(', ')})` : '';
+  return `Port City Leash Club - ${label}${who}`;
+}
+
+async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, reviewed) {
+  const { SERVICE_PRICES, resolveServiceKey } = await import('./pricing.js');
+  const isOvernightRequest = sub.type === 'overnight_request';
+  const serviceKey = resolveServiceKey(reviewed.service);
+  const serviceInfo = SERVICE_PRICES[serviceKey];
+  const isWalk = !isOvernightRequest && serviceInfo?.unit === 'walk';
+  const isDropIn = !isOvernightRequest && serviceKey === 'drop-in-visit';
+
+  // Live member doc, not the submission's own ownerName/memberName snapshot
+  // — same reasoning confirmOvernight's comment already gives ("the
+  // submission's own memberName/dogName are a snapshot from whenever the
+  // member submitted the request, which can already be stale by
+  // confirmation time"). confirmServiceRequest instead preferred
+  // item.ownerName first, but only because ITS memberId could have been
+  // created in the very same client call, before the client's own cached
+  // member list included it — a client-side caching artifact that doesn't
+  // exist here, since this always reads memberId's doc fresh from
+  // Firestore. Preferring the live doc uniformly is a deliberate, small
+  // behavior change: more correct, not a regression.
+  const memberSnap = await db.collection('members').doc(memberId).get();
+  const member = memberSnap.data();
+  const memberName = member?.name || sub.ownerName || sub.memberName || '';
+  const dogs = sub.dogs || [];
+  const dogName = dogs[0]?.name || sub.dogName || '';
+
+  if (isWalk) {
+    if (!reviewed.startDate) {
+      throw new HttpsError('invalid-argument', 'A start date is required to schedule a walk.');
+    }
+    // Same deterministic ${memberId}_${dateStr} key and instant-construction
+    // convention as generateWalksForMember, so a walk written from either
+    // call site for the same member/date is the same doc, never a duplicate.
+    const startStr = isoDateStr(reviewed.startDate.toDate());
+    const walkRef = db.collection('walks').doc(`${memberId}_${startStr}`);
+    try {
+      await db.runTransaction(async (tx) => {
+        const walkSnap = await tx.get(walkRef);
+        if (walkSnap.exists) {
+          const err = new Error('Walk already exists');
+          err.code = 'already-exists';
+          throw err;
+        }
+        tx.set(walkRef, {
+          memberId,
+          date: reviewed.startDate,
+          timeSlot: reviewed.timeSlot,
+          walkerId: null,
+          notes: '',
+          status: 'scheduled',
+          createdAt: FieldValue.serverTimestamp(),
+          ...(serviceKey === 'extended-walk' ? {
+            extended: true, extendedStatus: 'confirmed', duration: '45-minute walk',
+          } : {}),
+        });
+      });
+    } catch (e) {
+      // Hitting the existing doc IS success here (a retry of an
+      // already-created walk), same as confirmServiceRequest's own guard.
+      if (e.code !== 'already-exists') {
+        throw new HttpsError('internal', `The walk wasn't added to the schedule: ${e.message}`);
+      }
+    }
+    return { docType: 'walk', docId: walkRef.id };
+  }
+
+  if (isDropIn || isOvernightRequest) {
+    // 24-hour window before the card is touched, same as today — the
+    // member has a real chance to change plans. chargeScheduledReservations
+    // (unchanged) is what actually charges this once chargeScheduledFor
+    // passes; runServiceOrOvernightCharge below does nothing for this case
+    // beyond recording paymentStatus: 'scheduled'.
+    const chargeScheduledFor = Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
+    const overnightRef = await db.collection('overnights').add({
+      memberId,
+      memberName,
+      dogName,
+      startDate: reviewed.startDate,
+      endDate: reviewed.endDate,
+      serviceType: isOvernightRequest ? (reviewed.service || sub.serviceType || 'overnight') : serviceKey,
+      notes: sub.notes || '',
+      status: 'confirmed',
+      confirmedAt: FieldValue.serverTimestamp(),
+      submissionId,
+      walkerId: '',
+      extraPet: reviewed.extraPet,
+      medication: reviewed.medication,
+      // visitSchedule only for check-ins (drop-in-visit) — overnight_request
+      // keeps the exclusive-nights model, same as confirmOvernight today
+      // (it never sets this field at all).
+      ...(isDropIn ? { visitSchedule: reviewed.visitSchedule } : {}),
+      confirmedTotalCents: Math.round(reviewed.amountInDollars * 100),
+      chargeScheduledFor,
+      chargePending: true,
+    });
+    return { docType: 'overnight', docId: overnightRef.id, chargeScheduledFor };
+  }
+
+  // Neither walk, drop-in, nor overnight_request — e.g. an overnight-stay
+  // booked through the public service_request form. No supplementary doc
+  // is written, matching confirmServiceRequest's existing behavior exactly:
+  // only its isWalk and isDropIn branches ever write one; this third case
+  // gets neither a walks nor an overnights record, and is charged
+  // immediately below like a walk.
+  return { docType: 'none' };
+}
+
+async function runServiceOrOvernightCharge(sub, submissionId, memberId, reviewed) {
+  const { SERVICE_PRICES, resolveServiceKey } = await import('./pricing.js');
+  const isOvernightRequest = sub.type === 'overnight_request';
+  const serviceKey = resolveServiceKey(reviewed.service);
+  const isDropIn = !isOvernightRequest && serviceKey === 'drop-in-visit';
+  const subRef = db.collection('submissions').doc(submissionId);
+
+  if (isDropIn || isOvernightRequest) {
+    await subRef.set({ paymentStatus: 'scheduled' }, { merge: true });
+    return { paymentStatus: 'scheduled', chargeScheduledFor: null };
+  }
+
+  // Immediate charge — walk, or overnight-stay via the public form.
+  // amountInDollars <= 0 means nothing to charge (no card, or admin zeroed
+  // it out) — chargeAndTrackPayment's exact contract, preserved here.
+  let paymentStatus, chargeError = null;
+  if (reviewed.amountInDollars > 0) {
+    const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+    const description = serviceChargeDescription(reviewed.service, sub, SERVICE_PRICES, resolveServiceKey);
+    try {
+      await chargeCustomerCard(stripe, subRef, sub, {
+        chargeKey: submissionId,
+        amountInDollars: reviewed.amountInDollars,
+        description,
+      });
+      paymentStatus = 'charged';
+    } catch (e) {
+      paymentStatus = 'failed';
+      chargeError = e.message;
+      console.error(`runServiceOrOvernightCharge: charge failed for ${submissionId}:`, e.message);
+    }
+  } else {
+    paymentStatus = 'skipped';
+  }
+  await subRef.set({ paymentStatus }, { merge: true });
+  // chargeError is returned, not just logged, so finalizeSubmissionIfReady
+  // can surface it through recordFinalizeFailure — this catch never
+  // rethrows (a failed charge must never block confirming the booking,
+  // matching confirmServiceRequest/confirmOvernight's original posture),
+  // so without returning it here, this failure mode would only ever show
+  // via the older paymentStatus badge, never reach Needs Attention.
+  return { paymentStatus, chargeScheduledFor: null, chargeError };
+}
+
+// Dispatches to whichever of the three existing sendBookingConfirmedEmail
+// templates matches this booking — same selection logic confirmService-
+// Request/confirmOvernight use today (isDropIn/overnight_request ->
+// portal-reservation-confirmed, isWalk -> walk-confirmed, else ->
+// portal-service-confirmed). Calls sendEmail directly rather than going
+// through the sendBookingConfirmedEmail onCall export — that export's only
+// real job beyond resolving the member's email is the isNewAccount portal-
+// link branch, and isNewAccount is always false from this call site (see
+// below), so there's nothing left worth wrapping. sendBookingConfirmedEmail
+// itself is untouched, still used by confirmWalkExtension (unrelated to
+// this migration) and by the still-live old confirmServiceRequest/
+// confirmOvernight during this build.
+async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, memberId, reviewed, chargeResult) {
+  const { SERVICE_PRICES, resolveServiceKey } = await import('./pricing.js');
+  const isOvernightRequest = sub.type === 'overnight_request';
+  const serviceKey = resolveServiceKey(reviewed.service);
+  const serviceInfo = SERVICE_PRICES[serviceKey];
+  const isWalk = !isOvernightRequest && serviceInfo?.unit === 'walk';
+  const isDropIn = !isOvernightRequest && serviceKey === 'drop-in-visit';
+
+  const memberSnap = await db.collection('members').doc(memberId).get();
+  const member = memberSnap.data();
+  if (!member || !member.email) {
+    console.error(`sendServiceOrOvernightConfirmationEmail: member ${memberId} has no email on file.`);
+    return { ok: false, error: 'no-email' };
+  }
+  const firstName = (member.name || sub.ownerName || '').trim().split(/\s+/)[0] || 'there';
+  const petNames = (sub.dogs && sub.dogs.length ? sub.dogs : (member.dogs || [])).map((d) => d && d.name).filter(Boolean);
+  const startDateStr = reviewed.startDate?.toDate ? isoDateStr(reviewed.startDate.toDate()) : null;
+  const endDateStr = reviewed.endDate?.toDate ? isoDateStr(reviewed.endDate.toDate()) : null;
+
+  let template, data;
+  if (isOvernightRequest || isDropIn) {
+    template = 'portal-reservation-confirmed';
+    data = {
+      firstName, petNames,
+      serviceLabel: serviceInfo?.name || reviewed.service,
+      startDateStr, endDateStr,
+      totalDollars: reviewed.amountInDollars,
+      chargeDateStr: chargeResult.chargeScheduledFor?.toDate ? isoDateStr(chargeResult.chargeScheduledFor.toDate()) : null,
+      visitSchedule: isDropIn ? reviewed.visitSchedule : null,
+    };
+  } else if (isWalk) {
+    template = 'walk-confirmed';
+    data = {
+      firstName, dogNames: petNames,
+      walkTypeLabel: serviceInfo?.name || 'Walk',
+      durationMinutes: serviceKey === 'extended-walk' ? 45 : 30,
+      walks: [{ dateStr: startDateStr, slot: reviewed.timeSlot }],
+    };
+  } else {
+    // overnight-stay via the public service_request form — the third,
+    // no-doc, immediate-charge branch from section 2.
+    template = 'portal-service-confirmed';
+    data = {
+      firstName, petNames,
+      serviceLabel: serviceInfo?.name || reviewed.service,
+      startDateStr, endDateStr,
+      unitCount: Math.max(reviewed.unitCount || 1, 1),
+      unitNoun: 'night',
+    };
+  }
+
+  // isNewAccount is always false here — unlike confirmServiceRequest/
+  // confirmOvernight, which could still be confirming a brand-new
+  // customer's very first booking in the same client action, account
+  // creation under the new flow always already happened earlier, at meet-
+  // greet completion (completeMeetGreetAndCreateAccount), with its own
+  // dedicated portal-access email. A second portal-setup link here would
+  // be redundant. Flagged in section 1 — the isNewAccount:true branch in
+  // all three templates below is now unreachable from this call site.
+  return sendEmail({
+    to: member.email,
+    template,
+    data: { ...data, isNewAccount: false, portalSetupLink: null },
+    idempotencyKey: `booking-confirmed:${submissionId}`,
+  });
+}
+
+// portal-membership-confirmed: new template. Membership has no equivalent of sendBookingConfirmedEmail's
+// three templates — nothing today announces "your membership is starting"
+// as its own moment. member-welcome used to fire here, before it was
+// retargeted to portal-access (account creation, before any card exists)
+// earlier in this build; this is the other half of what member-welcome
+// used to say in one email, now said once billing has actually started —
+// by this point createMembershipSubscription and generateInitialWalks have
+// already run, so, unlike portal-access, this can reliably say the walks
+// are on the calendar rather than "to be confirmed."
+async function sendMembershipConfirmationEmail(memberId, submissionId) {
+  const memberSnap = await db.collection('members').doc(memberId).get();
+  const member = memberSnap.data();
+  if (!member || !member.email) {
+    console.error(`sendMembershipConfirmationEmail: member ${memberId} has no email on file.`);
+    return { ok: false, error: 'no-email' };
+  }
+  const firstName = (member.name || '').trim().split(/\s+/)[0] || 'there';
+  const dogNames = (Array.isArray(member.dogs) ? member.dogs.map((d) => d && d.name).filter(Boolean) : []);
+  const orderedDays = VALID_WALK_DAYS.filter((d) => (member.defaultWalkDays || []).includes(d));
+  const frequency = orderedDays.length ? orderedDays.map((d) => d[0].toUpperCase() + d.slice(1)).join(', ') : null;
+
+  // Earliest scheduled walk, same lookup the old member-welcome trigger
+  // used (functions/index.js's retired sendOnboardingEmail kind:'member'
+  // branch) — reliable now, since generateInitialWalks already ran in
+  // finalizeSubmissionIfReady before this is called.
+  let firstWalkDateStr = null;
+  try {
+    const walksSnap = await db.collection('walks').where('memberId', '==', memberId).get();
+    let earliest = null;
+    walksSnap.forEach((snap) => {
+      const d = snap.data().date?.toDate?.();
+      if (d && (!earliest || d < earliest)) earliest = d;
+    });
+    if (earliest) firstWalkDateStr = isoDateStr(earliest);
+  } catch (e) {
+    console.error(`sendMembershipConfirmationEmail: failed to look up first walk date for member ${memberId}:`, e.message);
+  }
+
+  return sendEmail({
+    to: member.email,
+    template: 'portal-membership-confirmed',
+    data: { firstName, dogNames, tier: member.tier || null, frequency, firstWalkDateStr },
+    idempotencyKey: `portal-membership-confirmed:${memberId}`,
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Shared finalize step. Fires once a submission is billable: for
+// membership_request that's cardOnFile alone (no per-booking dates to
+// confirm — a recurring schedule, not a date range, per the decision not
+// to invent a dates-confirmed step for it); for service_request/
+// overnight_request that's cardOnFile AND datesConfirmedAt, whichever
+// completes second. Two trigger points call this: confirmCardOnFile (after
+// a card is confirmed — member-scoped, so it must check every one of that
+// member's pending submissions, not just one) and markDatesConfirmed
+// (below, submission-scoped).
+//
+// The idempotency flag (billingFinalized) lives on the SUBMISSION, not
+// billing — a member can have multiple submissions over time, each needing
+// its own independent claim, unlike referralCreditChecked (a true
+// once-per-member flag). Same transaction-claim shape as
+// finalizeNewMemberReferralDiscount otherwise: the flag is flipped INSIDE
+// the transaction that reads it, before any side effect runs, so a
+// mid-flight failure after the claim can't cause an automatic retry to
+// double-charge — it's a durably recorded, manually-resolved problem
+// instead (see the try/catch below), same posture as that existing pattern.
+// ─────────────────────────────────────────────────────────────────────────
+async function finalizeSubmissionIfReady(submissionId, { viaExplicitRetry = false } = {}) {
+  const subRef = db.collection('submissions').doc(submissionId);
+  const subSnap = await subRef.get();
+  const sub = subSnap.data();
+  if (!sub || !sub.memberId) return { ready: false };
+  // Explicit type check, not incidental status-vocabulary safety. Once the
+  // gate below also accepts 'pending' — a status value plenty of OTHER
+  // submission types use for their own unrelated purposes — status alone
+  // no longer implies "this is a request finalize should ever touch."
+  if (!['membership_request', 'service_request', 'overnight_request'].includes(sub.type)) {
+    return { ready: false };
+  }
+  // 'account_created' (net-new, went through completeMeetGreetAndCreateAccount)
+  // and 'pending' (portal-submitted by an existing member — memberId is
+  // already set at creation there, so it never passes through that
+  // function, or through any status transition, before reaching here) are
+  // both eligible for a normal, not-yet-finalized run.
+  //
+  // 'confirmed' is ALSO eligible, but only for a retry (retryFinalizeSubmission)
+  // where the PRIOR attempt got all the way to confirming and only the
+  // notification failed afterward (finalizeErrorKind === 'email_failed'), or
+  // the SERVICE/OVERNIGHT immediate charge failed (finalizeErrorKind ===
+  // 'charge_failed' AND type isn't membership_request — see
+  // runServiceOrOvernightCharge, which never blocks 'confirmed' on a failed
+  // charge). Every step below is safely re-runnable on a second pass — the
+  // subscription-creation guard, chargeCustomerCard's own alreadyCharged
+  // short-circuit (verified safe for the email_failed case: the prior
+  // successful charge's lastChargeAttempt.status:'charged' is already
+  // durable by the time a fresh invocation re-reads it, so this returns
+  // cleanly rather than re-charging), sendEmail's own idempotencyKey — so
+  // re-running the WHOLE pipeline is simpler and no less safe than a
+  // narrower path would have been.
+  //
+  // A MEMBERSHIP charge_failed (runChargeCurrentMonthWalks throwing) is
+  // different — that exception propagates, not swallowed, so it never
+  // reaches 'confirmed' at all; it's already covered by the ordinary
+  // 'pending'/'account_created' branch above, same as any other stuck
+  // exception. Its finalizeErrorKind is still 'charge_failed' (marked by
+  // runChargeCurrentMonthWalks itself, at the one point inside it where a
+  // real Stripe charge attempt fails — see that function's own
+  // paymentIntents.create catch), which matters to retryFinalizeSubmission's
+  // 24-hour check below, just not to this gate.
+  //
+  // charge_failed's TIMING (as opposed to whether it's eligible at all) is
+  // gated by retryFinalizeSubmission itself, not here — this function has
+  // no way to distinguish "genuinely eligible" from "the Stripe idempotency
+  // key hasn't expired yet" on its own, since that's a property of time
+  // elapsed, not of anything in this doc's status. See
+  // retryFinalizeSubmission for why: within 24h of the original failure,
+  // Stripe's idempotencyKey either replays the cached failure or errors on
+  // a parameter mismatch — never a genuine new charge attempt — so
+  // retrying that soon would accomplish nothing. After 24h the key has
+  // expired and a retry becomes a real new charge attempt against whatever
+  // the member's CURRENT default payment method is.
+  //
+  // viaExplicitRetry gates every charge_failed path here, regardless of
+  // status — passed only by retryFinalizeSubmission, after ITS OWN 24h
+  // check and the dashboard's confirm() dialog naming the amount. Every
+  // OTHER caller (confirmCardOnFile, markDatesConfirmed) omits it, so it
+  // defaults to false. This matters specifically for MEMBERSHIP: a
+  // membership charge_failed propagates, not swallowed, so it never reaches
+  // 'confirmed' — it sits at 'pending'/'account_created', indistinguishable
+  // by status alone
+  // from a submission that's never been attempted at all. Without this
+  // check, confirmCardOnFile's card-on-file trigger — which has no confirm()
+  // dialog and no 24h/manual-charge check of its own — would silently
+  // re-attempt the SAME charge the instant the member updates their card,
+  // with nothing standing between that and a double charge if an admin had
+  // already resolved it manually in Stripe and forgotten to Dismiss. A
+  // SERVICE/OVERNIGHT charge_failed can't hit this same gap today (it only
+  // ever sits at 'confirmed', which confirmCardOnFile's pending/
+  // account_created query never returns, and markDatesConfirmed refuses to
+  // run twice via its own datesConfirmedAt check) — but gating it here too,
+  // not just in the 'confirmed' branch below, keeps this function correct
+  // on its own rather than depending on both of those callers' incidental
+  // shapes to stay safe.
+  const hasUnresolvedChargeFailed = sub.finalizeErrorKind === 'charge_failed';
+  const statusEligible =
+    (['pending', 'account_created'].includes(sub.status) && (!hasUnresolvedChargeFailed || viaExplicitRetry))
+    || (sub.status === 'confirmed' && sub.finalizeErrorKind === 'email_failed')
+    || (sub.status === 'confirmed' && hasUnresolvedChargeFailed && viaExplicitRetry);
+  if (!statusEligible) return { ready: false };
+
+  const billingSnap = await billingRef(sub.memberId).get();
+  const billingData = billingSnap.data() || {};
+  const cardOnFile = billingData.cardOnFile === true;
+  const isMembership = sub.type === 'membership_request';
+  const datesReady = isMembership || !!sub.datesConfirmedAt;
+  if (!cardOnFile || !datesReady) return { ready: false };
+
+  const claimed = await db.runTransaction(async (tx) => {
+    const freshSnap = await tx.get(subRef);
+    const fresh = freshSnap.data();
+    if (!fresh || fresh.billingFinalized) return false;
+    tx.set(subRef, { billingFinalized: true }, { merge: true });
+    return true;
+  });
+  if (!claimed) return { ready: false, alreadyClaimed: true };
+
+  // From here on: run the existing charge logic, then send the
+  // confirmation email, then mark 'confirmed'. Errors are recorded, not
+  // thrown back to the caller — confirmCardOnFile and markDatesConfirmed
+  // must still report success for the write THEY made; a downstream charge
+  // failure is a distinct, separately-surfaced problem. Recorded in TWO
+  // places, same as every other needsReview-worthy failure in this file
+  // (createMembershipSubscription, chargeScheduledReservations): on the
+  // submission itself (finalizeError — request-scoped detail, which
+  // booking/what failed) AND on the member's billing doc (needsReview —
+  // so this ALSO surfaces on the existing Members-table badge, not just
+  // wherever the Requests view chooses to show finalizeError).
+  try {
+    let emailResult;
+    // Populated two ways: directly, for the service/overnight branch, on a
+    // failed immediate charge (runServiceOrOvernightCharge's own catch
+    // never rethrows — a failed charge must never block confirming the
+    // booking, matching confirmServiceRequest/confirmOvernight's original
+    // posture); or via the outer catch below, for a membership charge
+    // failure — runChargeCurrentMonthWalks's own throw DOES still propagate
+    // out of this try block (unlike the service/overnight case), so it's
+    // this function's outer catch, not this variable, that ends up
+    // recording it — see that catch's own comment.
+    let chargeFailedMessage = null;
+    if (isMembership) {
+      const subResult = await runCreateMembershipSubscription(submissionId, sub.memberId);
+      if (!subResult.skipped) {
+        await runGenerateInitialWalks(submissionId, sub.memberId);
+        // Not locally wrapped — runChargeCurrentMonthWalks marks
+        // e.isChargeFailure itself now, at the one point inside it where a
+        // real Stripe charge attempt fails (see its own paymentIntents.create
+        // catch), so whatever it throws already carries the right
+        // classification by the time it reaches the outer catch below. A
+        // brand-new membership's first charge failing still leaves the
+        // WHOLE finalize stuck (subscription + walks + this charge, as one
+        // unit, never reaching 'confirmed') rather than letting it through
+        // as "confirmed but unpaid" the way service/overnight can — that's
+        // a bigger, deliberate-if-wanted behavior change this isn't making,
+        // unaffected by where the marker gets set.
+        await runChargeCurrentMonthWalks(sub.memberId);
+      }
+      emailResult = await sendMembershipConfirmationEmail(sub.memberId, submissionId);
+    } else {
+      const chargeResult = await runServiceOrOvernightCharge(sub, submissionId, sub.memberId, sub);
+      emailResult = await sendServiceOrOvernightConfirmationEmail(sub, submissionId, sub.memberId, sub, chargeResult);
+      if (chargeResult.paymentStatus === 'failed') {
+        chargeFailedMessage = `Charge failed: ${chargeResult.chargeError || 'unknown error'}`;
+      }
+    }
+    // Clears any PRIOR finalizeError/finalizeErrorAt/finalizeErrorKind —
+    // this path is also what a successful retry after a fixed failure runs
+    // through (see finalizeSubmissionIfReady's status gate below, which
+    // specifically allows a 'confirmed' + kind:'email_failed' submission
+    // back in here), and a stale error left on an otherwise-resolved
+    // request would keep showing in Needs Attention forever with nothing
+    // left to actually fix.
+    await subRef.set({
+      status: 'confirmed', confirmedAt: FieldValue.serverTimestamp(),
+      finalizeError: null, finalizeErrorAt: null, finalizeErrorKind: null,
+    }, { merge: true });
+
+    // Both checked AFTER the write above, not before — recordFinalizeFailure
+    // sets finalizeError, and that write unconditionally clears it (the
+    // clear is what lets a successful retry resolve its OWN prior error).
+    // Setting it first would just have it wiped out by the very next line.
+    // Neither ever blocks 'confirmed' from being set: a failed charge or a
+    // failed confirmation email are both real problems worth a human
+    // noticing, but neither undoes a booking that otherwise went through —
+    // same posture confirmServiceRequest/confirmOvernight always had (an
+    // alert(), never a rollback). sendEmail specifically never throws on
+    // its own (every caller treats a failed send as a warning — see
+    // functions/lib/email.js), so without this check a failed confirmation
+    // email would pass through this try block completely silently.
+    //
+    // kind: charge_failed takes priority over email_failed when (rarely)
+    // both happen in the same run — it's the more consequential of the two
+    // (real money didn't move, vs. it did and only the notification
+    // didn't), and it's the one with the 24-hour retry restriction
+    // (retryFinalizeSubmission), so it shouldn't lose out to email_failed
+    // (no such restriction) if a caller only checked the stored kind
+    // without also checking the message text.
+    const finalizeWarnings = [];
+    let finalizeErrorKind = null;
+    if (chargeFailedMessage) {
+      finalizeWarnings.push(chargeFailedMessage);
+      finalizeErrorKind = 'charge_failed';
+    }
+    if (emailResult && emailResult.ok === false) {
+      finalizeWarnings.push(`Confirmation email failed to send: ${emailResult.error}`);
+      if (!finalizeErrorKind) finalizeErrorKind = 'email_failed';
+    }
+    if (finalizeWarnings.length) {
+      await recordFinalizeFailure(subRef, sub.memberId, finalizeWarnings.join(' '), finalizeErrorKind);
+    }
+  } catch (e) {
+    // e.isChargeFailure is set only inside runChargeCurrentMonthWalks's own
+    // paymentIntents.create() catch, at the exact point a real Stripe charge
+    // attempt just failed (and currentMonthCharge.amount/failedAt were just
+    // written there too, in that same catch — so kind:'charge_failed' below
+    // always has both). That function's five PRE-charge throws (no time
+    // slot, walk generation failed, no Stripe customer, no payment method,
+    // no unit_amount) never reach that catch and carry no marker, so they
+    // fall through to 'exception' here same as subscription creation, walk
+    // generation, or anything else reaching this catch (the service/
+    // overnight branch doesn't reach this catch for a charge failure at
+    // all — see runServiceOrOvernightCharge) — none of those ever attempted
+    // to move money, so none of them carry the same-key-retry risk a real
+    // charge_failed does.
+    await recordFinalizeFailure(subRef, sub.memberId, e.message, e.isChargeFailure ? 'charge_failed' : 'exception');
+  }
+
+  return { ready: true };
+}
+
+// Records a finalize-step failure durably in the two places an admin might
+// look: finalizeError on the submission itself (request-scoped — which
+// booking, what failed), and needsReview on the member's billing doc (so
+// it also surfaces on the existing Members-table badge — renderBillingBadge,
+// admin/dashboard.html). Never overwrites an existing, still-unresolved
+// needsReview reason — an admin already looking at one flagged problem for
+// this member shouldn't have it silently swapped for a different one.
+// kind: 'exception' | 'charge_failed' | 'email_failed' — always written in
+// the SAME set() call as finalizeError, never as a follow-up write, so a
+// doc can never carry an error with no kind (the dashboard branches its
+// entire Retry-vs-Dismiss-only treatment on this field). Callers must pass
+// one; there is no default.
+async function recordFinalizeFailure(subRef, memberId, message, kind) {
+  console.error(`finalizeSubmissionIfReady (${kind}): ${message}`);
+  await subRef.set({
+    finalizeError: message, finalizeErrorAt: FieldValue.serverTimestamp(),
+    finalizeErrorKind: kind,
+    // Clears the claim so a retry (retryFinalizeSubmission, or the next
+    // organic confirmCardOnFile/markDatesConfirmed trigger) can actually
+    // run finalizeSubmissionIfReady's body again — see that function's own
+    // transaction-claim comment. Safe now that runCreateMembershipSubscription
+    // has its own idempotency guard (the one Stripe call in the finalize
+    // path that didn't already have one); every other step here
+    // (chargeCustomerCard, runChargeCurrentMonthWalks, walk-doc creation,
+    // sendEmail) was already retry-safe on its own.
+    //
+    // Clearing this is harmless even for kind:'charge_failed', which never
+    // becomes retryable regardless (see finalizeSubmissionIfReady's status
+    // gate and retryFinalizeSubmission's own explicit rejection of that
+    // kind) — an unclaimed flag on a submission nothing will re-enter
+    // through isn't a hazard, just an unused door.
+    billingFinalized: false,
+  }, { merge: true }).catch(() => {});
+  try {
+    const billingSnap = await billingRef(memberId).get();
+    if (!billingSnap.data()?.needsReview) {
+      await billingRef(memberId).set({
+        needsReview: true, needsReviewReason: 'finalize_charge_failed',
+      }, { merge: true });
+    }
+  } catch (writeErr) {
+    console.error(`finalizeSubmissionIfReady: failed to write needsReview for ${memberId}:`, writeErr.message);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Admin-triggered retry for a request stuck with a recorded finalizeError.
+// Distinct from dismissing a needsReview/finalizeError flag: dismiss means
+// "I fixed this manually, stop flagging it" (a plain field clear, no code
+// runs); this means "run finalize again and see if it goes through now."
+// Requires an existing finalizeError so it can't be used to force-finalize
+// something that was never actually attempted or flagged — same
+// precondition-gating posture as every other admin action in this file.
+// Gated on STILL having finalizeError rather than just existing, since a
+// stale/dismissed one shouldn't be retryable.
+//
+// kind: 'charge_failed' gets an EXTRA check, HERE, not just left to
+// finalizeSubmissionIfReady's own status gate — this function is directly
+// callable, so the dashboard's own gating is not a security or correctness
+// boundary on its own. Covers TWO distinct Stripe idempotency keys, one per
+// type: service/overnight's charge (chargeCustomerCard) uses
+// `charge-saved-card:${submissionId}`; membership's monthly charge
+// (runChargeCurrentMonthWalks) uses `current-month-walks:${memberId}:${periodKey}`
+// — unrelated to any submissionId, since it bills the member's whole month,
+// not one request. Both expire ~24 hours after the failed attempt; before
+// that, a same-key retry can't do anything useful (replays the cached
+// failure, or errors on a parameter mismatch if the payment method
+// changed) — the check below rejects anything sooner, which is purely an
+// efficiency/clarity thing (no point letting an admin "retry" into a
+// guaranteed no-op).
+//
+// It is NOT what prevents a double-charge once 24h has passed — this
+// function has no way to know whether the admin already charged the
+// booking manually in Stripe in the meantime (that happens entirely
+// outside this codebase; nothing here observes it). That protection is the
+// dashboard's confirm() dialog, shown before this is ever called, asking
+// the admin to actively confirm they haven't already charged manually.
+// See chargeCustomerCard's idempotencyKey comment for the underlying
+// mechanism this is all working around.
+// ─────────────────────────────────────────────────────────────────────────
+exports.retryFinalizeSubmission = onCall({
+  secrets: [STRIPE_SECRET_KEY, RESEND_API_KEY],
+}, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { submissionId } = request.data || {};
+  if (!submissionId) throw new HttpsError('invalid-argument', 'submissionId is required.');
+
+  const subSnap = await db.collection('submissions').doc(submissionId).get();
+  const sub = subSnap.data();
+  if (!sub) throw new HttpsError('not-found', 'Submission not found.');
+  if (!sub.finalizeError) {
+    throw new HttpsError('failed-precondition', 'This request has no recorded finalize failure to retry.');
+  }
+  if (sub.finalizeErrorKind === 'charge_failed') {
+    // Gated on kind alone, not also on status === 'confirmed' — a
+    // membership charge failure (runChargeCurrentMonthWalks throwing,
+    // caught and re-marked above) never reaches 'confirmed' at all, it
+    // stays at 'pending'/'account_created' the same as any other stuck
+    // exception. The 24h risk this check exists for doesn't care what
+    // status the doc is sitting at; it cares how long ago Stripe actually
+    // processed the failed charge attempt.
+    //
+    // The failure timestamp lives in a different place depending on type:
+    // service/overnight's charge (chargeCustomerCard) writes lastChargeAttempt
+    // onto the SUBMISSION; membership's (runChargeCurrentMonthWalks) writes
+    // currentMonthCharge onto the MEMBER's billing subdoc — that one charges
+    // a member's monthly total, not any single submission, so it was never
+    // going to live on this doc. No timestamp at all shouldn't happen —
+    // finalizeErrorKind only ever becomes 'charge_failed' at the exact spot
+    // each side writes its own failedAt in the same breath (chargeCustomerCard,
+    // runChargeCurrentMonthWalks's paymentIntents.create catch) — but if it's
+    // somehow missing, reject — the risk here is a double-charge, so "can't
+    // verify 24h have passed" defaults to the same outcome as "24h haven't
+    // passed."
+    const isMembership = sub.type === 'membership_request';
+    let failedAtRaw = null;
+    if (isMembership) {
+      const billingSnap = await billingRef(sub.memberId).get();
+      failedAtRaw = billingSnap.data()?.currentMonthCharge?.failedAt || null;
+    } else {
+      failedAtRaw = sub.lastChargeAttempt?.failedAt || null;
+    }
+    const failedAt = failedAtRaw?.toDate ? failedAtRaw.toDate() : null;
+    const hoursSinceFailure = failedAt ? (Date.now() - failedAt.getTime()) / (60 * 60 * 1000) : null;
+    if (hoursSinceFailure === null || hoursSinceFailure < 24) {
+      throw new HttpsError('failed-precondition', "This charge failed less than 24 hours ago — Stripe's idempotency key for it is still active, so retrying now would just replay the same failure, not a genuine new attempt. Charge manually in Stripe and dismiss, or wait until 24 hours have passed and retry here.");
+    }
+  }
+
+  // viaExplicitRetry: true — this IS the explicit-retry path
+  // finalizeSubmissionIfReady's own gate requires for a charge_failed doc,
+  // on top of (not instead of) the 24h check just above and the dashboard's
+  // confirm() dialog before this was ever called.
+  const result = await finalizeSubmissionIfReady(submissionId, { viaExplicitRetry: true });
+  if (!result.ready) {
+    throw new HttpsError('failed-precondition', "This request isn't currently eligible to finalize — card and dates may no longer both be ready, or it may already be finalized.");
+  }
+  return result;
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Splits "dates confirmed" from "charged" for service_request/
+// overnight_request. Previously one client-side action
+// (confirmServiceRequest/confirmOvernight) reviewed dates, wrote the
+// walk/overnights doc, AND charged, all together. Under the new flow a
+// net-new service_request client has no card on file yet at this point —
+// so "dates locked in" and "billable" are no longer always the same
+// moment. This writes the reviewed values and creates the walk/overnights
+// doc (same as before, see runServiceOrOvernightBookingDoc), but the
+// charge itself is deferred to finalizeSubmissionIfReady, which only fires
+// once a card is confirmed too.
+//
+// For a RETURNING member (portal-submitted service_request, or any
+// overnight_request — both always have an existing card in billing
+// already), finalize fires in this same call, so the end result is
+// unchanged in practice from today — just routed through the shared
+// finalize path instead of charging inline.
+//
+// `reviewed` values are admin-reviewed and passed in exactly as
+// confirmServiceRequest/confirmOvernight's own review UI computes them
+// today (rev-service, rev-start, rev-end, rev-total-override, visit-
+// schedule review) — this function doesn't re-derive pricing or re-run the
+// review logic, it commits what the admin already reviewed. Same division
+// of responsibility as completeMeetGreetAndCreateAccount's `overrides`.
+//
+// DIFFERENCE FROM TODAY: startDate/endDate are built as noon UTC
+// (`${dateStr}T12:00:00Z`), not noon in the admin's browser timezone like
+// confirmServiceRequest/confirmOvernight's own startDate/endDate fields
+// currently are. Same calendar date either way; only the exact stored
+// instant changes. This matches the convention the walk-doc write already
+// uses elsewhere (generateWalksForMember, and confirmServiceRequest's OWN
+// walk-doc block, per its comment: "NOT startDate ... which is noon in the
+// admin's OWN browser timezone, not UTC") — a real, deliberate fix to an
+// existing inconsistency, not an accidental one.
+// ─────────────────────────────────────────────────────────────────────────
+exports.markDatesConfirmed = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KEY] }, async (request) => {
+  await assertIsAdmin(request.auth);
+  const {
+    submissionId, service, startDate: startDateStr, endDate: endDateStr,
+    timeSlot, extraPet, medication, visitSchedule, amountInDollars, unitCount,
+  } = request.data || {};
+  if (!submissionId) throw new HttpsError('invalid-argument', 'submissionId is required.');
+  if (typeof amountInDollars !== 'number' || amountInDollars < 0) {
+    throw new HttpsError('invalid-argument', 'amountInDollars must be a non-negative number.');
+  }
+
+  const subRef = db.collection('submissions').doc(submissionId);
+  const subSnap = await subRef.get();
+  const sub = subSnap.data();
+  if (!sub) throw new HttpsError('not-found', 'Submission not found.');
+  if (!['service_request', 'overnight_request'].includes(sub.type)) {
+    throw new HttpsError('failed-precondition', `markDatesConfirmed doesn't apply to type "${sub.type}".`);
+  }
+  if (!sub.memberId) {
+    throw new HttpsError('failed-precondition', 'This request has no linked account.');
+  }
+  if (sub.status === 'declined') {
+    throw new HttpsError('failed-precondition', 'This request was declined.');
+  }
+  if (sub.datesConfirmedAt) {
+    throw new HttpsError('failed-precondition', 'Dates were already confirmed for this request.');
+  }
+
+  const startDate = startDateStr ? Timestamp.fromDate(new Date(`${startDateStr}T12:00:00Z`)) : (sub.startDate || null);
+  const endDate = endDateStr ? Timestamp.fromDate(new Date(`${endDateStr}T12:00:00Z`)) : (sub.endDate || null);
+  const reviewed = {
+    service: service || sub.service,
+    startDate, endDate,
+    timeSlot: timeSlot ?? sub.timeSlot ?? null,
+    extraPet: !!extraPet, medication: !!medication,
+    visitSchedule: visitSchedule || null,
+    amountInDollars,
+    // Only meaningful for the "overnight-stay via service_request" charge
+    // branch's confirmation email (portal-service-confirmed's unitCount —
+    // nights stayed). Passed through from the client's own
+    // calculateServiceTotal() call rather than re-derived here: pricing.js's
+    // day-counting formula for that template isn't duplicated server-side,
+    // so re-deriving it here risks silently disagreeing with the number the
+    // client actually priced the charge on. Defaults to 1 wherever it
+    // doesn't apply (walk, drop-in, overnight_request all ignore it).
+    unitCount: typeof unitCount === 'number' && unitCount > 0 ? unitCount : 1,
+  };
+
+  await runServiceOrOvernightBookingDoc(sub, submissionId, sub.memberId, reviewed);
+
+  await subRef.set({
+    ...reviewed,
+    // Legacy field-name mirrors, written alongside the canonical ones
+    // above — admin/dashboard.html's read-only post-confirmation display
+    // (the static field list shown once status is 'confirmed'/'declined',
+    // NOT the review UI, which already reads the canonical names) still
+    // reads estimatedTotal for both types, and addonExtraPet/addonMedication
+    // for overnight_request specifically. Each type's own original public/
+    // portal form used a different name for the same value at creation
+    // time (service-request.html: extraPet/medication/estimatedTotal;
+    // portal-request-extras.html: addonExtraPet/addonMedication/
+    // estimatedTotal) — that display code reads whichever name its type
+    // originally used and was never updated for what this function
+    // introduced. Writing both here is simpler and less error-prone than
+    // hunting down and changing every reader; `reviewed` above stays the
+    // single internal contract everywhere else (runServiceOrOvernightBookingDoc,
+    // runServiceOrOvernightCharge, the confirmation email) — only this
+    // Firestore write also mirrors the legacy names.
+    estimatedTotal: amountInDollars,
+    ...(sub.type === 'overnight_request' ? { addonExtraPet: reviewed.extraPet, addonMedication: reviewed.medication } : {}),
+    datesConfirmedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  const finalizeResult = await finalizeSubmissionIfReady(submissionId);
+  return { success: true, ...finalizeResult };
 });
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -350,18 +350,15 @@
       const endStr    = document.getElementById('endDate')?.value || '';
       const isOvernight = service === 'overnight';
 
-      // Look up member name and Stripe customer ID from Firestore — the
-      // customer ID is copied onto the submission (same pattern
-      // portal-extend-walk.html already uses) so chargeSavedCard has
-      // something to charge against when admin confirms this request.
+      // Look up member name from Firestore for the submission's display
+      // fields. No Stripe customer lookup here anymore — chargeCustomerCard
+      // (functions/index.js) reads stripeCustomerId from the member's own
+      // billing subdoc directly now, keyed by memberId, not from a copy on
+      // the submission.
       const { getFirestore: getFS, doc: fsDoc, getDoc: fsGetDoc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
       const db2 = getFS(app);
       const memberSnap = await fsGetDoc(fsDoc(db2, 'members', user.uid));
       const memberName = memberSnap.exists() ? (memberSnap.data().name || '') : '';
-      // Billing (M-1) lives in members/{uid}/private/billing now.
-      // TODO(post-launch): resolve server-side in the charge path from memberId.
-      const billingSnap = await fsGetDoc(fsDoc(db2, 'members', user.uid, 'private', 'billing'));
-      const stripeCustomerId = billingSnap.exists() ? (billingSnap.data().stripeCustomerId || '') : '';
 
       // Parse date strings without timezone shift (treat as local dates)
       function localDateToTimestamp(str) {
@@ -392,7 +389,6 @@
         addonExtraPet:   document.getElementById('addonExtraPet')?.checked  || false,
         addonMedication: document.getElementById('addonMedication')?.checked || false,
         estimatedTotal: window._lastEstimatedTotal || 0,
-        stripeCustomerId,
         status: 'pending',
         read:   false,
         createdAt: serverTimestamp(),

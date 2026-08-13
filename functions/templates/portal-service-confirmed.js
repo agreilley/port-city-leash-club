@@ -51,6 +51,12 @@ function html(data) {
     ],
   });
 
+  // isNewAccount is only ever true from confirmWalkExtension now — a new
+  // customer's meet-greet-to-account-creation-to-first-booking path moved
+  // entirely to completeMeetGreetAndCreateAccount + portal-access, which
+  // send their own portal-setup link before this template's send site
+  // (sendServiceOrOvernightConfirmationEmail) is ever reached. Don't assume
+  // this branch still covers a new customer's confirmation email.
   const portalSection = data.isNewAccount && data.portalSetupLink ? `
     <p style="margin:20px 0 0;">Since this is your first time booking with us, we've set up a portal account so you can see your booking, update your ${possessive(petCount, 'pet', 'pets')} profile, and message us anytime.</p>
     ${renderButtonHtml({ href: data.portalSetupLink, label: 'Set Up Your Portal Access' })}

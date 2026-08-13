@@ -394,6 +394,26 @@
         <div class="stat-card"><div class="stat-label">Walks This Week</div><div class="stat-value" id="stat-walks">–</div><div class="stat-sub">Scheduled</div></div>
         <div class="stat-card"><div class="stat-label">Unassigned Walks</div><div class="stat-value" id="stat-unassigned" style="color:var(--rust);">–</div><div class="stat-sub">Need assignment</div></div>
         <div class="stat-card"><div class="stat-label">Active Walkers</div><div class="stat-value" id="stat-walkers">–</div><div class="stat-sub">On team</div></div>
+        <!-- Needs Attention: aggregates two failure modes that otherwise
+             have no visibility until an admin happens to open the right
+             view and, in the Requests case, the right filter — a finalize
+             failure (submissions.finalizeError, set by
+             finalizeSubmissionIfReady in functions/index.js when a
+             confirmed request's charge/subscription/email step fails after
+             the meet & greet gate has already passed) and any member
+             billing.needsReview flag (subscription failures, referral
+             credit issues, walk-extension credit failures, etc. — see
+             NEEDS_REVIEW_LABELS). Both used to be surfaced only via a
+             synchronous alert() in the admin's own browser at the moment
+             of failure; under the new async finalize flow there's often no
+             admin present when the failure happens, so this stat exists
+             specifically so a failure that occurred with nobody watching
+             is still seen, on arrival, without filtering for it. -->
+        <div class="stat-card" id="stat-needs-attention-card" style="display:none;">
+          <div class="stat-label">Needs Attention</div>
+          <div class="stat-value" id="stat-needs-attention" style="color:var(--rust);">–</div>
+          <div class="stat-sub" id="stat-needs-attention-sub"></div>
+        </div>
       </div>
       <div class="table-card">
         <div class="table-header">
@@ -587,6 +607,7 @@
       <div class="request-filters" style="margin-top:-12px;">
         <button class="request-status-filter active" onclick="filterRequestStatus('pending', this)">Pending</button>
         <button class="request-status-filter" onclick="filterRequestStatus('completed', this)">Completed</button>
+        <button class="request-status-filter" id="requestsNeedsAttentionFilter" onclick="filterRequestStatus('needs_attention', this)" style="display:none;">Needs Attention</button>
       </div>
       <div id="requestsList"><div class="loading-spinner">Loading...</div></div>
     </div>
@@ -862,6 +883,20 @@
   <div class="modal">
     <button class="modal-close" onclick="closeModal('requestModal')">×</button>
     <div class="modal-title" id="requestModalTitle"></div>
+    <!-- Needs Attention notice: finalizeSubmissionIfReady's finalizeError
+         (functions/index.js) — a charge/subscription/email failure after
+         the meet & greet + card + dates gate already passed. Fixed element
+         outside requestModalContent, same pattern as the meet-greet gate
+         below — shown/hidden in openRequestItem, independent of which
+         type-specific branch renders the rest of the modal, so every
+         request type gets this notice for free rather than needing it
+         copy-pasted into each branch. -->
+    <div id="requestFinalizeErrorNotice" style="display:none;font-size:12px;color:#b45309;background:#fffbeb;border-radius:6px;padding:8px 12px;margin-bottom:16px;"></div>
+    <!-- Generic informational note, distinct from the error notice above —
+         e.g. "awaiting a card in the portal" for an account_created
+         submission with nothing left for admin to click. Shown/hidden in
+         openRequestItem alongside the other fixed elements here. -->
+    <div id="requestStatusNote" style="display:none;font-size:12px;color:var(--text-mid);background:var(--sand-light);border-radius:6px;padding:8px 12px;margin-bottom:16px;"></div>
     <div id="requestModalContent"></div>
     <hr class="modal-divider">
     <!-- Membership requests only: converting starts real billing, so the
@@ -1363,11 +1398,26 @@ function subscribeMembers() {
       // pick the reason-specific NEEDS_REVIEW_LABELS entry, so without it
       // every reason silently fell back to the generic "Needs review" text
       // on this table (the member detail modal fetches billing directly and
-      // was unaffected).
-      return [m.id, { billingStatus: data.billingStatus, needsReview: !!data.needsReview, needsReviewReason: data.needsReviewReason || null }];
+      // was unaffected). cardOnFile added so openRequestItem's
+      // awaiting-card notice can check the real flag instead of inferring
+      // it from status — see the "waiting on a card" branches there.
+      // currentMonthChargeAmount added so retryRequestFinalize's confirm()
+      // dialog can name a real dollar figure for a MEMBERSHIP charge_failed
+      // — that failure comes from runChargeCurrentMonthWalks
+      // (functions/index.js), which bills the member's whole month, not
+      // any single submission, so the amount lives here on billing, not on
+      // the request the dialog is otherwise keyed off of.
+      return [m.id, {
+        billingStatus: data.billingStatus,
+        needsReview: !!data.needsReview,
+        needsReviewReason: data.needsReviewReason || null,
+        cardOnFile: !!data.cardOnFile,
+        currentMonthChargeAmount: typeof data.currentMonthCharge?.amount === 'number' ? data.currentMonthCharge.amount : null,
+      }];
     }));
     memberBilling = Object.fromEntries(entries);
     renderMembersTable();
+    updateNeedsAttentionStat();
   });
 }
 
@@ -1389,6 +1439,38 @@ function subscribeWalkers() {
   });
 }
 
+// Needs Attention stat (Overview view) — two independent failure sources,
+// combined into one always-visible count so neither needs an admin to
+// think to look for it: submissions.finalizeError (finalizeSubmissionIfReady,
+// functions/index.js — a charge/subscription/email failure after the meet
+// & greet + card + dates gate already passed) and members' billing.needsReview
+// (every OTHER reason a member can be flagged — see NEEDS_REVIEW_LABELS).
+// Called from both subscribeRequests and subscribeMembers, since it
+// depends on both allRequests and memberBilling and either can update
+// independently — whichever fires last just recomputes over both again,
+// same as updateStats() already does for its own inputs.
+function updateNeedsAttentionStat() {
+  const failedSubmissions = allRequests.filter(i => i.finalizeError && i.status !== 'declined').length;
+  // needsReviewReason 'finalize_charge_failed' is EXCLUDED here — it's
+  // recordFinalizeFailure's own mirror of a submission already counted
+  // above (functions/index.js), written purely so the same problem also
+  // surfaces on the Members-table badge, not a second independent problem.
+  // Counting both sides made one failure show as 2. Every OTHER
+  // needsReview reason (subscription_creation_failed, walk_extension_credit_failed,
+  // etc.) has no submission-level counterpart and stays counted normally.
+  const flaggedMembers = Object.values(memberBilling)
+    .filter(b => b.needsReview && b.needsReviewReason !== 'finalize_charge_failed').length;
+  const total = failedSubmissions + flaggedMembers;
+  const card = document.getElementById('stat-needs-attention-card');
+  if (!card) return; // guards the render-before-DOM-ready case, same as other stat setters below
+  card.style.display = total > 0 ? '' : 'none';
+  document.getElementById('stat-needs-attention').textContent = total;
+  const parts = [];
+  if (failedSubmissions > 0) parts.push(`${failedSubmissions} failed charge${failedSubmissions === 1 ? '' : 's'}`);
+  if (flaggedMembers > 0) parts.push(`${flaggedMembers} billing issue${flaggedMembers === 1 ? '' : 's'}`);
+  document.getElementById('stat-needs-attention-sub').textContent = parts.join(' · ');
+}
+
 function subscribeRequests() {
   const q = query(collection(db, 'submissions'), orderBy('createdAt', 'desc'));
   onSnapshot(q, snap => {
@@ -1399,6 +1481,7 @@ function subscribeRequests() {
     badge.textContent = unread;
     badge.style.display = unread > 0 ? 'inline' : 'none';
     renderRequests();
+    updateNeedsAttentionStat();
   });
 }
 
@@ -1912,6 +1995,10 @@ const NEEDS_REVIEW_LABELS = {
     label: 'Reservation charge failed',
     title: "A confirmed pet sitting reservation's scheduled charge (24 hours after confirmation) failed — see the Cloud Functions logs for chargeScheduledReservations for the specific overnight and error, and the overnights doc's chargeAttempt field for the failure reason. Charge manually in Stripe once resolved.",
   },
+  finalize_charge_failed: {
+    label: 'Finalize failed',
+    title: "This member's card-on-file and dates were both confirmed, but something failed while starting billing or sending the confirmation — a subscription, a charge, or the email. See the specific request in the Requests view (it carries its own finalizeError with the exact failure) for what to fix, then resolve manually and dismiss both flags.",
+  },
 };
 function renderBillingBadge(billing) {
   if (!billing) return '–';
@@ -1954,11 +2041,38 @@ window.filterMembers = (val) => renderMembersTable(val);
 // ── REQUESTS ─────────────────────────────────────────────────────────────────
 function renderRequests() {
   const container = document.getElementById('requestsList');
+
+  // Needs Attention filter button — same visibility pattern as
+  // requestsBadge/payoutsBadge: hidden entirely when there's nothing to
+  // show, rather than a permanent empty option in the row. finalizeError
+  // is set by finalizeSubmissionIfReady (functions/index.js) when a
+  // request's charge/subscription/email step fails after the meet & greet
+  // + card + dates gate has already passed — status !== 'declined' since
+  // an admin who declines a broken request has resolved it, independent of
+  // whatever finalize failure led up to the decline.
+  const naFilterBtn = document.getElementById('requestsNeedsAttentionFilter');
+  const needsAttentionCount = allRequests.filter(i => i.finalizeError && i.status !== 'declined').length;
+  naFilterBtn.style.display = needsAttentionCount > 0 ? '' : 'none';
+  // Falls back to 'pending' rather than staying stuck on a filter that just
+  // disappeared out from under it (e.g. the last flagged item was resolved
+  // while this filter was active).
+  if (needsAttentionCount === 0 && currentStatusFilter === 'needs_attention') {
+    currentStatusFilter = 'pending';
+    document.querySelectorAll('.request-status-filter').forEach(b => b.classList.remove('active'));
+    document.querySelector('.request-status-filter').classList.add('active');
+  }
+
   const filtered = allRequests
     .filter(i => currentRequestFilter === 'all' || i.type === currentRequestFilter)
-    .filter(i => currentStatusFilter === 'all' || isRequestCompleted(i) === (currentStatusFilter === 'completed'));
+    .filter(i => {
+      if (currentStatusFilter === 'all') return true;
+      if (currentStatusFilter === 'needs_attention') return !!i.finalizeError && i.status !== 'declined';
+      return isRequestCompleted(i) === (currentStatusFilter === 'completed');
+    });
   if (!filtered.length) {
-    const emptyMsg = currentStatusFilter === 'completed' ? 'No completed submissions yet' : 'No pending submissions — you\'re caught up';
+    const emptyMsg = currentStatusFilter === 'completed' ? 'No completed submissions yet'
+      : currentStatusFilter === 'needs_attention' ? 'Nothing needs attention right now'
+      : 'No pending submissions — you\'re caught up';
     container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📬</div><div class="empty-state-title">${emptyMsg}</div></div>`;
     return;
   }
@@ -1978,20 +2092,33 @@ function renderRequests() {
     else if (item.type === 'vacation_hold_refund') preview = `${escapeHtml(item.cancelledWalkCount || 0)} walk${item.cancelledWalkCount === 1 ? '' : 's'} · ${item.status === 'needs_review' ? "refund couldn't be computed" : `suggested $${escapeHtml(item.suggestedRefundAmount || 0)}`}`;
     else preview = escapeHtml(item.email || '') + (item.dogName ? ' · ' + escapeHtml(item.dogName) : item.dogNames ? ' · ' + escapeHtml(item.dogNames) : '');
     // paymentStatus is either chargeAndTrackPayment's fixed
-    // 'charged'/'skipped'/'failed' enum, or 'scheduled' (confirmServiceRequest/
-    // confirmOvernight's deferred-charge path for a check-in/overnight
-    // reservation — see chargeScheduledReservations, functions/index.js) —
-    // never user-supplied, safe as-is. 'scheduled' is excluded from this
-    // badge: a reservation waiting on its 24-hour charge window isn't a
-    // problem the way an actual failed/skipped charge is.
+    // 'charged'/'skipped'/'failed' enum, or 'scheduled' (runServiceOrOvernightCharge's
+    // deferred-charge path for a check-in/overnight reservation, functions/index.js
+    // — see chargeScheduledReservations for the cron that actually charges
+    // it) — never user-supplied, safe as-is. 'scheduled' is excluded from
+    // this badge: a reservation waiting on its 24-hour charge window isn't
+    // a problem the way an actual failed/skipped charge is.
     const paymentBadge = item.paymentStatus && item.paymentStatus !== 'charged' && item.paymentStatus !== 'scheduled'
       ? `<span class="status-badge ${item.paymentStatus === 'failed' ? 'unassigned' : 'pending'}" title="Payment status: ${item.paymentStatus}">${item.paymentStatus === 'failed' ? 'Charge Failed' : 'Unpaid'}</span>`
+      : '';
+    // Separate from paymentBadge above — finalizeError (finalizeSubmissionIfReady,
+    // functions/index.js) covers subscription/email failures too, not just a
+    // failed card charge, and can be set even when paymentStatus itself
+    // looks fine (e.g. a membership subscription failure with no
+    // paymentStatus field at all — that's a service_request/overnight_request-
+    // only field). Independent of item.status !== 'declined' shown to the
+    // admin resolving it here, not just the filter's own count above — a
+    // declined request's finalizeError, if any, is history, not a live
+    // problem needing attention.
+    const finalizeErrorBadge = item.finalizeError && item.status !== 'declined'
+      ? `<span class="status-badge unassigned" title="${escapeHtml(item.finalizeError)}">Needs Attention</span>`
       : '';
     return `<div class="list-row ${item.read ? '' : 'unread'}" onclick="openRequestItem('${item.id}')">
       <div class="request-meta">
         <span class="request-type ${typeClass}">${escapeHtml(typeLabels[item.type] || item.type)}</span>
         <span class="request-name">${escapeHtml(item.name || item.ownerName || item.walkerName || item.memberName || 'Unknown')}</span>
         ${paymentBadge}
+        ${finalizeErrorBadge}
         <span class="request-time">${time}</span>
       </div>
       <div class="request-preview">${preview}</div>
@@ -2011,6 +2138,115 @@ window.filterRequestStatus = (status, btn) => {
   document.querySelectorAll('.request-status-filter').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderRequests();
+};
+
+// Manually clears a submission's finalizeError once admin has resolved the
+// underlying issue themselves (in Stripe, in Firestore, wherever the fix
+// actually lives) — same "I fixed this" acknowledgment as
+// dismissMemberBillingReview, no in-app retry. A direct client updateDoc,
+// not a Cloud Function, since submissions/{id} already allows full admin
+// write (firestore.rules isAdmin() bypass) — same pattern the meet-greet
+// checkbox above already uses for this same collection. Updates the local
+// allRequests entry and re-renders both the list and the Needs Attention
+// stat so the badge/filter/stat-card all clear immediately, not on the
+// next onSnapshot tick.
+window.clearRequestFinalizeError = async (id) => {
+  if (!confirm('Dismiss this Needs Attention flag? Only do this once the underlying issue has actually been fixed.')) return;
+  try {
+    await updateDoc(doc(db, 'submissions', id), { finalizeError: null, finalizeErrorAt: null, finalizeErrorKind: null });
+    const item = allRequests.find(i => i.id === id);
+    if (item) { item.finalizeError = null; item.finalizeErrorAt = null; item.finalizeErrorKind = null; }
+    document.getElementById('requestFinalizeErrorNotice').style.display = 'none';
+
+    // Best-effort mirror clear: recordFinalizeFailure (functions/index.js)
+    // also sets the member's billing.needsReview, purely so this same
+    // problem is ALSO visible on the Members table — see
+    // updateNeedsAttentionStat's own comment for why that's excluded from
+    // the aggregate count rather than counted twice. Only cleared here
+    // when the reason still matches this exact mirror value — never
+    // touches needsReview if it's since become (or always was) a
+    // genuinely different, unrelated reason on this same member (e.g. a
+    // referral-credit issue), which must survive this dismiss untouched.
+    // A failure here is a warning, not a rollback — the submission-side
+    // dismiss above already succeeded and stands regardless; the member
+    // would just keep showing on the Members table until dismissed there.
+    if (item?.memberId && memberBilling[item.memberId]?.needsReviewReason === 'finalize_charge_failed') {
+      try {
+        const dismissBillingReview = httpsCallable(fns, 'dismissBillingReview');
+        await dismissBillingReview({ memberId: item.memberId });
+        memberBilling[item.memberId] = { ...memberBilling[item.memberId], needsReview: false, needsReviewReason: null };
+        renderMembersTable();
+      } catch (e) {
+        console.error(`Couldn't clear the mirrored billing flag for ${item.memberId}:`, e.message);
+      }
+    }
+
+    renderRequests();
+    updateNeedsAttentionStat();
+  } catch (e) {
+    alert(`Couldn't dismiss the flag: ${e.message}`);
+  }
+};
+
+// Re-runs finalizeSubmissionIfReady via retryFinalizeSubmission
+// (functions/index.js) — distinct from Dismiss above, which only clears
+// the flag without re-attempting anything.
+//
+// No confirm() for kind:'exception' or 'email_failed' — both are safe to
+// attempt freely (every step they touch is idempotent; worst case is
+// failing again with the same or a new error, never money moving twice).
+//
+// kind:'charge_failed' is different: past the 24-hour mark (which the
+// server itself enforces — see retryFinalizeSubmission), this genuinely
+// attempts a NEW charge against the member's current card. The server has
+// no way to know if the admin already charged this manually in Stripe
+// instead of waiting — that happens entirely outside this codebase. This
+// confirm() is the only thing standing between "I charged it manually
+// yesterday and forgot to dismiss" and Retry firing a real second charge
+// today. Names the actual amount so the admin is confirming a specific
+// number, not just an abstract "are you sure".
+window.retryRequestFinalize = async (id) => {
+  const item = allRequests.find(i => i.id === id);
+  if (item?.finalizeErrorKind === 'charge_failed') {
+    // Amount lives in different places depending on type: service/overnight
+    // charge_failed keys off item.amountInDollars (markDatesConfirmed,
+    // functions/index.js — the specific request's charge). A MEMBERSHIP
+    // charge_failed comes from runChargeCurrentMonthWalks, which bills the
+    // member's whole month, not this one request — there is no
+    // amountInDollars on the submission for that case at all, so it has to
+    // come from the member's own billing doc instead (currentMonthChargeAmount,
+    // added to memberBilling's fetch specifically for this).
+    const resolvedAmount = item.type === 'membership_request'
+      ? memberBilling[item.memberId]?.currentMonthChargeAmount
+      : item.amountInDollars;
+    const amount = typeof resolvedAmount === 'number' ? `$${resolvedAmount.toFixed(2)}` : 'the request total';
+    const confirmed = confirm(
+      `This attempts a NEW charge of ${amount} against this member's card on file — not a resend, a real charge.\n\n` +
+      `Only continue if you have NOT already charged this manually in Stripe. If you have, this would charge them twice.`
+    );
+    if (!confirmed) return;
+  }
+  const btn = document.getElementById('requestRetryFinalizeBtn');
+  if (btn) { btn.textContent = 'Retrying…'; btn.disabled = true; }
+  try {
+    const retryFinalizeSubmission = httpsCallable(fns, 'retryFinalizeSubmission');
+    await retryFinalizeSubmission({ submissionId: id });
+
+    closeModal('requestModal');
+    const msg = document.createElement('div');
+    msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2D9E5E;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
+    // retryFinalizeSubmission's response can't distinguish "retry succeeded"
+    // from "retry ran and failed again" — finalizeSubmissionIfReady returns
+    // { ready: true } either way (see its own comment). The live
+    // onSnapshot-driven Needs Attention badge/filter is the actual source
+    // of truth: gone means it cleared, still there means it didn't.
+    msg.textContent = 'Retry submitted — check Needs Attention to confirm it cleared.';
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 4000);
+  } catch (e) {
+    if (btn) { btn.textContent = 'Retry'; btn.disabled = false; }
+    alert(`Couldn't retry: ${e.message}`);
+  }
 };
 
 // ── REFERRAL CODES (read-only reporting) ──────────────────────────────────────
@@ -2503,6 +2739,51 @@ window.openRequestItem = async (id) => {
   if (!item) return;
   if (!item.read) await updateDoc(doc(db, 'submissions', id), { read: true });
 
+  const errNotice = document.getElementById('requestFinalizeErrorNotice');
+  if (item.finalizeError && item.status !== 'declined') {
+    errNotice.style.display = 'block';
+    // charge_failed IS retryable now — after 24h, Stripe's idempotency key
+    // for the original attempt expires and a retry becomes a genuine new
+    // charge (retryFinalizeSubmission enforces this server-side; see its
+    // own comment, functions/index.js). Before that, it isn't — retrying
+    // just replays the same cached failure or errors on a payment-method
+    // mismatch. The two real options are mutually exclusive, not sequential
+    // steps: charge manually in Stripe and dismiss, OR wait and retry here
+    // — never both, since retrying after a manual charge would charge the
+    // member twice. retryRequestFinalize adds an extra confirm() for this
+    // kind specifically, on top of the server's own 24h check, precisely
+    // for that scenario — the server has no way to know a manual Stripe
+    // charge happened, so the admin has to actively rule it out.
+    const isChargeFailed = item.finalizeErrorKind === 'charge_failed';
+    // Two different sentences depending on what actually failed to charge:
+    // service/overnight's immediate charge (runServiceOrOvernightCharge)
+    // never blocks 'confirmed', so that booking genuinely IS confirmed,
+    // just unpaid. A MEMBERSHIP charge_failed (runChargeCurrentMonthWalks
+    // throwing) is re-thrown, not swallowed — the whole finalize (subscription
+    // + walks + this charge) stays stuck, never reaching 'confirmed' — so
+    // saying "confirmed but unpaid" there would be flatly wrong about
+    // where things actually stand.
+    const guidanceHtml = isChargeFailed
+      ? `<div style="margin-top:6px;">${item.status === 'confirmed'
+          ? 'The booking is confirmed but unpaid.'
+          : "This request hasn't been confirmed yet — the charge failed before the membership could finish setting up."
+        } Two options, not both: charge manually in Stripe and dismiss — or wait 24 hours from the failed attempt and use Retry here for a genuine new attempt. Retrying after a manual charge would charge the member twice.</div>`
+      : '';
+    // Two distinct actions — Retry means "run finalize again, as-is"
+    // (retryFinalizeSubmission, functions/index.js); Dismiss means "I fixed
+    // this manually elsewhere, stop flagging it" (a plain field clear, no
+    // code runs).
+    errNotice.innerHTML = `${escapeHtml(item.finalizeError)}
+      ${guidanceHtml}
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn-secondary" id="requestRetryFinalizeBtn" style="padding:4px 12px;font-size:12px;" onclick="retryRequestFinalize('${id}')">Retry</button>
+        <button class="btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="clearRequestFinalizeError('${id}')">Dismiss</button>
+      </div>`;
+  } else {
+    errNotice.style.display = 'none';
+    errNotice.innerHTML = '';
+  }
+
   // Format a Firestore Timestamp or date string to readable date
   function fmtDate(val) {
     if (!val) return '–';
@@ -2966,27 +3247,59 @@ window.openRequestItem = async (id) => {
   const actionBtn = document.getElementById('requestActionBtn');
   const declineBtn = document.getElementById('requestDeclineBtn');
   declineBtn.style.display = 'none';
-  // Reset the gate on every open — it only applies to membership requests,
-  // and a previously-opened request must not leave the button enabled here.
+  // Reset the gate on every open — it only applies to membership_request
+  // and net-new service_request now, and a previously-opened request must
+  // not leave the button enabled here.
   const mgGate = document.getElementById('requestMeetGreetGate');
   const mgCheck = document.getElementById('requestMeetGreetCheck');
+  const statusNote = document.getElementById('requestStatusNote');
   mgGate.style.display = 'none';
   mgCheck.onchange = null;
+  statusNote.style.display = 'none';
   setActionBtnEnabled(actionBtn, true);
-  if (item.type === 'membership_request' && !item.memberId && item.status !== 'declined') {
-    actionBtn.textContent = 'Convert to Member'; actionBtn.style.display = 'block';
-    actionBtn.onclick = () => { closeModal('requestModal'); openAddMemberModal(item, item.id); };
 
-    // Decline: sets status 'declined' AND deletes the Stripe customer saved at
-    // signup. Goes through a Cloud Function (not a direct updateDoc like the
-    // other decline handlers) because the Stripe cleanup needs the secret key.
+  // Net-new account creation, gated on the meet & greet — applies to
+  // membership_request (always) and service_request ONLY when it has no
+  // memberId yet (the public/net-new path; a portal-submitted
+  // service_request already has memberId from creation — see
+  // portal-request-extras.html — and falls through to isUnresolvedServiceRequest
+  // below like it always has). completeMeetGreetAndCreateAccount
+  // (functions/index.js) is the shared Cloud Function behind both branches;
+  // see its header comment for why overnight_request never appears here —
+  // there's no public form for it, so it's never missing a memberId.
+  const needsAccountCreation = (item.type === 'membership_request' || item.type === 'service_request')
+    && !item.memberId && item.status !== 'declined';
+
+  if (needsAccountCreation) {
+    const isMembership = item.type === 'membership_request';
+    // Membership still detours through the Add Member modal — tier/zone/
+    // walker/schedule aren't on the submission at all, so admin has to set
+    // them before the account exists. service_request has nothing to
+    // review at this step (Travel tier, no schedule), so its button calls
+    // completeMeetGreetAndCreateAccount directly, no modal.
+    actionBtn.textContent = isMembership ? 'Convert to Member' : 'Create Account';
+    actionBtn.style.display = 'block';
+    actionBtn.onclick = isMembership
+      ? () => { closeModal('requestModal'); openAddMemberModal(item, item.id); }
+      : () => createServiceRequestAccount(item.id);
+
+    // Decline: for membership, goes through declineMembershipRequest (Stripe
+    // customer cleanup — see its own comment). service_request has no
+    // saved card at this stage under the new flow (that only ever happens
+    // in the portal, after an account exists), so its decline stays the
+    // plain status update declineServiceRequest already does.
     declineBtn.style.display = 'block';
-    declineBtn.onclick = () => declineMembershipRequest(item.id);
+    declineBtn.onclick = isMembership
+      ? () => declineMembershipRequest(item.id)
+      : () => declineServiceRequest(item.id, item);
 
-    // Converting a membership request creates the account and starts real
-    // recurring billing, so it's gated on confirming the meet & greet
-    // actually happened. Nothing enforces this server-side — it's a
-    // deliberate speed bump for the admin, not a security control.
+    // Creating the account starts real billing (membership) or is
+    // otherwise irreversible enough to warrant the same speed bump
+    // (service), so it's gated on confirming the meet & greet actually
+    // happened. completeMeetGreetAndCreateAccount ALSO checks this
+    // server-side (meetGreetCompleted must be true) — this checkbox is
+    // what gates the button being enabled at all, not the only thing
+    // standing between a click and an account anymore.
     // A request already marked stays marked, so reopening it doesn't
     // demand re-confirmation of something that already happened.
     const alreadyConfirmed = !!item.meetGreetCompletedAt;
@@ -2999,8 +3312,8 @@ window.openRequestItem = async (id) => {
       setActionBtnEnabled(actionBtn, on);
       document.getElementById('requestMeetGreetHint').style.display = on ? 'none' : 'block';
       // Recorded for accountability — when the meet & greet was confirmed,
-      // relative to when billing started. Unchecking clears it. A write
-      // failure must not leave the button enabled on a false premise.
+      // relative to when the account was created. Unchecking clears it. A
+      // write failure must not leave the button enabled on a false premise.
       try {
         await updateDoc(doc(db, 'submissions', item.id), {
           meetGreetCompletedAt: on ? serverTimestamp() : null,
@@ -3013,22 +3326,68 @@ window.openRequestItem = async (id) => {
         alert(`Couldn't save that: ${e.message}`);
       }
     };
+  } else if (item.type === 'membership_request' && item.status === 'account_created') {
+    // Account exists. If billing.cardOnFile is genuinely false, awaiting
+    // the member — finalizeSubmissionIfReady (functions/index.js) starts
+    // billing automatically the moment they do. If cardOnFile is already
+    // true, this ISN'T a normal waiting state — finalize should have run
+    // and didn't, which means something's stuck. Checking the real flag
+    // here (not inferring "must be waiting on a card" purely from status)
+    // is what stops this note from telling admin something false.
+    actionBtn.style.display = 'none';
+    statusNote.style.display = 'block';
+    statusNote.textContent = memberBilling[item.memberId]?.cardOnFile
+      ? "Card is already on file, but billing hasn't started. Check Needs Attention — this request may be stuck and need a retry."
+      : "Account created — waiting on the member to add a card in their portal. Billing starts automatically once they do.";
+    declineBtn.style.display = 'block';
+    declineBtn.onclick = () => declineMembershipRequest(item.id);
   } else if (item.type === 'application' && item.status !== 'confirmed') {
     actionBtn.textContent = 'Add as Walker'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => { closeModal('requestModal'); openAddWalkerModal(item, item.id); };
+  } else if ((isUnresolvedServiceRequest || isUnresolvedOvernight) && ['account_created', 'pending'].includes(item.status) && item.datesConfirmedAt) {
+    // Dates already confirmed. Both statuses checked, not just
+    // 'account_created' — a portal-submitted request (existing member)
+    // starts at 'pending' and never transitions through
+    // completeMeetGreetAndCreateAccount, so it can be stuck here at
+    // 'pending' just as easily as a net-new one can be stuck at
+    // 'account_created'. Missing 'pending' here was the exact dead-end
+    // identified when choosing to widen the finalize gate to both statuses
+    // (finalizeSubmissionIfReady, functions/index.js) — a stuck 'pending'
+    // request would otherwise fall through to isUnresolvedServiceRequest/
+    // isUnresolvedOvernight below and show "Confirm & Charge" again, which
+    // errors immediately on click (datesConfirmedAt already set).
+    //
+    // Same cardOnFile check as membership's equivalent state above, for
+    // the same reason — this branch is realistically only ever reached by
+    // a net-new service_request (overnight_request and a portal-submitted
+    // service_request both always have a card already, so
+    // finalizeSubmissionIfReady normally completes synchronously inside
+    // confirmRequestDates and this note never renders for them) — but if
+    // cardOnFile IS somehow already true here, say so rather than claim
+    // the opposite.
+    actionBtn.style.display = 'none';
+    statusNote.style.display = 'block';
+    statusNote.textContent = memberBilling[item.memberId]?.cardOnFile
+      ? "Card is already on file, but billing hasn't started. Check Needs Attention — this request may be stuck and need a retry."
+      : "Dates confirmed — waiting on the member to add a card in their portal. Billing starts automatically once they do.";
+    declineBtn.style.display = 'block';
+    declineBtn.onclick = item.type === 'overnight_request'
+      ? () => declineOvernightRequest(item.id, item)
+      : () => declineServiceRequest(item.id, item);
   } else if (isUnresolvedServiceRequest) {
-    // Check-ins schedule the charge for 24 hours out (see confirmServiceRequest)
-    // rather than charging now — walks and anonymous overnight-stay bookings
-    // still charge immediately, so they keep the original label.
+    // Check-ins schedule the charge for 24 hours out (see
+    // runServiceOrOvernightCharge, functions/index.js) rather than charging
+    // now — walks and anonymous overnight-stay bookings still charge
+    // immediately, so they keep the original label.
     actionBtn.textContent = resolveServiceKey(item.service) === 'drop-in-visit' ? 'Confirm and schedule charge' : 'Confirm & Charge';
     actionBtn.style.display = 'block';
-    actionBtn.onclick = () => confirmServiceRequest(item.id, item);
+    actionBtn.onclick = () => confirmRequestDates(item.id, item);
     declineBtn.style.display = 'block';
     declineBtn.onclick = () => declineServiceRequest(item.id, item);
   } else if (isUnresolvedOvernight) {
-    // Always schedules the charge for 24 hours out now — see confirmOvernight.
+    // Always schedules the charge for 24 hours out now — see runServiceOrOvernightCharge.
     actionBtn.textContent = 'Confirm and schedule charge'; actionBtn.style.display = 'block';
-    actionBtn.onclick = () => confirmOvernight(item.id, item);
+    actionBtn.onclick = () => confirmRequestDates(item.id, item);
     declineBtn.style.display = 'block';
     declineBtn.onclick = () => declineOvernightRequest(item.id, item);
   } else if (item.type === 'reschedule' && item.status !== 'confirmed') {
@@ -3135,7 +3494,7 @@ window.updateVisitScheduleCount = (dateStr, value) => {
   reviewRecalcService();
 };
 
-// Shared by reviewRecalcService (live preview) and confirmServiceRequest
+// Shared by reviewRecalcService (live preview) and confirmRequestDates
 // (the actual charge amount) — computes a drop-in-visit's total from the
 // admin-edited per-day schedule (_reviewVisitSchedule) rather than days x a
 // flat visitsPerDay rate. Multiple Pets / Medication Admin stay per-day
@@ -3399,27 +3758,14 @@ window.reviewRecalcWalkExtension = () => {
   document.getElementById('rev-total').textContent = `$${total}`;
 };
 
-// Builds the text a customer sees on their Stripe receipt. Call sites used to
-// pass the raw service key straight through, so receipts read "drop-in-visit"
-// or — worse, for requests submitted from the member portal, which uses the
-// alias keys — a bare "checkin". resolveServiceKey normalizes those aliases
-// first, then SERVICE_PRICES supplies the same display name shown everywhere
-// else on the site, so a receipt and the booking screen can't disagree.
-//
-// The dog's name is appended when known: a receipt arriving weeks after the
-// booking is much easier to place with it than without.
-function serviceChargeDescription(serviceKey, item) {
-  const info = SERVICE_PRICES[resolveServiceKey(serviceKey)];
-  const label = info ? info.name : 'Service';
-  const dogs = (Array.isArray(item?.dogs) ? item.dogs.map(d => d?.name).filter(Boolean) : [])
-    .concat(item?.dogName ? [item.dogName] : [])
-    .filter((n, i, a) => a.indexOf(n) === i);
-  const who = dogs.length ? ` (${dogs.join(', ')})` : '';
-  return `Port City Leash Club - ${label}${who}`;
-}
+// Server-side equivalent now lives in functions/index.js (used by
+// runServiceOrOvernightCharge) — this client copy was only ever called from
+// confirmServiceRequest, which markDatesConfirmed/confirmRequestDates
+// replaces below; removed rather than left orphaned.
 
-// Shared by confirmServiceRequest / confirmOvernight / confirmWalkExtension.
-// Attempts to charge the saved card for a given amount and writes a durable
+// Shared by confirmWalkExtension (confirmServiceRequest/confirmOvernight's
+// charging moved server-side — see markDatesConfirmed/finalizeSubmissionIfReady,
+// functions/index.js). Attempts to charge the saved card for a given amount and writes a durable
 // paymentStatus ('charged' | 'skipped' | 'failed') onto the submission
 // regardless of outcome — same pattern as initialWalksGenerated from the
 // walk-generation work — so an unpaid confirmed booking/extension is a
@@ -3449,365 +3795,139 @@ async function chargeAndTrackPayment(submissionId, amountInDollars, description,
   return paymentStatus;
 }
 
-// Confirm a one-time service request (drop-in visit, overnight stay, walk).
-// If the requester isn't already a member (matched by email), this creates
-// a new Travel-tier client record — per the "first booking creates the
-// account" design. Existing members/clients just get the request confirmed
-// without touching their existing tier. Reads the admin-reviewed/corrected
-// service/dates/addons from the review UI (renderServiceRequestReview)
-// rather than trusting the original submitted values, so a correction
-// flows into the recalculated charge amount. dogs[] is carried through as
-// originally submitted — this review UI doesn't edit pet profile data.
-window.confirmServiceRequest = async (submissionId, item) => {
+// Confirms locked-in dates for a service_request/overnight_request —
+// replaces confirmServiceRequest and confirmOvernight, which used to
+// review dates AND charge AND email in one action. Under the new flow,
+// account creation already happened earlier (completeMeetGreetAndCreateAccount,
+// or at portal-request-extras.html submission time for an existing member),
+// so this only ever locks in the reviewed dates/service/addons — the
+// actual walk/overnights doc write, the charge (immediate or deferred to
+// the existing chargeScheduledReservations cron), and the confirmation
+// email all live server-side now (markDatesConfirmed ->
+// finalizeSubmissionIfReady, functions/index.js). For a returning member
+// (already has a card on file), finalize fires in this same call, so the
+// end result is unchanged in practice from today. For a net-new
+// service_request customer with no card yet, it fires later, automatically,
+// once they add one in their portal.
+//
+// Reads the same rev-* review fields confirmServiceRequest/confirmOvernight
+// always did — that review UI (renderServiceRequestReview) is unchanged,
+// only what happens after admin clicks the button changed. amountInDollars
+// is still computed here, the same two DIFFERENT ways those two functions
+// always computed it: service_request never checked a manual total
+// override; overnight_request always did. That asymmetry is existing
+// behavior, preserved exactly here, not something this rewrite unifies.
+window.confirmRequestDates = async (submissionId, item) => {
   const btn = document.getElementById('requestActionBtn');
+  const isOvernightRequest = item.type === 'overnight_request';
+  const originalLabel = isOvernightRequest || resolveServiceKey(item.service) === 'drop-in-visit'
+    ? 'Confirm and schedule charge' : 'Confirm & Charge';
   btn.textContent = 'Confirming…'; btn.disabled = true;
   try {
     const service = document.getElementById('rev-service')?.value || item.service;
-    // Hoisted so both the walk-doc-creation block below and the
-    // booking-confirmed email further down share one resolution — was
-    // previously only computed inside the email's try block.
     const serviceKey = resolveServiceKey(service);
-    const serviceInfo = SERVICE_PRICES[serviceKey];
-    const isWalk = serviceInfo?.unit === 'walk';
-    // Keep the raw "YYYY-MM-DD" strings for the pricing calc (getDaysBetween
-    // expects a Date-parseable value), and separately convert to Timestamp
-    // — same split confirmOvernight() already uses — before writing back to
-    // the submission doc, so a confirm action can't reintroduce the string
-    // format on a doc that was created with a Timestamp.
     const startDateStr = document.getElementById('rev-start')?.value;
     const endDateStr = document.getElementById('rev-end')?.value;
     const extraPet = document.getElementById('rev-extra-pet')?.checked || false;
     const medication = document.getElementById('rev-medication')?.checked || false;
     // Only meaningful for standard-walk/extended-walk (rev-timeslot-field is
-    // hidden otherwise) — '' from the "Not set" option normalizes to null,
-    // same null-tolerant shape as startDate/endDate above.
+    // hidden otherwise) — '' from the "Not set" option normalizes to null.
     const timeSlot = document.getElementById('rev-timeslot')?.value || null;
-    const dogs = item.dogs || [];
-    // Check-in (drop-in-visit) prices off the admin-confirmed per-day
-    // schedule (_reviewVisitSchedule, built by the review UI's Visit
-    // Schedule editor), not a flat visitsPerDay x days multiplier — see
-    // computeDropInVisitTotal. Every other service keeps the existing
-    // calculateServiceTotal path unchanged.
-    const isDropIn = serviceKey === 'drop-in-visit';
-    const { total: amountInDollars, unitCount } = isDropIn
-      ? (() => { const r = computeDropInVisitTotal(extraPet, medication); return { total: r.total, unitCount: r.totalVisits }; })()
-      : calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet, medication });
-    // Confirmed per-day counts, carried onto the overnights doc below so the
-    // scheduled charge (chargeScheduledReservations) and walker payout
-    // (calculateOvernightPayout) both read the same admin-confirmed numbers
-    // the member was actually priced on, not the original estimate.
+    const isDropIn = !isOvernightRequest && serviceKey === 'drop-in-visit';
+
+    let amountInDollars, unitCount;
+    if (isOvernightRequest) {
+      const overrideStr = document.getElementById('rev-total-override')?.value;
+      if (overrideStr !== undefined && overrideStr !== '') {
+        amountInDollars = parseFloat(overrideStr);
+        unitCount = 1;
+      } else {
+        const r = calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet, medication });
+        amountInDollars = r.total; unitCount = r.unitCount;
+      }
+    } else if (isDropIn) {
+      // Check-in (drop-in-visit) prices off the admin-confirmed per-day
+      // schedule (_reviewVisitSchedule, built by the review UI's Visit
+      // Schedule editor), not a flat visitsPerDay x days multiplier.
+      const r = computeDropInVisitTotal(extraPet, medication);
+      amountInDollars = r.total; unitCount = r.totalVisits;
+    } else {
+      const r = calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet, medication });
+      amountInDollars = r.total; unitCount = r.unitCount;
+    }
+
+    // Confirmed per-day counts, carried onto the overnights doc server-side
+    // so the scheduled charge (chargeScheduledReservations) and walker
+    // payout both read the same admin-confirmed numbers the member was
+    // actually priced on, not the original estimate. overnight_request
+    // keeps the exclusive-nights model — never a per-day count.
     const visitSchedule = isDropIn
       ? Object.entries(_reviewVisitSchedule).map(([date, visits]) => ({ date, visits })).sort((a, b) => (a.date < b.date ? -1 : 1))
       : null;
-    const startDate = startDateStr ? Timestamp.fromDate(new Date(`${startDateStr}T12:00:00`)) : (item.startDate || null);
-    const endDate = endDateStr ? Timestamp.fromDate(new Date(`${endDateStr}T12:00:00`)) : (item.endDate || null);
 
-    let memberId = item.memberId || '';
-    let createdMemberUid = null; // set only when a fresh account is created, to gate the welcome email
-    let accountWarning = '';
-    if (!memberId && item.email) {
-      const existing = allMembers.find(m => (m.email || '').toLowerCase() === item.email.toLowerCase());
-      if (existing) {
-        // Returning customer who already has a real member record (from a
-        // prior membership or a prior one-time service). Reuse it — no
-        // duplicate, no second welcome email.
-        memberId = existing.id;
-      } else {
-        // New one-time customer. Create a real Auth-backed member keyed by the
-        // Auth UID, mirroring saveMember. The old code used addDoc with a
-        // random ID and no Auth account, producing a member that could never
-        // be logged into: portal lookups are getDoc(members/{user.uid}) and
-        // rules check request.auth.uid == id, so a random id can never match,
-        // and creating an Auth account later wouldn't link to it either.
-        //
-        // The password is random and never shown — the onboarding email sends
-        // a set-password link, with "Forgot password?" as the fallback.
-        //
-        // Account creation is wrapped so it can NEVER block confirming and
-        // charging the service. The most likely failure is EMAIL_EXISTS (the
-        // email already has a walker or member Auth account); in that case we
-        // proceed without a member link rather than hijacking that account.
-        try {
-          const apiKey = 'AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM';
-          const randomPw = 'PCLC-' + (crypto.randomUUID ? crypto.randomUUID() : (Date.now() + Math.random().toString(36).slice(2)));
-          const authRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: item.email, password: randomPw, returnSecureToken: true }),
-          });
-          const authData = await authRes.json();
-          if (authData.error) throw new Error(authData.error.message);
-          const uid = authData.localId;
-          await setDoc(doc(db, 'members', uid), {
-            name: item.ownerName || '',
-            email: item.email || '',
-            phone: item.phone || '',
-            address: item.address || '',
-            uid,
-            emailNormalized: (item.email || '').toLowerCase(),
-            phoneDigits: (item.phone || '').replace(/\D/g, '').replace(/^1/, ''),
-            tier: 'Travel',
-            dogs: dogs,
-            walksThisMonth: 0,
-            status: 'active',
-            attribution: item.attribution || null,
-            createdAt: serverTimestamp(),
-          });
-          memberId = uid;
-          createdMemberUid = uid;
-        } catch (acctErr) {
-          accountWarning = acctErr.message.includes('EMAIL_EXISTS')
-            ? 'An account with this email already exists, so no new portal account was created. Link it manually if the customer needs portal access.'
-            : `Portal account wasn't created (${acctErr.message}). The service was still confirmed and charged.`;
-          // memberId stays '' below — the walk-doc block further down is
-          // gated on memberId (dogs/pet profile only ever live on a real
-          // member doc, never on the submission or a walk doc), so this is
-          // the one case a walk booking gets confirmed and charged with no
-          // walk doc at all. Same underlying condition as accountWarning
-          // itself, so it's folded into that one message rather than a
-          // second, easy-to-miss warning.
-          if (isWalk) accountWarning += ' No walk was scheduled either — use Add Walk once the account issue is resolved.';
-        }
-      }
-    }
-
-    // Link this submission's Stripe customer (and any referral code entered
-    // at signup) onto the member's billing subdoc — members/{id}/private/billing
-    // is Cloud-Function-only to write (firestore.rules), so this can't be a
-    // plain setDoc here the way the member doc above is. Without this, a
-    // Travel-tier member's stripeCustomerId lived ONLY on this ephemeral
-    // submission, invisible to stripeWebhook and to referral credit
-    // issuance. Never blocks confirming/charging the service — same
-    // best-effort posture as the account-creation try/catch above.
-    let billingLinkWarning = '';
-    if (memberId) {
-      try {
-        const linkServiceRequestBilling = httpsCallable(fns, 'linkServiceRequestBilling');
-        await linkServiceRequestBilling({ submissionId, memberId });
-      } catch (e) {
-        billingLinkWarning = `Billing wasn't linked for this member (${e.message}). Referral credit and payment-failure alerts may not work for them until this is resolved.`;
-      }
-    }
-
-    await updateDoc(doc(db, 'submissions', submissionId), {
-      status: 'confirmed',
-      memberId,
-      service,
-      startDate,
-      endDate,
-      timeSlot,
-      extraPet,
-      medication,
-      estimatedTotal: amountInDollars,
-      read: true,
+    const markDatesConfirmed = httpsCallable(fns, 'markDatesConfirmed');
+    await markDatesConfirmed({
+      submissionId, service, startDate: startDateStr, endDate: endDateStr,
+      timeSlot, extraPet, medication, visitSchedule, amountInDollars, unitCount,
     });
-
-    // Walk doc — a one-time standard-walk/extended-walk booking previously
-    // had NO walks/{id} doc at all: confirming and charging it here never
-    // wrote to the walks collection, so a walker's dashboard and admin's
-    // own calendar had nothing to show for a booking the customer was just
-    // told (and charged) was booked. Placed here — after the submission is
-    // marked confirmed, before the charge below — matching this file's own
-    // principle (see the comment on chargeAndTrackPayment two blocks down):
-    // confirming the underlying booking happens before charging, so a
-    // Stripe hiccup never leaves a charge-less walk doc in limbo, and a
-    // walk-doc failure here never blocks a chargeable booking from being
-    // charged.
-    //
-    // Gated on memberId, not just isWalk: a dog's name/breed/notes live
-    // only on the member doc, keyed by memberId — never on the submission
-    // or a walk doc — so the one case memberId is still '' here (the
-    // account-creation failure above) correctly gets no walk doc rather
-    // than one no walker view could ever resolve a pet from. That case's
-    // warning is already folded into accountWarning above.
-    //
-    // Same field shape as generateWalksForMember (functions/index.js) and
-    // the manual Add Walk modal (submitAddWalk, this file) — walkerId stays
-    // null, same unassigned default submitAddWalk uses. Same deterministic
-    // ${memberId}_${dateStr} doc ID as generateWalksForMember too, written
-    // via a transaction that mirrors that function's .create() semantics
-    // (the modular web SDK has no bare .create()): fails instead of
-    // silently overwriting on a retry, which matters here because a walk
-    // doc that already exists may already have a walkerId an admin assigned
-    // by hand — a .set() retry would wipe that out. Because these two call
-    // sites now share one key space, `date` is built the exact same way
-    // generateWalksForMember builds it — Date.UTC at noon from the raw
-    // YYYY-MM-DD components, NOT startDate (computed above via
-    // `${startDateStr}T12:00:00`, which is noon in the admin's OWN browser
-    // timezone, not UTC) — so a walk for this member/date written from
-    // either call site is the same instant, not just the same calendar day.
-    let walkDocWarning = '';
-    if (isWalk && memberId) {
-      const walkId = `${memberId}_${startDateStr}`;
-      const [walkYear, walkMonth, walkDay] = startDateStr.split('-').map(Number);
-      const walkDate = Timestamp.fromDate(new Date(Date.UTC(walkYear, walkMonth - 1, walkDay, 12, 0, 0)));
-      try {
-        await runTransaction(db, async (tx) => {
-          const walkSnap = await tx.get(doc(db, 'walks', walkId));
-          if (walkSnap.exists()) {
-            const err = new Error('Walk already exists');
-            err.code = 'already-exists';
-            throw err;
-          }
-          tx.set(doc(db, 'walks', walkId), {
-            memberId,
-            date: walkDate,
-            timeSlot,
-            walkerId: null,
-            notes: '',
-            status: 'scheduled',
-            createdAt: serverTimestamp(),
-            // Extended-walk triple — same three fields updateWalkSchedule's
-            // move-resolution path already sets (functions/index.js).
-            // Without these, portal-dashboard.html and the walker calendar
-            // both default to "30-minute walk" — silently understating what
-            // this booking was actually charged and confirmed at.
-            ...(serviceKey === 'extended-walk' ? {
-              extended: true, extendedStatus: 'confirmed', duration: '45-minute walk',
-            } : {}),
-          });
-        });
-      } catch (e) {
-        // Hitting the existing doc IS success here, not a failure — it means
-        // this is a retry of an already-created walk (re-click, or a retry
-        // after this function threw somewhere later), not a duplicate.
-        if (e.code !== 'already-exists') {
-          walkDocWarning = `The walk wasn't added to the schedule (${e.message}). Use Add Walk to schedule it manually.`;
-        }
-      }
-    }
-
-    // Check-in reservations don't charge immediately — confirming schedules
-    // the charge for 24 hours out (chargeScheduledFor), giving the member a
-    // real window to change plans before their card is touched.
-    // chargeScheduledReservations (functions/index.js) is the scheduled
-    // function that actually charges once that time passes, reading
-    // confirmedTotalCents/chargeScheduledFor off this overnights doc. This
-    // also fixes a pre-existing gap: a drop-in-visit confirmation
-    // previously wrote no overnights doc at all (only the submission), so
-    // there was nowhere for a per-day schedule — or a walker payout derived
-    // from one — to live. Written for both a member and a brand-new
-    // one-time customer (memberId may have just been created above).
-    let chargeScheduledFor = null;
-    if (isDropIn) {
-      chargeScheduledFor = Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
-      const memberRecordForDoc = memberId ? allMembers.find(m => m.id === memberId) : null;
-      await addDoc(collection(db, 'overnights'), {
-        memberId: memberId || '',
-        memberName: item.ownerName || memberRecordForDoc?.name || '',
-        dogName: dogs[0]?.name || '',
-        startDate,
-        endDate,
-        serviceType: 'checkin',
-        notes: item.notes || '',
-        status: 'confirmed',
-        confirmedAt: serverTimestamp(),
-        submissionId,
-        walkerId: '',
-        extraPet,
-        medication,
-        visitSchedule,
-        confirmedTotalCents: Math.round(amountInDollars * 100),
-        chargeScheduledFor,
-        chargePending: true,
-      });
-    }
-
-    // Charge the saved card for this one-time service. A card is only on
-    // file if the requester went through createSetupIntent at signup —
-    // chargeAndTrackPayment treats a non-positive amount as "nothing to
-    // charge" and records paymentStatus: 'skipped' without calling Stripe.
-    // Check-ins skip this entirely — see chargeScheduledFor above.
-    let paymentStatus;
-    if (isDropIn) {
-      paymentStatus = 'scheduled';
-      await updateDoc(doc(db, 'submissions', submissionId), { paymentStatus });
-    } else {
-      paymentStatus = await chargeAndTrackPayment(submissionId, item.stripeCustomerId ? amountInDollars : 0, serviceChargeDescription(service, item));
-    }
-
-    // Booking-confirmed email — every confirmation gets one now, new
-    // account or existing member alike. Replaces the old
-    // sendOnboardingEmail(kind:'service'), which only ever fired for a
-    // freshly created account and left every returning/existing member
-    // with no confirmation email at all. Never blocks the confirmed,
-    // charged service; a failure is surfaced as a warning. Family (walk vs
-    // pet sitting) comes from the same SERVICE_PRICES.unit this file
-    // already imports for pricing — one source of truth, not a second
-    // classification that could drift from it.
-    let emailWarning = '';
-    try {
-      if (!memberId) throw new Error('no member to email (no account was linked or created)');
-      const memberRecord = allMembers.find(m => m.id === memberId);
-      const fullName = item.ownerName || memberRecord?.name || '';
-      const firstName = fullName.trim().split(/\s+/)[0] || 'there';
-      const petNames = (dogs.length ? dogs : (memberRecord?.dogs || [])).map(d => d?.name).filter(Boolean);
-      const resolvedStartStr = startDateStr || toDateInputValue(startDate);
-      const resolvedEndStr = endDateStr || toDateInputValue(endDate);
-
-      // Check-ins get the deferred-charge template (states the exact amount
-      // and date the card will be charged, plus the confirmed per-day visit
-      // schedule); walks and everything else keep their existing templates
-      // unchanged — those still charge immediately, above.
-      const template = isDropIn ? 'portal-reservation-confirmed' : (isWalk ? 'walk-confirmed' : 'portal-service-confirmed');
-      const data = isDropIn ? {
-        firstName, petNames,
-        serviceLabel: serviceInfo?.name || service,
-        startDateStr: resolvedStartStr, endDateStr: resolvedEndStr,
-        totalDollars: amountInDollars,
-        chargeDateStr: toDateInputValue(chargeScheduledFor),
-        visitSchedule,
-      } : isWalk ? {
-        firstName, dogNames: petNames,
-        walkTypeLabel: serviceInfo?.name || 'Walk',
-        durationMinutes: serviceKey === 'extended-walk' ? 45 : 30,
-        // timeSlot is admin-reviewed above (rev-timeslot), same as
-        // service/dates — a submission with none set (old data, or admin
-        // left it blank) sends null, and the template degrades to a
-        // date-only line exactly as it already did before this field existed.
-        walks: [{ dateStr: resolvedStartStr, slot: timeSlot }],
-      } : {
-        firstName, petNames,
-        serviceLabel: serviceInfo?.name || service,
-        startDateStr: resolvedStartStr, endDateStr: resolvedEndStr,
-        unitCount: Math.max(unitCount || 1, 1),
-        unitNoun: serviceKey === 'drop-in-visit' ? 'visit' : 'night',
-      };
-
-      const sendBookingConfirmedEmail = httpsCallable(fns, 'sendBookingConfirmedEmail');
-      await sendBookingConfirmedEmail({
-        memberId, template, data,
-        isNewAccount: !!createdMemberUid,
-        idempotencyKey: `booking-confirmed:${submissionId}`,
-      });
-    } catch (e) {
-      emailWarning = `Confirmation email wasn't sent: ${e.message}`;
-    }
 
     closeModal('requestModal');
     const msg = document.createElement('div');
     msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2D9E5E;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
-    msg.textContent = 'Service request confirmed';
+    // Deliberately doesn't distinguish "billing already started" from
+    // "waiting on a card" here — finalizeSubmissionIfReady's return only
+    // says whether it ran, not whether it succeeded, and a charge/email
+    // failure inside it is recorded as finalizeError, surfaced separately
+    // (the Needs Attention badge/stat, not this toast) rather than
+    // guessed at from an ambiguous signal.
+    msg.textContent = 'Dates confirmed';
     document.body.appendChild(msg);
     setTimeout(() => msg.remove(), 3000);
-
-    // Surface any non-fatal warnings (account not created, billing not
-    // linked, email not sent) after the success toast — the service itself
-    // is confirmed and charged.
-    const warns = [accountWarning, billingLinkWarning, walkDocWarning, emailWarning].filter(Boolean);
-    if (warns.length) alert(warns.join('\n\n'));
   } catch (e) {
-    btn.textContent = resolveServiceKey(item.service) === 'drop-in-visit' ? 'Confirm and schedule charge' : 'Confirm & Charge';
+    btn.textContent = originalLabel;
     btn.disabled = false;
     alert('Error: ' + e.message);
   }
 };
 
+// Net-new service_request account creation — the meet & greet gate's
+// action for this type (see needsAccountCreation in openRequestItem). No
+// modal detour: unlike membership, there's nothing for admin to review or
+// override before the account exists (Travel tier, no schedule), so this
+// calls completeMeetGreetAndCreateAccount directly and closes the modal on
+// success. The function itself sends the portal-access email; nothing
+// further to do here besides let the admin know it happened.
+window.createServiceRequestAccount = async (submissionId) => {
+  const btn = document.getElementById('requestActionBtn');
+  btn.textContent = 'Creating account…'; btn.disabled = true;
+  try {
+    const completeMeetGreetAndCreateAccount = httpsCallable(fns, 'completeMeetGreetAndCreateAccount');
+    await completeMeetGreetAndCreateAccount({ submissionId, meetGreetCompleted: true });
+
+    closeModal('requestModal');
+    const msg = document.createElement('div');
+    msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2D9E5E;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
+    msg.textContent = 'Account created — portal access email sent';
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 3000);
+  } catch (e) {
+    btn.textContent = 'Create Account'; btn.disabled = false;
+    alert('Error: ' + e.message);
+  }
+};
+
+// Goes through a Cloud Function now, not a direct updateDoc — a net-new
+// service_request can have a real account (Auth user + member doc,
+// possibly a Stripe customer started via createAuthenticatedSetupIntent)
+// by the time it's declined under the new flow, same orphan-cleanup need
+// declineMembershipRequest already has. See runDeclineRequestOrphanCleanup
+// (functions/index.js) for what actually gets deleted.
 window.declineServiceRequest = async (submissionId, item) => {
   const btn = document.getElementById('requestDeclineBtn');
   btn.textContent = 'Declining…'; btn.disabled = true;
   try {
-    await updateDoc(doc(db, 'submissions', submissionId), { status: 'declined', read: true });
+    const fn = httpsCallable(fns, 'declineServiceRequest');
+    await fn({ submissionId });
 
     closeModal('requestModal');
     const msg = document.createElement('div');
@@ -3845,133 +3965,8 @@ window.declineMembershipRequest = async (submissionId) => {
   }
 };
 
-// Confirming the booking never waits on or gets blocked by the charge —
-// a Stripe hiccup shouldn't stop a real booking from being confirmed.
-// Instead, paymentStatus ('charged' | 'skipped' | 'failed') is written as
-// a durable field on the submission itself once the charge attempt is
-// resolved either way, same pattern as initialWalksGenerated earlier
-// tonight — so an unpaid confirmed booking is a checkable, visible piece
-// of state (see the requests-list badge and the Payment detail field),
-// not a step that silently vanished if it didn't happen. Reads the
-// admin-reviewed/corrected service/dates/addons from renderOvernightReview,
-// including the manually-overridable final total.
-window.confirmOvernight = async (submissionId, item) => {
-  const btn = document.getElementById('requestActionBtn');
-  btn.textContent = 'Confirming…'; btn.disabled = true;
-  try {
-    const service = document.getElementById('rev-service')?.value || item.service;
-    const startDateStr = document.getElementById('rev-start')?.value;
-    const endDateStr = document.getElementById('rev-end')?.value;
-    const addonExtraPet = document.getElementById('rev-extra-pet')?.checked || false;
-    const addonMedication = document.getElementById('rev-medication')?.checked || false;
-    const overrideStr = document.getElementById('rev-total-override')?.value;
-    const amountInDollars = overrideStr !== undefined && overrideStr !== ''
-      ? parseFloat(overrideStr)
-      : calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet: addonExtraPet, medication: addonMedication }).total;
-
-    const startDate = startDateStr ? Timestamp.fromDate(new Date(`${startDateStr}T12:00:00`)) : (item.startDate || null);
-    const endDate = endDateStr ? Timestamp.fromDate(new Date(`${endDateStr}T12:00:00`)) : (item.endDate || null);
-    // Same deferred-charge window as confirmServiceRequest's check-in path —
-    // confirming schedules the charge 24 hours out (chargeScheduledFor)
-    // rather than charging immediately, giving the member a real window to
-    // change plans before their card is touched. No visitSchedule here —
-    // overnight stays keep the exclusive-nights model, never a per-day
-    // count.
-    const chargeScheduledFor = Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
-
-    // Write to overnights collection
-    // Resolve member/dog names live from allMembers by memberId — the
-    // submission's own memberName/dogName are a snapshot from whenever the
-    // member submitted the request, which can already be stale by
-    // confirmation time (same class of bug as the calendar chip fix). Falls
-    // back to the submission's stored values only if the member can't be
-    // found at all.
-    const confirmMember = item.memberId ? allMembers.find(m => m.id === item.memberId) : null;
-    const memberName = confirmMember?.name || item.memberName || '';
-    const dogName = getMemberDogs(confirmMember)[0]?.name || item.dogName || '';
-    await addDoc(collection(db, 'overnights'), {
-      memberId:    item.memberId || '',
-      memberName:  memberName,
-      dogName:     dogName,
-      startDate,
-      endDate,
-      serviceType: service || item.serviceType || 'overnight',
-      notes:       item.notes || '',
-      status:      'confirmed',
-      confirmedAt: serverTimestamp(),
-      submissionId: submissionId,
-      // Carried over from the submission's billing add-ons so walker payout
-      // (calculated from this doc, not the submission) can apply the same
-      // extra-pet/medication surcharges the member was charged for.
-      walkerId:    '',
-      extraPet:    addonExtraPet,
-      medication:  addonMedication,
-      confirmedTotalCents: Math.round(amountInDollars * 100),
-      chargeScheduledFor,
-      chargePending: true,
-    });
-    // Mark submission as confirmed, with the admin-reviewed details.
-    // paymentStatus: 'scheduled' rather than the charged/skipped/failed
-    // chargeAndTrackPayment writes — the actual charge doesn't happen until
-    // chargeScheduledFor passes (chargeScheduledReservations, functions/index.js).
-    await updateDoc(doc(db, 'submissions', submissionId), {
-      status: 'confirmed',
-      service,
-      startDate,
-      endDate,
-      addonExtraPet,
-      addonMedication,
-      estimatedTotal: amountInDollars,
-      paymentStatus: 'scheduled',
-      read: true,
-    });
-
-    // Booking-confirmed email — overnights are always pet-sitting family
-    // (this flow has no walk equivalent). portal-reservation-confirmed
-    // states the exact amount and date the card will be charged, since
-    // confirming no longer charges immediately. Never blocks the confirmed
-    // stay; a failure is surfaced as a warning rather than an error, same
-    // posture as confirmServiceRequest.
-    let emailWarning = '';
-    try {
-      if (!item.memberId) throw new Error('no member on this request to email');
-      const firstName = memberName.trim().split(/\s+/)[0] || 'there';
-      const petNames = getMemberDogs(confirmMember).map(d => d?.name).filter(Boolean);
-      const serviceInfo = SERVICE_PRICES[resolveServiceKey(service)];
-
-      const sendBookingConfirmedEmail = httpsCallable(fns, 'sendBookingConfirmedEmail');
-      await sendBookingConfirmedEmail({
-        memberId: item.memberId,
-        template: 'portal-reservation-confirmed',
-        data: {
-          firstName, petNames,
-          serviceLabel: serviceInfo?.name || service,
-          startDateStr: startDateStr || toDateInputValue(startDate),
-          endDateStr: endDateStr || toDateInputValue(endDate),
-          totalDollars: amountInDollars,
-          chargeDateStr: toDateInputValue(chargeScheduledFor),
-          visitSchedule: null,
-        },
-        isNewAccount: false, // overnight_request only ever comes from an existing member
-        idempotencyKey: `booking-confirmed:${submissionId}`,
-      });
-    } catch (e) {
-      emailWarning = `Confirmation email wasn't sent: ${e.message}`;
-    }
-
-    closeModal('requestModal');
-    // Show brief success message
-    const msg = document.createElement('div');
-    msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2D9E5E;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
-    msg.textContent = 'Overnight stay confirmed';
-    document.body.appendChild(msg);
-    setTimeout(() => msg.remove(), 3000);
-    if (emailWarning) alert(emailWarning);
-  } catch(e) {
-    btn.textContent = 'Confirm and schedule charge'; btn.disabled = false;
-    alert('Error: ' + e.message);
-  }
-};
+// confirmOvernight removed — replaced by confirmRequestDates above,
+// which handles both service_request and overnight_request.
 
 window.declineOvernightRequest = async (submissionId, item) => {
   const btn = document.getElementById('requestDeclineBtn');
@@ -4140,8 +4135,8 @@ window.confirmWalkExtension = async (submissionId, item) => {
         data: { firstName, dogNames, walkTypeLabel: 'Extended walk', durationMinutes: 45, walks },
         isNewAccount: false, // walk_extension only ever comes from an existing member
         // Scoped to the specific walks actually confirmed here, not just the
-        // submission — confirmServiceRequest/confirmOvernight resolve their
-        // whole submission in one shot, but this flow confirms `checkedIds`,
+        // submission — confirmRequestDates resolves its whole submission in
+        // one shot, but this flow confirms `checkedIds`,
         // a subset the admin ticks. Keying on submissionId alone would let a
         // later confirm of the REMAINING walks from this same submission
         // collide with this one's already-sent record and get silently
@@ -4466,11 +4461,71 @@ window.saveMember = async () => {
     return;
   }
 
-  // Never shown; the member sets their own via the onboarding email.
-  const pass = randomAccountPassword();
-
   const btn = document.querySelector('#addMemberModal .btn-primary');
   btn.textContent = 'Creating account...'; btn.disabled = true;
+
+  // Converting a membership_request: account creation now goes entirely
+  // through completeMeetGreetAndCreateAccount (functions/index.js) instead
+  // of the direct client-side Auth+Firestore write below — it enforces the
+  // meet & greet gate server-side and, unlike the old inline flow, does
+  // NOT start the subscription, generate walks, or charge anything. Those
+  // now wait for finalizeSubmissionIfReady, triggered once the member adds
+  // a card in their own portal. tier/zone/walker/schedule/dogs are sent as
+  // overrides — none of that lives on the submission itself, same fields
+  // this form has always collected before saving.
+  if (window._addMemberSubmissionId) {
+    try {
+      const completeMeetGreetAndCreateAccount = httpsCallable(fns, 'completeMeetGreetAndCreateAccount');
+      const res = await completeMeetGreetAndCreateAccount({
+        submissionId: window._addMemberSubmissionId,
+        meetGreetCompleted: true,
+        overrides: {
+          name, phone, tier, address, accessNotes: access, zone,
+          defaultWalkDays, defaultTimeSlot, assignedWalkerId: walker, dogs,
+        },
+      });
+      const emailSent = !!(res && res.data && res.data.emailSent);
+
+      // No login credentials to show — unlike the standalone path below,
+      // there's no billing yet and the account isn't fully set up until
+      // the member adds a card. completeMeetGreetAndCreateAccount already
+      // sent them the portal-access email that explains that.
+      document.querySelector('#addMemberModal .modal-box').innerHTML = `
+        <button class="modal-close" onclick="closeModal('addMemberModal')">×</button>
+        <div style="text-align:center;padding:24px 0;">
+          <div style="font-size:40px;margin-bottom:16px;">✓</div>
+          <div style="font-size:18px;font-weight:500;color:var(--navy);margin-bottom:8px;">Account created!</div>
+          <div style="font-size:12px;color:var(--text-light);margin-bottom:24px;">
+            ${emailSent
+              ? `We've emailed ${escapeHtml(email)} a portal link with steps to add a card. Billing starts automatically once they do.`
+              : `The account was created, but the portal-access email failed to send — resend it manually, or the member won't know how to get in.`}
+          </div>
+          <button class="btn-primary" onclick="closeModal('addMemberModal');restoreAddMemberModal();" style="width:100%;">Done</button>
+        </div>
+      `;
+
+      window._addMemberSubmissionId = null;
+      window._addMemberSubmissionAttribution = null;
+      _addMemberDogRows = [];
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
+      btn.textContent = 'Add Member'; btn.disabled = false;
+    }
+    return;
+  }
+
+  // Standalone add (no source submission) — UNCHANGED from before this
+  // migration. Not covered by completeMeetGreetAndCreateAccount, which
+  // requires a submissionId and a confirmed meet & greet, neither of which
+  // applies to an admin adding a member directly with no request behind
+  // it. Never starts a subscription (the required acknowledgment above
+  // covers that) — the member should still see real walks on their
+  // calendar for the days/time just set, so generateInitialWalks is still
+  // called directly here, same as always.
+
+  // Never shown; the member sets their own via the onboarding email.
+  const pass = randomAccountPassword();
 
   try {
     // 1. Create Firebase Auth account via REST API (avoids signing out the
@@ -4504,100 +4559,28 @@ window.saveMember = async () => {
       createdAt: serverTimestamp()
     });
 
-    // 4. Mark the source submission confirmed if this came from Convert to Member,
-    //    and — for billed membership tiers with a saved card — start the
-    //    recurring Stripe subscription (quantity is set server-side from
-    //    defaultWalkDays, so it reflects the schedule just saved above) and
-    //    generate this member's first month of walks. The two calls are
-    //    independent — a walk-generation failure shouldn't be reported as a
-    //    billing failure or vice versa, and one failing doesn't skip the other.
+    // 4. tolerates a submissionId that doesn't correspond to a real
+    //    document (falls back to starting next month on day 1) — so it's
+    //    safe to call here with a synthetic id.
     // warnings = something went wrong and needs your attention.
-    // notices  = something worked, or was deliberately skipped, and you should
-    //            still be told — particularly "nothing was charged", which must
-    //            never be silent now that conversion can charge a card.
+    // notices  = something worked, or was deliberately skipped, and you
+    //            should still be told.
     const warnings = [];
     const notices = [];
-    if (window._addMemberSubmissionId) {
-      await updateDoc(doc(db, 'submissions', window._addMemberSubmissionId), {
-        status: 'confirmed', memberId: uid, read: true,
-      });
-
-      // The server resolves this member's tier to a Stripe price. A tier with
-      // no subscription price (Travel) comes back skipped:true rather than as
-      // an error, and gets no walks generated — same outcome as before, minus
-      // the client-side price table. A billing *failure* must ALSO skip walk
-      // generation below (subscriptionSkipped=true on the catch path too) —
-      // otherwise a member with no subscription still gets a full month of
-      // real walks generated and an attempted current-month charge, with
-      // nothing about either indicating they're unbilled.
-      let subscriptionSkipped = false;
+    if (defaultTimeSlot) {
       try {
-        const createMembershipSubscription = httpsCallable(fns, 'createMembershipSubscription');
-        const res = await createMembershipSubscription({ submissionId: window._addMemberSubmissionId, memberId: uid });
-        subscriptionSkipped = !!(res && res.data && res.data.skipped);
+        const generateInitialWalks = httpsCallable(fns, 'generateInitialWalks');
+        await generateInitialWalks({ submissionId: `admin-added-${uid}`, memberId: uid });
+        notices.push('Walks scheduled starting next month. No subscription was started — this account is unbilled until you set one up separately.');
       } catch (e) {
-        subscriptionSkipped = true;
-        warnings.push(`Membership billing wasn't started: ${e.message}`);
-      }
-
-      if (!subscriptionSkipped) {
-        try {
-          const generateInitialWalks = httpsCallable(fns, 'generateInitialWalks');
-          await generateInitialWalks({ submissionId: window._addMemberSubmissionId, memberId: uid });
-        } catch (e) {
-          warnings.push(`Initial walks weren't generated: ${e.message}`);
-        }
-
-        // Charge for the rest of THIS month. The subscription's first invoice
-        // is the 1st of next month, so without this the remainder of the month
-        // the member actually signed up in is neither scheduled nor billed.
-        // A failure here never unwinds the conversion — it's reported and
-        // retried, same as the two calls above.
-        try {
-          const chargeCurrentMonthWalks = httpsCallable(fns, 'chargeCurrentMonthWalks');
-          const r = (await chargeCurrentMonthWalks({ memberId: uid }))?.data || {};
-          if (r.alreadyCharged) {
-            notices.push(`This month was already charged: ${r.walkCount} walk${r.walkCount === 1 ? '' : 's'}, $${r.amount}.`);
-          } else if (r.skipped) {
-            // Never silent — an admin should always know why nothing was charged.
-            const why = {
-              'no-walks-remaining': 'No walks remain this month, so nothing was charged for it.',
-              'month-already-over': 'No days remain this month, so nothing was charged for it.',
-              'starts-next-month': 'Their start date is next month, so nothing was charged for this month.',
-              'no-subscription-tier': 'This tier has no membership subscription, so nothing was charged for this month.',
-            }[r.reason] || `Nothing was charged for this month (${r.reason}).`;
-            notices.push(why);
-          } else {
-            notices.push(`Charged $${r.amount} for ${r.walkCount} walk${r.walkCount === 1 ? '' : 's'} remaining this month.`);
-          }
-        } catch (e) {
-          warnings.push(`This month's walks weren't charged: ${e.message}`);
-        }
+        warnings.push(`Walks weren't generated: ${e.message}`);
       }
     } else {
-      // Standalone add (no source submission) — never starts a subscription
-      // (the required acknowledgment above covers that), but the member
-      // should still see real walks on their calendar for the days/time just
-      // set. generateInitialWalks has no Stripe dependency of its own, and
-      // tolerates a submissionId that doesn't correspond to a real document
-      // (falls back to starting next month on day 1) — so it's safe to call
-      // here with a synthetic id.
-      if (defaultTimeSlot) {
-        try {
-          const generateInitialWalks = httpsCallable(fns, 'generateInitialWalks');
-          await generateInitialWalks({ submissionId: `admin-added-${uid}`, memberId: uid });
-          notices.push('Walks scheduled starting next month. No subscription was started — this account is unbilled until you set one up separately.');
-        } catch (e) {
-          warnings.push(`Walks weren't generated: ${e.message}`);
-        }
-      } else {
-        notices.push('No preferred time slot was set, so no walks were scheduled yet. No subscription was started either — this account is unbilled.');
-      }
+      notices.push('No preferred time slot was set, so no walks were scheduled yet. No subscription was started either — this account is unbilled.');
     }
 
-    // Welcome email for every new member, whether converted from a request or
-    // added directly. Carries a set-password link; a failure is a warning and
-    // never undoes the member that was just created.
+    // Welcome email. Carries a set-password link; a failure is a warning
+    // and never undoes the member that was just created.
     try {
       const sendOnboardingEmail = httpsCallable(fns, 'sendOnboardingEmail');
       await sendOnboardingEmail({ memberId: uid, kind: 'member' });
@@ -4637,10 +4620,6 @@ window.saveMember = async () => {
 
     // Clear state
     window._addMemberSubmissionId = null;
-    // Must be reset alongside the id above — otherwise an admin who converts
-    // one request and then immediately opens the modal again for an
-    // unrelated standalone add would have the new member silently stamped
-    // with the PREVIOUS request's attribution.
     window._addMemberSubmissionAttribution = null;
     _addMemberDogRows = [];
   } catch(e) {

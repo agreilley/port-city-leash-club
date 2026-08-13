@@ -29,9 +29,18 @@ const TEMPLATES = {
   'portal-service-request-received': require('../templates/portal-service-request-received'),
   'portal-service-confirmed': require('../templates/portal-service-confirmed'),
   'portal-reservation-confirmed': require('../templates/portal-reservation-confirmed'),
+  'portal-membership-confirmed': require('../templates/portal-membership-confirmed'),
   'walk-confirmed': require('../templates/walk-confirmed'),
   'portal-walk-request-received': require('../templates/portal-walk-request-received'),
+  // member-welcome: superseded by portal-access (fires earlier, at
+  // meet-greet completion, for membership_request AND net-new
+  // service_request). Still registered because sendOnboardingEmail's
+  // kind:'member' branch and admin/dashboard.html's saveMember() still call
+  // it — remove both this line and functions/templates/member-welcome.js
+  // together, in the same change that cuts admin/dashboard.html over to
+  // completeMeetGreetAndCreateAccount, not before.
   'member-welcome': require('../templates/member-welcome'),
+  'portal-access': require('../templates/portal-access'),
   'referral-code-delivery': require('../templates/referral-code-delivery'),
 };
 

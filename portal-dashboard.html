@@ -430,6 +430,37 @@
       flex-shrink: 0;
     }
 
+    /* No-card-on-file banner — deliberately NOT the same amber "nudge" treatment
+       as .incomplete-profile-banner above: without a card, nothing else on this
+       account can move (no walks generated, nothing ever billed), so this reads
+       as account setup, not a reminder — solid navy, white text, no dismiss
+       button (see renderNoCardBanner()'s own comment for why). */
+    .no-card-banner {
+      display: none;
+      background: #0D1B2A;
+      color: white;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 24px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .no-card-banner .no-card-cta {
+      background: #C17B6F;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 14px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
     @media (max-width: 768px) {
       .portal-container {
         flex-direction: column;
@@ -551,6 +582,18 @@
         <div class="preview-banner" id="previewBanner">Admin preview — <span id="previewBannerName"></span> (read-only)</div>
         <div class="page-header">
           <h1 id="welcomeHeader">Welcome back</h1>
+        </div>
+
+        <!-- No-card-on-file banner: shown whenever billing.cardOnFile isn't
+             true. NOT dismissible, and shown first (above the incomplete-
+             profile banner) — see renderNoCardBanner() for why: without a
+             card, this account is fully stalled (no walks, nothing billed),
+             so this can't be a nudge a member clicks past and forgets. Links
+             straight into the Update Payment Method flow via ?addCard=1
+             rather than just to the settings page. -->
+        <div class="no-card-banner" id="noCardBanner">
+          <div>No card on file yet — add one to get your walks scheduled and billing started.</div>
+          <a href="portal-account.html?addCard=1" class="no-card-cta">Add Card</a>
         </div>
 
         <!-- Incomplete Profile Banner: shown when vet or emergencyContacts is
@@ -727,6 +770,7 @@ const auth = initializeAuth(app, {
 let db = initializeFirestore(app, { localCache: memoryLocalCache() });
 
 let memberData = null;
+let billingData = null;
 let myWalks = [];
 let myOvernights = []; // confirmed overnights + pending requests
 // Shown on any walks/overnights load failure — deliberately says "couldn't
@@ -845,6 +889,14 @@ async function loadAndSubscribe(targetId) {
       memberData = { id: snap.id, ...snap.data() };
       populateMemberUI();
     }
+    // Billing (M-1): members/{id}/private/billing. The member reads their own
+    // copy; in admin preview, db is already rebound to the verified admin's
+    // own authenticated instance above (resolveVerifiedAdminUid) — the rule
+    // allows isAdmin() the same read. Only used here for cardOnFile, to
+    // decide whether renderNoCardBanner()'s arrival prompt needs to show.
+    const billingSnap = await getDoc(doc(db, 'members', targetId, 'private', 'billing'));
+    billingData = billingSnap.exists() ? billingSnap.data() : {};
+    renderNoCardBanner();
   } catch(e) { console.error('member load:', e.message); }
 
   if (isPreviewMode) applyPreviewModeUI();
@@ -989,6 +1041,24 @@ window.dismissProfileBanner = () => {
   const banner = document.getElementById('incompleteProfileBanner');
   if (banner) banner.style.display = 'none';
 };
+
+// Called from loadAndSubscribe once billingData has actually loaded (not from
+// populateMemberUI, which runs before that fetch resolves). No dismiss/
+// sessionStorage escape hatch, unlike renderIncompleteProfileBanner — a
+// missing card isn't a nudge the member can act on later; every request they
+// submit stalls at account_created until this is resolved, so it stays up
+// every single visit until cardOnFile actually flips true. Hidden in admin
+// preview, same as the profile banner: an admin looking at a member's
+// dashboard can't act on this prompt as that member.
+function renderNoCardBanner() {
+  const banner = document.getElementById('noCardBanner');
+  if (!banner) return;
+  if (isPreviewMode || billingData?.cardOnFile === true) {
+    banner.style.display = 'none';
+    return;
+  }
+  banner.style.display = 'flex';
+}
 
 // ── ADMIN PREVIEW: disable every outbound action/link ───────────────────────
 // Buttons/links are disabled, never hidden or removed — the admin should see

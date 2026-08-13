@@ -347,18 +347,15 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           <li>We review your membership request and confirm availability in your neighborhood.</li>
           <li>We confirm your preferred schedule and membership fit.</li>
           <li>We meet you and your dog for a complimentary meet & greet.</li>
-          <li>Once your meet & greet is complete, we set up your membership and your walks begin.</li>
-          <li>Your first charge comes after your meet & greet, covering the walks scheduled for the rest of that month. After that, billing is monthly on the 1st.</li>
+          <li>Once your meet & greet is complete, we'll email you a link to set up your portal and add a card.</li>
+          <li>Once your card's on file, we'll get your walks on the calendar. Your first charge covers the walks scheduled for the rest of that month; after that, billing is monthly on the 1st.</li>
         </ol>
       </div>
 
       <section class="form-section">
         <p class="section-kicker">Step 05</p>
-        <h2>Save a payment method</h2>
-        <p class="section-copy">We'll securely save your card on file through Stripe. You won't be charged today.</p>
-        <div id="card-element" style="padding:14px 16px;border:1px solid rgba(0,0,0,0.15);border-radius:6px;background:white;max-width:480px;"></div>
-        <div id="card-errors" role="alert" style="color:var(--rust);font-size:13px;margin-top:8px;"></div>
-        <div class="field" style="max-width:320px;margin-top:24px;"><label class="field-label" for="referralCode">Referral code <span style="font-weight:400;">(optional)</span></label><input id="referralCode" name="referralCode" type="text"></div>
+        <h2>Referral code</h2>
+        <div class="field" style="max-width:320px;"><label class="field-label" for="referralCode">Referral code <span style="font-weight:400;">(optional)</span></label><input id="referralCode" name="referralCode" type="text"></div>
         <div class="submit-row" style="margin-top:24px;">
           <p class="submit-note">Submitting this request does not create a paid membership yet. We'll confirm details with you before recurring care begins.</p>
           <button type="submit" class="btn-primary">Submit Request</button>
@@ -584,18 +581,9 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         read: false,
         createdAt: window._serverTimestamp()
       };
-      const docRef = await window._addDoc(window._collection(window._db, 'submissions'), data);
+      await window._addDoc(window._collection(window._db, 'submissions'), data);
       window.pclcTrack('Lead');
       if (window.pclcTrackGA) window.pclcTrackGA('form_submit');
-
-      if (window._saveCardOnFile) {
-        const cardResult = await window._saveCardOnFile({ name: data.ownerName, email: data.email, submissionId: docRef.id });
-        if (!cardResult.success) {
-          window._showError('Request submitted, but we had trouble saving your card: ' + cardResult.error);
-          btn.textContent = 'Submit Request'; btn.disabled = false;
-          return;
-        }
-      }
 
       window._showSuccess('Request submitted! We\'ll be in touch within 24 hours.');
       // form.reset() alone isn't enough — it won't undo the JS-driven
@@ -762,12 +750,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   // classic script above, for why it can't happen there instead.
   window.updateEstimate();
 </script>
-<script src="https://js.stripe.com/v3/"></script>
 <script type="module">
-  import { mountCardField, saveCardOnFile } from './firebase-payments.js';
   import { showSuccess, showError } from '/js/status.js';
-  mountCardField('card-element');
-  window._saveCardOnFile = saveCardOnFile;
   window._showSuccess = showSuccess;   // bridge ES module -> classic submit handler
   window._showError = showError;
 </script>

@@ -18,11 +18,10 @@
 // }
 
 const {
-  escapeHtml, NAVY, SAND,
+  escapeHtml, NAVY, SAND, TEAM_SIGNOFF,
   renderButtonHtml, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
-const TEAM_SIGNOFF = 'The Port City Leash Club team';
 const GET_STARTED_URL = 'https://portcityleashclub.com';
 
 // One-off "big centered code" box, not folded into _layout's renderBlockHtml

@@ -464,11 +464,17 @@ service cloud.firestore {
       // is the member's per-day estimate input for check-ins only (1-6, the
       // exact range portal-request-extras.html's select offers); overnight
       // has no per-day concept, so it must be explicitly null there.
+      // stripeCustomerId used to be required here — the requester's own
+      // Stripe customer ID, echoed onto the submission so chargeCustomerCard
+      // had something to charge against. Dropped: chargeCustomerCard
+      // (functions/index.js) now reads stripeCustomerId from the member's
+      // own billing subdoc directly, keyed by memberId — no submission ever
+      // carries a copy anymore, on this authenticated path or any other.
       function validMemberServiceRequest() {
         return request.resource.data.keys().hasOnly(
             ['type', 'memberId', 'memberName', 'service', 'startDate', 'endDate',
              'visitsPerDay', 'notes', 'addonExtraPet', 'addonMedication',
-             'estimatedTotal', 'stripeCustomerId', 'status', 'read', 'createdAt'])
+             'estimatedTotal', 'status', 'read', 'createdAt'])
           && request.resource.data.memberId == request.auth.uid
           && request.resource.data.memberName is string && request.resource.data.memberName.size() <= 200
           && request.resource.data['service'] in ['overnight', 'checkin']
@@ -478,7 +484,6 @@ service cloud.firestore {
           && request.resource.data.estimatedTotal is number
           && request.resource.data.estimatedTotal >= 0
           && request.resource.data.estimatedTotal <= 100000
-          && request.resource.data.stripeCustomerId is string && request.resource.data.stripeCustomerId.size() <= 200
           && request.resource.data.status == 'pending'
           && request.resource.data.read == false
           && request.resource.data.createdAt is timestamp

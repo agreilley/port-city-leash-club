@@ -26,11 +26,9 @@
 // }
 
 const {
-  escapeHtml, formatDateRange, formatCalendarDate, joinNames, pluralNoun,
+  escapeHtml, formatDateRange, formatCalendarDate, joinNames, pluralNoun, TEAM_SIGNOFF,
   renderBlockHtml, renderBlockText, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
-
-const TEAM_SIGNOFF = 'The Port City Leash Club team';
 
 function fmtDollars(n) {
   return `$${(n || 0).toFixed(2)}`;

@@ -275,6 +275,78 @@ const RENDERS = [
     },
   },
 
+  // ── portal-membership-confirmed ──────────────────────────────────────
+  {
+    template: 'portal-membership-confirmed',
+    variant: 'one-dog',
+    label: 'One dog, first walk scheduled',
+    petCount: 1,
+    data: {
+      firstName: 'Jamie',
+      dogNames: ['Bailey'],
+      tier: 'Member',
+      frequency: 'Monday, Wednesday, Friday',
+      firstWalkDateStr: '2026-09-03',
+    },
+  },
+  {
+    template: 'portal-membership-confirmed',
+    variant: 'multiple-dogs',
+    label: 'Multiple dogs, no first walk found yet',
+    petCount: 3,
+    data: {
+      firstName: 'Morgan',
+      dogNames: ['Bailey', 'Max', 'Cooper'],
+      tier: 'Member',
+      frequency: 'Monday, Tuesday, Wednesday, Thursday, Friday',
+      firstWalkDateStr: null,
+    },
+  },
+
+  // ── portal-access ─────────────────────────────────────────────────────
+  {
+    template: 'portal-access',
+    variant: 'membership',
+    label: 'Membership, meet & greet just completed',
+    petCount: 2,
+    data: {
+      firstName: 'Jamie',
+      petNames: ['Bailey', 'Max'],
+      kind: 'membership',
+      tier: 'Standard',
+      frequency: 'Monday, Wednesday, Friday',
+      portalSetupLink: 'https://www.portcityleashclub.com/reset?oobCode=demo-portal-access-membership',
+    },
+  },
+  {
+    template: 'portal-access',
+    variant: 'service-dates-requested',
+    label: 'Net-new one-time service, dates already requested',
+    petCount: 1,
+    data: {
+      firstName: 'Morgan',
+      petNames: ['Cooper'],
+      kind: 'service',
+      serviceLabel: 'Drop-In Visit',
+      requestedDatesStr: 'September 12 to September 15',
+      portalSetupLink: 'https://www.portcityleashclub.com/reset?oobCode=demo-portal-access-service-dates',
+    },
+  },
+  {
+    template: 'portal-access',
+    variant: 'service-dates-unset',
+    label: 'Net-new one-time service, dates not yet set',
+    petCount: 1,
+    data: {
+      firstName: 'Riley',
+      petNames: ['Luna'],
+      kind: 'service',
+      serviceLabel: 'Standard Walk',
+      requestedDatesStr: null,
+      portalSetupLink: 'https://www.portcityleashclub.com/reset?oobCode=demo-portal-access-service-unset',
+    },
+  },
+
   // ── referral-code-delivery ────────────────────────────────────────────
   {
     template: 'referral-code-delivery',

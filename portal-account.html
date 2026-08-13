@@ -7,6 +7,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Account Settings - Port City Leash Club</title>
+  <!-- Stripe Elements — card field for Update Payment Method below. Loaded
+       on every visit to this page (not just when the modal opens) since a
+       <script> tag can't be injected and awaited as reliably as one already
+       present in <head> by the time the member clicks the button. -->
+  <script src="https://js.stripe.com/v3/"></script>
   <style>
     * {
       margin: 0;
@@ -461,13 +466,9 @@
           </div>
         </div>
 
-        <!-- Update Payment Method: hidden at launch — needs Stripe SetupIntent +
-             Elements flow (deferred). Card changes handled manually until built.
-             Restore + wire when building the SetupIntent flow.
         <div class="section-actions">
-          <button class="btn btn-secondary">Update Payment Method</button>
+          <button class="btn btn-secondary" onclick="openUpdatePaymentModal()">Update Payment Method</button>
         </div>
-        -->
       </div>
 
       <!-- Personal Information -->
@@ -563,6 +564,34 @@
     </div>
   </div>
 
+  <!-- Update Payment Method modal — Stripe Elements card field, mounted fresh
+       each time this opens (see openUpdatePaymentModal). Card number is
+       collected entirely by Stripe.js into cardElement below and never
+       touches our own backend; only a SetupIntent id crosses to our server,
+       via confirmCardOnFile, which independently re-verifies it with Stripe. -->
+  <div id="cardModal" style="display:none; position:fixed; inset:0; background:rgba(13,27,42,0.5); z-index:10000; align-items:center; justify-content:center; padding:20px;">
+    <div style="background:#fff; border-radius:16px; padding:28px; width:100%; max-width:420px; box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+      <h2 style="font-size:18px; font-weight:600; color:#0D1B2A; margin-bottom:20px;">Update Payment Method</h2>
+
+      <!-- Modal-local error line — stays visible above the dialog, matches the status component -->
+      <div id="cardModalError" role="alert" style="display:none; background:#F4F0EA; border:1px solid rgba(13,27,42,0.08); border-left:4px solid #C17B6F; border-radius:6px; padding:14px 16px; margin-bottom:20px; font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; line-height:1.5; color:#0D1B2A;"></div>
+
+      <div class="field-group" style="margin-bottom:8px;">
+        <label class="field-label">Card Details</label>
+        <div id="cardElementMount" style="padding:12px; background:white; border:1px solid #E5E0D8; border-radius:6px;"></div>
+      </div>
+      <!-- Stripe.js's own per-field validation (card number, expiry, CVC) — kept
+           separate from cardModalError above, which is for the createAuthenticatedSetupIntent/
+           confirmCardSetup/confirmCardOnFile call chain, not field-level typos. -->
+      <div id="card-errors" role="alert" style="color:#B91C1C; font-size:13px; min-height:16px; margin-bottom:16px;"></div>
+
+      <div style="display:flex; gap:12px; justify-content:flex-end;">
+        <button class="btn btn-secondary" id="cancelCardBtn">Cancel</button>
+        <button class="btn btn-primary" id="saveCardBtn">Save Card</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Orphaned walk-extension resolution modal — shown only when a schedule
        change would drop a date that already has a CONFIRMED (paid) 45-minute
        extension on it. Blocks the schedule change until every one is resolved. -->
@@ -637,6 +666,12 @@ onAuthStateChanged(auth, async (user) => {
     billingData = billingSnap.exists() ? billingSnap.data() : {};
     loadPageData();
     updateSidebar();
+    // ?addCard=1 — portal-dashboard.html's no-card-on-file banner links here
+    // with this flag so the prompt goes straight into the flow instead of
+    // leaving the member to find the button themselves. Only fires once
+    // userId/billingData are actually loaded, same gate every other action
+    // on this page waits on.
+    if (new URLSearchParams(location.search).get('addCard') === '1') openUpdatePaymentModal();
   } catch(e) { console.error(e.message); }
 });
 
@@ -664,11 +699,14 @@ function loadPageData() {
   if (el('email')) el('email').value = memberData.email || '';
   if (el('phone')) el('phone').value = memberData.phone || '';
   if (el('address')) el('address').value = memberData.address || '';
-  // The member doc carries a Stripe customer id (card saved at signup) but not
-  // the card number — a real last-4 would need a server call to Stripe. Until
-  // that exists, state honestly whether a card is on file rather than a fake one.
+  // cardOnFile, not stripeCustomerId — a Stripe customer can exist (created
+  // the instant Update Payment Method is opened, by createAuthenticatedSetupIntent)
+  // before any card has actually been attached to it. cardOnFile only ever
+  // becomes true once confirmCardOnFile has independently verified the
+  // SetupIntent succeeded. No real last-4 shown — that would need a server
+  // call to Stripe this page doesn't make — just an honest yes/no.
   if (el('paymentMethodDisplay')) el('paymentMethodDisplay').textContent =
-    billingData?.stripeCustomerId ? 'A card is securely saved on file.' : 'No card on file yet.';
+    billingData?.cardOnFile ? 'A card is securely saved on file.' : 'No card on file yet.';
   // Membership info
   const isTravelOnly = memberData.tier === 'Travel';
   if (el('membershipTier')) el('membershipTier').textContent = isTravelOnly ? 'Pet Sitting (no walk membership)' : (memberData.tier || 'Member');
@@ -938,6 +976,104 @@ document.getElementById('updatePasswordBtn')?.addEventListener('click', async ()
     }
     showPasswordError(msg);
   } finally {
+    btn.disabled = false;
+  }
+});
+
+// ─── Update Payment Method (Stripe Elements) ────────────────────────────
+// Card number never touches our own backend. Three-step flow:
+//   1. createAuthenticatedSetupIntent (Cloud Function) — opens a SetupIntent
+//      for THIS uid's own Stripe customer, derived from request.auth.uid
+//      server-side (see that function's own header comment). Called fresh
+//      on every Save click, not on modal open, so cancelling out of the
+//      modal never leaves an orphaned SetupIntent behind.
+//   2. stripe.confirmCardSetup (Stripe.js) — runs entirely against Stripe's
+//      own servers; attaches cardElement's card to that SetupIntent.
+//   3. confirmCardOnFile (Cloud Function) — independently re-verifies with
+//      Stripe that the SetupIntent succeeded AND belongs to this uid's own
+//      customer, before writing cardOnFile:true. Writes to private/billing
+//      are Admin-SDK-only (firestore.rules) — this callable is the only path
+//      a member has to ever set that flag.
+//
+// STRIPE_PUBLISHABLE_KEY: the same live-mode key firebase-payments.js used
+// before card capture moved off the public request forms — publishable keys
+// are designed to ship in client-side JS, and must stay paired with
+// whichever STRIPE_SECRET_KEY the Cloud Functions are using (live here).
+const STRIPE_PUBLISHABLE_KEY = 'pk_live_51Ts2njBYaaTA3vAvPIQWwppe0dXFMS1WxXJ67VR79b281wouy4dv0ePgcHT6oiZGKDjMnTj7n0vTuk3yBlDfuEQF006JgayvNW';
+let stripeClient = null, cardElement = null;
+
+const cardModal = document.getElementById('cardModal');
+const cardModalError = document.getElementById('cardModalError');
+const showCardModalError = (msg) => { if (cardModalError) { cardModalError.textContent = msg; cardModalError.style.display = 'block'; } };
+const clearCardModalError = () => { if (cardModalError) { cardModalError.textContent = ''; cardModalError.style.display = 'none'; } };
+
+window.openUpdatePaymentModal = async () => {
+  if (!userId) return;
+  clearCardModalError();
+  const fieldErrEl = document.getElementById('card-errors');
+  if (fieldErrEl) fieldErrEl.textContent = '';
+  const saveBtn = document.getElementById('saveCardBtn');
+  if (saveBtn) saveBtn.disabled = false;
+  cardModal.style.display = 'flex';
+
+  if (typeof Stripe === 'undefined') {
+    showCardModalError("The payment form couldn't load. Please refresh the page and try again.");
+    return;
+  }
+  if (!stripeClient) stripeClient = Stripe(STRIPE_PUBLISHABLE_KEY);
+  // Mounted fresh every open, not once at page load — the modal starts
+  // hidden, and Stripe Elements needs its container visible/sized to mount
+  // correctly. unmount() first in case a prior open's element (Cancel, then
+  // Update again, same page load) is still attached.
+  if (cardElement) { try { cardElement.unmount(); } catch (e) {} }
+  const elements = stripeClient.elements();
+  cardElement = elements.create('card', {
+    style: {
+      base: {
+        fontFamily: "'DM Sans', sans-serif",
+        fontSize: '16px', // >=16px avoids iOS Safari auto-zoom on field focus
+        color: '#0D1B2A',
+        '::placeholder': { color: '#B0B0B0' },
+      },
+    },
+  });
+  cardElement.mount('#cardElementMount');
+  cardElement.on('change', (event) => {
+    if (fieldErrEl) fieldErrEl.textContent = event.error ? event.error.message : '';
+  });
+};
+
+window.closeCardModal = () => { cardModal.style.display = 'none'; };
+document.getElementById('cancelCardBtn')?.addEventListener('click', closeCardModal);
+// Click the dimmed backdrop (but not the dialog itself) to dismiss.
+cardModal?.addEventListener('click', (e) => { if (e.target === cardModal) closeCardModal(); });
+
+document.getElementById('saveCardBtn')?.addEventListener('click', async () => {
+  if (!stripeClient || !cardElement) return;
+  clearCardModalError();
+  const btn = document.getElementById('saveCardBtn');
+  btn.disabled = true;
+  try {
+    const createIntent = httpsCallable(functions, 'createAuthenticatedSetupIntent');
+    const { data } = await createIntent();
+    const result = await stripeClient.confirmCardSetup(data.clientSecret, {
+      payment_method: { card: cardElement },
+    });
+    if (result.error) {
+      showCardModalError(result.error.message || 'Could not save your card. Please try again.');
+      btn.disabled = false;
+      return;
+    }
+    const confirmOnFile = httpsCallable(functions, 'confirmCardOnFile');
+    await confirmOnFile({ setupIntentId: result.setupIntent.id });
+    billingData = { ...(billingData || {}), cardOnFile: true };
+    if (document.getElementById('paymentMethodDisplay')) {
+      document.getElementById('paymentMethodDisplay').textContent = 'A card is securely saved on file.';
+    }
+    closeCardModal();
+    showSuccess('Your card is on file.');
+  } catch (e) {
+    showCardModalError(e.message || 'Could not save your card. Please try again.');
     btn.disabled = false;
   }
 });
