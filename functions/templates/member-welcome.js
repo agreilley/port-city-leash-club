@@ -14,7 +14,7 @@
 // data: {
 //   firstName: string,
 //   dogNames: string[],
-//   tier: string,                 // 'Essential' | 'Standard' | 'Daily'
+//   tier: string,                 // 'Member' | 'Travel'
 //   frequency: string,            // e.g. 'Monday, Wednesday, Friday'
 //   firstWalkDateStr: string|null, // 'YYYY-MM-DD', or null if none found yet
 //   portalSetupLink: string,       // generatePasswordResetLink() output

@@ -17,7 +17,7 @@
 //   petNames: string[],
 //   kind: 'membership' | 'service',
 //   portalSetupLink: string,        // generatePasswordResetLink() output
-//   tier: string|null,              // membership only: 'Essential' | 'Standard' | 'Daily'
+//   tier: string|null,              // membership only: 'Member'
 //   frequency: string|null,         // membership only, e.g. 'Monday, Wednesday, Friday'
 //   serviceLabel: string|null,      // service only, e.g. 'Standard Walk' | 'Drop-In Visit'
 //   requestedDatesStr: string|null, // service only, pre-formatted (e.g. formatDateRange output); null if not set yet

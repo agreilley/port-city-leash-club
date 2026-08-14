@@ -1165,14 +1165,14 @@ exports.generateInitialWalks = onCall({}, async (request) => {
 // Returns { success:false, error } for the expected member-facing outcomes
 // (not a member, invalid input, tier violation) so the portal can show the
 // reason inline. Throws HttpsError only for no-auth and infrastructure faults.
-const VALID_WALK_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+const VALID_WALK_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 const VALID_TIME_SLOTS = ['morning', 'early-afternoon', 'late-afternoon'];
 // Flat day-count rule for every recurring member. The old per-tier ranges
 // (Essential 1-2, Standard 3-4, Daily fixed at 5) are retired along with the
 // tiers themselves — this also lifts the previous restriction that Daily
 // members couldn't change their days at all; every recurring member can now
-// pick any 1-5 weekday count.
-const RECURRING_MEMBER_DAY_RULE = { min: 1, max: 5, label: 'Choose between 1 and 5 walk days per week' };
+// pick any 1-7 day count, weekends included.
+const RECURRING_MEMBER_DAY_RULE = { min: 1, max: 7, label: 'Choose between 1 and 7 walk days per week' };
 
 exports.updateWalkSchedule = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
   // No auth context at all — callable convention is to throw (the client's
@@ -1196,14 +1196,14 @@ exports.updateWalkSchedule = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
   const { defaultWalkDays, defaultTimeSlot, resolutions } = request.data || {};
 
   // Normalize days: lowercase + trim, drop blanks, dedupe. Reject anything
-  // that isn't a Monday–Friday name (weekends aren't part of any tier).
+  // that isn't a recognized day name.
   if (!Array.isArray(defaultWalkDays)) {
     return { success: false, error: 'Please select your walk days.' };
   }
   const days = [...new Set(defaultWalkDays.map(d => String(d || '').toLowerCase().trim()).filter(Boolean))];
   const invalidDay = days.find(d => !VALID_WALK_DAYS.includes(d));
   if (invalidDay) {
-    return { success: false, error: `"${invalidDay}" is not a valid walk day. Choose Monday through Friday.` };
+    return { success: false, error: `"${invalidDay}" is not a valid walk day.` };
   }
 
   // Time slot must be one of the canonical values the walk generator understands.
