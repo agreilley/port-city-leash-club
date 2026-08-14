@@ -483,6 +483,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { initializeFirestore, memoryLocalCache, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { showSuccess, showError } from '/js/status.js';
+import { requireMemberDoc } from '/js/portal-guard.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
@@ -522,25 +523,14 @@ onAuthStateChanged(auth, async (user) => {
   clearTimeout(authTimeoutId);
   if (!user) { window.location.href = 'portal-login.html'; return; }
   userId = user.uid;
-  try {
-    const snap = await getDoc(doc(db, 'members', userId));
-    if (snap.exists()) {
-      memberData = { id: snap.id, ...snap.data() };
-      // Normalise to dogs array
-      currentDogs = memberData.dogs?.length
-        ? memberData.dogs.map(d => ({ ...d }))
-        : [{ name: memberData.dogName || '', breed: memberData.petBreed || '', age: memberData.petAge ? `${memberData.petAge} years` : '', weight: memberData.petWeight || '', notes: memberData.dogNotes || '', temperament: memberData.temperament || '', walkingPrefs: memberData.walkingPrefs || '', triggers: memberData.triggers || '', medications: memberData.medications || '', allergies: memberData.allergies || '', species: 'Dog', spayed: '', friendlyWithPeople: false, friendlyWithDogs: false, pullsOnLeash: false, takesMedication: false }];
-      currentEmergencyContacts = (memberData.emergencyContacts || []).map(c => ({ ...c }));
-      renderPage();
-    } else {
-      document.getElementById('pageSubtitle').textContent = '';
-      showError("We couldn't find your profile. Please try again.", { onRetry: () => location.reload() });
-    }
-  } catch(e) {
-    console.error('Profile load error:', e.message);
-    document.getElementById('pageSubtitle').textContent = '';
-    showError("We couldn't load your profile. Please try again.", { onRetry: () => location.reload() });
-  }
+  memberData = await requireMemberDoc(db, userId);
+  if (!memberData) { document.getElementById('pageSubtitle').textContent = ''; return; }
+  // Normalise to dogs array
+  currentDogs = memberData.dogs?.length
+    ? memberData.dogs.map(d => ({ ...d }))
+    : [{ name: memberData.dogName || '', breed: memberData.petBreed || '', age: memberData.petAge ? `${memberData.petAge} years` : '', weight: memberData.petWeight || '', notes: memberData.dogNotes || '', temperament: memberData.temperament || '', walkingPrefs: memberData.walkingPrefs || '', triggers: memberData.triggers || '', medications: memberData.medications || '', allergies: memberData.allergies || '', species: 'Dog', spayed: '', friendlyWithPeople: false, friendlyWithDogs: false, pullsOnLeash: false, takesMedication: false }];
+  currentEmergencyContacts = (memberData.emergencyContacts || []).map(c => ({ ...c }));
+  renderPage();
 });
 
 function renderPage() {
