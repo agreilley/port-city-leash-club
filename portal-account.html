@@ -617,6 +617,7 @@ import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.
 import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { initializeFirestore, memoryLocalCache, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { showSuccess, showError } from '/js/status.js';
+import { requireMemberDoc } from '/js/portal-guard.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { MEMBER_WALK_RATE } from './pricing.js';
 const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
@@ -656,10 +657,9 @@ onAuthStateChanged(auth, async (user) => {
   clearTimeout(authTimeoutId);
   if (!user) { window.location.href = 'portal-login.html'; return; }
   userId = user.uid;
+  memberData = await requireMemberDoc(db, user.uid);
+  if (!memberData) return;
   try {
-    const snap = await getDoc(doc(db, 'members', user.uid));
-    if (!snap.exists()) return;
-    memberData = { id: snap.id, ...snap.data() };
     // Billing (M-1) moved to members/{uid}/private/billing; a member may read
     // their OWN copy, for the card-on-file line in loadPageData().
     const billingSnap = await getDoc(doc(db, 'members', user.uid, 'private', 'billing'));

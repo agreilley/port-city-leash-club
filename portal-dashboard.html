@@ -747,6 +747,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { getAuth, initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getFirestore, initializeFirestore, memoryLocalCache, doc, getDoc, collection, query, where, onSnapshot, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { showError } from '/js/status.js';
+import { requireMemberDoc } from '/js/portal-guard.js';
 const firebaseConfig = {
   apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
   authDomain: "port-city-leash-club-827ab.firebaseapp.com",
@@ -883,12 +884,11 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 async function loadAndSubscribe(targetId) {
+  memberData = await requireMemberDoc(db, targetId);
+  if (!memberData) return;
+  populateMemberUI();
+
   try {
-    const snap = await getDoc(doc(db, 'members', targetId));
-    if (snap.exists()) {
-      memberData = { id: snap.id, ...snap.data() };
-      populateMemberUI();
-    }
     // Billing (M-1): members/{id}/private/billing. The member reads their own
     // copy; in admin preview, db is already rebound to the verified admin's
     // own authenticated instance above (resolveVerifiedAdminUid) — the rule
