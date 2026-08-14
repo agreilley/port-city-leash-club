@@ -429,6 +429,12 @@
             <label style="display: flex; align-items: center; gap: 8px;  font-size: 14px;">
               <input type="checkbox" id="day-friday" value="friday"> Friday
             </label>
+            <label style="display: flex; align-items: center; gap: 8px;  font-size: 14px;">
+              <input type="checkbox" id="day-saturday" value="saturday"> Saturday
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px;  font-size: 14px;">
+              <input type="checkbox" id="day-sunday" value="sunday"> Sunday
+            </label>
           </div>
         </div>
 
@@ -857,7 +863,7 @@ window.saveAccount = async () => {
   //    count against the member's tier server-side. If the schedule is
   //    rejected we stop here and do NOT touch the profile, so a bad schedule
   //    never half-saves alongside otherwise-valid profile edits.
-  const selectedDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+  const selectedDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
     .filter(day => el('day-' + day)?.checked);
   const timeSlot = document.querySelector('input[name="timeSlot"]:checked')?.value;
   let scheduleSaved = false;
