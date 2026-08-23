@@ -5795,13 +5795,25 @@ exports.getMemberCreditBalance = onCall({ secrets: [STRIPE_SECRET_KEY] }, async 
 // substitute: it looks the code up with the Admin SDK and returns only a
 // boolean, never the referrer's identity. No assertIsAdmin(): the person
 // entering a friend's code at signup isn't authenticated at all yet.
+//
+// reason distinguishes WHY a code is invalid, for the blur-time UI on both
+// forms — 'not_found' (no such doc, or inactive — a would-be visitor can't
+// tell "never existed" from "an admin deactivated it," and shouldn't need
+// to), 'expired', or null when valid. Empty input gets reason: null too —
+// not 'not_found' — an empty field isn't a code that wasn't found, it's no
+// code at all; a future caller reading reason shouldn't be told otherwise.
+// Deliberately does NOT check single-use-code reuse (redeemedByMemberId) —
+// that check needs a memberId to exclude "redeemed by you," which doesn't
+// exist yet for this unauthenticated caller. See resolveNewMemberReferralDiscount
+// for the real reuse check, at charge time, where a memberId is in hand.
 exports.validateReferralCode = onCall({}, async (request) => {
   const code = typeof request.data?.code === 'string' ? request.data.code.trim() : '';
-  if (!code) return { valid: false };
+  if (!code) return { valid: false, reason: null };
   const snap = await db.collection('referralCodes').doc(code).get();
-  if (!snap.exists || snap.data().status !== 'active') return { valid: false };
+  if (!snap.exists) return { valid: false, reason: 'not_found' };
+  if (snap.data().status !== 'active') return { valid: false, reason: 'inactive' };
   // Same isReferralCodeExpired check resolveNewMemberReferralDiscount uses
   // at charge time — a code must never validate here and then fail later.
-  if (isReferralCodeExpired(snap.data())) return { valid: false };
-  return { valid: true };
+  if (isReferralCodeExpired(snap.data())) return { valid: false, reason: 'expired' };
+  return { valid: true, reason: null };
 });

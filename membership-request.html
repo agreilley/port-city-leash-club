@@ -276,7 +276,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           <div class="field"><label class="field-label" for="phone">Phone</label><input id="phone" name="phone" type="tel" placeholder="(910) 555-1234"></div>
           <div class="field"><label class="field-label" for="address">Home address</label><input id="address" name="address" type="text" placeholder="Street address"></div>
         </div>
-        <div class="field" style="max-width:320px;margin-top:18px;"><label class="field-label" for="referralCode">Referral code <span style="font-weight:400;">(optional)</span></label><input id="referralCode" name="referralCode" type="text"><p style="font-size:12px;color:var(--text-light);margin-top:6px;">Applies to your first charge, up to half the charge amount.</p></div>
+        <div class="field" style="max-width:320px;margin-top:18px;"><label class="field-label" for="referralCode">Referral code <span style="font-weight:400;">(optional)</span></label><input id="referralCode" name="referralCode" type="text"><p id="referralCodeStatus" style="font-size:12px;color:var(--text-light);margin-top:6px;">Applies to your first charge, up to half the charge amount.</p></div>
       </section>
 
       <section class="form-section">
@@ -423,6 +423,60 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   startDateInput.addEventListener('change', () => {             // B: immediate feedback
     startDateError.style.display =
       (!startDateInput.value || startDateInput.value < minDateStr) ? 'block' : 'none';
+  });
+
+  // Referral code blur-time validation — additive to the existing submit-time
+  // check further down (which alone decides what actually gets attached to
+  // the submission); this only gives the visitor a live result while they're
+  // still on the form. Empty is always valid, no network call. The hint line
+  // added under the field in an earlier pass doubles as the status line here —
+  // its original text is the idle state, restored whenever the field is
+  // emptied or edited. referralCodeCheckToken guards against a slow response
+  // landing after a newer one already resolved (blur, edit, blur again,
+  // before the first check finishes) — only the response matching the
+  // latest token is ever applied.
+  const referralCodeInput = document.getElementById('referralCode');
+  const referralCodeStatus = document.getElementById('referralCodeStatus');
+  const REFERRAL_CODE_IDLE_TEXT = referralCodeStatus.textContent;
+  const REFERRAL_CODE_IDLE_COLOR = 'var(--text-light)';
+  const REFERRAL_CODE_INVALID_MESSAGES = {
+    not_found: "We don't recognize that code. Double-check it, or leave the field blank.",
+    expired: 'That code has expired.',
+    inactive: 'That code is no longer active.',
+  };
+  let referralCodeCheckToken = 0;
+
+  function setReferralCodeStatus(text, color) {
+    referralCodeStatus.textContent = text;
+    referralCodeStatus.style.color = color;
+  }
+  function resetReferralCodeStatus() {
+    setReferralCodeStatus(REFERRAL_CODE_IDLE_TEXT, REFERRAL_CODE_IDLE_COLOR);
+  }
+
+  referralCodeInput.addEventListener('input', resetReferralCodeStatus);
+
+  referralCodeInput.addEventListener('blur', async () => {
+    const code = referralCodeInput.value.trim();
+    if (!code) { resetReferralCodeStatus(); return; }
+    if (!window._validateReferralCode) return; // Firebase not ready yet — submit-time check still covers this
+    const thisCheck = ++referralCodeCheckToken;
+    setReferralCodeStatus('Checking…', REFERRAL_CODE_IDLE_COLOR);
+    try {
+      const result = await window._validateReferralCode({ code });
+      if (thisCheck !== referralCodeCheckToken) return; // superseded by a newer check
+      if (result.data.valid) {
+        setReferralCodeStatus('Code applied.', 'var(--seafoam)');
+      } else {
+        setReferralCodeStatus(REFERRAL_CODE_INVALID_MESSAGES[result.data.reason] || REFERRAL_CODE_IDLE_TEXT, 'var(--text-mid)');
+      }
+    } catch (e) {
+      // Never warn about a code we couldn't check — a network failure isn't
+      // the visitor's fault and isn't evidence the code is bad.
+      console.error('Referral code blur-check failed:', e.message);
+      if (thisCheck !== referralCodeCheckToken) return;
+      resetReferralCodeStatus();
+    }
   });
 
   // Flat per-walk rate, bridged from pricing.js (window._MEMBER_WALK_RATE —
