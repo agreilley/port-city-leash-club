@@ -88,7 +88,7 @@ function html(data) {
     <p style="margin:0 0 20px;font-family:'Cormorant Garamond', Georgia, 'Times New Roman', serif;font-weight:400;font-size:28px;line-height:1.25;color:${NAVY};">Your ${amount} credit is ready.</p>
     <p style="margin:0 0 20px;">${escapeHtml(greetingLine(data.firstName))} Here's your code, ready whenever you are.</p>
     ${codeBlockHtml(data.code)}
-    <p style="margin:20px 0 0;">Use this code when you sign up for a membership or book pet sitting, and you'll get ${amount} toward your first charge.${expiryClause}</p>
+    <p style="margin:20px 0 0;">Use this code when you sign up for a membership or book pet sitting, and you'll get ${amount} toward your first charge, up to half the charge amount.${expiryClause}</p>
     ${renderButtonHtml({ href: GET_STARTED_URL, label: 'Get Started' })}
     <p style="margin:20px 0 0;">Questions? Just reply to this email.</p>
     ${renderSignoffHtml(TEAM_SIGNOFF)}
@@ -111,7 +111,7 @@ function text(data) {
     '',
     codeBlockText(data.code),
     '',
-    `Use this code when you sign up for a membership or book pet sitting, and you'll get ${amount} toward your first charge.${expiryClause}`,
+    `Use this code when you sign up for a membership or book pet sitting, and you'll get ${amount} toward your first charge, up to half the charge amount.${expiryClause}`,
     '',
     `Get started: ${GET_STARTED_URL}`,
     '',
