@@ -560,7 +560,6 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
       paymentIntentId: docData.lastChargeId || null,
       creditApplied: docData.referralCreditApplied || 0,
       referralDiscountApplied: docData.referralDiscountApplied || 0,
-      referralCreditCarriedForward: docData.referralCreditCarriedForward || 0,
     };
   }
 
@@ -589,12 +588,13 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
   // them again. Capped at 50% of the ORIGINAL requested amount — never more than
   // half off any one charge — and separately bounded by whatever's left after
   // the pendingReferralCredit application above, so the two mechanisms can never
-  // combine to charge less than $0. Whatever either cap leaves unused carries
-  // forward — see finalizeNewMemberReferralDiscount — so the member still
-  // gets the full $50 promised externally, just not always all in one charge.
+  // combine to charge less than $0. Applies ONLY to this one charge: whatever
+  // the cap leaves unclaimed is forfeited, not carried forward or credited
+  // later — a $25 drop-in visit against a $50 code caps the discount at
+  // $12.50, and the other $37.50 is simply gone. Deliberate: the code's full
+  // face value was never a guarantee, only an upper bound on this charge.
   let referralDiscount = null;
   let discountCents = 0;
-  let carryForwardCents = 0;
   if (!billingData.referralCreditChecked) {
     const memberSnap = await db.collection('members').doc(memberId).get();
     const memberData = memberSnap.data();
@@ -604,7 +604,6 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
         const cappedAtHalf = Math.floor(amountInCentsRequested / 2);
         const remainingAfterPendingCredit = Math.max(0, amountInCentsRequested - creditAppliedCents);
         discountCents = Math.min(referralDiscount.discountCents, cappedAtHalf, remainingAfterPendingCredit);
-        carryForwardCents = referralDiscount.discountCents - discountCents;
       }
     }
   }
@@ -678,7 +677,6 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
     },
     ...(creditApplied > 0 ? { referralCreditApplied: creditApplied } : {}),
     ...(referralDiscountApplied > 0 ? { referralDiscountApplied } : {}),
-    ...(carryForwardCents > 0 ? { referralCreditCarriedForward: carryForwardCents / 100 } : {}),
   }, { merge: true });
 
   if (creditAppliedCents > 0 && memberId) {
@@ -696,13 +694,12 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
   // payment) — never throws, never re-decides eligibility, only records
   // what was already applied to the charge that just succeeded.
   if (referralDiscount) {
-    await finalizeNewMemberReferralDiscount(stripe, memberId, billingData.referralSubmissionId || null, referralDiscount, discountCents, carryForwardCents);
+    await finalizeNewMemberReferralDiscount(stripe, memberId, billingData.referralSubmissionId || null, referralDiscount, discountCents);
   }
 
   return {
     success: true, paymentIntentId: paymentIntent ? paymentIntent.id : null,
     creditApplied, referralDiscountApplied,
-    referralCreditCarriedForward: carryForwardCents / 100,
   };
 }
 
@@ -1732,20 +1729,17 @@ async function runChargeCurrentMonthWalks(memberId) {
   // outcome has ever been recorded — by this function or by
   // runFirstPaymentReferralCredit on a LATER month's regular subscription
   // invoice — every later chargeCurrentMonthWalks call must never re-discount
-  // them again. Flat $50 entitlement, capped at 50% of THIS charge so a
-  // small prorated first month is never more than half off (and never
-  // reaches $0 — Stripe won't allow a $0 PaymentIntent). Whatever the cap
-  // leaves unused carries forward — see finalizeNewMemberReferralDiscount —
-  // so the member still gets the full $50 promised externally, just not
-  // always all in this one charge.
+  // them again. Flat entitlement, capped at 50% of THIS charge so a small
+  // prorated first month is never more than half off (and never reaches $0 —
+  // Stripe won't allow a $0 PaymentIntent). Whatever the cap leaves unclaimed
+  // is forfeited, not carried forward — a small first month caps the
+  // discount low and the rest is simply gone, same rule chargeCustomerCard
+  // and runFirstPaymentReferralCredit both apply to their own first charge.
   const referralDiscount = billingData.referralCreditChecked
     ? null
     : await resolveNewMemberReferralDiscount(memberId, billingData, member);
   const discountCents = (referralDiscount && referralDiscount.decision === 'approved')
     ? Math.min(referralDiscount.discountCents, Math.floor(amountInCents / 2))
-    : 0;
-  const carryForwardCents = (referralDiscount && referralDiscount.decision === 'approved')
-    ? referralDiscount.discountCents - discountCents
     : 0;
   const chargeAmountInCents = amountInCents - discountCents;
 
@@ -1802,7 +1796,6 @@ async function runChargeCurrentMonthWalks(memberId) {
       status: 'charged', paymentIntentId: paymentIntent.id,
       chargedAt: FieldValue.serverTimestamp(),
       ...(discountCents > 0 ? { referralDiscountApplied: discountCents / 100 } : {}),
-      ...(carryForwardCents > 0 ? { referralCreditCarriedForward: carryForwardCents / 100 } : {}),
     },
   }, { merge: true });
 
@@ -1816,7 +1809,7 @@ async function runChargeCurrentMonthWalks(memberId) {
   // first payment) — never throws, never re-decides eligibility, only
   // records what was already applied to the charge that just succeeded.
   if (referralDiscount) {
-    await finalizeNewMemberReferralDiscount(stripe, memberId, billingData.referralSubmissionId || null, referralDiscount, discountCents, carryForwardCents);
+    await finalizeNewMemberReferralDiscount(stripe, memberId, billingData.referralSubmissionId || null, referralDiscount, discountCents);
   }
 
   return {
@@ -1824,7 +1817,6 @@ async function runChargeCurrentMonthWalks(memberId) {
     amount: chargeAmountInCents / 100, fromDay, dates: days,
     paymentIntentId: paymentIntent.id,
     ...(discountCents > 0 ? { referralDiscountApplied: discountCents / 100 } : {}),
-    ...(carryForwardCents > 0 ? { referralCreditCarriedForward: carryForwardCents / 100 } : {}),
   };
 }
 
@@ -2335,9 +2327,11 @@ exports.issueRefund = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) =
 //        month skips that charge entirely, so THIS invoice really is their
 //        first payment — and since Stripe has already finalized and paid it
 //        by the time this fires, there's no pre-charge hook available, so
-//        that member's $50 still arrives as old-style forward credit rather
-//        than an upfront discount. referralCreditChecked (not which event
-//        delivered it) is what actually decides "first" either way.
+//        that member's credit still arrives as a balance credit rather than
+//        an upfront discount — capped at 50% of that invoice's amount_paid,
+//        same rule the pre-charge paths apply to their own first charge.
+//        referralCreditChecked (not which event delivered it) is what
+//        actually decides "first" either way.
 //    Everything else — payment_succeeded logging, disputes, a real
 //    cancellation flow, subscription.updated — is explicitly out of scope.
 //
@@ -2402,9 +2396,10 @@ async function issueStripeBalanceCredit(stripe, stripeCustomerId, amountCents, d
 // relying on an implicit $50 default, so a code with a different amount
 // (e.g. the $20 email-capture offer) can never silently issue $50.
 // Throws on failure (never swallows) — the caller (runFirstPaymentReferralCredit
-// for the invoice.paid fallback, finalizeNewMemberReferralDiscount for the
-// pre-charge path's referrer-credit and carry-forward issuance) is what
-// decides how a failure here affects creditIssued/redemption status.
+// for the invoice.paid fallback's own capped credit and its referrer credit,
+// finalizeNewMemberReferralDiscount for the pre-charge path's referrer
+// credit) is what decides how a failure here affects creditIssued/redemption
+// status.
 async function issueReferralCredit(stripe, memberId, memberData, amountCents) {
   if (!Number.isInteger(amountCents) || amountCents <= 0) {
     throw new Error(`issueReferralCredit: amountCents must be a positive integer, got ${amountCents} for member ${memberId}.`);
@@ -2539,30 +2534,26 @@ async function resolveNewMemberReferralDiscount(memberId, billingData, memberDat
 // resolveNewMemberReferralDiscount and subtracted from the charge BEFORE this
 // runs — nothing here can undo that — so this only ever records what already
 // happened and issues the referrer's own credit (member_referral codes only;
-// the new member's own $50 was already realized as the charge-time discount,
-// not a separate issuance here). The claim transaction below mirrors
-// runFirstPaymentReferralCredit's, but happens here, post-charge, rather than
-// pre-decision — the discount decision itself has to stay a repeatable,
-// non-committing read (see resolveNewMemberReferralDiscount), since claiming
-// it before a charge that might then fail would permanently strand a
-// legitimate retry with no discount and no way to reclaim it.
+// the new member's own discount was already realized as the charge-time
+// reduction, not a separate issuance here). The claim transaction below
+// mirrors runFirstPaymentReferralCredit's, but happens here, post-charge,
+// rather than pre-decision — the discount decision itself has to stay a
+// repeatable, non-committing read (see resolveNewMemberReferralDiscount),
+// since claiming it before a charge that might then fail would permanently
+// strand a legitimate retry with no discount and no way to reclaim it.
 //
 // referralSubmissionId may be null (a discount decision with no code, or no
 // submission on file) — every write below is skipped in that case, same as
 // the 'none' decision.
 //
-// carryForwardCents is the gap between the flat $50 entitlement and
-// appliedDiscountCents (whatever the 50%-of-charge cap actually let through)
-// — issued below via issueReferralCredit so the new member still gets the
-// full $50 of value promised everywhere externally (gift cards, email,
-// /welcomehome), just not always all at once. Goes through the SAME
-// tier-branching issueReferralCredit already uses for referrer credit: a
-// Stripe balance credit (auto-applies to the member's own next invoice) for
-// a membership-tier new member, pendingReferralCredit (applied on their next
-// chargeSavedCard) for Travel-tier — pendingReferralCredit alone would never
-// actually be spent by a membership-tier member, since nothing in their
-// billing path ever reads it back.
-async function finalizeNewMemberReferralDiscount(stripe, memberId, referralSubmissionId, discount, appliedDiscountCents, carryForwardCents) {
+// appliedDiscountCents is whatever the 50%-of-charge cap actually let
+// through on this one charge — recorded for the redemption doc, nothing
+// more. Any gap between the code's full entitlement and appliedDiscountCents
+// is forfeited, not carried forward or credited later: the code's face
+// value was always an upper bound on THIS charge, never a guarantee of the
+// full amount eventually landing. There is deliberately no code here that
+// issues the difference.
+async function finalizeNewMemberReferralDiscount(stripe, memberId, referralSubmissionId, discount, appliedDiscountCents) {
   const billing = billingRef(memberId);
   let claimed;
   try {
@@ -2619,20 +2610,6 @@ async function finalizeNewMemberReferralDiscount(stripe, memberId, referralSubmi
         .set({ status: 'credit_applied', creditIssued: true, discountAppliedCents: appliedDiscountCents }, { merge: true });
     }
 
-    if (carryForwardCents > 0) {
-      stage = 'carry-forward-credit';
-      const memberSnap = await db.collection('members').doc(memberId).get();
-      const memberData = memberSnap.data();
-      if (!memberData) {
-        // The charge-time discount already succeeded — this throw stops
-        // short of implying the full $50 was honored when part of it
-        // wasn't, same "stuck case, needs a human" reasoning as the missing-
-        // referrer throw below.
-        throw new Error(`Member ${memberId} not found — cannot carry forward the remaining $${(carryForwardCents / 100).toFixed(2)} referral credit.`);
-      }
-      await issueReferralCredit(stripe, memberId, memberData, carryForwardCents);
-    }
-
     if (discount.isMemberReferral && discount.referrerId) {
       stage = 'referrer-credit';
       const referrerSnap = await db.collection('members').doc(discount.referrerId).get();
@@ -2674,9 +2651,16 @@ async function finalizeNewMemberReferralDiscount(stripe, memberId, referralSubmi
 // Stripe-generated invoice. Stripe has already finalized and paid that
 // invoice by the time this webhook fires — there's no "before the charge"
 // point available the way there is in the other two functions — so this
-// member's $50 still arrives as forward credit (a Stripe balance credit, or
-// pendingReferralCredit for Travel-tier) rather than an upfront discount.
-// Rare, and considered acceptable: see the design discussion this replaced.
+// member's credit arrives as a Stripe balance credit (or pendingReferralCredit
+// for Travel-tier) applied toward their NEXT invoice, rather than a
+// reduction of the invoice that triggered this call. invoiceAmountPaidCents
+// (the Stripe invoice's own amount_paid, threaded from stripeWebhook) exists
+// specifically so this path applies the SAME Math.floor(amount / 2) cap the
+// other two pre-charge paths apply to their own first charge — capped
+// against the invoice that made this their first payment, one rule
+// everywhere, not an uncapped exception just because this path has no
+// PaymentIntent of its own to reduce. Same forfeiture rule too: whatever the
+// cap leaves unclaimed is gone, not carried to a later payment.
 //
 // The member's own private/billing.referralCreditChecked flag is BOTH the
 // "is this genuinely the first payment" check and the idempotency guard
@@ -2694,7 +2678,7 @@ async function finalizeNewMemberReferralDiscount(stripe, memberId, referralSubmi
 //
 // Never throws — the caller runs this after its own success and must
 // never have a referral-credit bug make that success look like a failure.
-async function runFirstPaymentReferralCredit(stripe, memberId) {
+async function runFirstPaymentReferralCredit(stripe, memberId, invoiceAmountPaidCents) {
   const billing = billingRef(memberId);
   let proceed, billingData;
   try {
@@ -2744,8 +2728,50 @@ async function runFirstPaymentReferralCredit(stripe, memberId) {
     }
     if (discount.decision !== 'approved') return; // 'none' — no valid code, nothing more to do
 
+    // Same Math.floor(amount / 2) cap chargeCustomerCard/runChargeCurrentMonthWalks
+    // apply to their own first charge, applied here against the invoice that
+    // made this the member's first payment — one formula, no path-specific
+    // exception. Anything the cap leaves unclaimed is forfeited, same as the
+    // other two paths; skip the issuance entirely rather than call
+    // issueReferralCredit with a $0 amount (it throws on that) if the cap
+    // happens to zero it out.
     stage = 'new-member-credit';
-    await issueReferralCredit(stripe, memberId, memberData, discount.discountCents);
+    // invoiceAmountPaidCents comes from the invoice.paid webhook event —
+    // trust nothing about its shape. An undefined/missing amount_paid would
+    // otherwise propagate as Math.floor(undefined / 2) === NaN,
+    // Math.min(x, NaN) === NaN, and NaN > 0 === false — silently skipping
+    // the issuance while referralCreditChecked (already set above, by the
+    // claim transaction) makes this member look fully handled forever.
+    // Handled as its own early return, NOT a throw into the shared catch
+    // below — that catch also covers the referrer-not-found and
+    // issueReferralCredit-failure cases below, which stay Cloud-Functions-
+    // log-only same as before. This specific failure is the one that gets
+    // needsReview:true (see NEEDS_REVIEW_LABELS.credit_issuance_failed in
+    // admin/dashboard.html) so it surfaces as a dashboard badge, not just a
+    // log line — referralCreditChecked is already true by this point (see
+    // above) and nothing else has been written yet (no Stripe call, no
+    // referralCodes doc touch), so clearing it is the full, sufficient
+    // manual recovery.
+    if (!Number.isInteger(invoiceAmountPaidCents) || invoiceAmountPaidCents <= 0) {
+      const msg = `invoiceAmountPaidCents must be a positive integer, got ${invoiceAmountPaidCents} for member ${memberId} — cannot compute the referral discount cap.`;
+      console.error(`runFirstPaymentReferralCredit: ${msg}`);
+      await billing.set({
+        needsReview: true, needsReviewReason: 'credit_issuance_failed',
+        creditIssuanceError: `[${stage}] ${msg}`,
+        creditIssuanceFailedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return;
+    }
+    const cappedDiscountCents = Math.min(discount.discountCents, Math.floor(invoiceAmountPaidCents / 2));
+    if (cappedDiscountCents > 0) {
+      await issueReferralCredit(stripe, memberId, memberData, cappedDiscountCents);
+    } else {
+      // A legitimate $0 cap (an extremely small invoice) is NOT an error —
+      // it's the rule working as designed — but it must be visibly
+      // distinguishable from a normal successful issuance, not just a
+      // silently-skipped call that looks identical to one in the logs.
+      console.warn(`runFirstPaymentReferralCredit: cap zeroed out the discount for member ${memberId} — discount.discountCents=${discount.discountCents}, invoiceAmountPaidCents=${invoiceAmountPaidCents}. No credit issued; code still marked redeemed below.`);
+    }
 
     if (discount.isMemberReferral && discount.referrerId) {
       stage = 'referrer-credit';
@@ -2851,7 +2877,10 @@ exports.stripeWebhook = onRequest({ secrets: [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_
         // Never throws — see runFirstPaymentReferralCredit. A referral-credit
         // bug must never turn a real, successful payment event into a
         // non-200 response (Stripe would just retry it forever).
-        await runFirstPaymentReferralCredit(stripe, memberId);
+        // amount_paid, not total/subtotal — the actual amount this invoice
+        // charged, which is what the 50%-of-first-charge cap has to apply
+        // against for this to match the other two paths' rule exactly.
+        await runFirstPaymentReferralCredit(stripe, memberId, invoice.amount_paid);
       }
     }
     // Any other event type: the Stripe Dashboard endpoint is only configured

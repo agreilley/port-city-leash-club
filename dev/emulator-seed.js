@@ -33,10 +33,19 @@
 // these scenarios depend on the email actually going out).
 //
 // Usage:
-//   node dev/emulator-seed.js scenario7  <stripeCustomerId>
+//   node dev/emulator-seed.js scenario7  <stripeCustomerId> <invoiceAmountDollars>
 //   node dev/emulator-seed.js scenario9
 //   node dev/emulator-seed.js scenario10 <stripeCustomerId>
 //   node dev/emulator-seed.js scenario11
+//
+// scenario7's <invoiceAmountDollars> stands in for the Stripe invoice's own
+// amount_paid, which stripeWebhook threads into runFirstPaymentReferralCredit
+// in production — this script calls the function directly, so it has to
+// supply that number itself rather than getting it from a real webhook
+// event. runFirstPaymentReferralCredit now caps the credit it issues at
+// Math.floor(invoiceAmountPaidCents / 2), same rule the two pre-charge paths
+// apply — pass a small amount (e.g. 27, matching a 1-walk prorated month) to
+// exercise the cap binding, or a large one (e.g. 500) to see it not bind.
 //
 // Stripe TEST-mode prerequisites per scenario (create with your own
 // sk_test_... key, e.g. via `stripe` CLI or the Test Mode dashboard):
@@ -146,7 +155,12 @@ async function callFunction(name, data, idToken) {
 // Firestore directly instead of going through a real signup form.
 async function scenario7() {
   const stripeCustomerId = process.argv[3];
-  if (!stripeCustomerId) throw new Error('Usage: node dev/emulator-seed.js scenario7 <TEST-MODE stripe customer id>');
+  const invoiceAmountDollars = process.argv[4];
+  if (!stripeCustomerId || !invoiceAmountDollars) {
+    throw new Error('Usage: node dev/emulator-seed.js scenario7 <TEST-MODE stripe customer id> <invoiceAmountDollars>');
+  }
+  const invoiceAmountPaidCents = Math.round(parseFloat(invoiceAmountDollars) * 100);
+  const expectedCapCents = Math.floor(invoiceAmountPaidCents / 2);
 
   const memberId = 'scen7-' + Date.now();
   const codeId = 'PCLC-SCEN7X';
@@ -158,16 +172,17 @@ async function scenario7() {
   });
 
   console.log('Before:', (await billingRef(memberId).get()).data());
+  console.log(`Invoice amount_paid: $${invoiceAmountDollars} (${invoiceAmountPaidCents}c) — expected cap: $${(expectedCapCents / 100).toFixed(2)} (${expectedCapCents}c). Code entitlement is $50 (5000c) — cap binds if expectedCapCents < 5000.`);
 
   const stripeKey = process.env.STRIPE_SECRET_KEY_TEST;
   if (!stripeKey) throw new Error('Set STRIPE_SECRET_KEY_TEST=sk_test_... in your shell before running scenario7 (this is the key runFirstPaymentReferralCredit actually calls Stripe with — kept separate from STRIPE_SECRET_KEY so it never collides with whatever the Functions emulator itself is configured with).');
   const stripe = functionsRequire('stripe')(stripeKey);
-  await runFirstPaymentReferralCredit(stripe, memberId);
+  await runFirstPaymentReferralCredit(stripe, memberId, invoiceAmountPaidCents);
 
   console.log('After:', (await billingRef(memberId).get()).data());
   console.log('Code doc:', (await db.collection('referralCodes').doc(codeId).get()).data());
   const customer = await stripe.customers.retrieve(stripeCustomerId);
-  console.log('Stripe customer balance (cents, expect -5000 from 0):', customer.balance);
+  console.log(`Stripe customer balance (cents, expect -${Math.min(5000, expectedCapCents)} from 0 — the smaller of the $50 entitlement and the cap):`, customer.balance);
 }
 
 // ── Scenario 9 — expired code rejected at signup (validateReferralCode) ────

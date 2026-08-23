@@ -2001,6 +2001,10 @@ const NEEDS_REVIEW_LABELS = {
     label: 'Extension credit failed',
     title: 'A walk extension credit (owed after a schedule change dropped a paid extension) failed to issue — see the Walk Extension Update in Requests for the specific date and error. Issue the credit manually in Stripe.',
   },
+  credit_issuance_failed: {
+    label: 'Credit issuance failed',
+    title: "This member's first-payment referral credit failed to calculate (a malformed Stripe invoice event — see creditIssuanceError on this member's billing doc for the exact reason) — no credit was issued, and the referral code was never marked redeemed, so it's still available. Clear referralCreditChecked on this member's billing doc to make them eligible again, then either wait for their next invoice or re-issue the credit manually. Review manually.",
+  },
   subscription_creation_failed: {
     label: 'Subscription not started',
     title: "Subscription wasn't created, this member is unbilled — no recurring charge, and no walks were auto-generated for them either. Start the subscription manually in Stripe (and set hasActiveSubscription) once the underlying issue (missing card, no walk days set, etc.) is fixed.",
