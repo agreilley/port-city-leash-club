@@ -404,6 +404,10 @@
           </div>
           <div class="benefit-list" id="memberBenefitList"></div>
         </div>
+
+        <div class="section-actions" id="pauseMembershipRow">
+          <a href="portal-pause-membership.html" style="text-decoration: none;"><button class="btn btn-secondary">Pause Membership</button></a>
+        </div>
       </div>
 
       <!-- Default Walk Schedule -->
@@ -728,6 +732,9 @@ function loadPageData() {
   if (el('memberPlanMeta')) el('memberPlanMeta').textContent = isTravelOnly ? 'No recurring walk membership' : 'Flexible scheduling';
   if (el('memberPlanPrice')) el('memberPlanPrice').textContent = isTravelOnly ? '' : `$${MEMBER_WALK_RATE} / walk`;
   if (el('memberBenefitList')) el('memberBenefitList').innerHTML = isTravelOnly ? '' : MEMBER_BENEFITS.map(b => `<div class="benefit-item">${b}</div>`).join('');
+  // Pausing has no meaningful effect for Travel tier — no recurring walks to
+  // cancel or refund — so the entry point is hidden rather than shown disabled.
+  if (el('pauseMembershipRow')) el('pauseMembershipRow').style.display = isTravelOnly ? 'none' : '';
   // Walk schedule
   const days = (memberData.defaultWalkDays || []).join(', ');
   const slot = memberData.defaultTimeSlot || '';
