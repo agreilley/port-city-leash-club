@@ -703,7 +703,7 @@
         </div>
         <div class="detail-box">
           <div class="detail-label">Time window</div>
-          <p class="detail-value" id="modalTime">Early Morning (7:00 AM - 10:00 AM)</p>
+          <p class="detail-value" id="modalTime">Morning (8:00 AM - 11:00 AM)</p>
         </div>
         <div class="detail-box">
           <div class="detail-label">Duration & type</div>
@@ -1341,7 +1341,7 @@ function updateMetrics() {
     function openWalkModal(walk, date) {
       activeWalkId = walk.id;
       document.getElementById('modalDate').textContent = formatDateString(date);
-      const slotLabel = { morning: 'Morning (7–10am)', 'early-afternoon': 'Early Afternoon (11am–2pm)', 'late-afternoon': 'Late Afternoon (2–5pm)' };
+      const slotLabel = { morning: 'Morning (8–11am)', 'early-afternoon': 'Early Afternoon (11am–2pm)', 'late-afternoon': 'Late Afternoon (2–5pm)' };
       document.getElementById('modalTime').textContent = slotLabel[walk.timeSlot] || walk.timeSlot || '–';
       // Always read from the live myWalks array so extended flag is current
       const liveWalk = myWalks.find(w => w.id === walk.id) || walk;

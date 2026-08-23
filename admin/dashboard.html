@@ -4011,13 +4011,16 @@ window.declineOvernightRequest = async (submissionId, item) => {
   }
 };
 
-// The portal's reschedule picker offers three ranges (Early Morning, Late
-// Morning, Afternoon) that don't map one-to-one onto the walks.timeSlot
-// buckets used everywhere else (morning / early-afternoon / late-afternoon)
-// — this is a best-effort mapping. Afternoon (2-5pm) matches late-afternoon
-// exactly; both morning ranges collapse onto the single "morning" bucket,
-// since there's no early-afternoon (11am-2pm) option in that picker at all.
-const RESCHEDULE_TIME_SLOT_MAP = { 'early morning': 'morning', 'late morning': 'morning', 'afternoon': 'late-afternoon' };
+// The portal's reschedule picker now offers the exact same three slots as
+// every other picker in the app (Morning / Early Afternoon / Late Afternoon),
+// so this is a straight lookup rather than the lossy collapse it used to be.
+// The legacy entries (Early Morning, Late Morning, Afternoon) stay only so a
+// reschedule request submitted before this change still approves cleanly
+// instead of hitting the "didn't map to a known time slot" fallback below.
+const RESCHEDULE_TIME_SLOT_MAP = {
+  'morning': 'morning', 'early afternoon': 'early-afternoon', 'late afternoon': 'late-afternoon',
+  'early morning': 'morning', 'late morning': 'morning', 'afternoon': 'late-afternoon',
+};
 
 // Reschedule requests never touch the walk on their own — approving one is
 // a two-step admin action: apply the requested date/time here, then land

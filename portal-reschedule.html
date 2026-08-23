@@ -472,7 +472,7 @@
           </div>
           <div class="walk-detail-row">
             <span class="detail-label">Time</span>
-            <span class="detail-value" id="currentTime">Early Morning (7:00 AM - 10:00 AM)</span>
+            <span class="detail-value" id="currentTime">Morning (8:00 AM - 11:00 AM)</span>
           </div>
           <div class="walk-detail-row">
             <span class="detail-label">Walker</span>
@@ -516,16 +516,16 @@
         <div class="form-section">
           <div class="form-title">Select New Time</div>
           <div class="time-slots" id="timeSlots">
-            <div class="time-slot" onclick="selectTimeSlot(this, 'Early Morning', '7:00 AM - 10:00 AM')">
-              <div class="slot-time">Early Morning</div>
-              <div class="slot-range">7:00 AM - 10:00 AM</div>
+            <div class="time-slot" onclick="selectTimeSlot(this, 'Morning', '8:00 AM - 11:00 AM')">
+              <div class="slot-time">Morning</div>
+              <div class="slot-range">8:00 AM - 11:00 AM</div>
             </div>
-            <div class="time-slot" onclick="selectTimeSlot(this, 'Late Morning', '10:00 AM - 12:00 PM')">
-              <div class="slot-time">Late Morning</div>
-              <div class="slot-range">10:00 AM - 12:00 PM</div>
+            <div class="time-slot" onclick="selectTimeSlot(this, 'Early Afternoon', '11:00 AM - 2:00 PM')">
+              <div class="slot-time">Early Afternoon</div>
+              <div class="slot-range">11:00 AM - 2:00 PM</div>
             </div>
-            <div class="time-slot" onclick="selectTimeSlot(this, 'Afternoon', '2:00 PM - 5:00 PM')">
-              <div class="slot-time">Afternoon</div>
+            <div class="time-slot" onclick="selectTimeSlot(this, 'Late Afternoon', '2:00 PM - 5:00 PM')">
+              <div class="slot-time">Late Afternoon</div>
               <div class="slot-range">2:00 PM - 5:00 PM</div>
             </div>
           </div>
@@ -643,7 +643,7 @@
     function initPage() {
       // Load walk details from sessionStorage
       const walkDate = sessionStorage.getItem('walkDate') || 'Thursday, June 20';
-      const walkTime = sessionStorage.getItem('walkTime') || 'Early Morning (7:00 AM - 10:00 AM)';
+      const walkTime = sessionStorage.getItem('walkTime') || 'Morning (8:00 AM - 11:00 AM)';
       const walkDuration = sessionStorage.getItem('walkDuration') || '30-minute walk';
       
       document.getElementById('currentDate').textContent = walkDate;
