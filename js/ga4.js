@@ -28,7 +28,7 @@
 //
 // Expected data-cta values (index.html) — an anchor added later without one
 // of these is silently uncounted, so keep this list in sync with the markup:
-//   nav, hero, tier_membership, zone_check_success, stay_in_touch
+//   nav, hero, tier_membership, zone_check_success
 //
 // stay_in_touch_form (the email-capture form's submit button) is NOT in
 // this list — it's a <button>, not an anchor to /membership-request, so the
