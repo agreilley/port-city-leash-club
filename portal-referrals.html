@@ -296,7 +296,7 @@
       white-space: nowrap;
     }
     .status-invited { background: rgba(143,168,162,0.15); color: #5c7570; }
-    .status-joined { background: rgba(193,123,111,0.15); color: #A36358; }
+    .status-flagged_review { background: rgba(143,168,162,0.15); color: #5c7570; }
     .status-credit_applied { background: rgba(193,123,111,0.9); color: white; }
     .empty-state {
       font-size: 13px;
@@ -417,7 +417,7 @@ window.signOutMember = () => signOut(auth).then(() => window.location.href = 'po
 // before innerHTML.
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-const STATUS_LABELS = { invited: 'Invited', joined: 'Joined', credit_applied: 'Credit Applied' };
+const STATUS_LABELS = { invited: 'Invited', flagged_review: 'Pending Review', credit_applied: 'Credit Applied' };
 
 function renderCode(code) {
   document.getElementById('referralCodeValue').textContent = code;
