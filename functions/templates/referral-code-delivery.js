@@ -46,6 +46,15 @@ function formatExpiryDate(expiresAt) {
   return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
+// Partner intake (generateReferralCode) always has a real name. The
+// homepage email-capture form (generateEmailCaptureCode) has no name field
+// at all — it used to fall back to the literal string "there" here,
+// rendering as the slightly odd "Thanks for signing up, there." Dropping
+// the name entirely in that case reads better than any filler word would.
+function greetingLine(firstName) {
+  return firstName ? `Thanks for signing up, ${firstName}.` : 'Thanks for signing up!';
+}
+
 // One-off "big centered code" box, not folded into _layout's renderBlockHtml
 // (label/value rows, left-aligned) since this template is the only caller —
 // promote it to a shared helper if a second template ever needs the same
@@ -77,7 +86,7 @@ function html(data) {
   const expiryClause = expiryStr ? ` Good through ${escapeHtml(expiryStr)}.` : '';
   const body = `
     <p style="margin:0 0 20px;font-family:'Cormorant Garamond', Georgia, 'Times New Roman', serif;font-weight:400;font-size:28px;line-height:1.25;color:${NAVY};">Your ${amount} credit is ready.</p>
-    <p style="margin:0 0 20px;">Thanks for signing up, ${escapeHtml(data.firstName || 'there')}. Here's your code, ready whenever you are.</p>
+    <p style="margin:0 0 20px;">${escapeHtml(greetingLine(data.firstName))} Here's your code, ready whenever you are.</p>
     ${codeBlockHtml(data.code)}
     <p style="margin:20px 0 0;">Use this code when you sign up for a membership or book pet sitting, and you'll get ${amount} toward your first charge.${expiryClause}</p>
     ${renderButtonHtml({ href: GET_STARTED_URL, label: 'Get Started' })}
@@ -98,7 +107,7 @@ function text(data) {
   const lines = [
     `Your ${amount} credit is ready.`,
     '',
-    `Thanks for signing up, ${data.firstName || 'there'}. Here's your code, ready whenever you are.`,
+    `${greetingLine(data.firstName)} Here's your code, ready whenever you are.`,
     '',
     codeBlockText(data.code),
     '',

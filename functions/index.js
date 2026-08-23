@@ -5624,7 +5624,11 @@ async function runGenerateEmailCaptureCode(payload = {}) {
     to: email,
     template: 'referral-code-delivery',
     data: {
-      firstName: 'there',
+      // null, not 'there' — this form has no name field at all.
+      // referral-code-delivery's greetingLine() renders "Thanks for signing
+      // up!" for a falsy firstName rather than treating a filler word as a
+      // literal name.
+      firstName: null,
       code,
       amountCents: EMAIL_CAPTURE_AMOUNT_CENTS,
       expiresAt: expiresAt.toDate(),

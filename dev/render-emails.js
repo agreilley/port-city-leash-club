@@ -366,7 +366,7 @@ const RENDERS = [
     label: 'Homepage email capture ($20, 90-day expiry)',
     petCount: 0,
     data: {
-      firstName: 'there',
+      firstName: null, // this form has no name field — matches the real call site
       code: 'PCLC-4M8Q1Z',
       amountCents: 2000,
       expiresAt: new Date(2026, 10, 20),
