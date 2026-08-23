@@ -230,3 +230,29 @@ export function showSuccess(message) {
 export function showError(message, options) {
   render('error', message, options);
 }
+
+// httpsErrorMessage(err, fallback) — for any page that calls a Cloud
+// Functions callable directly (generateReferralCode, generateEmailCaptureCode,
+// etc.), not just a Firestore write. Firebase wraps a callable throwing
+// anything OTHER than `new HttpsError(code, humanMessage)` — a genuine bug,
+// a network/CORS failure, an infra hiccup — into one of the generic codes
+// below, with a message that isn't meant for an end user (often literally
+// the bare code string, e.g. "internal" — confirmed empirically hitting an
+// undeployed/CORS-blocked endpoint during development). A plain JS error
+// thrown by the page's own pre-call checks (no Firebase SDK loaded yet, an
+// unfilled required field) has no `functions/` code at all. Only a
+// `functions/*` code OUTSIDE this generic set is one this app's own
+// callables threw deliberately with a message actually written for the
+// visitor — safe to show as-is; everything else falls back to `fallback`.
+const GENERIC_FUNCTIONS_ERROR_CODES = new Set([
+  'functions/internal', 'functions/unknown', 'functions/unavailable',
+  'functions/deadline-exceeded', 'functions/cancelled', 'functions/data-loss',
+  'functions/resource-exhausted',
+]);
+export function httpsErrorMessage(err, fallback) {
+  const isDeliberate = typeof err?.code === 'string'
+    && err.code.startsWith('functions/')
+    && !GENERIC_FUNCTIONS_ERROR_CODES.has(err.code);
+  const detail = (isDeliberate && typeof err.message === 'string') ? err.message.trim() : '';
+  return detail || fallback;
+}

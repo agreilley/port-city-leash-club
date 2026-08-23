@@ -243,6 +243,12 @@
   .cta-section .section-eyebrow { color: var(--seafoam); }
   .cta-section .section-headline { color: white; font-size: 56px; max-width: 600px; margin: 0 auto 16px; }
   .cta-section .section-sub { color: rgba(255,255,255,0.6); text-align: center; margin: 0 auto 40px; }
+  .stay-in-touch-form { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; max-width: 460px; margin: 0 auto 16px; }
+  .stay-in-touch-form input[type="email"] { flex: 1 1 260px; min-width: 0; border: 1px solid rgba(255,255,255,0.24); background: rgba(255,255,255,0.06); border-radius: 4px; padding: 14px 16px; font-size: 14px; font-family: 'DM Sans', sans-serif; color: white; }
+  .stay-in-touch-form input[type="email"]::placeholder { color: rgba(255,255,255,0.4); }
+  .stay-in-touch-form input[type="email"]:focus { outline: none; border-color: var(--seafoam); box-shadow: 0 0 0 3px rgba(143,168,162,0.25); }
+  .stay-in-touch-form .btn-primary { white-space: nowrap; }
+  .stay-in-touch-fineprint { text-align: center; font-size: 12px; color: rgba(255,255,255,0.4); margin: 0 auto 20px; }
 
   footer { background: var(--navy); border-top: 1px solid rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); padding: 48px; display: flex; justify-content: space-between; align-items: center; }
   .footer-brand { font-family: 'Cormorant Garamond', serif; font-size: 18px; font-weight: 400; color: white; line-height: 1.4; letter-spacing: 0; text-transform: none; }
@@ -740,12 +746,28 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 <!-- 7. CTA -->
 <section class="cta-section">
   <div class="section-inner">
-    <p class="section-eyebrow">Ready to Join?</p>
+    <p class="section-eyebrow">Stay In Touch</p>
     <h2 class="section-headline">Your dog deserves a team they know.</h2>
-    <div style="display:flex;justify-content:center;margin-bottom:20px;">
-      <a class="btn-primary" href="/membership-request" data-cta="bottom_cta" style="font-size:15px;padding:16px 36px;">Join the Leash Club</a>
-    </div>
-    <p style="text-align:center;font-size:13px;color:rgba(255,255,255,0.5);">Have questions? <a href="/faq" style="color:rgba(255,255,255,0.8);text-decoration:underline;text-underline-offset:3px;">View our FAQ</a></p>
+    <p class="section-sub">$20 toward your first month of Leash Club membership or pet sitting reservation.</p>
+
+    <div data-status-container></div>
+
+    <form id="stayInTouchForm" class="stay-in-touch-form" onsubmit="submitStayInTouch(event)">
+      <!-- Honeypot — real visitors never see or fill this field; a bot
+           that fills every input in the form will. Off-screen, not
+           display:none, since some scripted bots specifically skip
+           display:none fields. Checked server-side in
+           runGenerateEmailCaptureCode (functions/index.js). -->
+      <div style="position:absolute;left:-9999px;top:-9999px;" aria-hidden="true">
+        <label for="stayInTouchWebsite">Leave this field blank</label>
+        <input type="text" id="stayInTouchWebsite" name="website" tabindex="-1" autocomplete="off">
+      </div>
+      <input type="email" id="stayInTouchEmail" name="email" placeholder="you@email.com" required>
+      <button type="submit" class="btn-primary" data-cta="stay_in_touch_form" style="font-size:15px;padding:14px 28px;">Join the list</button>
+    </form>
+    <p class="stay-in-touch-fineprint">Code arrives by email, good for 90 days. Unsubscribe anytime.</p>
+
+    <p style="text-align:center;font-size:13px;color:rgba(255,255,255,0.5);">Ready now? <a href="/membership-request" data-cta="stay_in_touch" style="color:rgba(255,255,255,0.8);text-decoration:underline;text-underline-offset:3px;">Join the Leash Club</a> · Have questions? <a href="/faq" style="color:rgba(255,255,255,0.8);text-decoration:underline;text-underline-offset:3px;">View our FAQ</a></p>
   </div>
 </section>
 
@@ -1193,6 +1215,72 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     document.getElementById('navLinks').classList.remove('open');
     document.getElementById('hamburger').classList.remove('open');
   }));
+</script>
+<script>
+  async function submitStayInTouch(e) {
+    e.preventDefault();
+    const form = e.target;
+    const btn = form.querySelector('button[type=submit]');
+    const originalLabel = btn.textContent;
+    btn.textContent = 'Submitting...'; btn.disabled = true;
+    try {
+      if (!window._generateEmailCaptureCode) {
+        throw new Error('Firebase not ready');
+      }
+      const rawAttribution = window.pclcReadAttribution ? window.pclcReadAttribution() : null;
+      const attribution = rawAttribution ? {
+        utmSource: rawAttribution.utmSource,
+        utmMedium: rawAttribution.utmMedium,
+        utmCampaign: rawAttribution.utmCampaign,
+        utmContent: rawAttribution.utmContent,
+        referrer: rawAttribution.referrer,
+        landingPage: rawAttribution.landingPage,
+        capturedAt: rawAttribution.capturedAt,
+      } : null;
+
+      const payload = {
+        email: document.getElementById('stayInTouchEmail')?.value || '',
+        website: document.getElementById('stayInTouchWebsite')?.value || '',
+        attribution,
+      };
+
+      await window._generateEmailCaptureCode(payload);
+      // Manual fire: ga4.js's generic cta_click listener only delegates off
+      // anchors whose href contains "/membership-request" — this is a form
+      // submit button, not that kind of link, so it needs its own call at
+      // the success point (same pattern membership-request.html uses for
+      // form_submit). data-cta on the button itself keeps one source of
+      // truth for the label between the markup and this call.
+      window.pclcTrackGA && window.pclcTrackGA('cta_click', { cta_location: btn.getAttribute('data-cta') || 'unlabeled' });
+      window._showSuccess('Thanks! Check your email for your code.');
+      form.reset();
+      btn.textContent = originalLabel; btn.disabled = false;
+    } catch (err) {
+      console.error(err);
+      window._showError(
+        window._httpsErrorMessage(err, 'Something went wrong submitting the form. Please try again, or email hello@portcityleashclub.com directly.')
+      );
+      btn.textContent = originalLabel; btn.disabled = false;
+    }
+  }
+</script>
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+  import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+  import { showSuccess, showError, httpsErrorMessage } from '/js/status.js';
+  const firebaseConfig = {
+    apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
+    authDomain: "port-city-leash-club-827ab.firebaseapp.com",
+    projectId: "port-city-leash-club-827ab",
+    storageBucket: "port-city-leash-club-827ab.firebasestorage.app",
+    messagingSenderId: "649385306352",
+    appId: "1:649385306352:web:8e8a6fcbe8a7eff29dfa35"
+  };
+  const app = initializeApp(firebaseConfig);
+  window._generateEmailCaptureCode = httpsCallable(getFunctions(app), 'generateEmailCaptureCode');
+  window._showSuccess = showSuccess;  // bridge ES module -> classic submit handler
+  window._showError = showError;
+  window._httpsErrorMessage = httpsErrorMessage;
 </script>
 </body>
 </html>

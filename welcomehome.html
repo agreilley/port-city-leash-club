@@ -142,6 +142,16 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     <div class="form-card">
 
       <form id="formView" onsubmit="submitReferral(event)">
+        <!-- Honeypot — real visitors never see or fill this field; a bot
+             that fills every input in the form will. Off-screen, not
+             display:none, since some scripted bots specifically skip
+             display:none fields. Checked server-side in
+             runGenerateReferralCode (functions/index.js). -->
+        <div style="position:absolute;left:-9999px;top:-9999px;" aria-hidden="true">
+          <label for="website">Leave this field blank</label>
+          <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+        </div>
+
         <!-- Post-submit error banner mounts here -->
         <div data-status-container></div>
 
@@ -313,12 +323,25 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         throw new Error('Please select how you heard about us.');
       }
 
+      const rawAttribution = window.pclcReadAttribution ? window.pclcReadAttribution() : null;
+      const attribution = rawAttribution ? {
+        utmSource: rawAttribution.utmSource,
+        utmMedium: rawAttribution.utmMedium,
+        utmCampaign: rawAttribution.utmCampaign,
+        utmContent: rawAttribution.utmContent,
+        referrer: rawAttribution.referrer,
+        landingPage: rawAttribution.landingPage,
+        capturedAt: rawAttribution.capturedAt,
+      } : null;
+
       const payload = {
         source,
         submittedName: document.querySelector('input[name=name]')?.value || '',
         submittedPhone: document.querySelector('input[name=phone]')?.value || '',
         submittedEmail: document.querySelector('input[name=email]')?.value || '',
         notes: document.querySelector('textarea[name=notes]')?.value || '',
+        website: document.querySelector('input[name=website]')?.value || '',
+        attribution,
       };
       if (source === 'apartment') {
         payload.building = document.querySelector('input[name=building]')?.value || '';
@@ -332,12 +355,14 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       showConfirmation(payload.submittedName, result.data.code);
     } catch (err) {
       console.error(err);
-      // The callable's HttpsError messages are written for the visitor
-      // ("Building name is required"), so surface them directly instead of
-      // flattening everything into a generic message.
-      const detail = (err && typeof err.message === 'string') ? err.message.trim() : '';
+      // The callable's deliberate HttpsError messages are written for the
+      // visitor ("Building name is required"), so surface those directly —
+      // httpsErrorMessage filters out everything else (Firebase's generic
+      // wrapper for a non-HttpsError throw, a network/CORS failure, "Firebase
+      // not ready" from the pre-call check above), which never carries a
+      // message meant for an end user.
       window._showError(
-        detail || 'Something went wrong submitting the form. Please try again, or email hello@portcityleashclub.com directly.'
+        window._httpsErrorMessage(err, 'Something went wrong submitting the form. Please try again, or email hello@portcityleashclub.com directly.')
       );
       btn.textContent = 'Get My Referral Code'; btn.disabled = false;
     }
@@ -346,7 +371,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
   import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
-  import { showError } from '/js/status.js';
+  import { showError, httpsErrorMessage } from '/js/status.js';
   const firebaseConfig = {
     apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
     authDomain: "port-city-leash-club-827ab.firebaseapp.com",
@@ -358,6 +383,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   const app = initializeApp(firebaseConfig);
   window._generateReferralCode = httpsCallable(getFunctions(app), 'generateReferralCode');
   window._showError = showError;   // bridge ES module -> classic submit handler
+  window._httpsErrorMessage = httpsErrorMessage;
 </script>
 <script>
   function toggleNav() {

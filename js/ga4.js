@@ -28,7 +28,12 @@
 //
 // Expected data-cta values (index.html) — an anchor added later without one
 // of these is silently uncounted, so keep this list in sync with the markup:
-//   nav, hero, tier_membership, zone_check_success, bottom_cta
+//   nav, hero, tier_membership, zone_check_success, stay_in_touch
+//
+// stay_in_touch_form (the email-capture form's submit button) is NOT in
+// this list — it's a <button>, not an anchor to /membership-request, so the
+// delegated listener below never sees it. index.html's own submit handler
+// fires cta_click for it manually at the success point instead.
 //
 // No PII in any event parameter, ever — every param here is a fixed string
 // describing a UI location, never user input.

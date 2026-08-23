@@ -356,6 +356,20 @@ const RENDERS = [
     data: {
       firstName: 'Jordan',
       code: 'PCLC-7X9K2M',
+      amountCents: 5000,
+      expiresAt: null,
+    },
+  },
+  {
+    template: 'referral-code-delivery',
+    variant: 'email-capture',
+    label: 'Homepage email capture ($20, 90-day expiry)',
+    petCount: 0,
+    data: {
+      firstName: 'there',
+      code: 'PCLC-4M8Q1Z',
+      amountCents: 2000,
+      expiresAt: new Date(2026, 10, 20),
     },
   },
 ];

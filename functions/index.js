@@ -998,9 +998,14 @@ async function runCreateMembershipSubscription(submissionId, memberId) {
       // completeMeetGreetAndCreateAccount at account-creation time — this is
       // a redundant, idempotent re-write (merge:true, same values), kept as
       // a safety net for the still-live old saveMember() flow during the
-      // build, which never calls that function.
-      referredByCode: sub?.referredByCode || null,
-      referralSubmissionId: submissionId,
+      // build, which never calls that function. One code per member,
+      // structurally: only written if billingSnap (read above, before this
+      // batch was built) shows nothing already there — never overwrites a
+      // real value with a second write, even a same-flow retry.
+      ...(billingSnap.data()?.referredByCode ? {} : {
+        referredByCode: sub?.referredByCode || null,
+        referralSubmissionId: submissionId,
+      }),
     }, { merge: true });
     await batch.commit();
 
@@ -1036,7 +1041,7 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
 // 3a-review. Clears billing.needsReview/needsReviewReason on a member's
 // billing subdoc. Generic across every reason that flag gets set for
 // (subscription_creation_failed here, plus runFirstPaymentReferralCredit's
-// possible_self_referral/partner_code_already_redeemed and the walk
+// possible_self_referral/single_use_code_already_redeemed and the walk
 // extension credit failure) — same acknowledgment posture as the
 // tier_change "Mark Applied" and walker_incident "Mark Done" actions in
 // admin/dashboard.html: admin has resolved it themselves (in Stripe, in
@@ -2392,14 +2397,18 @@ async function issueStripeBalanceCredit(stripe, stripeCustomerId, amountCents, d
 // their OWN tier — never the tier of whoever they were credited in relation
 // to. A membership-tier referrer still gets their credit as a Stripe balance
 // credit even when the new member they referred is Travel-tier, and vice
-// versa. Defaults to the full $50 (5000 cents) — every existing caller
-// issues the whole flat amount; finalizeNewMemberReferralDiscount's
-// carry-forward step is the one caller that passes a partial amount.
+// versa. amountCents is REQUIRED — every caller now passes the actual code's
+// entitlement (see resolveNewMemberReferralDiscount) explicitly rather than
+// relying on an implicit $50 default, so a code with a different amount
+// (e.g. the $20 email-capture offer) can never silently issue $50.
 // Throws on failure (never swallows) — the caller (runFirstPaymentReferralCredit
 // for the invoice.paid fallback, finalizeNewMemberReferralDiscount for the
 // pre-charge path's referrer-credit and carry-forward issuance) is what
 // decides how a failure here affects creditIssued/redemption status.
-async function issueReferralCredit(stripe, memberId, memberData, amountCents = 5000) {
+async function issueReferralCredit(stripe, memberId, memberData, amountCents) {
+  if (!Number.isInteger(amountCents) || amountCents <= 0) {
+    throw new Error(`issueReferralCredit: amountCents must be a positive integer, got ${amountCents} for member ${memberId}.`);
+  }
   const isMembershipTier = memberData.tier === 'Member';
   if (isMembershipTier) {
     const billingSnap = await billingRef(memberId).get();
@@ -2418,6 +2427,30 @@ async function issueReferralCredit(stripe, memberId, memberData, amountCents = 5
       pendingReferralCredit: FieldValue.increment(amountCents / 100),
     }, { merge: true });
   }
+}
+
+// Shared expiry check for a referralCodes doc — the ONE place this logic
+// lives, called identically from validateReferralCode (signup-time,
+// client-facing pre-check) and resolveNewMemberReferralDiscount (charge-time
+// resolution), so a code can never validate cleanly at signup and then fail
+// at charge time (or vice versa) because the two checks drifted apart.
+// codeData.expiresAt is optional — existing $50 partner/member-referral
+// codes never set it and so never expire; only codes that set it (e.g. the
+// $20 email-capture offer, at 90 days) are subject to this check at all.
+function isReferralCodeExpired(codeData) {
+  if (!codeData.expiresAt) return false;
+  // expiresAt is only ever written by this codebase as a Firestore
+  // Timestamp (Timestamp.fromMillis in runGenerateEmailCaptureCode) — but a
+  // hand-edit via the console (a raw date/time picker, a pasted string) can
+  // land something else entirely. This runs inside the charge path
+  // (resolveNewMemberReferralDiscount) — a TypeError here would crash the
+  // charge itself, not just skip the discount, so a malformed value must
+  // degrade to "not expired" and get logged, never throw.
+  if (typeof codeData.expiresAt.toMillis !== 'function') {
+    console.warn(`isReferralCodeExpired: expiresAt is not a Firestore Timestamp (got ${typeof codeData.expiresAt}) — treating as not expired.`, codeData.expiresAt);
+    return false;
+  }
+  return codeData.expiresAt.toMillis() < Date.now();
 }
 
 // Pure read: decides whether memberId's referral code entitles them to the
@@ -2445,22 +2478,30 @@ async function resolveNewMemberReferralDiscount(memberId, billingData, memberDat
     return NONE;
   }
   const codeData = codeSnap.data();
+  if (isReferralCodeExpired(codeData)) {
+    console.warn(`resolveNewMemberReferralDiscount: referredByCode ${referredByCode} expired for member ${memberId} — no discount.`);
+    return NONE;
+  }
   const isMemberReferral = codeData.source === 'member_referral' && !!codeData.referrerId;
-  const isPartnerCode = codeData.source === 'apartment' || codeData.source === 'agent';
+  // Single-redemption codes: apartment/agent partner codes AND email_capture
+  // codes are each generated for ONE specific lead/signup (partner:
+  // runGenerateReferralCode; email_capture: runGenerateEmailCaptureCode) —
+  // unlike a member's own evergreen code, which is designed to be shared
+  // with and redeemed by many different friends. Grouped under one flag
+  // since all three non-member_referral sources share this exact
+  // reuse-prevention behavior; only member_referral is the deliberate
+  // exception.
+  const isSingleUseCode = codeData.source === 'apartment' || codeData.source === 'agent' || codeData.source === 'email_capture';
 
-  // Single-redemption enforcement: only meaningful for partner
-  // (apartment/agent) codes — each one is generated for ONE specific lead
-  // (generateReferralCode/runGenerateReferralCode), unlike a member's own
-  // evergreen code, which is designed to be shared with and redeemed by
-  // many different friends. redeemedByMemberId is set once a partner code's
-  // first successful discount/credit lands; a SECOND, different member
-  // reaching this point with the same code (photographed/shared physical
-  // card, genuine duplicate entry, etc.) gets flagged instead of silently
-  // benefiting a second time.
-  if (isPartnerCode && codeData.creditIssued && codeData.redeemedByMemberId
+  // redeemedByMemberId is set once a single-use code's first successful
+  // discount/credit lands; a SECOND, different member reaching this point
+  // with the same code (photographed/shared physical card, a forwarded
+  // email-capture code, genuine duplicate entry, etc.) gets flagged instead
+  // of silently benefiting a second time.
+  if (isSingleUseCode && codeData.creditIssued && codeData.redeemedByMemberId
       && codeData.redeemedByMemberId !== memberId) {
-    console.warn(`resolveNewMemberReferralDiscount: partner code ${referredByCode} was already redeemed by member ${codeData.redeemedByMemberId} — member ${memberId} flagged, no discount.`);
-    return { referredByCode, decision: 'flagged', flagReason: 'partner_code_already_redeemed', discountCents: 0, isMemberReferral, referrerId: null };
+    console.warn(`resolveNewMemberReferralDiscount: single-use code ${referredByCode} (source: ${codeData.source}) was already redeemed by member ${codeData.redeemedByMemberId} — member ${memberId} flagged, no discount.`);
+    return { referredByCode, decision: 'flagged', flagReason: 'single_use_code_already_redeemed', discountCents: 0, isMemberReferral, referrerId: null };
   }
 
   // Self-referral check: only meaningful for member_referral codes, which
@@ -2482,9 +2523,13 @@ async function resolveNewMemberReferralDiscount(memberId, billingData, memberDat
 
   return {
     referredByCode, decision: 'approved', flagReason: null,
-    // Flat $50 entitlement — callers cap this against their own charge
-    // amount (currently: never more than 50% of that one charge).
-    discountCents: 5000,
+    // codeData.amountCents is the code's own entitlement (e.g. 2000 for the
+    // $20 email-capture offer). Existing partner/member-referral codes never
+    // wrote this field, so they fall back to the original flat $50 — no
+    // backfill needed, no source-to-amount branch here. Callers cap this
+    // against their own charge amount (currently: never more than 50% of
+    // that one charge).
+    discountCents: codeData.amountCents ?? 5000,
     isMemberReferral, referrerId: isMemberReferral ? codeData.referrerId : null,
   };
 }
@@ -2599,7 +2644,11 @@ async function finalizeNewMemberReferralDiscount(stripe, memberId, referralSubmi
         // "stuck case" an admin needs to see and resolve manually.
         throw new Error(`Referrer member ${discount.referrerId} not found — cannot issue their credit (new member ${memberId}'s discount was already applied at charge time).`);
       }
-      await issueReferralCredit(stripe, discount.referrerId, referrerData);
+      // The referrer gets the same flat entitlement the new member's own
+      // discount was resolved from (discount.discountCents) — not
+      // appliedDiscountCents, which is only the portion the 50% cap let
+      // through on this one charge.
+      await issueReferralCredit(stripe, discount.referrerId, referrerData, discount.discountCents);
     }
   } catch (e) {
     console.error(`finalizeNewMemberReferralDiscount: failed at stage '${stage}' for member ${memberId} (code ${discount.referredByCode}):`, e.message);
@@ -2696,7 +2745,7 @@ async function runFirstPaymentReferralCredit(stripe, memberId) {
     if (discount.decision !== 'approved') return; // 'none' — no valid code, nothing more to do
 
     stage = 'new-member-credit';
-    await issueReferralCredit(stripe, memberId, memberData);
+    await issueReferralCredit(stripe, memberId, memberData, discount.discountCents);
 
     if (discount.isMemberReferral && discount.referrerId) {
       stage = 'referrer-credit';
@@ -2709,7 +2758,7 @@ async function runFirstPaymentReferralCredit(stripe, memberId) {
         // admin needs to see and resolve manually, not silently call done.
         throw new Error(`Referrer member ${discount.referrerId} not found — cannot issue their credit (new member ${memberId} was already credited).`);
       }
-      await issueReferralCredit(stripe, discount.referrerId, referrerData);
+      await issueReferralCredit(stripe, discount.referrerId, referrerData, discount.discountCents);
     }
 
     stage = 'bookkeeping';
@@ -2734,6 +2783,14 @@ async function runFirstPaymentReferralCredit(stripe, memberId) {
     });
   }
 }
+// Exposed directly, same reasoning as runGenerateReferralCode/runGenerateWalkerPayout
+// above — testable without needing a real, signed Stripe webhook delivery
+// (stripeWebhook itself is the only other caller, gated behind
+// stripe.webhooks.constructEvent's signature check, which can't be forged
+// from a test script). Note this still makes a REAL Stripe API call
+// (issueStripeBalanceCredit) if invoked with a live-mode stripeCustomerId —
+// test against a disposable customer, not a real member's.
+exports.runFirstPaymentReferralCredit = runFirstPaymentReferralCredit;
 
 exports.stripeWebhook = onRequest({ secrets: [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET] }, async (req, res) => {
   const stripe = stripeClient(STRIPE_SECRET_KEY.value());
@@ -3344,11 +3401,17 @@ exports.completeMeetGreetAndCreateAccount = onCall({
   // card capture moves to the portal, and this function never reads it).
   // merge:true so this never clobbers a billing doc that
   // createMembershipSubscription or issueReferralCredit populate later.
+  // One code per member, structurally: uid was just created above, so this
+  // read is almost always empty in practice, but the guard is here rather
+  // than assumed so a second code can never silently overwrite a first.
   if (sub.referredByCode) {
-    await billingRef(uid).set({
-      referredByCode: sub.referredByCode,
-      referralSubmissionId: submissionId,
-    }, { merge: true });
+    const billingSnapForReferral = await billingRef(uid).get();
+    if (!billingSnapForReferral.data()?.referredByCode) {
+      await billingRef(uid).set({
+        referredByCode: sub.referredByCode,
+        referralSubmissionId: submissionId,
+      }, { merge: true });
+    }
   }
 
   await subRef.set({
@@ -5321,6 +5384,76 @@ async function createReferralCodeDoc(fields) {
   }
 }
 
+// ── Anti-abuse helpers shared by every anonymous code-issuing callable ─────
+// (runGenerateReferralCode's /welcomehome partner intake, and
+// runGenerateEmailCaptureCode's homepage footer form) — the two paths that
+// hand real dollar-value codes to anonymous visitors with no other abuse
+// protection (no App Check, no rate limiting). Both checks below run BEFORE
+// any Resend send or referralCodes doc is created in both callers: the real
+// cost of bot traffic here is sending reputation (Resend flags going out to
+// burner addresses en masse), not fraud, so the cheapest, earliest checks
+// matter most.
+
+function normalizeEmail(email) {
+  return (email || '').trim().toLowerCase();
+}
+
+// A filled honeypot means a bot filled in a field real visitors never see
+// (hidden off-screen, not display:none — see the form markup). Throws the
+// same generic error a genuine validation failure would, rather than a
+// distinct "we caught you" message that would just teach a bot to probe for
+// the tell.
+function assertHoneypotEmpty(payload) {
+  if (payload && typeof payload.website === 'string' && payload.website.trim()) {
+    throw new HttpsError('invalid-argument', 'Something went wrong submitting the form. Please try again.');
+  }
+}
+
+// True if ANY referralCodes doc from one of `sources` already exists for
+// this normalized email. A single-field query (submittedEmailNormalized —
+// only ever set on apartment/agent/email_capture docs, never member_referral)
+// filtered down to `sources` in memory afterward, rather than a compound
+// `source in [...]` query — matches for one email are always a handful of
+// docs at most, and this sidesteps any composite-index question entirely.
+// Not a transaction: a benign race under adversarial double-submission
+// timing could in principle let two through, an acceptable cost for a
+// reputation guard, not a hard uniqueness constraint.
+async function emailAlreadyIssuedCode(sources, normalizedEmail) {
+  if (!normalizedEmail) return false;
+  const snap = await db.collection('referralCodes')
+    .where('submittedEmailNormalized', '==', normalizedEmail)
+    .get();
+  return snap.docs.some((d) => sources.includes(d.data().source));
+}
+
+// Mirrors js/attribution.js's SAFE_CHARS regex and firestore.rules'
+// validAttrString() exactly (keep all three in lockstep if any changes) —
+// needed here because generateReferralCode/generateEmailCaptureCode are
+// onCall callables, not direct client Firestore writes, so
+// firestore.rules' validAttrString() never runs against this payload; this
+// function is the actual security boundary for it, same reasoning
+// runGenerateReferralCode's own comment already gives for every other field.
+const ATTR_SAFE_CHARS = /[^a-zA-Z0-9 _.:/?&=-]/g;
+function cleanAttrString(v, maxLen) {
+  if (typeof v !== 'string' || !v) return null;
+  const cleaned = v.replace(ATTR_SAFE_CHARS, '').slice(0, maxLen);
+  return cleaned || null;
+}
+function cleanAttribution(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const capturedAtMs = Number(raw.capturedAt);
+  if (!Number.isFinite(capturedAtMs)) return null;
+  return {
+    utmSource: cleanAttrString(raw.utmSource, 200),
+    utmMedium: cleanAttrString(raw.utmMedium, 200),
+    utmCampaign: cleanAttrString(raw.utmCampaign, 200),
+    utmContent: cleanAttrString(raw.utmContent, 200),
+    referrer: cleanAttrString(raw.referrer, 500),
+    landingPage: cleanAttrString(raw.landingPage, 300),
+    capturedAt: Timestamp.fromMillis(capturedAtMs),
+  };
+}
+
 // Partner referral intake (/welcomehome). Unlike every other public form,
 // this doesn't write to `submissions` from the client — it's a code-issuing
 // flow (the code is redeemed later for $50 credit), so it gets its own
@@ -5332,6 +5465,8 @@ async function createReferralCodeDoc(fields) {
 // referralCodes — see firestore.rules) — every field is validated and
 // length-capped here rather than trusted from the client payload.
 async function runGenerateReferralCode(payload = {}) {
+  assertHoneypotEmpty(payload);
+
   const source = payload.source;
   if (source !== 'apartment' && source !== 'agent') {
     throw new HttpsError('invalid-argument', 'source must be "apartment" or "agent".');
@@ -5360,6 +5495,18 @@ async function runGenerateReferralCode(payload = {}) {
     if (!agent || !brokerage) throw new HttpsError('invalid-argument', 'Agent name and brokerage are required.');
   }
 
+  const submittedEmailNormalized = normalizeEmail(submittedEmail);
+  // Dedup before creating anything or sending anything — see the shared
+  // helpers' comment above. Scoped to the partner sources only (apartment +
+  // agent, this form's own channel) — the homepage email-capture offer and
+  // a member's own evergreen code are separate channels with their own
+  // dedup, not this one.
+  if (await emailAlreadyIssuedCode(['apartment', 'agent'], submittedEmailNormalized)) {
+    throw new HttpsError('already-exists', 'A referral code has already been sent to this email address.');
+  }
+
+  const attribution = cleanAttribution(payload.attribution);
+
   const code = await createReferralCodeDoc({
     source,
     building,
@@ -5368,6 +5515,7 @@ async function runGenerateReferralCode(payload = {}) {
     submittedName,
     submittedPhone,
     submittedEmail,
+    submittedEmailNormalized,
     notes,
     // referrerId/referrerName are null here (only member_referral docs,
     // written by getOrCreateMemberReferralCode, set them) — explicit null
@@ -5376,6 +5524,7 @@ async function runGenerateReferralCode(payload = {}) {
     // to compare against on every doc, partner or member.
     referrerId: null,
     referrerName: null,
+    attribution,
     createdAt: FieldValue.serverTimestamp(),
     status: 'active',
     creditIssued: false,
@@ -5390,7 +5539,15 @@ async function runGenerateReferralCode(payload = {}) {
   const emailResult = await sendEmail({
     to: submittedEmail,
     template: 'referral-code-delivery',
-    data: { firstName: submittedName.split(/\s+/)[0] || 'there', code },
+    data: {
+      firstName: submittedName.split(/\s+/)[0] || 'there',
+      code,
+      // Partner codes never store amountCents on the doc (see
+      // resolveNewMemberReferralDiscount's `?? 5000` fallback) — 5000 here
+      // mirrors that same default explicitly, for copy purposes only.
+      amountCents: 5000,
+      expiresAt: null,
+    },
     idempotencyKey: `referral-code-delivery:${code}`,
   });
   if (!emailResult.ok) console.error(`runGenerateReferralCode: referral-code-delivery failed for ${code}:`, emailResult.error);
@@ -5405,12 +5562,104 @@ exports.generateReferralCode = onCall({ secrets: [RESEND_API_KEY] }, async (requ
 // without a real HTTPS/auth round trip.
 exports.runGenerateReferralCode = runGenerateReferralCode;
 
+const EMAIL_CAPTURE_AMOUNT_CENTS = 2000; // $20
+const EMAIL_CAPTURE_EXPIRY_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+
+// Homepage footer "Stay in Touch" email-capture intake. Deliberately modeled
+// on runGenerateReferralCode immediately above — same anonymous-caller
+// posture (no assertIsAdmin(), this function itself is the trust boundary,
+// no public Firestore create rule for referralCodes — see firestore.rules),
+// same anti-abuse helpers, same createReferralCodeDoc/sendEmail path — one
+// referralCodes lifecycle, not a parallel credit system. Two real
+// differences from the partner flow: (1) this is a flat, no-questions-asked
+// $20 offer to anyone who submits an email, not a partner lead, so there's
+// no name/phone/building/agent to collect or validate; (2) the code is
+// never shown on-page (the homepage copy promises "code arrives by email"),
+// so a dedup hit here returns a generic success rather than an error —
+// nothing on the page needs to change either way, and a prober learns
+// nothing from the response shape.
+async function runGenerateEmailCaptureCode(payload = {}) {
+  assertHoneypotEmpty(payload);
+
+  const email = typeof payload.email === 'string' ? payload.email.trim().slice(0, 320) : '';
+  if (!email || !email.includes('@')) {
+    throw new HttpsError('invalid-argument', 'A valid email address is required.');
+  }
+  const submittedEmailNormalized = normalizeEmail(email);
+
+  // Dedup before creating anything or sending anything — see the shared
+  // helpers' comment above runGenerateReferralCode. Scoped to this form's
+  // own channel (email_capture) — a partner code or a member's own
+  // evergreen code doesn't block someone from also getting this $20 offer.
+  if (await emailAlreadyIssuedCode(['email_capture'], submittedEmailNormalized)) {
+    return { ok: true };
+  }
+
+  const attribution = cleanAttribution(payload.attribution);
+  const expiresAt = Timestamp.fromMillis(Date.now() + EMAIL_CAPTURE_EXPIRY_MS);
+
+  const code = await createReferralCodeDoc({
+    source: 'email_capture',
+    building: null,
+    agent: null,
+    brokerage: null,
+    submittedName: null,
+    submittedPhone: null,
+    submittedEmail: email,
+    submittedEmailNormalized,
+    notes: null,
+    referrerId: null,
+    referrerName: null,
+    attribution,
+    amountCents: EMAIL_CAPTURE_AMOUNT_CENTS,
+    expiresAt,
+    createdAt: FieldValue.serverTimestamp(),
+    status: 'active',
+    creditIssued: false,
+  });
+
+  // Fire-and-forget, same contract as every other sendEmail() caller — see
+  // runGenerateReferralCode's own comment above.
+  const emailResult = await sendEmail({
+    to: email,
+    template: 'referral-code-delivery',
+    data: {
+      firstName: 'there',
+      code,
+      amountCents: EMAIL_CAPTURE_AMOUNT_CENTS,
+      expiresAt: expiresAt.toDate(),
+    },
+    idempotencyKey: `referral-code-delivery:${code}`,
+  });
+  if (!emailResult.ok) console.error(`runGenerateEmailCaptureCode: referral-code-delivery failed for ${code}:`, emailResult.error);
+
+  return { ok: true };
+}
+
+exports.generateEmailCaptureCode = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+  return runGenerateEmailCaptureCode(request.data || {});
+});
+// Exposed directly, same reasoning as runGenerateReferralCode above.
+exports.runGenerateEmailCaptureCode = runGenerateEmailCaptureCode;
+
 // Member portal "Refer a Friend" tab: an existing member's own evergreen
 // referral code, generated once and reused thereafter. Unlike
 // generateReferralCode (anonymous /welcomehome intake), this is auth-gated —
 // request.auth.uid IS the referrer, so there's no client payload to spoof
 // identity from, and no assertIsAdmin(): any signed-in member may fetch
 // their own code, never anyone else's.
+//
+// Deliberately excluded from the honeypot/dedup work added for the two
+// anonymous code-issuing callables above (runGenerateReferralCode,
+// runGenerateEmailCaptureCode) — not an oversight. None of the three
+// problems those exist for apply here: (1) no anonymous access at all, the
+// unauthenticated throw below is the first line; (2) no email/contact input
+// to farm — the code is keyed to request.auth.uid, not an arbitrary string
+// the caller controls; (3) no repeated-send cost to protect (this function
+// never calls sendEmail — the code is shown in-app only, see
+// referral-code-delivery.js's own scope note), and the fast-path +
+// transaction re-check below make repeated calls a pure no-op, never a
+// second write.
 exports.getOrCreateMemberReferralCode = onCall({}, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'You must be signed in.');
@@ -5517,5 +5766,9 @@ exports.validateReferralCode = onCall({}, async (request) => {
   const code = typeof request.data?.code === 'string' ? request.data.code.trim() : '';
   if (!code) return { valid: false };
   const snap = await db.collection('referralCodes').doc(code).get();
-  return { valid: snap.exists && snap.data().status === 'active' };
+  if (!snap.exists || snap.data().status !== 'active') return { valid: false };
+  // Same isReferralCodeExpired check resolveNewMemberReferralDiscount uses
+  // at charge time — a code must never validate here and then fail later.
+  if (isReferralCodeExpired(snap.data())) return { valid: false };
+  return { valid: true };
 });

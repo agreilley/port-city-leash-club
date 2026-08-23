@@ -621,6 +621,7 @@
         <button class="referral-filter" onclick="filterReferralSource('apartment', this)">Apartment</button>
         <button class="referral-filter" onclick="filterReferralSource('agent', this)">Agent</button>
         <button class="referral-filter" onclick="filterReferralSource('member_referral', this)">Member Referral</button>
+        <button class="referral-filter" onclick="filterReferralSource('email_capture', this)">Email Capture</button>
       </div>
       <div class="table-card">
         <div class="table-header">
@@ -1034,7 +1035,14 @@ let allPayouts = [];
 let allReferralCodes = [], allReferralRedemptions = [];
 let currentReferralSourceFilter = 'all';
 let currentReferralSearch = '';
-let referralSortCol = 'count', referralSortDir = 'desc';
+// Default is createdAt-descending (newest first) rather than redemptions —
+// a freshly issued code always has 0 redemptions, so sorting by count first
+// buried every new code at the bottom of the table until an admin happened
+// to re-sort or scroll. 'createdAt' isn't one of the two clickable columns
+// (only 'label'/Building-Agent and 'count'/Redemptions are, via the ⇅
+// headers) — it's purely this initial state; clicking either header moves
+// away from it exactly as before.
+let referralSortCol = 'createdAt', referralSortDir = 'desc';
 
 // A submission counts as resolved once it's reached any of these terminal
 // statuses — covers every type's own vocabulary ('confirmed'/'declined'
@@ -1975,6 +1983,16 @@ const NEEDS_REVIEW_LABELS = {
     label: 'Possible self-referral',
     title: "This member's first payment looked like a possible self-referral (same phone number as whoever referred them) — no credit was issued automatically. Review manually.",
   },
+  single_use_code_already_redeemed: {
+    label: 'Duplicate referral code',
+    title: 'This member used a single-use referral code (a partner apartment/agent code or a homepage email-capture code) that was already redeemed by a different member — those codes are meant for one lead. No credit was issued automatically. Review manually.',
+  },
+  // Retained for historical records only — functions/index.js now writes
+  // 'single_use_code_already_redeemed' for every new flag of this kind
+  // (partner_code_already_redeemed was renamed when email_capture codes
+  // gained the same single-use protection partner codes already had). Any
+  // billing doc flagged before that rename still carries the old value;
+  // without this entry it would render with no label at all.
   partner_code_already_redeemed: {
     label: 'Duplicate referral code',
     title: 'This member used a partner (apartment/agent) referral code that was already redeemed by a different member — those codes are meant for one lead. No credit was issued automatically. Review manually.',
@@ -2275,7 +2293,7 @@ async function loadReferralCodes(isRefresh) {
   }
 }
 
-const REFERRAL_SOURCE_LABELS = { apartment: 'Apartment', agent: 'Agent', member_referral: 'Member Referral' };
+const REFERRAL_SOURCE_LABELS = { apartment: 'Apartment', agent: 'Agent', member_referral: 'Member Referral', email_capture: 'Email Capture' };
 const REFERRAL_REDEMPTION_STATUS_LABELS = { invited: 'Invited', flagged_review: 'Flagged for Review', credit_applied: 'Credit Applied' };
 
 function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : '–'; }
@@ -2288,6 +2306,7 @@ function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : '�
 function referralCodeLabel(c) {
   if (c.source === 'apartment') return c.building || '–';
   if (c.source === 'agent') return [c.agent, c.brokerage].filter(Boolean).join(' — ') || '–';
+  if (c.source === 'email_capture') return c.submittedEmail || '–';
   return c.referrerName ? `Referred by ${c.referrerName}` : '–';
 }
 
@@ -2310,7 +2329,9 @@ function renderReferralCodesTable() {
     );
   }
   rows.sort((a, b) => {
-    const [av, bv] = referralSortCol === 'count' ? [a.redemptionCount, b.redemptionCount] : [(a.label || '').toLowerCase(), (b.label || '').toLowerCase()];
+    const [av, bv] = referralSortCol === 'count' ? [a.redemptionCount, b.redemptionCount]
+      : referralSortCol === 'createdAt' ? [a.createdAt?.toMillis?.() || 0, b.createdAt?.toMillis?.() || 0]
+      : [(a.label || '').toLowerCase(), (b.label || '').toLowerCase()];
     if (av < bv) return referralSortDir === 'asc' ? -1 : 1;
     if (av > bv) return referralSortDir === 'asc' ? 1 : -1;
     return 0;
@@ -2364,7 +2385,7 @@ window.openReferralCodeDetail = (codeId) => {
   const fields = [
     { label: 'Code', value: code.code || code.id },
     { label: 'Source', value: REFERRAL_SOURCE_LABELS[code.source] || code.source || '–' },
-    { label: code.source === 'member_referral' ? 'Referrer' : 'Building / Agent', value: referralCodeLabel(code) },
+    { label: code.source === 'member_referral' ? 'Referrer' : code.source === 'email_capture' ? 'Email' : 'Building / Agent', value: referralCodeLabel(code) },
     { label: 'Status', value: capitalize(code.status) },
     { label: 'Credit Issued', value: code.creditIssued ? 'Yes' : 'No' },
     { label: 'Redemptions', value: String(redemptions.length) },

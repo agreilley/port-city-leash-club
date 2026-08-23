@@ -15,5 +15,12 @@
         "cp \"$RESOURCE_DIR/../pricing.js\" \"$RESOURCE_DIR/../walker-pricing.js\" \"$RESOURCE_DIR/\""
       ]
     }
-  ]
+  ],
+  "emulators": {
+    "auth": { "port": 9099 },
+    "firestore": { "port": 8080 },
+    "functions": { "port": 5001 },
+    "ui": { "enabled": true, "port": 4000 },
+    "singleProjectMode": true
+  }
 }
