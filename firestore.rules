@@ -583,5 +583,26 @@ service cloud.firestore {
         allow write: if false;
       }
     }
+
+    // Collection-group counterpart to referralCodes/{id}/redemptions/{redemptionId}
+    // above. A rule nested under a specific parent path (like the one above)
+    // is NEVER matched by a collectionGroup() query — Firestore only applies
+    // it to reads already scoped to a known parent, which is exactly what
+    // portal-referrals.html does (a fixed referralCodes/{code}/redemptions
+    // query) and exactly why that nested rule includes the referrer
+    // fallback. admin/dashboard.html's Referral Codes table instead runs
+    // getDocs(collectionGroup(db, 'redemptions')) with no parent in scope at
+    // all — the ONLY caller of that shape, and it's only ever reached from
+    // behind the admin-gated dashboard — so this rule is deliberately
+    // isAdmin()-only, no get(), no path interpolation: there is no
+    // non-admin case this collection-group read needs to serve. Both rules
+    // apply to the exact same underlying documents; Firestore unions
+    // matching rules, so this doesn't narrow or conflict with the nested
+    // one above, it just makes the collection-group access pattern
+    // reachable at all, which it wasn't before.
+    match /{path=**}/redemptions/{redemptionId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
   }
 }
