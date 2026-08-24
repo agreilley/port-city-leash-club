@@ -15,18 +15,26 @@
  * deferred/module script execution is defined to happen after parsing,
  * every time.
  *
- * Gates the same five classes portal-guard.js's data-portal-access
+ * Gates the same six classes portal-guard.js's data-portal-access
  * attribute controls — see that file for the full state machine (loading /
- * granted / denied) and why each of these five needed to be here: the two
- * page-authored ones (.sidebar, .main-content) plus three more that
- * js/portal-nav.js injects onto <body> independent of anything on the page
- * (.pn-topbar, .pn-drawer, .pn-overlay) — a mobile nav surface that was a
- * real gap the first version of this gate missed entirely. This file has
- * no state of its own; it's a pure function of the body attribute portal-
- * guard.js sets.
+ * granted / denied). Three page-authored ones — .sidebar, .main-content,
+ * and .portal-container, the wrapper 9 of the 10 guarded pages open <body>
+ * with (portal-extend-walk.html is the one exception: no wrapper, .sidebar
+ * is the first child of <body> directly, already covered on its own).
+ * .portal-container has to be hidden too, not just its children: it sets
+ * its own min-height: 100vh independent of what's inside it, so hiding
+ * only .sidebar/.main-content left it standing as a full-viewport-tall
+ * empty block, pushing the denial/loading overlay below in the page's
+ * normal document flow — the actual dead-space-above-the-message bug this
+ * line fixes. Plus three more that js/portal-nav.js injects onto <body>
+ * independent of anything on the page (.pn-topbar, .pn-drawer,
+ * .pn-overlay) — a mobile nav surface that was a real gap the first
+ * version of this gate missed entirely. This file has no state of its
+ * own; it's a pure function of the body attribute portal-guard.js sets.
  */
 body:not([data-portal-access="granted"]) .sidebar,
 body:not([data-portal-access="granted"]) .main-content,
+body:not([data-portal-access="granted"]) .portal-container,
 body:not([data-portal-access="granted"]) .pn-topbar,
 body:not([data-portal-access="granted"]) .pn-drawer,
 body:not([data-portal-access="granted"]) .pn-overlay {
