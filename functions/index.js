@@ -358,6 +358,32 @@ exports.confirmCardOnFile = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (requ
     await stripe.customers.update(setupIntent.customer, {
       invoice_settings: { default_payment_method: setupIntent.payment_method },
     });
+
+    // Detach every OTHER payment method still attached to this customer, so
+    // "replace my card" actually leaves at most one card attached rather
+    // than accumulating stale ones — see NEEDS_REVIEW_LABELS.
+    // multiple_payment_methods_attached in admin/dashboard.html for why
+    // more than one attached card is a real charging risk, not just
+    // clutter: chargeCustomerCard and friends charge whichever card Stripe's
+    // list() happens to return first, not the invoice_settings default set
+    // above. A detach failure here does NOT roll back the new default — the
+    // new card is already correctly in place and already the right thing to
+    // charge — it only means a stale, unused card stays attached until an
+    // admin cleans it up manually, so this logs and flags for review rather
+    // than throwing.
+    try {
+      const existing = await stripe.paymentMethods.list({ customer: setupIntent.customer, type: 'card' });
+      const stale = existing.data.filter(pm => pm.id !== setupIntent.payment_method);
+      for (const pm of stale) {
+        await stripe.paymentMethods.detach(pm.id);
+      }
+    } catch (e) {
+      console.error(`confirmCardOnFile: failed to detach stale payment method(s) for ${uid}:`, e.message);
+      await billing.set({
+        needsReview: true,
+        needsReviewReason: 'stale_payment_method_detach_failed',
+      }, { merge: true }).catch(() => {});
+    }
   }
 
   await billing.set({
@@ -390,6 +416,174 @@ exports.confirmCardOnFile = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (requ
   }
 
   return { success: true };
+});
+
+// getCardOnFile: live read of the caller's own saved card, straight from
+// Stripe — nothing beyond the existing cardOnFile boolean is ever stored in
+// Firestore. Returns { card: null } when there's no card on file (no
+// customer yet, or a customer with nothing attached) rather than throwing,
+// since that's an expected, normal state for the account page's empty
+// state — not an error.
+//
+// Auth boundary: uid is request.auth.uid alone, same as
+// createAuthenticatedSetupIntent/confirmCardOnFile above — a caller can
+// only ever resolve their OWN billing doc's stripeCustomerId, never
+// anyone else's.
+//
+// Two defensive side effects, both cheap given the paymentMethods.list()
+// call this needs anyway, both Admin-SDK writes (firestore.rules already
+// makes that the only way to write private/billing):
+//   1. If Stripe shows MORE than one attached card, confirmCardOnFile's
+//      detach-on-replace above should make that impossible going forward,
+//      but this flags it rather than silently trusting data[0] — see
+//      NEEDS_REVIEW_LABELS.multiple_payment_methods_attached in
+//      admin/dashboard.html, which spells out why that's a real
+//      wrong-card-gets-charged risk, not just clutter.
+//   2. If Stripe and the stored cardOnFile boolean disagree, correct the
+//      boolean. Every charge function in this file reads that flag —
+//      letting it drift from what Stripe actually has attached is worse
+//      than a stale read.
+exports.getCardOnFile = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
+  const uid = request.auth.uid;
+
+  const billing = billingRef(uid);
+  const billingSnap = await billing.get();
+  const billingData = billingSnap.data();
+  const stripeCustomerId = billingData?.stripeCustomerId;
+  if (!stripeCustomerId) return { card: null };
+
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+  const paymentMethods = await stripe.paymentMethods.list({ customer: stripeCustomerId, type: 'card' });
+
+  if (paymentMethods.data.length > 1) {
+    console.error(`getCardOnFile: Stripe customer ${stripeCustomerId} (member ${uid}) has ${paymentMethods.data.length} attached cards — expected at most 1.`);
+    await billing.set({
+      needsReview: true,
+      needsReviewReason: 'multiple_payment_methods_attached',
+    }, { merge: true }).catch(() => {});
+  }
+
+  const pm = paymentMethods.data[0] || null;
+  const isOnFile = !!pm;
+  if (!!billingData?.cardOnFile !== isOnFile) {
+    await billing.set({ cardOnFile: isOnFile }, { merge: true }).catch(() => {});
+  }
+
+  if (!pm) return { card: null };
+  return {
+    card: {
+      brand: pm.card.brand,
+      last4: pm.card.last4,
+      expMonth: pm.card.exp_month,
+      expYear: pm.card.exp_year,
+    },
+  };
+});
+
+// removeCardOnFile: detaches the caller's own saved card(s) from Stripe and
+// clears cardOnFile on their own billing doc.
+//
+// Guard: fails CLOSED. hasActiveSubscription is only ever written true (by
+// createMembershipSubscription) or false (by the subscription.deleted
+// webhook handler) — it's never initialized at member-doc creation, so
+// "missing" is the default state for two very different members: a
+// Travel-tier/one-time client (who never gets a subscription, ever) and a
+// membership-tier client whose subscription creation is pending or failed
+// (subscription_creation_failed is an existing needsReview reason — a real
+// window, not hypothetical). A plain truthy check on hasActiveSubscription
+// can't tell those apart and would let the second case remove its only
+// card. tier can: it's set once at account creation from what was actually
+// signed up for, never reflects billing state, and is 'Travel' ONLY for
+// clients who will never have a recurring subscription. So removal is
+// allowed ONLY with positive evidence there's no recurring obligation —
+// tier === 'Travel', or hasActiveSubscription === false (explicitly
+// canceled/ended, same flag chargeCurrentMonthWalks/generateMonthlyWalks/
+// resumePausedMemberships filter on; pausing does NOT clear it, so a
+// paused member is correctly still blocked too — pause doesn't mean
+// billing has stopped for good). Every other case, including missing/
+// undefined on an otherwise-membership-tier member, is blocked.
+//
+// Auth boundary: uid is request.auth.uid alone, same as getCardOnFile/
+// confirmCardOnFile above.
+exports.removeCardOnFile = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
+  const uid = request.auth.uid;
+
+  const memberSnap = await db.collection('members').doc(uid).get();
+  const memberData = memberSnap.data();
+  const noRecurringObligation = memberData?.tier === 'Travel' || memberData?.hasActiveSubscription === false;
+
+  // A member with no recurring subscription can still owe a real, already-
+  // confirmed one-off charge: markDatesConfirmed schedules an overnight/
+  // check-in charge 24 hours out (runServiceOrOvernightBookingDoc — "the
+  // member has a real chance to change plans"), during which the
+  // overnights doc sits at chargePending: true with nothing else tracking
+  // that a card needs to survive until then. chargeScheduledReservations
+  // (the scheduled job that actually charges it) only discovers a missing
+  // card AT charge time, and its failure is caught and flagged, not
+  // prevented — exactly the outcome this guard exists to avoid. Checked
+  // ONLY when the subscription check alone would otherwise allow removal —
+  // a member already blocked by hasActiveSubscription doesn't need a
+  // second reason. Two equality filters, no orderBy, needs no composite
+  // index — same pattern chargeScheduledReservations' own query already
+  // relies on.
+  let hasPendingReservationCharge = false;
+  if (noRecurringObligation) {
+    const pendingSnap = await db.collection('overnights')
+      .where('memberId', '==', uid)
+      .where('chargePending', '==', true)
+      .limit(1)
+      .get();
+    hasPendingReservationCharge = !pendingSnap.empty;
+  }
+
+  if (!noRecurringObligation || hasPendingReservationCharge) {
+    // Three distinct blocked states, three distinct messages — none may
+    // claim more than what's actually true, and none may imply removal is
+    // an action available right now (the client hides the Remove button in
+    // every blocked state — see renderCardOnFile in portal-account.html —
+    // so "before removing your card" would describe an action that screen
+    // doesn't actually offer):
+    //   - a confirmed reservation with chargePending: true has a real,
+    //     already-scheduled charge, independent of subscription status —
+    //     checked first since it can be true even for a Travel-tier member
+    //     who'd otherwise pass the subscription check freely.
+    //   - hasActiveSubscription === true genuinely has a subscription
+    //     charging every month, so saying so is accurate.
+    //   - every other blocked case (a membership-tier member whose
+    //     subscription is still pending or failed to create — see
+    //     subscription_creation_failed in NEEDS_REVIEW_LABELS) has NO
+    //     confirmed subscription yet, so asserting one would be false —
+    //     this member needs a human, not a "just add a card" prompt for a
+    //     charge that isn't actually scheduled.
+    //
+    // KEEP IN SYNC with the same three strings in portal-account.html's
+    // renderCardOnFile (the proactive client-side hint mirrors this exact
+    // guard and message split) — no shared module between this file and
+    // the portal pages, so this is a manual duplication, not automatic.
+    const message = hasPendingReservationCharge
+      ? "Add a new card before removing this one. You have a confirmed reservation that hasn't been charged yet."
+      : memberData?.hasActiveSubscription === true
+        ? 'Add a new card before removing this one. Your membership charges automatically each month.'
+        : "Your billing setup is still being finalized. Email us at hello@portcityleashclub.com and we'll help sort it out.";
+    throw new HttpsError('failed-precondition', message);
+  }
+
+  const billing = billingRef(uid);
+  const billingSnap = await billing.get();
+  const stripeCustomerId = billingSnap.data()?.stripeCustomerId;
+  if (!stripeCustomerId) return { removed: false };
+
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+  const paymentMethods = await stripe.paymentMethods.list({ customer: stripeCustomerId, type: 'card' });
+  for (const pm of paymentMethods.data) {
+    await stripe.paymentMethods.detach(pm.id);
+  }
+
+  await billing.set({ cardOnFile: false, cardOnFileAt: FieldValue.delete() }, { merge: true });
+
+  return { removed: true };
 });
 
 // ─────────────────────────────────────────────────────────────────────────

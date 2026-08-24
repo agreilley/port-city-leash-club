@@ -2021,6 +2021,14 @@ const NEEDS_REVIEW_LABELS = {
     label: 'Finalize failed',
     title: "This member's card-on-file and dates were both confirmed, but something failed while starting billing or sending the confirmation — a subscription, a charge, or the email. See the specific request in the Requests view (it carries its own finalizeError with the exact failure) for what to fix, then resolve manually and dismiss both flags.",
   },
+  stale_payment_method_detach_failed: {
+    label: 'Old card not removed',
+    title: "This member replaced their saved card, but detaching the old one from Stripe failed — their Stripe customer may now have more than one card attached. The new card is already set as the default and is what the member sees in the portal, but detach the stale card manually in Stripe (Customer → Payment methods) to restore the single-card state.",
+  },
+  multiple_payment_methods_attached: {
+    label: 'Multiple cards attached',
+    title: "This member's Stripe customer has more than one card attached, which shouldn't be possible under this app's replace-on-update, single-card model. Detach the extra card(s) manually in Stripe (Customer → Payment methods), leaving only the one card that should stay on file.",
+  },
 };
 function renderBillingBadge(billing) {
   if (!billing) return '–';
