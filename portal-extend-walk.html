@@ -7,6 +7,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Extend a Walk | Port City Leash Club</title>
+<!-- Render-blocking on purpose — see js/portal-guard.css's own header for
+     why this can't be JS-injected without reintroducing a chrome flash. -->
+<link rel="stylesheet" href="/js/portal-guard.css">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -199,7 +202,7 @@ import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inM
 import { initializeFirestore, memoryLocalCache, doc, getDoc, collection, query, where, getDocs, updateDoc, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { WALK_EXTENSION_PRICE, calculateWalkExtensionTotal } from './pricing.js';
 import { showSuccess, showError } from '/js/status.js';
-import { requireMemberDoc } from '/js/portal-guard.js';
+import { requireMemberDoc, showPortalLoadTimeout } from '/js/portal-guard.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
@@ -231,20 +234,24 @@ let userId = null;
 
 window.signOutMember = () => signOut(auth).then(() => window.location.href = 'portal-login.html');
 
-// If auth never resolves, stop waiting and tell the member instead of
-// leaving the page stuck on nothing.
+// If auth never resolves, OR resolves but the members/{uid} lookup inside
+// requireMemberDoc hangs (flaky connection), stop waiting and show a retry
+// state instead of leaving the member stuck on the guard's loading
+// placeholder forever. One 10s budget covering both — cleared only once
+// requireMemberDoc has actually settled below, not as soon as auth itself
+// resolves.
 let authResolved = false;
 const authTimeoutId = setTimeout(() => {
-  if (!authResolved) showError("This page didn't finish loading. Please try again.", { onRetry: () => location.reload() });
+  if (!authResolved) showPortalLoadTimeout();
 }, 10000);
 
 onAuthStateChanged(auth, async (user) => {
-  authResolved = true;
-  clearTimeout(authTimeoutId);
-  if (!user) { window.location.href = 'portal-login.html'; return; }
+  if (!user) { authResolved = true; clearTimeout(authTimeoutId); window.location.href = 'portal-login.html'; return; }
   userId = user.uid;
 
   memberData = await requireMemberDoc(db, user.uid);
+  authResolved = true;
+  clearTimeout(authTimeoutId);
   if (!memberData) return;
 
   try {

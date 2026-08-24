@@ -7,6 +7,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pause Membership - The Leash Club</title>
+  <!-- Render-blocking on purpose — see js/portal-guard.css's own header for
+       why this can't be JS-injected without reintroducing a chrome flash. -->
+  <link rel="stylesheet" href="/js/portal-guard.css">
   <style>
     * {
       margin: 0;
@@ -528,7 +531,7 @@ import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inM
 import { initializeFirestore, memoryLocalCache, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { showSuccess, showError } from '/js/status.js';
-import { requireMemberDoc } from '/js/portal-guard.js';
+import { requireMemberDoc, showPortalLoadTimeout } from '/js/portal-guard.js';
 const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
 const app = getApps().find(a => a.name === 'member-app') || initializeApp(cfg, 'member-app');
 // Explicit persistence fallback chain — the SDK's default hierarchy probes
@@ -544,19 +547,23 @@ const db = initializeFirestore(app, { localCache: memoryLocalCache() });
 const fns = getFunctions(app);
 let userId = null, memberData = null;
 
-// If auth never resolves, stop waiting and tell the member instead of
-// leaving the page stuck on nothing.
+// If auth never resolves, OR resolves but the members/{uid} lookup inside
+// requireMemberDoc hangs (flaky connection), stop waiting and show a retry
+// state instead of leaving the member stuck on the guard's loading
+// placeholder forever. One 10s budget covering both — cleared only once
+// requireMemberDoc has actually settled below, not as soon as auth itself
+// resolves.
 let authResolved = false;
 const authTimeoutId = setTimeout(() => {
-  if (!authResolved) showError("This page didn't finish loading. Please try again.", { onRetry: () => location.reload() });
+  if (!authResolved) showPortalLoadTimeout();
 }, 10000);
 
 onAuthStateChanged(auth, async (user) => {
-  authResolved = true;
-  clearTimeout(authTimeoutId);
-  if (!user) { window.location.href = 'portal-login.html'; return; }
+  if (!user) { authResolved = true; clearTimeout(authTimeoutId); window.location.href = 'portal-login.html'; return; }
   userId = user.uid;
   memberData = await requireMemberDoc(db, user.uid);
+  authResolved = true;
+  clearTimeout(authTimeoutId);
   if (!memberData) return;
   loadPageData();
   updateSidebar();

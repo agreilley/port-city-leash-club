@@ -1,0 +1,34 @@
+/* portal-guard.css — chrome-hiding gate for the member portal.
+ *
+ * Loaded via <link rel="stylesheet"> in each guarded page's <head>, NOT
+ * injected by portal-guard.js. That distinction is the entire reason this
+ * file exists: <script type="module"> is deferred by spec — it can't
+ * execute until the document is parsed, and the browser is free to paint
+ * before that happens. A JS-injected version of this rule (which is what
+ * portal-guard.js used to do) can't apply until AFTER the browser has
+ * already had a chance to paint .sidebar/.main-content visible using each
+ * page's own inline <style> — a real, connection-dependent flash of full
+ * portal chrome for every visitor, member or not, before the guard ever
+ * gets a say. A <link rel="stylesheet"> is render-blocking by design: the
+ * browser won't paint until it's loaded. That's the only mechanism that
+ * actually closes the race — no amount of JS optimization can, since
+ * deferred/module script execution is defined to happen after parsing,
+ * every time.
+ *
+ * Gates the same five classes portal-guard.js's data-portal-access
+ * attribute controls — see that file for the full state machine (loading /
+ * granted / denied) and why each of these five needed to be here: the two
+ * page-authored ones (.sidebar, .main-content) plus three more that
+ * js/portal-nav.js injects onto <body> independent of anything on the page
+ * (.pn-topbar, .pn-drawer, .pn-overlay) — a mobile nav surface that was a
+ * real gap the first version of this gate missed entirely. This file has
+ * no state of its own; it's a pure function of the body attribute portal-
+ * guard.js sets.
+ */
+body:not([data-portal-access="granted"]) .sidebar,
+body:not([data-portal-access="granted"]) .main-content,
+body:not([data-portal-access="granted"]) .pn-topbar,
+body:not([data-portal-access="granted"]) .pn-drawer,
+body:not([data-portal-access="granted"]) .pn-overlay {
+  display: none !important;
+}

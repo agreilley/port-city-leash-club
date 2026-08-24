@@ -7,6 +7,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Account Settings - Port City Leash Club</title>
+  <!-- Render-blocking on purpose — see js/portal-guard.css's own header for
+       why this can't be JS-injected without reintroducing a chrome flash. -->
+  <link rel="stylesheet" href="/js/portal-guard.css">
   <!-- Stripe Elements — card field for Update Payment Method below. Loaded
        on every visit to this page (not just when the modal opens) since a
        <script> tag can't be injected and awaited as reliably as one already
@@ -476,8 +479,16 @@
           </div>
         </div>
 
+        <!-- Shown only when the member can't remove their only card yet — same
+             rule removeCardOnFile enforces server-side. Text is set in JS
+             (renderCardOnFile), not here, since which of the two messages
+             applies depends on hasActiveSubscription/tier. -->
+        <div id="cardRemoveBlockedNote" style="display:none; background:#F4F0EA; border:1px solid rgba(13,27,42,0.08); border-left:4px solid #C17B6F; border-radius:6px; padding:14px 16px; margin-bottom:16px; font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; line-height:1.5; color:#0D1B2A;"></div>
+
         <div class="section-actions">
-          <button class="btn btn-secondary" onclick="openUpdatePaymentModal()">Update Payment Method</button>
+          <button class="btn btn-secondary" id="addCardBtn" style="display:none;" onclick="openUpdatePaymentModal()">Add a Card</button>
+          <button class="btn btn-secondary" id="updateCardBtn" style="display:none;" onclick="openUpdatePaymentModal()">Update Card</button>
+          <button class="btn btn-secondary" id="removeCardBtn" style="display:none;" onclick="removeCardOnFileClicked()">Remove Card</button>
         </div>
       </div>
 
@@ -581,7 +592,7 @@
        via confirmCardOnFile, which independently re-verifies it with Stripe. -->
   <div id="cardModal" style="display:none; position:fixed; inset:0; background:rgba(13,27,42,0.5); z-index:10000; align-items:center; justify-content:center; padding:20px;">
     <div style="background:#fff; border-radius:16px; padding:28px; width:100%; max-width:420px; box-shadow:0 20px 60px rgba(0,0,0,0.2);">
-      <h2 style="font-size:18px; font-weight:600; color:#0D1B2A; margin-bottom:20px;">Update Payment Method</h2>
+      <h2 id="cardModalTitle" style="font-size:18px; font-weight:600; color:#0D1B2A; margin-bottom:20px;">Update Payment Method</h2>
 
       <!-- Modal-local error line — stays visible above the dialog, matches the status component -->
       <div id="cardModalError" role="alert" style="display:none; background:#F4F0EA; border:1px solid rgba(13,27,42,0.08); border-left:4px solid #C17B6F; border-radius:6px; padding:14px 16px; margin-bottom:20px; font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; line-height:1.5; color:#0D1B2A;"></div>
@@ -625,9 +636,9 @@
 <script type="module">
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { initializeFirestore, memoryLocalCache, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { initializeFirestore, memoryLocalCache, doc, updateDoc, addDoc, collection, query, where, limit, getDocs, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { showSuccess, showError } from '/js/status.js';
-import { requireMemberDoc } from '/js/portal-guard.js';
+import { requireMemberDoc, showPortalLoadTimeout } from '/js/portal-guard.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { MEMBER_WALK_RATE } from './pricing.js';
 const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
@@ -643,7 +654,15 @@ const auth = initializeAuth(app, {
 // configured; making it explicit documents the choice on purpose.
 const db = initializeFirestore(app, { localCache: memoryLocalCache() });
 const functions = getFunctions(app);
-let userId = null, memberData = null, billingData = null;
+let userId = null, memberData = null;
+// hasPendingReservationCharge: mirrors removeCardOnFile's own extra guard
+// (functions/index.js) — a Travel-tier/no-subscription member can still
+// have a confirmed overnight/check-in reservation with a real charge
+// scheduled up to 24h out (see markDatesConfirmed/runServiceOrOvernight-
+// BookingDoc), independent of hasActiveSubscription entirely. Populated by
+// checkPendingReservationCharge, called from refreshCardOnFile so it's
+// always fresh by the time renderCardOnFile reads it.
+let hasPendingReservationCharge = false;
 
 // Same list for every recurring member — see loadPageData()'s membership-card
 // section for why. '$50 credit every 50 walks' is forward-looking copy for a
@@ -655,32 +674,32 @@ const MEMBER_BENEFITS = [
   '$50 credit every 50 walks',
 ];
 
-// If auth never resolves, stop waiting and tell the member instead of
-// leaving the page stuck on nothing.
+// If auth never resolves, OR resolves but the members/{uid} lookup inside
+// requireMemberDoc hangs (flaky connection), stop waiting and show a retry
+// state instead of leaving the member stuck on the guard's loading
+// placeholder forever. One 10s budget covering both — cleared only once
+// requireMemberDoc has actually settled below, not as soon as auth itself
+// resolves.
 let authResolved = false;
 const authTimeoutId = setTimeout(() => {
-  if (!authResolved) showError("This page didn't finish loading. Please try again.", { onRetry: () => location.reload() });
+  if (!authResolved) showPortalLoadTimeout();
 }, 10000);
 
 onAuthStateChanged(auth, async (user) => {
-  authResolved = true;
-  clearTimeout(authTimeoutId);
-  if (!user) { window.location.href = 'portal-login.html'; return; }
+  if (!user) { authResolved = true; clearTimeout(authTimeoutId); window.location.href = 'portal-login.html'; return; }
   userId = user.uid;
   memberData = await requireMemberDoc(db, user.uid);
+  authResolved = true;
+  clearTimeout(authTimeoutId);
   if (!memberData) return;
   try {
-    // Billing (M-1) moved to members/{uid}/private/billing; a member may read
-    // their OWN copy, for the card-on-file line in loadPageData().
-    const billingSnap = await getDoc(doc(db, 'members', user.uid, 'private', 'billing'));
-    billingData = billingSnap.exists() ? billingSnap.data() : {};
     loadPageData();
     updateSidebar();
     // ?addCard=1 — portal-dashboard.html's no-card-on-file banner links here
     // with this flag so the prompt goes straight into the flow instead of
     // leaving the member to find the button themselves. Only fires once
-    // userId/billingData are actually loaded, same gate every other action
-    // on this page waits on.
+    // userId is actually loaded, same gate every other action on this page
+    // waits on.
     if (new URLSearchParams(location.search).get('addCard') === '1') openUpdatePaymentModal();
   } catch(e) { console.error(e.message); }
 });
@@ -709,14 +728,13 @@ function loadPageData() {
   if (el('email')) el('email').value = memberData.email || '';
   if (el('phone')) el('phone').value = memberData.phone || '';
   if (el('address')) el('address').value = memberData.address || '';
-  // cardOnFile, not stripeCustomerId — a Stripe customer can exist (created
-  // the instant Update Payment Method is opened, by createAuthenticatedSetupIntent)
-  // before any card has actually been attached to it. cardOnFile only ever
-  // becomes true once confirmCardOnFile has independently verified the
-  // SetupIntent succeeded. No real last-4 shown — that would need a server
-  // call to Stripe this page doesn't make — just an honest yes/no.
-  if (el('paymentMethodDisplay')) el('paymentMethodDisplay').textContent =
-    billingData?.cardOnFile ? 'A card is securely saved on file.' : 'No card on file yet.';
+  // Card brand/last4/expiration are read live from Stripe (getCardOnFile),
+  // not from Firestore — billingData.cardOnFile is only ever a yes/no flag,
+  // and even that can drift (see getCardOnFile's own comment), so it's not
+  // trusted for display here beyond the initial "Loading…" state already in
+  // the HTML. refreshCardOnFile() (below, near the card modal JS) fills
+  // this in once the call resolves.
+  refreshCardOnFile();
   // Membership info
   const isTravelOnly = memberData.tier === 'Travel';
   if (el('membershipTier')) el('membershipTier').textContent = isTravelOnly ? 'Pet Sitting (no walk membership)' : (memberData.tier || 'Member');
@@ -1013,7 +1031,148 @@ document.getElementById('updatePasswordBtn')?.addEventListener('click', async ()
 // are designed to ship in client-side JS, and must stay paired with
 // whichever STRIPE_SECRET_KEY the Cloud Functions are using (live here).
 const STRIPE_PUBLISHABLE_KEY = 'pk_live_51Ts2njBYaaTA3vAvPIQWwppe0dXFMS1WxXJ67VR79b281wouy4dv0ePgcHT6oiZGKDjMnTj7n0vTuk3yBlDfuEQF006JgayvNW';
-let stripeClient = null, cardElement = null;
+// currentCard: undefined = not yet confirmed (initial load, or the last
+// getCardOnFile call failed) — distinct from null (confirmed: no card) and
+// an object (confirmed: has this card). openUpdatePaymentModal and the
+// button visibility below both depend on telling "confirmed absent" apart
+// from "unknown" — treating them the same was a real bug: a member whose
+// getCardOnFile call merely failed would see "Add a Card" even if they
+// already have one on file.
+let stripeClient = null, cardElement = null, currentCard = undefined;
+
+const CARD_BRAND_LABELS = {
+  visa: 'Visa', mastercard: 'Mastercard', amex: 'American Express',
+  discover: 'Discover', diners: 'Diners Club', jcb: 'JCB', unionpay: 'UnionPay',
+};
+
+// renderCardOnFile: the single place that draws the Payment Method line and
+// its buttons, from whatever card getCardOnFile last returned (or null).
+// Called after the initial load, after a successful add/replace, and after
+// a successful removal — never assumes what state came before it.
+function renderCardOnFile(card) {
+  currentCard = card;
+  const display = document.getElementById('paymentMethodDisplay');
+  if (display) {
+    display.textContent = card
+      ? `${CARD_BRAND_LABELS[card.brand] || card.brand} ending in ${card.last4}, expires ${String(card.expMonth).padStart(2, '0')}/${card.expYear}`
+      : 'No card on file yet.';
+  }
+  const addBtn = document.getElementById('addCardBtn');
+  const updateBtn = document.getElementById('updateCardBtn');
+  const removeBtn = document.getElementById('removeCardBtn');
+  const blockedNote = document.getElementById('cardRemoveBlockedNote');
+  if (addBtn) addBtn.style.display = card ? 'none' : '';
+  // textContent reset every call, not just on the first render — renderCardLoadFailed
+  // below repurposes this same button with different wording when card state
+  // is unknown, so a known-state render must always restore the real label.
+  if (updateBtn) { updateBtn.style.display = card ? '' : 'none'; updateBtn.textContent = 'Update Card'; }
+  // Mirrors removeCardOnFile's own server-side guard exactly (fails closed:
+  // allowed only with positive evidence of no recurring obligation AND no
+  // pending reservation charge) — shown here only to save a member the
+  // round trip of clicking Remove and getting told no; the server enforces
+  // this regardless of what the client shows.
+  const noRecurringObligation = memberData?.tier === 'Travel' || memberData?.hasActiveSubscription === false;
+  const removalBlocked = !!card && (!noRecurringObligation || hasPendingReservationCharge);
+  if (removeBtn) removeBtn.style.display = card && !removalBlocked ? '' : 'none';
+  if (blockedNote) {
+    blockedNote.style.display = removalBlocked ? 'block' : 'none';
+    // Same three-way split as removeCardOnFile's own error messages: only
+    // assert a charge is coming when it's actually true (a confirmed
+    // reservation, or hasActiveSubscription === true). The remaining
+    // blocked case (pending/failed subscription creation) has no confirmed
+    // subscription yet, so that claim would be false. None of the three
+    // strings implies removal is something the member can act on right
+    // now — the Remove button is hidden in every blocked case, so "before
+    // removing your card" would describe an action this screen doesn't
+    // offer.
+    //
+    // KEEP IN SYNC with the same three strings in removeCardOnFile
+    // (functions/index.js) — manual duplication, no shared module between
+    // the portal pages and Cloud Functions.
+    if (removalBlocked) {
+      blockedNote.textContent = hasPendingReservationCharge
+        ? "Add a new card before removing this one. You have a confirmed reservation that hasn't been charged yet."
+        : memberData?.hasActiveSubscription === true
+          ? 'Add a new card before removing this one. Your membership charges automatically each month.'
+          : "Your billing setup is still being finalized. Email us at hello@portcityleashclub.com and we'll help sort it out.";
+    }
+  }
+}
+
+// renderCardLoadFailed: shown when getCardOnFile itself fails (not "no
+// card" — an actual thrown error). Card state is unknown here, not
+// confirmed absent, so this must never show "Add a Card" (implying no card
+// exists) or hide every action (leaving no way to fix anything). The one
+// button shown reuses updateCardBtn with neutral wording that's correct
+// whether or not a card already exists — openUpdatePaymentModal's own title
+// logic mirrors this same "unknown ⇒ neutral" rule.
+function renderCardLoadFailed() {
+  currentCard = undefined;
+  const display = document.getElementById('paymentMethodDisplay');
+  if (display) display.textContent = "Couldn't load your payment method. You can still add or update it below.";
+  const addBtn = document.getElementById('addCardBtn');
+  const updateBtn = document.getElementById('updateCardBtn');
+  const removeBtn = document.getElementById('removeCardBtn');
+  const blockedNote = document.getElementById('cardRemoveBlockedNote');
+  if (addBtn) addBtn.style.display = 'none';
+  if (updateBtn) { updateBtn.style.display = ''; updateBtn.textContent = 'Update Payment Method'; }
+  // Remove stays hidden — removal requires confirmed card data (which card,
+  // whether it's blocked), none of which is known in this state.
+  if (removeBtn) removeBtn.style.display = 'none';
+  if (blockedNote) blockedNote.style.display = 'none';
+}
+
+// checkPendingReservationCharge: same query removeCardOnFile itself runs
+// server-side (functions/index.js) — firestore.rules already lets a member
+// read their own overnights docs directly, so this is a live check, not a
+// guess. Never throws: a failed check here just leaves the client hint
+// under-blocking (Remove shown when the server would actually reject it),
+// which is safe — removeCardOnFile enforces the real guard regardless of
+// what this page displays.
+async function checkPendingReservationCharge() {
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'overnights'),
+      where('memberId', '==', userId),
+      where('chargePending', '==', true),
+      limit(1)
+    ));
+    hasPendingReservationCharge = !snap.empty;
+  } catch (e) {
+    console.error('checkPendingReservationCharge:', e.message);
+    hasPendingReservationCharge = false;
+  }
+}
+
+async function refreshCardOnFile() {
+  try {
+    const [cardResult] = await Promise.all([
+      httpsCallable(functions, 'getCardOnFile')(),
+      checkPendingReservationCharge(),
+    ]);
+    renderCardOnFile(cardResult.data.card);
+  } catch (e) {
+    console.error('refreshCardOnFile:', e.message);
+    renderCardLoadFailed();
+  }
+}
+
+window.removeCardOnFileClicked = async () => {
+  if (!userId || !currentCard) return;
+  const label = `${CARD_BRAND_LABELS[currentCard.brand] || currentCard.brand} ending in ${currentCard.last4}`;
+  if (!confirm(`Remove your ${label} from your account?`)) return;
+  const removeBtn = document.getElementById('removeCardBtn');
+  if (removeBtn) removeBtn.disabled = true;
+  try {
+    await httpsCallable(functions, 'removeCardOnFile')();
+    await refreshCardOnFile();
+    showSuccess('Your card has been removed.');
+  } catch (e) {
+    showError(e.message || 'Could not remove your card. Please try again.');
+  } finally {
+    if (removeBtn) removeBtn.disabled = false;
+  }
+};
 
 const cardModal = document.getElementById('cardModal');
 const cardModalError = document.getElementById('cardModalError');
@@ -1027,6 +1186,12 @@ window.openUpdatePaymentModal = async () => {
   if (fieldErrEl) fieldErrEl.textContent = '';
   const saveBtn = document.getElementById('saveCardBtn');
   if (saveBtn) saveBtn.disabled = false;
+  // 'Add a Card' only with POSITIVE confirmation there's no card
+  // (currentCard === null) — not on falsy-in-general, which used to also
+  // match currentCard === undefined (unknown, e.g. a failed load) and
+  // wrongly claim "Add" to a member who might already have a card on file.
+  const titleEl = document.getElementById('cardModalTitle');
+  if (titleEl) titleEl.textContent = currentCard === null ? 'Add a Card' : 'Update Payment Method';
   cardModal.style.display = 'flex';
 
   if (typeof Stripe === 'undefined') {
@@ -1079,10 +1244,7 @@ document.getElementById('saveCardBtn')?.addEventListener('click', async () => {
     }
     const confirmOnFile = httpsCallable(functions, 'confirmCardOnFile');
     await confirmOnFile({ setupIntentId: result.setupIntent.id });
-    billingData = { ...(billingData || {}), cardOnFile: true };
-    if (document.getElementById('paymentMethodDisplay')) {
-      document.getElementById('paymentMethodDisplay').textContent = 'A card is securely saved on file.';
-    }
+    await refreshCardOnFile();
     closeCardModal();
     showSuccess('Your card is on file.');
   } catch (e) {

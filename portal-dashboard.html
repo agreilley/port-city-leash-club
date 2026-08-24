@@ -7,6 +7,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard - The Leash Club</title>
+  <!-- Render-blocking on purpose — see js/portal-guard.css's own header for
+       why this can't be JS-injected without reintroducing a chrome flash. -->
+  <link rel="stylesheet" href="/js/portal-guard.css">
   <style>
     * {
       margin: 0;
@@ -747,7 +750,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { getAuth, initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getFirestore, initializeFirestore, memoryLocalCache, doc, getDoc, collection, query, where, onSnapshot, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { showError } from '/js/status.js';
-import { requireMemberDoc } from '/js/portal-guard.js';
+import { requireMemberDoc, showPortalLoadTimeout } from '/js/portal-guard.js';
 const firebaseConfig = {
   apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
   authDomain: "port-city-leash-club-827ab.firebaseapp.com",
@@ -856,16 +859,30 @@ async function resolveVerifiedAdminUid() {
 }
 
 // ── AUTH GUARD ────────────────────────────────────────────────────────────────
-// If auth never resolves (see persistence comment above), stop waiting and
-// tell the member instead of leaving the page stuck on nothing.
+// If auth never resolves (see persistence comment above), OR resolves but
+// the members/{uid} lookup inside requireMemberDoc (called from
+// loadAndSubscribe below) hangs on a flaky connection, stop waiting and
+// show a retry state instead of leaving the member stuck on the guard's
+// loading placeholder forever. One 10s budget covering both — cleared only
+// once requireMemberDoc has actually settled, not as soon as auth itself
+// resolves.
+//
+// That repositioning has a side effect worth naming: previously,
+// authResolved/clearTimeout ran at the very top of this callback, before
+// the admin-preview branch's resolveVerifiedAdminUid() call below was even
+// awaited — so THAT call was never covered by this timeout, no matter how
+// long it hung. Now the clear doesn't fire until loadAndSubscribe's
+// requireMemberDoc settles, which is AFTER resolveVerifiedAdminUid() in
+// the preview branch — so that call is newly inside the 10s budget. This
+// is intentional, not incidental: an admin in preview mode deserves the
+// same fail-safe against a hang as every other visitor, which they didn't
+// have before.
 let authResolved = false;
 const authTimeoutId = setTimeout(() => {
-  if (!authResolved) showError("This page didn't finish loading. Please try again.", { onRetry: () => location.reload() });
+  if (!authResolved) showPortalLoadTimeout();
 }, 10000);
 
 onAuthStateChanged(auth, async (user) => {
-  authResolved = true;
-  clearTimeout(authTimeoutId);
   if (previewMemberId) {
     const verifiedAdminUid = await resolveVerifiedAdminUid();
     if (verifiedAdminUid) {
@@ -878,13 +895,15 @@ onAuthStateChanged(auth, async (user) => {
     // Fall through to the exact same guard every other visitor gets.
   }
 
-  if (!user) { window.location.href = 'portal-login.html'; return; }
+  if (!user) { authResolved = true; clearTimeout(authTimeoutId); window.location.href = 'portal-login.html'; return; }
   viewedMemberId = user.uid;
   await loadAndSubscribe(viewedMemberId);
 });
 
 async function loadAndSubscribe(targetId) {
   memberData = await requireMemberDoc(db, targetId);
+  authResolved = true;
+  clearTimeout(authTimeoutId);
   if (!memberData) return;
   populateMemberUI();
 

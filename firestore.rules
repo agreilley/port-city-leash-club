@@ -470,8 +470,20 @@ service cloud.firestore {
       // (functions/index.js) now reads stripeCustomerId from the member's
       // own billing subdoc directly, keyed by memberId — no submission ever
       // carries a copy anymore, on this authenticated path or any other.
+      //
+      // exists() check: memberId == request.auth.uid alone only proves the
+      // writer isn't impersonating someone ELSE's account — it never proved
+      // there was an account behind that uid at all. An authenticated user
+      // with no members/{uid} doc (e.g. portal-request-extras.html reached
+      // with a non-member login) could satisfy every other check here and
+      // write an unfulfillable request with no name/email/phone anywhere on
+      // it (this shape has none — see above), landing in the admin queue
+      // with nothing to identify or contact the submitter. One extra read,
+      // same cost as isAdmin()/isWalker() elsewhere in this file, and it
+      // only ever blocks that case — a real member always has this doc.
       function validMemberServiceRequest() {
-        return request.resource.data.keys().hasOnly(
+        return exists(/databases/$(database)/documents/members/$(request.auth.uid))
+          && request.resource.data.keys().hasOnly(
             ['type', 'memberId', 'memberName', 'service', 'startDate', 'endDate',
              'visitsPerDay', 'notes', 'addonExtraPet', 'addonMedication',
              'estimatedTotal', 'status', 'read', 'createdAt'])
