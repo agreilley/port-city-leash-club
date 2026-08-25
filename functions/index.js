@@ -801,6 +801,25 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
     }
   }
 
+  // Symmetric case to the guard directly above, added alongside it rather
+  // than folded in: that guard only catches a discount that SHOULD have
+  // applied and didn't (billingData.travelDiscountActive === true). This
+  // catches the mirror gap — a discount that shouldn't apply anymore but
+  // was submitted as applied anyway. Concretely: an admin has a review
+  // screen open in one browser tab, the discount gets turned off for this
+  // member in another tab (setFriendsFamilyDiscountActive), and the first
+  // tab's stale in-memory billing state still computes and submits
+  // amountInDollars with travelDiscountApplied: true. billingData here is
+  // read fresh from Firestore in this same function, so it's already
+  // correctly travelDiscountActive: false by the time this runs — that
+  // freshness is what makes this check trustworthy regardless of how stale
+  // the client's own state was. Without this, that charge would sail
+  // through at the stale discounted amount, since the guard above only
+  // fires while travelDiscountActive is true and is skipped entirely here.
+  if (docData.travelDiscountApplied === true && billingData.travelDiscountActive !== true) {
+    throw new HttpsError('failed-precondition', `Member ${memberId}'s Friends & Family discount is not currently active, but this charge was computed with it applied — likely a stale admin tab left open from before the discount was turned off. Reopen the review screen to recompute the total, then charge again.`);
+  }
+
   // Travel-tier clients receive referral credit as a Firestore balance
   // (members/{id}/private/billing.pendingReferralCredit) instead of a Stripe
   // customer balance — see issueReferralCredit — since they have no ongoing
