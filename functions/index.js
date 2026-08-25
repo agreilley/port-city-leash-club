@@ -2006,26 +2006,30 @@ async function runChargeCurrentMonthWalks(memberId) {
     throw new HttpsError('failed-precondition', `Price ${priceId} has no unit_amount — cannot charge for this month.`);
   }
 
-  // New-member referral discount, decided fresh right here rather than after
-  // the charge — see resolveNewMemberReferralDiscount. A pure read, nothing
-  // committed yet, so a retried/failed charge safely re-evaluates instead of
-  // trusting a stale decision. Gated on billingData.referralCreditChecked
-  // (already in hand from the dual-read above): once a member's first-payment
-  // outcome has ever been recorded — by this function or by
-  // runFirstPaymentReferralCredit on a LATER month's regular subscription
-  // invoice — every later chargeCurrentMonthWalks call must never re-discount
-  // them again. Flat entitlement, capped at 50% of THIS charge so a small
-  // prorated first month is never more than half off (and never reaches $0 —
-  // Stripe won't allow a $0 PaymentIntent). Whatever the cap leaves unclaimed
-  // is forfeited, not carried forward — a small first month caps the
-  // discount low and the rest is simply gone, same rule chargeCustomerCard
-  // and runFirstPaymentReferralCredit both apply to their own first charge.
-  const referralDiscount = billingData.referralCreditChecked
-    ? null
-    : await resolveNewMemberReferralDiscount(memberId, billingData, member);
-  const discountCents = (referralDiscount && referralDiscount.decision === 'approved')
-    ? Math.min(referralDiscount.discountCents, Math.floor(amountInCents / 2))
-    : 0;
+  // New-member referral discount is deliberately NEVER applied to this
+  // charge — a decision, not an oversight. It's applied instead by
+  // runFirstPaymentReferralCredit, on the subscription's first FULL-MONTH
+  // invoice, via the invoice.paid webhook. Why: this charge is prorated to
+  // whatever walk days remain in the signup month, which can be as low as a
+  // single walk — $27 at this tier's per-walk rate. Against that, the
+  // existing 50%-of-this-charge cap (see resolveNewMemberReferralDiscount)
+  // would bind hard and forfeit most of a $50 credit, with no carry-forward
+  // to make up the difference later. A full month is at least $108, so the
+  // same cap never binds there and the member always receives the full
+  // credit instead. referralDiscount/discountCents stay fixed at
+  // null/0 — not deleted outright, since chargeAmountInCents and the
+  // currentMonthCharge/return-value guards below all still read them by
+  // name; restructuring those wasn't part of this change.
+  //
+  // CRITICAL OPERATIONAL DEPENDENCY: this only works because
+  // runFirstPaymentReferralCredit is reachable at all, which requires
+  // invoice.paid to be an enabled event on the Stripe Dashboard's webhook
+  // endpoint (Developers → Webhooks). If that event is ever removed,
+  // membership referral credits stop being applied ANYWHERE, for ANY
+  // member, silently — no error, no needsReview flag, nothing to notice
+  // until someone asks why their referral credit never showed up.
+  const referralDiscount = null;
+  const discountCents = 0;
   const chargeAmountInCents = amountInCents - discountCents;
 
   const monthName = new Date(Date.UTC(year, monthIndex, 1))
@@ -2084,15 +2088,15 @@ async function runChargeCurrentMonthWalks(memberId) {
     },
   }, { merge: true });
 
-  // Post-charge commit for the discount decided above — see
-  // finalizeNewMemberReferralDiscount. For a brand-new membership member
-  // this one-off charge (the prorated remainder of their signup month) is
-  // almost always their REAL first payment — their subscription's own first
-  // Stripe Invoice isn't until the 1st of next month (billing_cycle_anchor,
-  // set in createMembershipSubscription). Only called when referralDiscount
-  // was actually computed above (i.e. this genuinely might be the member's
-  // first payment) — never throws, never re-decides eligibility, only
-  // records what was already applied to the charge that just succeeded.
+  // Unreachable from this function — referralDiscount is permanently null
+  // (see the comment where it's declared above), so this block can never
+  // run here. Retained rather than deleted so this function's shape stays
+  // parallel with chargeCustomerCard, which still resolves and applies its
+  // own new-member discount and still calls finalizeNewMemberReferralDiscount
+  // through this exact same guard — a reader comparing the two sees the
+  // same structure in both, with only the one declaration above explaining
+  // why this copy never fires, rather than this function silently missing a
+  // block chargeCustomerCard still has.
   if (referralDiscount) {
     await finalizeNewMemberReferralDiscount(stripe, memberId, billingData.referralSubmissionId || null, referralDiscount, discountCents);
   }
@@ -2975,6 +2979,17 @@ async function finalizeNewMemberReferralDiscount(stripe, memberId, referralSubmi
 // surfaces a stuck case clearly (console.error + a creditIssuanceError
 // breadcrumb on the billing doc) for an admin to resolve manually, rather
 // than risking a double-credit via automatic retry logic.
+//
+// For a Member-tier (membership) signup specifically, this is now the SOLE
+// claimant of referralCreditChecked, not a fallback for the narrow
+// zero-walk-days-remaining edge case it originally was. runChargeCurrentMonthWalks
+// deliberately never resolves or applies the new-member discount at all
+// (see that function's own comment) — the prorated remainder-of-month
+// charge it makes can be too small for the 50% cap to preserve a full $50
+// credit. So for every membership signup, not just the edge case, this
+// function's invoice.paid-triggered pass against the subscription's first
+// FULL-MONTH invoice is the only place that credit is ever decided and
+// applied.
 //
 // Never throws — the caller runs this after its own success and must
 // never have a referral-credit bug make that success look like a failure.
