@@ -6209,6 +6209,17 @@ exports.validateReferralCode = onCall({}, async (request) => {
     const max = Number.isInteger(codeData.maxRedemptions) ? codeData.maxRedemptions : 0;
     const count = Number.isInteger(codeData.redemptionCount) ? codeData.redemptionCount : 0;
     if (count >= max) return { valid: false, reason: 'redemption_limit_reached' };
+    // friends_family never carries amountCents and never receives the
+    // one-time discount at charge time — resolveNewMemberReferralDiscount
+    // excludes it before this fallback would ever apply (see there). Omitting
+    // amountCents here keeps the client from previewing a discount this code
+    // can never actually redeem.
+    return { valid: true, reason: null };
   }
-  return { valid: true, reason: null };
+  // Same codeData.amountCents ?? 5000 fallback resolveNewMemberReferralDiscount
+  // uses at charge time (functions/index.js, that function's return statement)
+  // — existing $50 partner/member-referral codes never wrote this field, so
+  // this is a preview of the exact amount the charge-time cap will apply
+  // against, not a separate number that could drift from it.
+  return { valid: true, reason: null, amountCents: codeData.amountCents ?? 5000 };
 });

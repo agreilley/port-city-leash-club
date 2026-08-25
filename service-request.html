@@ -456,6 +456,17 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       };
       let referralCodeCheckToken = 0;
 
+      // Bridged onto window rather than kept as a local — updateSummary()
+      // lives in the type="module" script below, which can't see a plain
+      // let/const from this classic script, only window properties. null
+      // means "no valid code in hand" (no code entered, not yet checked,
+      // invalid, or a response that predates the amountCents field — see the
+      // blur handler below for that last case). updateSummary() re-reads
+      // this on every call, so a cap computed against a stale amount is
+      // never possible — only its presence/absence can go stale, and only
+      // between a code becoming invalid and the next keystroke/blur.
+      window._referralPreviewAmountCents = null;
+
       function setReferralCodeStatus(text, color) {
         referralCodeStatus.textContent = text;
         referralCodeStatus.style.color = color;
@@ -464,11 +475,20 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         setReferralCodeStatus(REFERRAL_CODE_IDLE_TEXT, REFERRAL_CODE_IDLE_COLOR);
       }
 
-      referralCodeInput.addEventListener('input', resetReferralCodeStatus);
+      referralCodeInput.addEventListener('input', () => {
+        resetReferralCodeStatus();
+        window._referralPreviewAmountCents = null;
+        if (window.updateSummary) window.updateSummary();
+      });
 
       referralCodeInput.addEventListener('blur', async () => {
         const code = referralCodeInput.value.trim();
-        if (!code) { resetReferralCodeStatus(); return; }
+        if (!code) {
+          resetReferralCodeStatus();
+          window._referralPreviewAmountCents = null;
+          if (window.updateSummary) window.updateSummary();
+          return;
+        }
         if (!window._validateReferralCode) return; // Firebase not ready yet — submit-time check still covers this
         const thisCheck = ++referralCodeCheckToken;
         setReferralCodeStatus('Checking…', REFERRAL_CODE_IDLE_COLOR);
@@ -476,8 +496,16 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           const result = await window._validateReferralCode({ code });
           if (thisCheck !== referralCodeCheckToken) return; // superseded by a newer check
           if (result.data.valid) {
+            // amountCents is absent for a friends_family code (by design —
+            // see validateReferralCode) and, until the backend redeploys,
+            // for every code: that older response shape has no amountCents
+            // at all. Either way this falls back to null, which
+            // updateSummary() treats as "valid code, no preview line" — the
+            // exact status-line-only behavior this form had before.
+            window._referralPreviewAmountCents = typeof result.data.amountCents === 'number' ? result.data.amountCents : null;
             setReferralCodeStatus('Code applied.', 'var(--seafoam)');
           } else {
+            window._referralPreviewAmountCents = null;
             setReferralCodeStatus(REFERRAL_CODE_INVALID_MESSAGES[result.data.reason] || REFERRAL_CODE_IDLE_TEXT, 'var(--text-mid)');
           }
         } catch (e) {
@@ -485,8 +513,10 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           // isn't the visitor's fault and isn't evidence the code is bad.
           console.error('Referral code blur-check failed:', e.message);
           if (thisCheck !== referralCodeCheckToken) return;
+          window._referralPreviewAmountCents = null;
           resetReferralCodeStatus();
         }
+        if (window.updateSummary) window.updateSummary();
       });
 
       function dogCardHTML(n) {
@@ -659,6 +689,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       <div id="orderLines">
         <div class="order-empty">Select a service and dates to see your estimate.</div>
       </div>
+      <div id="referralPreviewNote" style="display:none;font-size:11px;color:rgba(255,255,255,0.6);margin-top:12px;line-height:1.5;">Applied to your first charge only. Final amount is confirmed when we schedule your reservation.</div>
     </div>
     <div class="order-note" id="howItWorksNote">
       <p><strong>How it works:</strong> Submit your request and we'll be in touch to schedule a meet & greet. Once that's done, we'll email you a link to add a card — nothing is charged until then.</p>
@@ -785,13 +816,50 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       lines += `<div class="order-line"><span>Medication admin${!isWalk && days > 1 ? ` &times; ${days}` : ''}</span><strong>$${medsLine.amount}</strong></div>`;
     }
 
+    // Referral discount preview — display only. Recomputed from
+    // window._referralPreviewAmountCents (set by the blur handler above, in
+    // the classic script) on every updateSummary() call, so a code entered
+    // before the dates/visits/add-ons are finalized still shows the correct
+    // cap once they change: the 50% cap moves with grandTotal, same formula
+    // chargeCustomerCard applies at charge time (functions/index.js). This
+    // is a preview only — the real discount is decided and applied
+    // server-side at charge time, against the actual charge amount then,
+    // which can differ from this estimate (see resolveNewMemberReferralDiscount
+    // and chargeCustomerCard). formatDollarsFromCents keeps whole-dollar
+    // totals looking like the rest of this summary ($50) while still
+    // showing cents when the 50% cap lands on a half-dollar (e.g. $12.50
+    // against a $25 total).
+    const previewAmountCents = window._referralPreviewAmountCents;
+    let previewDiscountCents = 0;
+    if (typeof previewAmountCents === 'number' && grandTotal > 0) {
+      const preDiscountTotalCents = Math.round(grandTotal * 100);
+      previewDiscountCents = Math.min(previewAmountCents, Math.floor(preDiscountTotalCents / 2));
+    }
+    if (previewDiscountCents > 0) {
+      lines += `<div class="order-line"><span>Referral credit (estimate)</span><strong>&minus;${formatDollarsFromCents(previewDiscountCents)}</strong></div>`;
+    }
+
     const totalEl = document.getElementById('orderTotal');
     const linesEl = document.getElementById('orderLines');
     const barTotal = document.getElementById('barTotal');
-    totalEl.textContent = grandTotal > 0 ? `$${grandTotal}` : '$0';
+    const orderNoteEl = document.getElementById('referralPreviewNote');
+    // window._lastEstimatedTotal is the PRE-discount total and must stay
+    // that way — it's written to Firestore as estimatedTotal on submit
+    // (see the submit handler in the script above). The server applies the
+    // real referral discount itself at charge time (chargeCustomerCard);
+    // writing a discounted number here would apply the discount twice.
+    const displayTotalCents = Math.round(grandTotal * 100) - previewDiscountCents;
+    const displayTotal = grandTotal > 0 ? formatDollarsFromCents(Math.max(0, displayTotalCents)) : '$0';
+    totalEl.textContent = displayTotal;
     linesEl.innerHTML   = lines || '<div class="order-empty">Select a service and dates to see your estimate.</div>';
-    if (barTotal) barTotal.textContent = grandTotal > 0 ? `$${grandTotal}` : '$—';
+    if (barTotal) barTotal.textContent = grandTotal > 0 ? displayTotal : '$—';
+    if (orderNoteEl) orderNoteEl.style.display = previewDiscountCents > 0 ? 'block' : 'none';
     window._lastEstimatedTotal = grandTotal;
+  }
+
+  function formatDollarsFromCents(cents) {
+    const dollars = cents / 100;
+    return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
   }
 
   window.updateAddons = function updateAddons() { updateSummary(); };
@@ -943,6 +1011,10 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         phone: document.getElementById('phone')?.value || '',
         address: document.getElementById('address')?.value || '',
         meetGreetDateTime: document.getElementById('meetGreetDateTime')?.value || '',
+        // Deliberately the PRE-discount total — the referral credit shown in
+        // the sidebar is a preview only. The server applies the real
+        // discount itself at charge time (chargeCustomerCard); writing a
+        // discounted number here would apply it twice.
         estimatedTotal: window._lastEstimatedTotal || 0,
         referredByCode,
         attribution,
