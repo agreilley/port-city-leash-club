@@ -21,6 +21,12 @@ const RESEND_API_KEY = defineSecret('RESEND_API_KEY');
 
 const FROM_ADDRESS = 'Port City Leash Club <hello@portcityleashclub.com>';
 const DEFAULT_REPLY_TO = 'hello@portcityleashclub.com';
+// Recipient for internal, admin-facing notifications (e.g. billing-needs-review) —
+// as opposed to every other template above, which sends TO a member/customer.
+// Named separately from FROM_ADDRESS/DEFAULT_REPLY_TO even though it's the
+// same address today, since it means something different: this is who
+// receives, not who a reply goes to.
+const ADMIN_EMAIL = 'hello@portcityleashclub.com';
 
 // Each module exports { subject(data), html(data), text(data) }.
 const TEMPLATES = {
@@ -42,6 +48,7 @@ const TEMPLATES = {
   'member-welcome': require('../templates/member-welcome'),
   'portal-access': require('../templates/portal-access'),
   'referral-code-delivery': require('../templates/referral-code-delivery'),
+  'billing-needs-review': require('../templates/billing-needs-review'),
 };
 
 const MAX_ATTEMPTS = 3;
@@ -192,4 +199,4 @@ async function sendEmail({ to, template, data, replyTo, idempotencyKey }) {
 // preview tool, never deployed) can render every registered template
 // directly from the same registry real sends use — there's no separate
 // list to fall out of sync with this one.
-module.exports = { sendEmail, RESEND_API_KEY, TEMPLATES };
+module.exports = { sendEmail, RESEND_API_KEY, ADMIN_EMAIL, TEMPLATES };

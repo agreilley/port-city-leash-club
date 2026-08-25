@@ -33,7 +33,7 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, FieldValue, Timestamp } = require('firebase-admin/firestore');
-const { sendEmail, RESEND_API_KEY } = require('./lib/email');
+const { sendEmail, RESEND_API_KEY, ADMIN_EMAIL } = require('./lib/email');
 
 initializeApp();
 const db = getFirestore();
@@ -5200,6 +5200,60 @@ exports.onOvernightCompleted = onDocumentUpdated({
       });
     }
   }
+});
+
+// Admin-facing notification for billing.needsReview — see
+// functions/templates/billing-needs-review.js for the email itself and
+// NEEDS_REVIEW_LABELS in admin/dashboard.html for the badge this mirrors.
+// Deliberately a trigger on the billing doc's own state, not another write
+// at each of the ~11 places that set needsReview:true (createMembershipSubscription,
+// finalizeNewMemberReferralDiscount, runFirstPaymentReferralCredit,
+// chargeScheduledReservations, updateWalkSchedule, onOvernightCompleted,
+// confirmCardOnFile, getCardOnFile, finalizeSubmissionIfReady) — several of
+// those have their own deliberate, comment-documented error-handling
+// behavior, and reacting to the resulting document state instead of
+// instrumenting every call site means none of them need to change.
+//
+// The before/after comparison IS the duplicate-email guard: only a
+// false/undefined -> true transition fires. A write that sets needsReview:
+// true while it's already true (a retried operation re-flagging the same
+// unresolved incident) is a no-op transition and does not re-notify.
+// dismissBillingReview sets needsReview back to false, so a genuinely new
+// incident afterward is a fresh false -> true transition and fires again
+// correctly — no separate "already notified" flag needed for that case.
+//
+// idempotencyKey is keyed on this specific trigger event (event.id), not
+// just memberId/reason — guards only against Cloud Functions redelivering
+// the SAME event (its documented at-least-once delivery guarantee), not
+// against two different genuine incidents, which must each get their own
+// email.
+exports.onBillingNeedsReview = onDocumentUpdated({
+  document: 'members/{memberId}/private/billing',
+  secrets: [RESEND_API_KEY],
+}, async (event) => {
+  const before = event.data.before.data() || {};
+  const after = event.data.after.data() || {};
+  if (before.needsReview || !after.needsReview) return;
+
+  const memberId = event.params.memberId;
+  const memberSnap = await db.collection('members').doc(memberId).get();
+  const memberName = memberSnap.data()?.name || null;
+
+  // sendEmail never throws (see functions/lib/email.js) and this trigger
+  // only runs after the needsReview write has already committed, so a send
+  // failure here can't affect that write or whatever operation caused it —
+  // there's nothing left to roll back by the time this trigger even starts.
+  await sendEmail({
+    to: ADMIN_EMAIL,
+    template: 'billing-needs-review',
+    data: {
+      memberName,
+      memberId,
+      reason: after.needsReviewReason || null,
+      flaggedAt: event.time,
+    },
+    idempotencyKey: `billing-needs-review:${memberId}:${event.id}`,
+  });
 });
 
 function isoDateStr(date) {
