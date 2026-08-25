@@ -757,6 +757,37 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
     };
   }
 
+  // Friends & Family silent-failure guard. Travel service totals are
+  // computed client-side in admin/dashboard.html (confirmRequestDates,
+  // reviewRecalcOvernight) — this function has always trusted whatever
+  // amountInDollars it's handed, the same trust boundary chargeSavedCard has
+  // had since before this feature. That's fine for a normal charge, but a
+  // member with a snapshotted travelDiscountPercent is exactly the case
+  // where "trust the client" can silently cost real money: any travel
+  // charge path — today's or a future one — that forgets to apply the
+  // discount would otherwise charge full price with no error at all. Rather
+  // than re-deriving the correct amount here (which would mean duplicating
+  // pricing.js's whole calculation, the bigger server-recompute rework this
+  // build deliberately avoided), this only checks for a marker —
+  // travelDiscountApplied — that every travel-total call site now sets
+  // alongside amountInDollars (see markDatesConfirmed's `reviewed` object).
+  // Missing marker + a travel-type charge + a member who has a discount to
+  // apply = hard fail, never a silent full-price charge. isTravelDiscountService
+  // reads travelDiscountEligible directly off each SERVICE_PRICES entry
+  // (pricing.js), not a unit check or a separate list — the exact same
+  // function admin/dashboard.html's discount application reads, so this
+  // assertion and that application can never disagree about what counts as
+  // "travel." A walk/extended-walk charge for the same member is correctly
+  // exempt, since Friends & Family never discounts those.
+  if (billingData.travelDiscountPercent > 0) {
+    const { isTravelDiscountService } = await import('./pricing.js');
+    const rawServiceKey = docData.service || docData.serviceType || null;
+    const isTravelCharge = !!rawServiceKey && isTravelDiscountService(rawServiceKey);
+    if (isTravelCharge && !docData.travelDiscountApplied) {
+      throw new HttpsError('failed-precondition', `Member ${memberId} has a Friends & Family travel discount, but this charge was not computed with it applied — recompute from the review screen before charging.`);
+    }
+  }
+
   // Travel-tier clients receive referral credit as a Firestore balance
   // (members/{id}/private/billing.pendingReferralCredit) instead of a Stripe
   // customer balance — see issueReferralCredit — since they have no ongoing
@@ -2677,6 +2708,21 @@ async function resolveNewMemberReferralDiscount(memberId, billingData, memberDat
     console.warn(`resolveNewMemberReferralDiscount: referredByCode ${referredByCode} expired for member ${memberId} — no discount.`);
     return NONE;
   }
+  // Friends & Family codes don't participate in this decision at all — they
+  // grant an ONGOING per-service percentage set once at signup (see
+  // claimFriendsFamilyRedemption), not a one-time charge-time discount, and
+  // must never stack with the $50 new-member discount or trigger a referrer
+  // credit. Without this early return, a friends_family code would fall
+  // through to the 'approved' path below and grant codeData.amountCents ??
+  // 5000 (a flat $50) — friends_family docs never set amountCents, so that
+  // fallback would silently apply. This single branch is what excludes
+  // every issueReferralCredit/$50-discount trigger point at once
+  // (chargeCustomerCard, runChargeCurrentMonthWalks, runFirstPaymentReferralCredit,
+  // finalizeNewMemberReferralDiscount) — they all decide off this function's
+  // return value, so there's no separate exclusion needed at each site.
+  if (codeData.source === 'friends_family') {
+    return NONE;
+  }
   const isMemberReferral = codeData.source === 'member_referral' && !!codeData.referrerId;
   // Single-redemption codes: apartment/agent partner codes AND email_capture
   // codes are each generated for ONE specific lead/signup (partner:
@@ -3633,13 +3679,25 @@ exports.completeMeetGreetAndCreateAccount = onCall({
   // One code per member, structurally: uid was just created above, so this
   // read is almost always empty in practice, but the guard is here rather
   // than assumed so a second code can never silently overwrite a first.
+  //
+  // friends_family is the one source type that can't use this simple
+  // unconditional attach — see claimFriendsFamilyRedemption. This is the
+  // actual redemption moment (the account now exists; validateReferralCode's
+  // earlier check at signup was only ever advisory, since it can't reserve a
+  // slot), so it's the one place that atomically enforces maxRedemptions.
+  let friendsFamilyRedemption = null;
   if (sub.referredByCode) {
-    const billingSnapForReferral = await billingRef(uid).get();
-    if (!billingSnapForReferral.data()?.referredByCode) {
-      await billingRef(uid).set({
-        referredByCode: sub.referredByCode,
-        referralSubmissionId: submissionId,
-      }, { merge: true });
+    const codeSnapForType = await db.collection('referralCodes').doc(sub.referredByCode).get();
+    if (codeSnapForType.exists && codeSnapForType.data().source === 'friends_family') {
+      friendsFamilyRedemption = await claimFriendsFamilyRedemption(sub.referredByCode, uid, submissionId);
+    } else {
+      const billingSnapForReferral = await billingRef(uid).get();
+      if (!billingSnapForReferral.data()?.referredByCode) {
+        await billingRef(uid).set({
+          referredByCode: sub.referredByCode,
+          referralSubmissionId: submissionId,
+        }, { merge: true });
+      }
     }
   }
 
@@ -3701,8 +3759,65 @@ exports.completeMeetGreetAndCreateAccount = onCall({
     memberId: uid,
     emailSent: emailResult.ok,
     emailError: emailResult.error || null,
+    ...(friendsFamilyRedemption ? { friendsFamilyRedemption } : {}),
   };
 });
+
+// Atomic "reject, not flag" redemption gate for a friends_family code — the
+// one code type where going over the admin-set cap must never silently
+// grant the discount anyway (contrast resolveNewMemberReferralDiscount's
+// single-use-code handling, which lets the signup proceed and just flags it
+// for review — every OTHER code type still gets that treatment; this one
+// deliberately doesn't).
+//
+// A Firestore transaction, not a bare FieldValue.increment: incrementing
+// unconditionally would apply the +1 even at/past the cap — only a
+// read-then-conditionally-write can actually ENFORCE maxRedemptions as a
+// real ceiling rather than just a display number that drifts past its own
+// limit. Same reasoning as every other "claim once" transaction already in
+// this file (getOrCreateMemberReferralCode, finalizeNewMemberReferralDiscount,
+// runFirstPaymentReferralCredit).
+//
+// Never throws — called from completeMeetGreetAndCreateAccount AFTER the
+// Auth user already exists, so a hard failure here can't unwind account
+// creation without leaving an orphaned Auth user with no member doc (the
+// exact class of stuck state runDeclineRequestOrphanCleanup exists to avoid
+// elsewhere). validateReferralCode's earlier signup-time check already
+// rejects an exhausted code in the common case; this transaction exists for
+// the narrow remaining race — the code was still under cap when the visitor
+// submitted, but ran out before admin got to this meet & greet, hours or
+// days later. In that rare case the member is still created normally, just
+// without the Friends & Family rate — logged clearly and returned to the
+// caller (not silently dropped, but also not a needsReview flag, since
+// there is nothing here for an admin to reconcile: no discount was ever
+// granted, so there's nothing to undo).
+async function claimFriendsFamilyRedemption(codeId, memberId, submissionId) {
+  const codeRef = db.collection('referralCodes').doc(codeId);
+  try {
+    return await db.runTransaction(async (tx) => {
+      const snap = await tx.get(codeRef);
+      const data = snap.data();
+      if (!data || data.status !== 'active' || isReferralCodeExpired(data)) {
+        return { claimed: false, reason: 'code_inactive' };
+      }
+      const max = Number.isInteger(data.maxRedemptions) ? data.maxRedemptions : 0;
+      const count = Number.isInteger(data.redemptionCount) ? data.redemptionCount : 0;
+      if (count >= max) {
+        return { claimed: false, reason: 'redemption_limit_reached' };
+      }
+      tx.set(codeRef, { redemptionCount: count + 1 }, { merge: true });
+      tx.set(billingRef(memberId), {
+        referredByCode: codeId,
+        referralSubmissionId: submissionId,
+        travelDiscountPercent: data.discountPercent,
+      }, { merge: true });
+      return { claimed: true, discountPercent: data.discountPercent };
+    });
+  } catch (e) {
+    console.error(`claimFriendsFamilyRedemption: transaction failed for code ${codeId}, member ${memberId}:`, e.message);
+    return { claimed: false, reason: 'error' };
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // SECTION 1 — structure only. runServiceOrOvernightBookingDoc and
@@ -3829,6 +3944,10 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
       // (it never sets this field at all).
       ...(isDropIn ? { visitSchedule: reviewed.visitSchedule } : {}),
       confirmedTotalCents: Math.round(reviewed.amountInDollars * 100),
+      // See markDatesConfirmed — chargeCustomerCard's Friends & Family guard
+      // reads this off whichever doc it's handed, and chargeScheduledReservations
+      // hands it this overnights doc, not the submission `reviewed` came from.
+      travelDiscountApplied: !!reviewed.travelDiscountApplied,
       chargeScheduledFor,
       chargePending: true,
     });
@@ -4426,6 +4545,7 @@ exports.markDatesConfirmed = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KE
   const {
     submissionId, service, startDate: startDateStr, endDate: endDateStr,
     timeSlot, extraPet, medication, visitSchedule, amountInDollars, unitCount,
+    travelDiscountApplied, travelDiscountPercent,
   } = request.data || {};
   if (!submissionId) throw new HttpsError('invalid-argument', 'submissionId is required.');
   if (typeof amountInDollars !== 'number' || amountInDollars < 0) {
@@ -4458,6 +4578,15 @@ exports.markDatesConfirmed = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KE
     extraPet: !!extraPet, medication: !!medication,
     visitSchedule: visitSchedule || null,
     amountInDollars,
+    // Carried through to whichever doc chargeCustomerCard eventually reads
+    // (submission, directly via the {...reviewed} merge below, or the
+    // overnights doc — see runServiceOrOvernightBookingDoc) — the marker
+    // chargeCustomerCard's Friends & Family guard checks. Not re-derived or
+    // validated here: the client already decided this when it computed
+    // amountInDollars, and this function has never re-derived that number
+    // either (see this function's own top-level comment).
+    travelDiscountApplied: !!travelDiscountApplied,
+    travelDiscountPercent: typeof travelDiscountPercent === 'number' ? travelDiscountPercent : 0,
     // Only meaningful for the "overnight-stay via service_request" charge
     // branch's confirmation email (portal-service-confirmed's unitCount —
     // nights stayed). Passed through from the client's own
@@ -5875,6 +6004,58 @@ exports.generateEmailCaptureCode = onCall({ secrets: [RESEND_API_KEY] }, async (
 // Exposed directly, same reasoning as runGenerateReferralCode above.
 exports.runGenerateEmailCaptureCode = runGenerateEmailCaptureCode;
 
+const FRIENDS_FAMILY_DEFAULT_MAX_REDEMPTIONS = 5;
+const FRIENDS_FAMILY_DISCOUNT_PERCENT = 40;
+
+// Admin-only Friends & Family code generation — deliberately its own
+// function, not folded into runGenerateReferralCode. That function's whole
+// shape (anonymous caller, honeypot, email dedup, sends the code by email)
+// is built for the /welcomehome public intake form; a Friends & Family code
+// is created by admin, for a specific small group Alison is personally
+// giving it to, and is never emailed by this system at all — she shares it
+// herself. Overloading one function with a source-based branch here would
+// mean every future change to the anonymous intake path has to reason about
+// whether it also affects this admin-only, no-email, capped-redemption
+// path — cheaper to keep them fully separate.
+async function runGenerateFriendsFamilyCode(payload = {}) {
+  const maxRedemptionsInput = payload.maxRedemptions;
+  const maxRedemptions = Number.isInteger(maxRedemptionsInput) && maxRedemptionsInput > 0
+    ? maxRedemptionsInput
+    : FRIENDS_FAMILY_DEFAULT_MAX_REDEMPTIONS;
+  const notes = typeof payload.notes === 'string' && payload.notes.trim()
+    ? payload.notes.trim().slice(0, 500)
+    : null;
+
+  const code = await createReferralCodeDoc({
+    source: 'friends_family',
+    building: null,
+    agent: null,
+    brokerage: null,
+    submittedName: null,
+    submittedPhone: null,
+    submittedEmail: null,
+    notes,
+    referrerId: null,
+    referrerName: null,
+    attribution: null,
+    discountPercent: FRIENDS_FAMILY_DISCOUNT_PERCENT,
+    maxRedemptions,
+    redemptionCount: 0,
+    createdAt: FieldValue.serverTimestamp(),
+    status: 'active',
+    creditIssued: false,
+  });
+
+  return { code, maxRedemptions, discountPercent: FRIENDS_FAMILY_DISCOUNT_PERCENT };
+}
+
+exports.generateFriendsFamilyCode = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+  return runGenerateFriendsFamilyCode(request.data || {});
+});
+// Exposed directly, same reasoning as runGenerateReferralCode above.
+exports.runGenerateFriendsFamilyCode = runGenerateFriendsFamilyCode;
+
 // Member portal "Refer a Friend" tab: an existing member's own evergreen
 // referral code, generated once and reused thereafter. Unlike
 // generateReferralCode (anonymous /welcomehome intake), this is auth-gated —
@@ -6011,9 +6192,23 @@ exports.validateReferralCode = onCall({}, async (request) => {
   if (!code) return { valid: false, reason: null };
   const snap = await db.collection('referralCodes').doc(code).get();
   if (!snap.exists) return { valid: false, reason: 'not_found' };
-  if (snap.data().status !== 'active') return { valid: false, reason: 'inactive' };
+  const codeData = snap.data();
+  if (codeData.status !== 'active') return { valid: false, reason: 'inactive' };
   // Same isReferralCodeExpired check resolveNewMemberReferralDiscount uses
   // at charge time — a code must never validate here and then fail later.
-  if (isReferralCodeExpired(snap.data())) return { valid: false, reason: 'expired' };
+  if (isReferralCodeExpired(codeData)) return { valid: false, reason: 'expired' };
+  // friends_family is the one code type checked for reuse HERE, at
+  // signup-validation time, rather than only at charge time — see
+  // claimFriendsFamilyRedemption for why this check is advisory, not
+  // authoritative (a read here can't reserve a slot; the real enforcement
+  // is the transaction at account-creation time). This is still worth
+  // doing: it stops the common case (someone entering an already-exhausted
+  // code) from ever reaching a submission at all, matching "reject" rather
+  // than the flag-after-the-fact behavior every other single-use code gets.
+  if (codeData.source === 'friends_family') {
+    const max = Number.isInteger(codeData.maxRedemptions) ? codeData.maxRedemptions : 0;
+    const count = Number.isInteger(codeData.redemptionCount) ? codeData.redemptionCount : 0;
+    if (count >= max) return { valid: false, reason: 'redemption_limit_reached' };
+  }
   return { valid: true, reason: null };
 });

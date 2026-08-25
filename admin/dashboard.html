@@ -622,10 +622,12 @@
         <button class="referral-filter" onclick="filterReferralSource('agent', this)">Agent</button>
         <button class="referral-filter" onclick="filterReferralSource('member_referral', this)">Member Referral</button>
         <button class="referral-filter" onclick="filterReferralSource('email_capture', this)">Email Capture</button>
+        <button class="referral-filter" onclick="filterReferralSource('friends_family', this)">Friends & Family</button>
       </div>
       <div class="table-card">
         <div class="table-header">
           <div class="table-title">Referral Codes</div>
+          <button class="btn-secondary" onclick="promptGenerateFriendsFamilyCode()" style="white-space:nowrap;margin-right:8px;">+ Friends & Family Code</button>
           <input class="table-search" type="text" placeholder="Search building, agent, code..." oninput="filterReferralSearch(this.value)">
         </div>
         <div class="table-scroll">
@@ -953,7 +955,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { getStorage, ref as storageRef, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
-import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalkExtensionTotal, WALK_EXTENSION_PRICE, EXTRA_PET_FEE, MEDICATION_FEE } from '../pricing.js';
+import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalkExtensionTotal, WALK_EXTENSION_PRICE, EXTRA_PET_FEE, MEDICATION_FEE, applyTravelDiscount, isTravelDiscountService } from '../pricing.js';
 // Walk time-of-day slot: keys + base label + clock range, shared with every
 // other page that shows or picks one (see time-slots.js's own header
 // comment). Deliberately NOT the careers/screening availability grids —
@@ -2072,7 +2074,7 @@ function renderMembersTable(filter = '') {
     return `<tr>
       <td data-label="Name"><strong>${escapeHtml(m.name)}</strong>${isMemberProfileIncomplete(m) ? ` <span class="status-badge unassigned" title="Vet and/or emergency contact info missing">Incomplete</span>` : ''}<br><span style="font-size:11px;color:var(--text-light);">${escapeHtml(m.email)}</span></td>
       <td data-label="Dog">${escapeHtml(memberDogNames(m) || '–')}</td>
-      <td data-label="Tier"><span class="status-badge active">${escapeHtml(m.tier || 'Member')}</span></td>
+      <td data-label="Tier"><span class="status-badge active">${escapeHtml(m.tier || 'Member')}</span>${memberBilling[m.id]?.travelDiscountPercent ? ` <span class="status-badge pending" title="Friends & Family travel pricing — ${memberBilling[m.id].travelDiscountPercent}% off overnight, check-in, extra pet, and medication charges">F&amp;F ${memberBilling[m.id].travelDiscountPercent}%</span>` : ''}</td>
       <td data-label="Billing">${renderBillingBadge(memberBilling[m.id])}</td>
       <td data-label="Walks/Month">${m.walksThisMonth || 0}</td>
       <td data-label="Walker">${escapeHtml(walker?.name || '–')}</td>
@@ -2321,7 +2323,7 @@ async function loadReferralCodes(isRefresh) {
   }
 }
 
-const REFERRAL_SOURCE_LABELS = { apartment: 'Apartment', agent: 'Agent', member_referral: 'Member Referral', email_capture: 'Email Capture' };
+const REFERRAL_SOURCE_LABELS = { apartment: 'Apartment', agent: 'Agent', member_referral: 'Member Referral', email_capture: 'Email Capture', friends_family: 'Friends & Family' };
 const REFERRAL_REDEMPTION_STATUS_LABELS = { invited: 'Invited', flagged_review: 'Flagged for Review', credit_applied: 'Credit Applied' };
 
 function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : '–'; }
@@ -2335,13 +2337,24 @@ function referralCodeLabel(c) {
   if (c.source === 'apartment') return c.building || '–';
   if (c.source === 'agent') return [c.agent, c.brokerage].filter(Boolean).join(' — ') || '–';
   if (c.source === 'email_capture') return c.submittedEmail || '–';
+  if (c.source === 'friends_family') return c.notes || 'Friends & Family';
   return c.referrerName ? `Referred by ${c.referrerName}` : '–';
 }
 
 function buildReferralRows() {
   const countByCode = {};
   allReferralRedemptions.forEach(r => { countByCode[r.codeId] = (countByCode[r.codeId] || 0) + 1; });
-  return allReferralCodes.map(c => ({ ...c, redemptionCount: countByCode[c.id] || 0, label: referralCodeLabel(c) }));
+  return allReferralCodes.map(c => ({
+    ...c,
+    // friends_family maintains its own redemptionCount field (the number
+    // the atomic claim transaction actually enforces against maxRedemptions
+    // — see claimFriendsFamilyRedemption); every other source has never had
+    // that field, and its true redemption count is however many
+    // /redemptions docs reference it, so this only overrides the code doc's
+    // own count for the type that has an authoritative one.
+    redemptionCount: c.source === 'friends_family' ? (c.redemptionCount || 0) : (countByCode[c.id] || 0),
+    label: referralCodeLabel(c),
+  }));
 }
 
 function renderReferralCodesTable() {
@@ -2375,11 +2388,36 @@ function renderReferralCodesTable() {
       <td>${escapeHtml(REFERRAL_SOURCE_LABELS[r.source] || r.source || '–')}</td>
       <td>${escapeHtml(r.label)}</td>
       <td><span class="status-badge ${r.status === 'active' ? 'active' : 'completed'}">${escapeHtml(capitalize(r.status))}</span></td>
-      <td>${r.redemptionCount}</td>
-      <td><span class="status-badge ${r.creditIssued ? 'active' : 'pending'}">${r.creditIssued ? 'Yes' : 'No'}</span></td>
+      <td>${r.source === 'friends_family' ? `${r.redemptionCount} / ${r.maxRedemptions ?? '–'}` : r.redemptionCount}</td>
+      <td>${r.source === 'friends_family'
+          ? '<span style="color:var(--text-light);">N/A</span>'
+          : `<span class="status-badge ${r.creditIssued ? 'active' : 'pending'}">${r.creditIssued ? 'Yes' : 'No'}</span>`}</td>
     </tr>
   `).join('');
 }
+
+// Small, deliberately lightweight admin-only flow — this is a low-frequency
+// action (Alison personally handing out a small number of codes), not a
+// public-facing form, so a prompt()-based input is a reasonable fit rather
+// than building a full modal for it.
+window.promptGenerateFriendsFamilyCode = async () => {
+  const maxStr = prompt('Maximum number of redemptions for this code?', '5');
+  if (maxStr === null) return; // cancelled
+  const maxRedemptions = parseInt(maxStr, 10);
+  if (!Number.isInteger(maxRedemptions) || maxRedemptions <= 0) {
+    alert('Enter a positive whole number.');
+    return;
+  }
+  const notes = prompt('Optional note (who is this for?) — shown in the Referral Codes table:', '') || '';
+  try {
+    const generateFriendsFamilyCode = httpsCallable(fns, 'generateFriendsFamilyCode');
+    const res = await generateFriendsFamilyCode({ maxRedemptions, notes });
+    alert(`Code created: ${res.data.code}\n\n40% off travel services (overnight, check-in, extra pet, medication), up to ${maxRedemptions} redemption${maxRedemptions === 1 ? '' : 's'}. Share it directly — it isn't emailed automatically.`);
+    loadReferralCodes(true);
+  } catch (e) {
+    alert(`Couldn't create the code: ${e.message}`);
+  }
+};
 
 window.filterReferralSource = (source, btn) => {
   currentReferralSourceFilter = source;
@@ -3440,6 +3478,14 @@ window.openRequestItem = async (id) => {
     actionBtn.onclick = () => confirmRequestDates(item.id, item);
     declineBtn.style.display = 'block';
     declineBtn.onclick = () => declineOvernightRequest(item.id, item);
+    // Friends & Family — renderOvernightReview's acknowledgment checkbox
+    // starts unchecked; the charge action must start disabled to match,
+    // overriding the unconditional setActionBtnEnabled(actionBtn, true)
+    // reset above. reviewTravelDiscountAckChanged re-enables it once admin
+    // actually ticks the box.
+    if (memberBilling[item.memberId]?.travelDiscountPercent) {
+      setActionBtnEnabled(actionBtn, false);
+    }
   } else if (item.type === 'reschedule' && item.status !== 'confirmed') {
     actionBtn.textContent = 'Approve & Assign Walker'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => approveReschedule(item.id, item);
@@ -3493,6 +3539,7 @@ window.openRequestItem = async (id) => {
 
 let _reviewWalkIds = [];    // walk_extension only — the request's original walkIds
 let _reviewTotalTouched = false; // overnight_request only — has admin manually edited the override total?
+let _reviewMemberId = null; // service_request/overnight_request review only — whose travelDiscountPercent (if any) applies to this charge
 
 // ── drop-in-visit per-day schedule editor state ──
 // service_request review only. Keyed by 'YYYY-MM-DD' -> visit count for
@@ -3588,10 +3635,26 @@ function renderReviewBreakdown(breakdown, total) {
 // pricing.js). dogs[] (item.dogs) is pet profile data carried through to
 // the new member record as originally submitted, not something this
 // review UI edits.
+// A visible, unmissable note at the top of the service/overnight review
+// modal whenever this member has a Friends & Family travel discount — "show
+// it clearly in the admin UI before charging" per the build spec, not just
+// a line item buried in the price breakdown further down. Returns '' (no
+// banner) for a member with no discount, so this is safe to call
+// unconditionally from both review renderers.
+function renderTravelDiscountBanner(memberId) {
+  const pct = memberBilling[memberId]?.travelDiscountPercent;
+  if (!pct) return '';
+  return `<div style="background:#FFF6E5;border:1px solid #F0D28A;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--navy);">
+    <strong>Friends & Family — ${pct}% off travel services.</strong> Applies automatically to overnight, check-in, extra pet, and medication charges for this member. Walk and membership charges are unaffected.
+  </div>`;
+}
+
 function renderServiceRequestReview(item) {
   _reviewVisitSchedule = {};
   _reviewItemVisitsPerDay = item.visitsPerDay || 1;
+  _reviewMemberId = item.memberId || null;
   document.getElementById('requestModalContent').innerHTML = `
+    ${renderTravelDiscountBanner(_reviewMemberId)}
     <div class="form-grid">
       <div class="modal-field"><div class="modal-label">Owner</div><div class="modal-value">${escapeHtml(item.ownerName || '–')}${item.email ? ' · ' + escapeHtml(item.email) : ''}</div></div>
       <div class="modal-field"><div class="modal-label">Phone</div><div class="modal-value">${escapeHtml(item.phone || '–')}</div></div>
@@ -3690,24 +3753,41 @@ window.reviewRecalcService = () => {
   const extraPet = document.getElementById('rev-extra-pet').checked;
   const medication = document.getElementById('rev-medication').checked;
 
+  const travelDiscountPercent = memberBilling[_reviewMemberId]?.travelDiscountPercent || 0;
+
   if (isDropIn) {
     syncVisitScheduleRows(_reviewItemVisitsPerDay);
-    const { total, breakdown } = computeDropInVisitTotal(extraPet, medication);
+    const raw = computeDropInVisitTotal(extraPet, medication);
+    // drop-in-visit is always a travel (night-unit) service — no isWalk-style
+    // gate needed here, unlike the generic branch below.
+    const { total, breakdown } = travelDiscountPercent > 0
+      ? applyTravelDiscount(raw.total, raw.breakdown, travelDiscountPercent)
+      : raw;
     renderReviewBreakdown(breakdown, total);
     return;
   }
 
-  const { total, breakdown } = calculateServiceTotal({
+  const raw = calculateServiceTotal({
     serviceKey: service, startDate, endDate, extraPet, medication,
   });
+  // This branch also covers a plain walk/extended-walk — Friends & Family
+  // must never discount those, so the gate here is the explicit travel-service
+  // allowlist (isTravelDiscountService), not just "not drop-in" and not a
+  // unit check — see that function's own comment in pricing.js for why.
+  const isTravelService = isTravelDiscountService(service);
+  const { total, breakdown } = (isTravelService && travelDiscountPercent > 0)
+    ? applyTravelDiscount(raw.total, raw.breakdown, travelDiscountPercent)
+    : raw;
   renderReviewBreakdown(breakdown, total);
 };
 
 // ── overnight_request / checkin review ──
 function renderOvernightReview(item) {
   _reviewTotalTouched = false;
+  _reviewMemberId = item.memberId || null;
 
   document.getElementById('requestModalContent').innerHTML = `
+    ${renderTravelDiscountBanner(_reviewMemberId)}
     <div class="form-grid">
       <div class="modal-field"><div class="modal-label">Member</div><div class="modal-value">${escapeHtml(item.memberName || item.memberId || '–')}</div></div>
       <div class="form-field"><label>Service</label>
@@ -3733,6 +3813,13 @@ function renderOvernightReview(item) {
       <label>Final Total — auto-calculated above, but editable if the member under-reported (e.g. a pet not on file)</label>
       <input type="number" min="0" step="0.01" id="rev-total-override" oninput="reviewOverrideTotalTouched()" style="font-weight:600;font-size:16px;">
     </div>
+    ${memberBilling[item.memberId]?.travelDiscountPercent ? `
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;margin-top:8px;">
+      <input type="checkbox" id="rev-travel-discount-applied" onchange="reviewTravelDiscountAckChanged()" style="accent-color:var(--seafoam);">
+      This total reflects the member's ${memberBilling[item.memberId].travelDiscountPercent}% Friends & Family discount
+    </label>
+    <div style="font-size:12px;color:var(--text-light);margin-top:2px;">Required to charge — check this once you've confirmed the total above is correct (the discounted amount, or a different total you're intentionally charging instead).</div>
+    ` : ''}
     <hr class="modal-divider">
     ${renderMemberContextHTML(item.memberId)}
   `;
@@ -3742,6 +3829,18 @@ function renderOvernightReview(item) {
 
 window.reviewOverrideTotalTouched = () => { _reviewTotalTouched = true; };
 
+// Friends & Family acknowledgment gate — the checkbox starts unchecked
+// (renderOvernightReview) and the charge action starts disabled (see the
+// isUnresolvedOvernight branch in the item-open flow below); this is the
+// only thing that re-enables it. A pre-checked box gets confirmed without
+// being read, which is the exact failure this exists to catch — so ticking
+// it has to be a deliberate act, not a default admin has to notice and undo.
+window.reviewTravelDiscountAckChanged = () => {
+  const checkbox = document.getElementById('rev-travel-discount-applied');
+  const actionBtn = document.getElementById('requestActionBtn');
+  if (checkbox && actionBtn) setActionBtnEnabled(actionBtn, checkbox.checked);
+};
+
 window.reviewRecalcOvernight = () => {
   const service = document.getElementById('rev-service').value;
   const startDate = document.getElementById('rev-start').value;
@@ -3749,7 +3848,13 @@ window.reviewRecalcOvernight = () => {
   const extraPet = document.getElementById('rev-extra-pet').checked;
   const medication = document.getElementById('rev-medication').checked;
 
-  const { total, breakdown } = calculateServiceTotal({ serviceKey: service, startDate, endDate, extraPet, medication });
+  const raw = calculateServiceTotal({ serviceKey: service, startDate, endDate, extraPet, medication });
+  // overnight_request is always a travel (night-unit) service — overnight
+  // stay or check-in, both discount-eligible, no isWalk-style gate needed.
+  const travelDiscountPercent = memberBilling[_reviewMemberId]?.travelDiscountPercent || 0;
+  const { total, breakdown } = travelDiscountPercent > 0
+    ? applyTravelDiscount(raw.total, raw.breakdown, travelDiscountPercent)
+    : raw;
   renderReviewBreakdown(breakdown, total);
   if (!_reviewTotalTouched) {
     document.getElementById('rev-total-override').value = total;
@@ -3883,25 +3988,56 @@ window.confirmRequestDates = async (submissionId, item) => {
     const timeSlot = document.getElementById('rev-timeslot')?.value || null;
     const isDropIn = !isOvernightRequest && serviceKey === 'drop-in-visit';
 
-    let amountInDollars, unitCount;
+    // Friends & Family — see renderTravelDiscountBanner/reviewRecalcService/
+    // reviewRecalcOvernight, which already show and factor this discount
+    // into whatever's on screen. Re-read (not trusted from a variable set
+    // earlier) so this always matches the member currently open in the
+    // modal, same freshness posture as everything else read directly from
+    // the DOM in this function.
+    const travelDiscountPercent = memberBilling[item.memberId]?.travelDiscountPercent || 0;
+
+    let amountInDollars, unitCount, travelDiscountApplied = false, travelDiscountPercentApplied = 0;
     if (isOvernightRequest) {
       const overrideStr = document.getElementById('rev-total-override')?.value;
       if (overrideStr !== undefined && overrideStr !== '') {
         amountInDollars = parseFloat(overrideStr);
         unitCount = 1;
+        // The override field is ALWAYS auto-filled with the discounted total
+        // to start (reviewRecalcOvernight) — the checkbox is admin's
+        // explicit confirmation that whatever's currently in the box still
+        // reflects that, whether or not they've since edited it. Absent
+        // entirely when the member has no discount to apply.
+        const ackCheckbox = document.getElementById('rev-travel-discount-applied');
+        travelDiscountApplied = travelDiscountPercent > 0 ? !!ackCheckbox?.checked : false;
+        travelDiscountPercentApplied = travelDiscountApplied ? travelDiscountPercent : 0;
       } else {
         const r = calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet, medication });
-        amountInDollars = r.total; unitCount = r.unitCount;
+        const applied = travelDiscountPercent > 0 ? applyTravelDiscount(r.total, r.breakdown, travelDiscountPercent) : r;
+        amountInDollars = applied.total; unitCount = r.unitCount;
+        travelDiscountApplied = travelDiscountPercent > 0;
+        travelDiscountPercentApplied = travelDiscountApplied ? travelDiscountPercent : 0;
       }
     } else if (isDropIn) {
       // Check-in (drop-in-visit) prices off the admin-confirmed per-day
       // schedule (_reviewVisitSchedule, built by the review UI's Visit
       // Schedule editor), not a flat visitsPerDay x days multiplier.
       const r = computeDropInVisitTotal(extraPet, medication);
-      amountInDollars = r.total; unitCount = r.totalVisits;
+      const applied = travelDiscountPercent > 0 ? applyTravelDiscount(r.total, r.breakdown, travelDiscountPercent) : r;
+      amountInDollars = applied.total; unitCount = r.totalVisits;
+      travelDiscountApplied = travelDiscountPercent > 0;
+      travelDiscountPercentApplied = travelDiscountApplied ? travelDiscountPercent : 0;
     } else {
       const r = calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet, medication });
-      amountInDollars = r.total; unitCount = r.unitCount;
+      // This same branch also handles a plain walk/extended-walk booked
+      // through service_request — Friends & Family must never discount
+      // those, so gate on the explicit travel-service allowlist, not just
+      // "not drop-in" and not a unit check (see isTravelDiscountService's
+      // own comment in pricing.js).
+      const isTravelService = isTravelDiscountService(service);
+      const applied = (isTravelService && travelDiscountPercent > 0) ? applyTravelDiscount(r.total, r.breakdown, travelDiscountPercent) : r;
+      amountInDollars = applied.total; unitCount = r.unitCount;
+      travelDiscountApplied = isTravelService && travelDiscountPercent > 0;
+      travelDiscountPercentApplied = travelDiscountApplied ? travelDiscountPercent : 0;
     }
 
     // Confirmed per-day counts, carried onto the overnights doc server-side
@@ -3917,6 +4053,7 @@ window.confirmRequestDates = async (submissionId, item) => {
     await markDatesConfirmed({
       submissionId, service, startDate: startDateStr, endDate: endDateStr,
       timeSlot, extraPet, medication, visitSchedule, amountInDollars, unitCount,
+      travelDiscountApplied, travelDiscountPercent: travelDiscountPercentApplied,
     });
 
     closeModal('requestModal');
