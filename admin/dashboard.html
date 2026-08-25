@@ -2087,7 +2087,7 @@ function renderMembersTable(filter = '') {
     return `<tr>
       <td data-label="Name"><strong>${escapeHtml(m.name)}</strong>${isMemberProfileIncomplete(m) ? ` <span class="status-badge unassigned" title="Vet and/or emergency contact info missing">Incomplete</span>` : ''}<br><span style="font-size:11px;color:var(--text-light);">${escapeHtml(m.email)}</span></td>
       <td data-label="Dog">${escapeHtml(memberDogNames(m) || '–')}</td>
-      <td data-label="Tier"><span class="status-badge active">${escapeHtml(m.tier || 'Member')}</span>${memberBilling[m.id]?.travelDiscountPercent ? ` <span class="status-badge pending" title="Friends & Family travel pricing — ${memberBilling[m.id].travelDiscountPercent}% off overnight, check-in, extra pet, and medication charges">F&amp;F ${memberBilling[m.id].travelDiscountPercent}%</span>` : ''}</td>
+      <td data-label="Tier"><span class="status-badge active">${escapeHtml(m.tier || 'Member')}</span>${getActiveTravelDiscountPercent(m.id) ? ` <span class="status-badge pending" title="Friends & Family travel pricing — ${getActiveTravelDiscountPercent(m.id)}% off overnight, check-in, extra pet, and medication charges">F&amp;F ${getActiveTravelDiscountPercent(m.id)}%</span>` : ''}</td>
       <td data-label="Billing">${renderBillingBadge(memberBilling[m.id])}</td>
       <td data-label="Walks/Month">${m.walksThisMonth || 0}</td>
       <td data-label="Walker">${escapeHtml(walker?.name || '–')}</td>

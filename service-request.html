@@ -738,7 +738,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 </footer>
 
 <script type="module">
-  import { SERVICE_PRICES as PRICES, calculateServiceTotal } from './pricing.js';
+  import { SERVICE_PRICES as PRICES, calculateServiceTotal, isTravelDiscountService } from './pricing.js';
   import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
   import { showSuccess, showError } from '/js/status.js';
 
@@ -784,7 +784,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   function updateServiceFields() {
     const service = serviceSelect.value;
     const isWalk      = service === 'standard-walk' || service === 'extended-walk';
-    const isPetSitting = service === 'drop-in-visit' || service === 'overnight-stay';
+    const isPetSitting = isTravelDiscountService(service);
     document.getElementById('end-date-field').style.display  = isWalk ? 'none' : 'flex';
     document.getElementById('time-slot-field').style.display = isWalk ? 'flex' : 'none';
     document.getElementById('visits-field').style.display    = service === 'drop-in-visit' ? 'flex' : 'none';
@@ -860,7 +860,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     // formatDollarsFromCents keeps whole-dollar totals looking like the
     // rest of this summary ($50) while still showing cents when a
     // percentage or cap lands on a fractional dollar.
-    const isPetSitting = service === 'drop-in-visit' || service === 'overnight-stay';
+    const isPetSitting = isTravelDiscountService(service);
     let previewDiscountCents = 0;
     let previewLineLabel = '';
     let previewNoteText = '';
