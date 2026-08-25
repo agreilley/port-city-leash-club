@@ -6265,15 +6265,37 @@ exports.validateReferralCode = onCall({}, async (request) => {
   // doing: it stops the common case (someone entering an already-exhausted
   // code) from ever reaching a submission at all, matching "reject" rather
   // than the flag-after-the-fact behavior every other single-use code gets.
+  // Two completely different discount mechanisms share this one callable,
+  // so the response shape branches by code type rather than returning one
+  // generic "amount" the client could apply either way:
+  //  - flat-credit codes (member/partner/email_capture) return amountCents —
+  //    a one-time dollar credit, capped at 50% of a single charge at charge
+  //    time (resolveNewMemberReferralDiscount/chargeCustomerCard).
+  //  - friends_family returns discountPercent — an ongoing per-booking
+  //    percentage, applied only to travel-eligible services
+  //    (applyTravelDiscount/isTravelDiscountService, pricing.js), never
+  //    capped, never gated on first payment.
+  // The client must never treat these two fields interchangeably (a percent
+  // used as a cent amount, or vice versa, would silently mis-preview by
+  // orders of magnitude) — each code type returns exactly one of them.
   if (codeData.source === 'friends_family') {
     const max = Number.isInteger(codeData.maxRedemptions) ? codeData.maxRedemptions : 0;
     const count = Number.isInteger(codeData.redemptionCount) ? codeData.redemptionCount : 0;
     if (count >= max) return { valid: false, reason: 'redemption_limit_reached' };
     // friends_family never carries amountCents and never receives the
     // one-time discount at charge time — resolveNewMemberReferralDiscount
-    // excludes it before this fallback would ever apply (see there). Omitting
-    // amountCents here keeps the client from previewing a discount this code
-    // can never actually redeem.
+    // excludes it before this fallback would ever apply (see there). Still
+    // withholding amountCents here for exactly that reason. discountPercent
+    // is read off the code doc, never hardcoded — codeData.discountPercent
+    // is the same field claimFriendsFamilyRedemption copies onto the
+    // member's billing doc as travelDiscountPercent at claim time, so this
+    // preview can never disagree with what actually gets granted. Omitted
+    // entirely (both fields) when missing or not a positive number, so an
+    // unexpected code doc shape degrades the client to today's
+    // status-line-only behavior rather than previewing a bogus 0%.
+    if (Number.isInteger(codeData.discountPercent) && codeData.discountPercent > 0) {
+      return { valid: true, reason: null, discountPercent: codeData.discountPercent, codeType: 'friends_family' };
+    }
     return { valid: true, reason: null };
   }
   // Same codeData.amountCents ?? 5000 fallback resolveNewMemberReferralDiscount

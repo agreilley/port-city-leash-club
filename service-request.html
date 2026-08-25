@@ -466,6 +466,14 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       // never possible — only its presence/absence can go stale, and only
       // between a code becoming invalid and the next keystroke/blur.
       window._referralPreviewAmountCents = null;
+      // Flat-credit and friends-and-family codes are two different discount
+      // mechanisms (see validateReferralCode) and never both present at
+      // once — a code is one or the other. _referralPreviewDiscountPercent/
+      // _referralPreviewCodeType mirror _referralPreviewAmountCents exactly:
+      // same bridge-onto-window reason, same null-means-nothing-in-hand
+      // meaning, cleared at the same triggers below.
+      window._referralPreviewDiscountPercent = null;
+      window._referralPreviewCodeType = null;
 
       function setReferralCodeStatus(text, color) {
         referralCodeStatus.textContent = text;
@@ -475,9 +483,15 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         setReferralCodeStatus(REFERRAL_CODE_IDLE_TEXT, REFERRAL_CODE_IDLE_COLOR);
       }
 
+      function clearReferralPreview() {
+        window._referralPreviewAmountCents = null;
+        window._referralPreviewDiscountPercent = null;
+        window._referralPreviewCodeType = null;
+      }
+
       referralCodeInput.addEventListener('input', () => {
         resetReferralCodeStatus();
-        window._referralPreviewAmountCents = null;
+        clearReferralPreview();
         if (window.updateSummary) window.updateSummary();
       });
 
@@ -485,7 +499,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         const code = referralCodeInput.value.trim();
         if (!code) {
           resetReferralCodeStatus();
-          window._referralPreviewAmountCents = null;
+          clearReferralPreview();
           if (window.updateSummary) window.updateSummary();
           return;
         }
@@ -496,16 +510,20 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           const result = await window._validateReferralCode({ code });
           if (thisCheck !== referralCodeCheckToken) return; // superseded by a newer check
           if (result.data.valid) {
-            // amountCents is absent for a friends_family code (by design —
-            // see validateReferralCode) and, until the backend redeploys,
-            // for every code: that older response shape has no amountCents
-            // at all. Either way this falls back to null, which
-            // updateSummary() treats as "valid code, no preview line" — the
-            // exact status-line-only behavior this form had before.
+            // amountCents (flat-credit) and discountPercent (friends and
+            // family) are mutually exclusive on the response — see
+            // validateReferralCode. Both fall back to null when absent,
+            // which covers: a code of the other type, a friends_family code
+            // missing/invalid discountPercent, or a response that predates
+            // either field. updateSummary() treats "all null" as "valid
+            // code, no preview line" — the exact status-line-only behavior
+            // this form had before either preview existed.
             window._referralPreviewAmountCents = typeof result.data.amountCents === 'number' ? result.data.amountCents : null;
+            window._referralPreviewDiscountPercent = typeof result.data.discountPercent === 'number' ? result.data.discountPercent : null;
+            window._referralPreviewCodeType = result.data.codeType || null;
             setReferralCodeStatus('Code applied.', 'var(--seafoam)');
           } else {
-            window._referralPreviewAmountCents = null;
+            clearReferralPreview();
             setReferralCodeStatus(REFERRAL_CODE_INVALID_MESSAGES[result.data.reason] || REFERRAL_CODE_IDLE_TEXT, 'var(--text-mid)');
           }
         } catch (e) {
@@ -513,7 +531,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           // isn't the visitor's fault and isn't evidence the code is bad.
           console.error('Referral code blur-check failed:', e.message);
           if (thisCheck !== referralCodeCheckToken) return;
-          window._referralPreviewAmountCents = null;
+          clearReferralPreview();
           resetReferralCodeStatus();
         }
         if (window.updateSummary) window.updateSummary();
@@ -816,27 +834,59 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       lines += `<div class="order-line"><span>Medication admin${!isWalk && days > 1 ? ` &times; ${days}` : ''}</span><strong>$${medsLine.amount}</strong></div>`;
     }
 
-    // Referral discount preview — display only. Recomputed from
-    // window._referralPreviewAmountCents (set by the blur handler above, in
-    // the classic script) on every updateSummary() call, so a code entered
-    // before the dates/visits/add-ons are finalized still shows the correct
-    // cap once they change: the 50% cap moves with grandTotal, same formula
-    // chargeCustomerCard applies at charge time (functions/index.js). This
-    // is a preview only — the real discount is decided and applied
-    // server-side at charge time, against the actual charge amount then,
-    // which can differ from this estimate (see resolveNewMemberReferralDiscount
-    // and chargeCustomerCard). formatDollarsFromCents keeps whole-dollar
-    // totals looking like the rest of this summary ($50) while still
-    // showing cents when the 50% cap lands on a half-dollar (e.g. $12.50
-    // against a $25 total).
-    const previewAmountCents = window._referralPreviewAmountCents;
+    // Referral discount preview — display only. Recomputed on every
+    // updateSummary() call from whichever preview state the blur handler
+    // above (classic script) last set, so a code entered before the
+    // dates/visits/service/add-ons are finalized still shows correctly once
+    // they change. Two mutually exclusive branches, matching
+    // validateReferralCode's two mutually exclusive response shapes — a
+    // code is never both at once, so at most one of these ever produces a
+    // discount line:
+    //  - flat-credit (_referralPreviewAmountCents): 50%-of-this-charge cap,
+    //    same formula chargeCustomerCard applies at charge time.
+    //  - friends_family (_referralPreviewDiscountPercent): no cap, but only
+    //    on drop-in visits and overnight stays — isPetSitting is the same
+    //    eligibility check updateServiceFields already uses to show/hide
+    //    the add-ons field, which is exactly isTravelDiscountService's
+    //    allowlist (pricing.js) for this service set. A walk/extended-walk
+    //    request with a friends_family code shows no discount line at all,
+    //    matching applyTravelDiscount never being called for those services
+    //    server-side either.
+    // Either way this is a preview only — the real discount is decided and
+    // applied server-side at charge time, against the actual charge amount
+    // then, which can differ from this estimate (see
+    // resolveNewMemberReferralDiscount/chargeCustomerCard for flat-credit,
+    // chargeCustomerCard's Friends & Family guard for friends_family).
+    // formatDollarsFromCents keeps whole-dollar totals looking like the
+    // rest of this summary ($50) while still showing cents when a
+    // percentage or cap lands on a fractional dollar.
+    const isPetSitting = service === 'drop-in-visit' || service === 'overnight-stay';
     let previewDiscountCents = 0;
-    if (typeof previewAmountCents === 'number' && grandTotal > 0) {
+    let previewLineLabel = '';
+    let previewNoteText = '';
+    if (grandTotal > 0) {
       const preDiscountTotalCents = Math.round(grandTotal * 100);
-      previewDiscountCents = Math.min(previewAmountCents, Math.floor(preDiscountTotalCents / 2));
+      if (window._referralPreviewCodeType === 'friends_family') {
+        if (isPetSitting && typeof window._referralPreviewDiscountPercent === 'number') {
+          // Math.round(cents * pct / 100) — the cents-domain equivalent of
+          // pricing.js's applyTravelDiscount (Math.round(dollars * pct)/100)
+          // — same nearest-cent rounding, verified equal for whole-dollar
+          // totals (always true here: every SERVICE_PRICES entry and both
+          // add-on fees are whole-dollar amounts, so preDiscountTotalCents
+          // is always an exact multiple of 100).
+          previewDiscountCents = Math.round(preDiscountTotalCents * window._referralPreviewDiscountPercent / 100);
+          previewLineLabel = 'Friends and family discount (estimate)';
+          previewNoteText = 'Applied to drop-in visits and overnight stays. Final amount is confirmed when we schedule your reservation.';
+        }
+        // Not pet-sitting (a walk/extended-walk): no discount line, no note — this code type never discounts those.
+      } else if (typeof window._referralPreviewAmountCents === 'number') {
+        previewDiscountCents = Math.min(window._referralPreviewAmountCents, Math.floor(preDiscountTotalCents / 2));
+        previewLineLabel = 'Referral credit (estimate)';
+        previewNoteText = 'Applied to your first charge only. Final amount is confirmed when we schedule your reservation.';
+      }
     }
     if (previewDiscountCents > 0) {
-      lines += `<div class="order-line"><span>Referral credit (estimate)</span><strong>&minus;${formatDollarsFromCents(previewDiscountCents)}</strong></div>`;
+      lines += `<div class="order-line"><span>${previewLineLabel}</span><strong>&minus;${formatDollarsFromCents(previewDiscountCents)}</strong></div>`;
     }
 
     const totalEl = document.getElementById('orderTotal');
@@ -853,7 +903,10 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     totalEl.textContent = displayTotal;
     linesEl.innerHTML   = lines || '<div class="order-empty">Select a service and dates to see your estimate.</div>';
     if (barTotal) barTotal.textContent = grandTotal > 0 ? displayTotal : '$—';
-    if (orderNoteEl) orderNoteEl.style.display = previewDiscountCents > 0 ? 'block' : 'none';
+    if (orderNoteEl) {
+      orderNoteEl.style.display = previewDiscountCents > 0 ? 'block' : 'none';
+      if (previewDiscountCents > 0) orderNoteEl.textContent = previewNoteText;
+    }
     window._lastEstimatedTotal = grandTotal;
   }
 
