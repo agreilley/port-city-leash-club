@@ -30,12 +30,37 @@ export const WALK_EXTENSION_PRICE = 12;
 // file — the real charge is computed server-side).
 export const MEMBER_WALK_RATE = 27;
 
+// travelDiscountEligible is explicit and required on every entry — see the
+// load-time assertion immediately below. This replaced an earlier separate
+// TRAVEL_DISCOUNT_SERVICE_KEYS allowlist (2026-08-24): a standalone list is
+// silently correct-by-omission (a service left out just doesn't appear, no
+// error); a required per-entry field on the one table every service is
+// already defined in can't be silently left out — a missing field throws at
+// load, not at charge time for one specific Friends & Family member.
 export const SERVICE_PRICES = {
-  'standard-walk':  { name: 'Standard Walk',  price: STANDARD_WALK_PRICE,                        unit: 'walk' },
-  'extended-walk':  { name: 'Extended Walk',  price: STANDARD_WALK_PRICE + WALK_EXTENSION_PRICE, unit: 'walk' },
-  'drop-in-visit':  { name: 'Drop-In Visit',  price: 25,  unit: 'night' },
-  'overnight-stay': { name: 'Overnight Stay', price: 115, unit: 'night' },
+  'standard-walk':  { name: 'Standard Walk',  price: STANDARD_WALK_PRICE,                        unit: 'walk',  travelDiscountEligible: false },
+  'extended-walk':  { name: 'Extended Walk',  price: STANDARD_WALK_PRICE + WALK_EXTENSION_PRICE, unit: 'walk',  travelDiscountEligible: false },
+  'drop-in-visit':  { name: 'Drop-In Visit',  price: 25,  unit: 'night', travelDiscountEligible: true },
+  'overnight-stay': { name: 'Overnight Stay', price: 115, unit: 'night', travelDiscountEligible: true },
 };
+
+// Fail loudly at module load, not silently at charge time. Runs the moment
+// this module is first evaluated — client-side, that's every admin/dashboard.html
+// page load (a static <script type="module"> import); server-side, that's
+// the first `await import('./pricing.js')` any Cloud Function instance
+// happens to execute (functions/index.js is CommonJS and can only reach this
+// ES module via dynamic import — there's no top-level static import
+// available to force this earlier, at Cloud Functions cold-start, without
+// converting the whole file to ESM). Either way: a SERVICE_PRICES entry
+// missing an explicit travelDiscountEligible boolean throws immediately,
+// everywhere this module loads, rather than quietly resolving to "not
+// travel" (see isTravelDiscountService) and letting a Friends & Family
+// member get charged full price for it with no error anywhere.
+for (const [key, info] of Object.entries(SERVICE_PRICES)) {
+  if (typeof info.travelDiscountEligible !== 'boolean') {
+    throw new Error(`pricing.js: SERVICE_PRICES['${key}'] is missing an explicit travelDiscountEligible boolean — every service must declare whether it's Friends & Family discount-eligible.`);
+  }
+}
 
 // portal-request-extras.html historically used 'overnight'/'checkin' as its
 // service keys for the same two services above — normalized here so every
@@ -126,4 +151,57 @@ export function calculateServiceTotal({
 
 export function calculateWalkExtensionTotal(walkCount) {
   return Math.max(walkCount, 0) * WALK_EXTENSION_PRICE;
+}
+
+// The ONE place discount eligibility is decided — used by both the
+// discount-application call sites (admin/dashboard.html) and the
+// server-side assertion (functions/index.js's chargeCustomerCard), so they
+// read off the same SERVICE_PRICES field and can never disagree with each
+// other. Reads travelDiscountEligible directly off the resolved
+// SERVICE_PRICES entry rather than a separate allowlist — see that field's
+// own comment (and the load-time assertion right after SERVICE_PRICES) for
+// why: a standalone list can be silently left out of date; a required field
+// on the one table every service is already defined in can't be.
+//
+// Extra pet (EXTRA_PET_FEE) and medication (MEDICATION_FEE) have no entry
+// of their own here — they're add-on line items calculateServiceTotal folds
+// into whichever primary service total they ride along with, and they only
+// ever apply when that primary service is already night-based (see
+// calculateServiceTotal's isNightService gate). Marking drop-in-visit and
+// overnight-stay eligible therefore covers all four of "overnight,
+// check-in, extra pet, medication" — there's nothing separate to mark.
+export function isTravelDiscountService(serviceKey) {
+  const info = SERVICE_PRICES[resolveServiceKey(serviceKey)];
+  return !!info?.travelDiscountEligible;
+}
+
+// Friends & Family travel discount — the ONE place a member's
+// travelDiscountPercent (members/{id}/private/billing, see
+// functions/index.js's claimFriendsFamilyRedemption) turns into an actual
+// dollar reduction. Every travel-service total in admin/dashboard.html
+// (confirmRequestDates' overnight/drop-in branches, reviewRecalcOvernight's
+// auto-fill) routes through this instead of each computing its own
+// percentage math — a deliberate single choke point so a future travel
+// charge path can't quietly reimplement (and drift from) this formula.
+// Never called for walk/extended-walk totals — those aren't travel
+// services and a Friends & Family code must never discount them.
+//
+// Cents-rounded at each step (matches chargeCustomerCard's own
+// Math.round-to-cents discipline) so this can never drift by fractions of a
+// cent the way a single floating-point multiply/subtract could.
+export function applyTravelDiscount(total, breakdown, discountPercent) {
+  const pct = Number.isInteger(discountPercent) && discountPercent > 0 ? discountPercent : 0;
+  if (!pct) {
+    return { total, breakdown, discountPercent: 0, discountAmount: 0, preDiscountTotal: total };
+  }
+  const preDiscountTotal = total;
+  const discountAmount = Math.round(preDiscountTotal * pct) / 100;
+  const discountedTotal = Math.round((preDiscountTotal - discountAmount) * 100) / 100;
+  return {
+    total: discountedTotal,
+    breakdown: [...breakdown, { label: `Friends & Family discount (${pct}%)`, amount: -discountAmount }],
+    discountPercent: pct,
+    discountAmount,
+    preDiscountTotal,
+  };
 }

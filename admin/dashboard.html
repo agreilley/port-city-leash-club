@@ -1433,12 +1433,25 @@ function subscribeMembers() {
       // (functions/index.js), which bills the member's whole month, not
       // any single submission, so the amount lives here on billing, not on
       // the request the dialog is otherwise keyed off of.
+      // travelDiscountPercent/travelDiscountActive were missing here —
+      // getActiveTravelDiscountPercent and every review/recalc/charge-prep
+      // site that calls it (reviewRecalcService, reviewRecalcOvernight,
+      // confirmRequestDates, renderTravelDiscountBanner) read them off this
+      // same memberBilling object, so without them here those sites always
+      // saw an empty billing entry and never applied a friends and family
+      // discount, no matter what was actually on file. travelDiscountActive
+      // uses the same !! boolean coercion as needsReview/cardOnFile above —
+      // a member whose billing doc has neither field (never claimed a code)
+      // resolves to travelDiscountPercent: 0, travelDiscountActive: false,
+      // which getActiveTravelDiscountPercent already treats as inactive.
       return [m.id, {
         billingStatus: data.billingStatus,
         needsReview: !!data.needsReview,
         needsReviewReason: data.needsReviewReason || null,
         cardOnFile: !!data.cardOnFile,
         currentMonthChargeAmount: typeof data.currentMonthCharge?.amount === 'number' ? data.currentMonthCharge.amount : null,
+        travelDiscountPercent: typeof data.travelDiscountPercent === 'number' ? data.travelDiscountPercent : 0,
+        travelDiscountActive: !!data.travelDiscountActive,
       }];
     }));
     memberBilling = Object.fromEntries(entries);
@@ -2401,7 +2414,7 @@ function renderReferralCodesTable() {
 // public-facing form, so a prompt()-based input is a reasonable fit rather
 // than building a full modal for it.
 window.promptGenerateFriendsFamilyCode = async () => {
-  const maxStr = prompt('Maximum number of redemptions for this code?', '5');
+  const maxStr = prompt('Maximum number of redemptions for this code?', '1');
   if (maxStr === null) return; // cancelled
   const maxRedemptions = parseInt(maxStr, 10);
   if (!Number.isInteger(maxRedemptions) || maxRedemptions <= 0) {
@@ -3483,7 +3496,7 @@ window.openRequestItem = async (id) => {
     // overriding the unconditional setActionBtnEnabled(actionBtn, true)
     // reset above. reviewTravelDiscountAckChanged re-enables it once admin
     // actually ticks the box.
-    if (memberBilling[item.memberId]?.travelDiscountPercent) {
+    if (getActiveTravelDiscountPercent(item.memberId) > 0) {
       setActionBtnEnabled(actionBtn, false);
     }
   } else if (item.type === 'reschedule' && item.status !== 'confirmed') {
@@ -3635,17 +3648,41 @@ function renderReviewBreakdown(breakdown, total) {
 // pricing.js). dogs[] (item.dogs) is pet profile data carried through to
 // the new member record as originally submitted, not something this
 // review UI edits.
+// Single choke point for "does this member's Friends & Family discount
+// actually apply right now" — every review/recalc/charge-prep site below
+// reads through this instead of memberBilling[id]?.travelDiscountPercent
+// directly, so a future call site can't accidentally skip the active check.
+// Fails closed: travelDiscountActive must be === true, not just truthy — a
+// member with travelDiscountPercent set but no travelDiscountActive field at
+// all (every Friends & Family member granted before the on/off switch
+// existed — see setFriendsFamilyDiscountActive, functions/index.js) resolves
+// to 0 here, same as a member who was explicitly turned off.
+function getActiveTravelDiscountPercent(memberId) {
+  const billing = memberBilling[memberId];
+  if (!billing || !(billing.travelDiscountPercent > 0) || billing.travelDiscountActive !== true) return 0;
+  return billing.travelDiscountPercent;
+}
+
 // A visible, unmissable note at the top of the service/overnight review
 // modal whenever this member has a Friends & Family travel discount — "show
 // it clearly in the admin UI before charging" per the build spec, not just
 // a line item buried in the price breakdown further down. Returns '' (no
-// banner) for a member with no discount, so this is safe to call
-// unconditionally from both review renderers.
+// banner) for a member with no discount on file at all, so this is safe to
+// call unconditionally from both review renderers. A member whose discount
+// is on file but turned off gets a distinct, neutral note instead of the
+// normal banner — silence here would look identical to "never had one,"
+// which is exactly the confusion an admin reviewing a charge shouldn't hit.
 function renderTravelDiscountBanner(memberId) {
-  const pct = memberBilling[memberId]?.travelDiscountPercent;
-  if (!pct) return '';
+  const rawPct = memberBilling[memberId]?.travelDiscountPercent;
+  if (!rawPct) return '';
+  const activePct = getActiveTravelDiscountPercent(memberId);
+  if (!activePct) {
+    return `<div style="background:#F4F4F0;border:1px solid rgba(0,0,0,0.08);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--text-mid);">
+      <strong>Friends and family discount on file (${rawPct}%) but currently turned off for this member.</strong> No discount will be applied to this charge unless it's turned back on in Member Details.
+    </div>`;
+  }
   return `<div style="background:#FFF6E5;border:1px solid #F0D28A;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--navy);">
-    <strong>Friends & Family — ${pct}% off travel services.</strong> Applies automatically to overnight, check-in, extra pet, and medication charges for this member. Walk and membership charges are unaffected.
+    <strong>Friends and family — ${activePct}% off travel services.</strong> Applies automatically to overnight, check-in, extra pet, and medication charges for this member. Walk and membership charges are unaffected.
   </div>`;
 }
 
@@ -3753,7 +3790,7 @@ window.reviewRecalcService = () => {
   const extraPet = document.getElementById('rev-extra-pet').checked;
   const medication = document.getElementById('rev-medication').checked;
 
-  const travelDiscountPercent = memberBilling[_reviewMemberId]?.travelDiscountPercent || 0;
+  const travelDiscountPercent = getActiveTravelDiscountPercent(_reviewMemberId);
 
   if (isDropIn) {
     syncVisitScheduleRows(_reviewItemVisitsPerDay);
@@ -3813,10 +3850,10 @@ function renderOvernightReview(item) {
       <label>Final Total — auto-calculated above, but editable if the member under-reported (e.g. a pet not on file)</label>
       <input type="number" min="0" step="0.01" id="rev-total-override" oninput="reviewOverrideTotalTouched()" style="font-weight:600;font-size:16px;">
     </div>
-    ${memberBilling[item.memberId]?.travelDiscountPercent ? `
+    ${getActiveTravelDiscountPercent(item.memberId) > 0 ? `
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;margin-top:8px;">
       <input type="checkbox" id="rev-travel-discount-applied" onchange="reviewTravelDiscountAckChanged()" style="accent-color:var(--seafoam);">
-      This total reflects the member's ${memberBilling[item.memberId].travelDiscountPercent}% Friends & Family discount
+      This total reflects the member's ${getActiveTravelDiscountPercent(item.memberId)}% friends and family discount
     </label>
     <div style="font-size:12px;color:var(--text-light);margin-top:2px;">Required to charge — check this once you've confirmed the total above is correct (the discounted amount, or a different total you're intentionally charging instead).</div>
     ` : ''}
@@ -3851,7 +3888,7 @@ window.reviewRecalcOvernight = () => {
   const raw = calculateServiceTotal({ serviceKey: service, startDate, endDate, extraPet, medication });
   // overnight_request is always a travel (night-unit) service — overnight
   // stay or check-in, both discount-eligible, no isWalk-style gate needed.
-  const travelDiscountPercent = memberBilling[_reviewMemberId]?.travelDiscountPercent || 0;
+  const travelDiscountPercent = getActiveTravelDiscountPercent(_reviewMemberId);
   const { total, breakdown } = travelDiscountPercent > 0
     ? applyTravelDiscount(raw.total, raw.breakdown, travelDiscountPercent)
     : raw;
@@ -3990,11 +4027,12 @@ window.confirmRequestDates = async (submissionId, item) => {
 
     // Friends & Family — see renderTravelDiscountBanner/reviewRecalcService/
     // reviewRecalcOvernight, which already show and factor this discount
-    // into whatever's on screen. Re-read (not trusted from a variable set
-    // earlier) so this always matches the member currently open in the
-    // modal, same freshness posture as everything else read directly from
-    // the DOM in this function.
-    const travelDiscountPercent = memberBilling[item.memberId]?.travelDiscountPercent || 0;
+    // into whatever's on screen. Re-read through getActiveTravelDiscountPercent
+    // (not trusted from a variable set earlier) so this always matches both
+    // the member currently open in the modal AND their current
+    // travelDiscountActive state, same freshness posture as everything else
+    // read directly from the DOM in this function.
+    const travelDiscountPercent = getActiveTravelDiscountPercent(item.memberId);
 
     let amountInDollars, unitCount, travelDiscountApplied = false, travelDiscountPercentApplied = 0;
     if (isOvernightRequest) {
@@ -4880,10 +4918,27 @@ window.openMemberDetail = async (id) => {
       <button class="btn-secondary" style="display:block;margin-top:8px;padding:4px 12px;font-size:12px;" onclick="dismissMemberBillingReview('${member.id}')">Dismiss review flag</button>
     </div>` : '';
 
+  // Friends and family on/off toggle — only rendered for a member who
+  // actually has travelDiscountPercent on file (claimFriendsFamilyRedemption
+  // sets it once, at signup; there's nothing to toggle for anyone else).
+  // travelDiscountActive is read with === true, not truthiness — a member
+  // who has the percent but predates this switch has no travelDiscountActive
+  // field at all, and getActiveTravelDiscountPercent/chargeCustomerCard both
+  // treat that as off. Same reasoning surfaced here so the badge matches
+  // what's actually being enforced at charge time, not just what's on file.
+  const hasFriendsFamilyDiscount = typeof billing.travelDiscountPercent === 'number' && billing.travelDiscountPercent > 0;
+  const friendsFamilyActive = billing.travelDiscountActive === true;
+  const friendsFamilyHTML = hasFriendsFamilyDiscount ? `
+    <div style="font-size:12px;color:var(--text-mid);background:var(--sand-light);border-radius:6px;padding:8px 12px;margin-top:4px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+      <span>Friends and family discount (${billing.travelDiscountPercent}%) <span class="status-badge ${friendsFamilyActive ? 'active' : 'completed'}">${friendsFamilyActive ? 'Active' : 'Off'}</span></span>
+      <button class="btn-secondary" style="padding:4px 12px;font-size:12px;white-space:nowrap;" onclick="toggleFriendsFamilyDiscount('${member.id}', ${!friendsFamilyActive})">${friendsFamilyActive ? 'Turn off' : 'Turn on'}</button>
+    </div>` : '';
+
   document.getElementById('memberDetailModalTitle').textContent = member.name || 'Member Details';
   document.getElementById('memberDetailModalContent').innerHTML = `
     <div class="form-grid">${fieldHTML}</div>
     ${reviewDismissHTML}
+    ${friendsFamilyHTML}
     <button class="btn-secondary" style="margin-top:4px;" onclick="openMemberPortalPreview('${member.id}')">Preview Member Portal</button>
     <hr class="modal-divider">
     <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Dogs</div>
@@ -4937,6 +4992,31 @@ window.dismissMemberBillingReview = async (memberId) => {
     openMemberDetail(memberId);
   } catch (e) {
     alert(`Couldn't dismiss the review flag: ${e.message}`);
+  }
+};
+
+// Turns a member's already-granted friends and family discount on or off —
+// never touches travelDiscountPercent, so turning it back on later doesn't
+// require re-claiming a code (see setFriendsFamilyDiscountActive,
+// functions/index.js). Confirmation only on the way off: re-enabling
+// restores the intended, already-granted state and has no real downside if
+// clicked by mistake, but turning it off changes what a real person gets
+// charged on their next booking. Same re-render posture as
+// dismissMemberBillingReview: update memberBilling locally so nothing
+// downstream (getActiveTravelDiscountPercent, the members-table badge) has
+// to wait for the next onSnapshot tick, then re-open the modal so the
+// toggle's own label/button flip immediately.
+window.toggleFriendsFamilyDiscount = async (memberId, active) => {
+  if (!active && !confirm("Turn off this member's friends and family discount? Their next booking will be charged at full price.")) return;
+  try {
+    const setFriendsFamilyDiscountActive = httpsCallable(fns, 'setFriendsFamilyDiscountActive');
+    await setFriendsFamilyDiscountActive({ memberId, active });
+    if (memberBilling[memberId]) {
+      memberBilling[memberId] = { ...memberBilling[memberId], travelDiscountActive: active };
+    }
+    openMemberDetail(memberId);
+  } catch (e) {
+    alert(`Couldn't update the friends and family discount: ${e.message}`);
   }
 };
 

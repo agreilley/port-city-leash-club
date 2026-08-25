@@ -779,12 +779,25 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
   // assertion and that application can never disagree about what counts as
   // "travel." A walk/extended-walk charge for the same member is correctly
   // exempt, since Friends & Family never discounts those.
-  if (billingData.travelDiscountPercent > 0) {
+  //
+  // travelDiscountActive gates this whole guard — Alison can turn an
+  // individual member's discount off (setFriendsFamilyDiscountActive) without
+  // clearing travelDiscountPercent, so the percent alone is no longer proof
+  // the discount should apply. Checked with === true, not truthiness: a
+  // member with travelDiscountPercent set but no travelDiscountActive field
+  // at all (every Friends & Family member granted before this switch
+  // existed) must resolve to inactive, not active — same "explicit state,
+  // never an inferred default" posture as hasActiveSubscription elsewhere in
+  // this file. Concretely: this guard is skipped entirely while inactive, so
+  // a charge proceeds at full price with no travelDiscountApplied
+  // requirement, which is correct — there's nothing to enforce when no
+  // discount should be applied.
+  if (billingData.travelDiscountPercent > 0 && billingData.travelDiscountActive === true) {
     const { isTravelDiscountService } = await import('./pricing.js');
     const rawServiceKey = docData.service || docData.serviceType || null;
     const isTravelCharge = !!rawServiceKey && isTravelDiscountService(rawServiceKey);
     if (isTravelCharge && !docData.travelDiscountApplied) {
-      throw new HttpsError('failed-precondition', `Member ${memberId} has a Friends & Family travel discount, but this charge was not computed with it applied — recompute from the review screen before charging.`);
+      throw new HttpsError('failed-precondition', `Member ${memberId} has an active Friends & Family travel discount, but this charge was not computed with it applied — recompute from the review screen before charging.`);
     }
   }
 
@@ -1299,6 +1312,47 @@ exports.dismissBillingReview = onCall({}, async (request) => {
     dismissedBy: request.auth.uid, dismissedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
   return { success: true };
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Turns an already-granted Friends & Family discount on or off for one
+// member, without touching travelDiscountPercent — that field is the
+// historical record of what claimFriendsFamilyRedemption granted; this is a
+// separate switch layered on top, so Alison can pause a member's discount
+// (a falling-out, a code given in error, whatever the reason) and restore it
+// later without the member re-claiming a code they may not even still have.
+// One code per person is the model (see FRIENDS_FAMILY_DEFAULT_MAX_REDEMPTIONS),
+// so this is deliberately per-member state, not a lookup against the
+// referralCodes doc at charge time.
+//
+// Every read site (chargeCustomerCard's guard above, and every review/recalc
+// site in admin/dashboard.html) requires travelDiscountActive === true
+// explicitly — a member who has travelDiscountPercent set but no
+// travelDiscountActive field (every Friends & Family member granted before
+// this switch shipped) resolves to inactive until an admin turns it on here.
+// Requires travelDiscountPercent already on file: this switch has nothing to
+// turn on or off for a member who never claimed a code at all.
+// ─────────────────────────────────────────────────────────────────────────
+exports.setFriendsFamilyDiscountActive = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+
+  const { memberId, active } = request.data || {};
+  if (!memberId || typeof active !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'memberId and a boolean active are required.');
+  }
+
+  const billingSnap = await billingRef(memberId).get();
+  const billingData = billingSnap.data();
+  if (!billingData || !(billingData.travelDiscountPercent > 0)) {
+    throw new HttpsError('failed-precondition', 'This member has no Friends & Family discount on file.');
+  }
+
+  await billingRef(memberId).set({
+    travelDiscountActive: active,
+    travelDiscountActiveChangedBy: request.auth.uid,
+    travelDiscountActiveChangedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  return { success: true, active };
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -3810,6 +3864,12 @@ async function claimFriendsFamilyRedemption(codeId, memberId, submissionId) {
         referredByCode: codeId,
         referralSubmissionId: submissionId,
         travelDiscountPercent: data.discountPercent,
+        // Explicit on-switch at claim time — see chargeCustomerCard's guard
+        // for why this can't be left implicit: every read site treats a
+        // missing travelDiscountActive as OFF, so a freshly claimed code
+        // must set it to true here or the discount would never apply to
+        // anyone. setFriendsFamilyDiscountActive is the only other writer.
+        travelDiscountActive: true,
       }, { merge: true });
       return { claimed: true, discountPercent: data.discountPercent };
     });
@@ -6004,7 +6064,7 @@ exports.generateEmailCaptureCode = onCall({ secrets: [RESEND_API_KEY] }, async (
 // Exposed directly, same reasoning as runGenerateReferralCode above.
 exports.runGenerateEmailCaptureCode = runGenerateEmailCaptureCode;
 
-const FRIENDS_FAMILY_DEFAULT_MAX_REDEMPTIONS = 5;
+const FRIENDS_FAMILY_DEFAULT_MAX_REDEMPTIONS = 1;
 const FRIENDS_FAMILY_DISCOUNT_PERCENT = 40;
 
 // Admin-only Friends & Family code generation — deliberately its own
