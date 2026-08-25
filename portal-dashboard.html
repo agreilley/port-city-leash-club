@@ -751,6 +751,7 @@ import { getAuth, initializeAuth, browserLocalPersistence, browserSessionPersist
 import { getFirestore, initializeFirestore, memoryLocalCache, doc, getDoc, collection, query, where, onSnapshot, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { showError } from '/js/status.js';
 import { requireMemberDoc, showPortalLoadTimeout } from '/js/portal-guard.js';
+import { WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
 const firebaseConfig = {
   apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
   authDomain: "port-city-leash-club-827ab.firebaseapp.com",
@@ -1156,8 +1157,7 @@ function updateMetrics() {
     const nextDate = upcoming[0].date?.toDate?.() || new Date(upcoming[0].date);
     const diff = Math.round((nextDate - now) / 86400000);
     document.getElementById('nextWalkDay').textContent = diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : `In ${diff} days`;
-    const slotLabel = { morning: 'Morning', 'early-afternoon': 'Early Afternoon', 'late-afternoon': 'Late Afternoon' };
-    document.getElementById('nextWalkTime').textContent = slotLabel[upcoming[0].timeSlot] || upcoming[0].timeSlot || '–';
+    document.getElementById('nextWalkTime').textContent = WALK_TIME_SLOT_LABELS[upcoming[0].timeSlot] || upcoming[0].timeSlot || '–';
   } else {
     document.getElementById('nextWalkDay').textContent = 'None scheduled';
     document.getElementById('nextWalkTime').textContent = '–';
@@ -1360,8 +1360,9 @@ function updateMetrics() {
     function openWalkModal(walk, date) {
       activeWalkId = walk.id;
       document.getElementById('modalDate').textContent = formatDateString(date);
-      const slotLabel = { morning: 'Morning (8–11am)', 'early-afternoon': 'Early Afternoon (11am–2pm)', 'late-afternoon': 'Late Afternoon (2–5pm)' };
-      document.getElementById('modalTime').textContent = slotLabel[walk.timeSlot] || walk.timeSlot || '–';
+      document.getElementById('modalTime').textContent = WALK_TIME_SLOT_LABELS[walk.timeSlot]
+        ? `${WALK_TIME_SLOT_LABELS[walk.timeSlot]} (${WALK_TIME_SLOT_RANGES[walk.timeSlot]})`
+        : (walk.timeSlot || '–');
       // Always read from the live myWalks array so extended flag is current
       const liveWalk = myWalks.find(w => w.id === walk.id) || walk;
       const durationText = liveWalk.extended ? '45-minute walk' : (liveWalk.duration || '30-minute walk');

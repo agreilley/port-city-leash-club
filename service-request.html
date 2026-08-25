@@ -378,11 +378,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         </div>
         <div class="field" id="time-slot-field">
           <label for="time-slot">Time Slot</label>
-          <select id="time-slot" name="time-slot">
-            <option value="morning">Morning (8-11am)</option>
-            <option value="early-afternoon">Early Afternoon (11am-2pm)</option>
-            <option value="late-afternoon">Late Afternoon (2-5pm)</option>
-          </select>
+          <!-- Populated by the module script below, from time-slots.js. -->
+          <select id="time-slot" name="time-slot"></select>
         </div>
         <div class="field full"><span class="date-error" id="dateError"></span></div>
         <div class="field" id="visits-field">
@@ -692,7 +689,15 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
 <script type="module">
   import { SERVICE_PRICES as PRICES, calculateServiceTotal } from './pricing.js';
+  import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
   import { showSuccess, showError } from '/js/status.js';
+
+  // #time-slot's <option>s are populated here rather than hardcoded in the
+  // markup below, so this form can't silently disagree with every other
+  // time-slot picker in the app (see time-slots.js).
+  document.getElementById('time-slot').innerHTML = WALK_TIME_SLOTS.map(key =>
+    `<option value="${key}">${WALK_TIME_SLOT_LABELS[key]} (${WALK_TIME_SLOT_RANGES[key]})</option>`
+  ).join('');
 
   const startInput = document.getElementById('start-date');
   const endInput   = document.getElementById('end-date');

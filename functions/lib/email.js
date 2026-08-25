@@ -140,9 +140,13 @@ async function sendEmail({ to, template, data, replyTo, idempotencyKey }) {
 
   let subject, html, text;
   try {
-    subject = templateModule.subject(data || {});
-    html = templateModule.html(data || {});
-    text = templateModule.text(data || {});
+    // Awaited uniformly even though only walk-confirmed's html/text are
+    // actually async (formatWalkTimeSlot's dynamic import of time-slots.js —
+    // see functions/templates/_layout.js) — await on a plain synchronous
+    // return from every other template is a no-op, not a behavior change.
+    subject = await templateModule.subject(data || {});
+    html = await templateModule.html(data || {});
+    text = await templateModule.text(data || {});
   } catch (e) {
     const error = `sendEmail: template "${template}" failed to render: ${e.message}`;
     console.error(error);

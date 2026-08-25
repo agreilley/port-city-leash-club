@@ -339,6 +339,7 @@ import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inM
 import { initializeFirestore, memoryLocalCache, collection, query, where, onSnapshot, doc, getDoc, updateDoc, getDocs, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 import { calculateEarnings, WALKER_RATES, WALKER_EXTRA_PET_FEE, WALKER_MEDICATION_FEE } from '../walker-pricing.js';
+import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
 import { showError } from '/js/status.js';
 
 // ─── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────────────
@@ -551,7 +552,9 @@ function renderUpcoming() {
   if (todaysWalks.length) {
     html += todaysWalks.map(w => {
       const member = allMembers.find(m => m.id === w.memberId);
-      const slotLabel = { morning: 'Morning · 8–11am', 'early-afternoon': 'Early Afternoon · 11am–2pm', 'late-afternoon': 'Late Afternoon · 2–5pm' }[w.timeSlot] || w.timeSlot;
+      const slotLabel = WALK_TIME_SLOT_LABELS[w.timeSlot]
+        ? `${WALK_TIME_SLOT_LABELS[w.timeSlot]} · ${WALK_TIME_SLOT_RANGES[w.timeSlot]}`
+        : w.timeSlot;
       return `<div onclick="openWalkDetail('${w.id}')" style="background:white;border:2px solid var(--rust);border-radius:10px;padding:20px 24px;margin-bottom:16px;cursor:pointer;transition:box-shadow 0.15s;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--rust);">Ready to complete</div>
@@ -571,7 +574,9 @@ function renderUpcoming() {
     html += futureWalks.map(w => {
       const member = allMembers.find(m => m.id === w.memberId);
       const date = w.date?.toDate?.() || new Date(w.date);
-      const slotLabel = { morning: 'Morning · 8–11am', 'early-afternoon': 'Early Afternoon · 11am–2pm', 'late-afternoon': 'Late Afternoon · 2–5pm' }[w.timeSlot] || w.timeSlot;
+      const slotLabel = WALK_TIME_SLOT_LABELS[w.timeSlot]
+        ? `${WALK_TIME_SLOT_LABELS[w.timeSlot]} · ${WALK_TIME_SLOT_RANGES[w.timeSlot]}`
+        : w.timeSlot;
       return `<div class="walk-card" onclick="openWalkDetail('${w.id}')">
         <div class="walk-date-block">
           <div class="walk-date-day">${date.getDate()}</div>
@@ -723,7 +728,7 @@ function renderHistory() {
   container.innerHTML = past.map(w => {
     const member = allMembers.find(m => m.id === w.memberId);
     const date = w.date?.toDate?.() || new Date(w.date);
-    const slotLabel = { morning: 'Morning', 'early-afternoon': 'Early Afternoon', 'late-afternoon': 'Late Afternoon' }[w.timeSlot] || w.timeSlot;
+    const slotLabel = WALK_TIME_SLOT_LABELS[w.timeSlot] || w.timeSlot;
     return `<div class="walk-card" onclick="openWalkDetail('${w.id}')">
       <div class="walk-date-block">
         <div class="walk-date-day">${date.getDate()}</div>
@@ -840,7 +845,9 @@ window.openWalkDetail = (walkId) => {
   if (!walk) return;
   const member = allMembers.find(m => m.id === walk.memberId);
   const date = walk.date?.toDate?.() || new Date(walk.date);
-  const slotLabel = { morning: 'Morning (8–11am)', 'early-afternoon': 'Early Afternoon (11am–2pm)', 'late-afternoon': 'Late Afternoon (2–5pm)' }[walk.timeSlot] || walk.timeSlot;
+  const slotLabel = WALK_TIME_SLOT_LABELS[walk.timeSlot]
+    ? `${WALK_TIME_SLOT_LABELS[walk.timeSlot]} (${WALK_TIME_SLOT_RANGES[walk.timeSlot]})`
+    : walk.timeSlot;
   const isToday = walkIsToday(walk.date);
   const isPastDay = walkIsBeforeToday(walk.date);
   const canComplete = isToday || isPastDay; // completable on the day of the walk or after
@@ -984,7 +991,7 @@ function renderSchedule() {
     { key: 'mon', label: 'Monday' }, { key: 'tue', label: 'Tuesday' }, { key: 'wed', label: 'Wednesday' },
     { key: 'thu', label: 'Thursday' }, { key: 'fri', label: 'Friday' }, { key: 'sat', label: 'Saturday' }, { key: 'sun', label: 'Sunday' },
   ];
-  const slotLabels = { morning: 'Morning (8–11am)', 'early-afternoon': 'Early Afternoon (11am–2pm)', 'late-afternoon': 'Late Afternoon (2–5pm)' };
+  const slotLabels = Object.fromEntries(WALK_TIME_SLOTS.map(key => [key, `${WALK_TIME_SLOT_LABELS[key]} (${WALK_TIME_SLOT_RANGES[key]})`]));
   const slotColors = { morning: '#EBF5EF', 'early-afternoon': '#EEF2FF', 'late-afternoon': '#FEF3C7' };
   const slotTextColors = { morning: '#1A5C30', 'early-afternoon': '#3730A3', 'late-afternoon': '#92400E' };
 

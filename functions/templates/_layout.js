@@ -90,12 +90,18 @@ function formatMeetGreetSlot(slot) {
 // formatMeetGreetSlot and rendering the raw key. Unrecognized/missing
 // values return null so callers can degrade to a date-only line instead of
 // printing a raw key like "early-afternoon".
-const WALK_TIME_SLOT_LABELS = {
-  morning: 'Morning',
-  'early-afternoon': 'Early Afternoon',
-  'late-afternoon': 'Late Afternoon',
-};
-function formatWalkTimeSlot(slot) {
+//
+// The label map itself now lives in time-slots.js (mirrored into functions/
+// the same way pricing.js/walker-pricing.js are — see firebase.json's
+// predeploy cp), not a local literal here. Async, and its one caller
+// (walk-confirmed.js's formatWalkWhen/whenValue/html/text) is async too as
+// a result — this file is CommonJS, so an ES module can only be reached via
+// dynamic import, which is inherently a Promise. sendEmail (functions/lib/
+// email.js) was already async and already wraps every template call in a
+// try/catch, so awaiting this one template's now-async subject/html/text is
+// a small, contained change, not a wider refactor.
+async function formatWalkTimeSlot(slot) {
+  const { WALK_TIME_SLOT_LABELS } = await import('../time-slots.js');
   return WALK_TIME_SLOT_LABELS[slot] || null;
 }
 

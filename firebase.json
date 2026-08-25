@@ -12,7 +12,7 @@
       "codebase": "default",
       "runtime": "nodejs20",
       "predeploy": [
-        "cp \"$RESOURCE_DIR/../pricing.js\" \"$RESOURCE_DIR/../walker-pricing.js\" \"$RESOURCE_DIR/\""
+        "cp \"$RESOURCE_DIR/../pricing.js\" \"$RESOURCE_DIR/../walker-pricing.js\" \"$RESOURCE_DIR/../time-slots.js\" \"$RESOURCE_DIR/\""
       ]
     }
   ],

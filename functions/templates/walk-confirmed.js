@@ -28,15 +28,20 @@ const {
 // captured at all (service_request has no time-of-day field), absent
 // entirely — this degrades to a date-only line rather than showing nothing
 // or a raw bucket key.
-function formatWalkWhen(w) {
+//
+// async because formatWalkTimeSlot now is (see _layout.js) — this ripples
+// up through whenValue/html/text below, all the way to sendEmail's already-
+// async template dispatch, and no further; subject() never touches this at
+// all and stays synchronous.
+async function formatWalkWhen(w) {
   const dateLabel = formatCalendarDate(w.dateStr);
   if (!dateLabel) return null;
-  const slotLabel = formatWalkTimeSlot(w.slot) || formatMeetGreetSlot(w.slot);
+  const slotLabel = (await formatWalkTimeSlot(w.slot)) || formatMeetGreetSlot(w.slot);
   return slotLabel ? `${dateLabel} at ${slotLabel}` : dateLabel;
 }
 
-function whenValue(data) {
-  const formatted = (data.walks || []).map(formatWalkWhen).filter(Boolean);
+async function whenValue(data) {
+  const formatted = (await Promise.all((data.walks || []).map(formatWalkWhen))).filter(Boolean);
   return formatted.join('; ') || 'Time to be confirmed';
 }
 
@@ -45,15 +50,16 @@ function subject(data) {
   return `You're all set for ${names}`;
 }
 
-function html(data) {
+async function html(data) {
   const names = joinNames(data.dogNames) || 'your dog';
   const dogCount = (data.dogNames || []).filter(Boolean).length || 1;
+  const whenStr = await whenValue(data);
 
   const block = renderBlockHtml({
     eyebrow: 'Your booking',
     heading: escapeHtml(`${data.walkTypeLabel || 'Walk'}, ${data.durationMinutes || 30} minutes`),
     rows: [
-      { label: 'When', value: escapeHtml(whenValue(data)) },
+      { label: 'When', value: escapeHtml(whenStr) },
     ],
   });
 
@@ -89,9 +95,10 @@ function html(data) {
   return wrapHtml({ preheader: `Your walk is booked. Here's everything you need to know.`, bodyHtml: body });
 }
 
-function text(data) {
+async function text(data) {
   const names = joinNames(data.dogNames) || 'your dog';
   const dogCount = (data.dogNames || []).filter(Boolean).length || 1;
+  const whenStr = await whenValue(data);
 
   const lines = [
     `Hi ${data.firstName || 'there'},`,
@@ -101,7 +108,7 @@ function text(data) {
     renderBlockText({
       eyebrow: 'Your booking',
       heading: `${data.walkTypeLabel || 'Walk'}, ${data.durationMinutes || 30} minutes`,
-      rows: [{ label: 'When', value: whenValue(data) }],
+      rows: [{ label: 'When', value: whenStr }],
     }),
     '',
     `Your walker will send photos and a note afterward so you can see how it went.`,

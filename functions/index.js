@@ -1362,7 +1362,12 @@ exports.generateInitialWalks = onCall({}, async (request) => {
 // (not a member, invalid input, tier violation) so the portal can show the
 // reason inline. Throws HttpsError only for no-auth and infrastructure faults.
 const VALID_WALK_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-const VALID_TIME_SLOTS = ['morning', 'early-afternoon', 'late-afternoon'];
+// The valid time-slot keys now live in time-slots.js (mirrored the same way
+// pricing.js/walker-pricing.js are — see firebase.json's predeploy cp), not
+// a local literal here — fetched via dynamic import at the one call site
+// below, same pattern as every other pricing.js import in this file (this
+// module is CommonJS; a static top-level import of an ES module isn't
+// available without converting the whole file).
 // Flat day-count rule for every recurring member. The old per-tier ranges
 // (Essential 1-2, Standard 3-4, Daily fixed at 5) are retired along with the
 // tiers themselves — this also lifts the previous restriction that Daily
@@ -1403,7 +1408,8 @@ exports.updateWalkSchedule = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
   }
 
   // Time slot must be one of the canonical values the walk generator understands.
-  if (!VALID_TIME_SLOTS.includes(defaultTimeSlot)) {
+  const { WALK_TIME_SLOTS } = await import('./time-slots.js');
+  if (!WALK_TIME_SLOTS.includes(defaultTimeSlot)) {
     return { success: false, error: 'Please choose a valid time slot (morning, early afternoon, or late afternoon).' };
   }
 

@@ -767,11 +767,9 @@
       <div class="form-field"><label>Member</label><select id="wm-member"><option value="">Select member...</option></select></div>
       <div class="form-field"><label>Date</label><input type="date" id="wm-date"></div>
       <div class="form-field"><label>Time Slot</label>
-        <select id="wm-slot">
-          <option value="morning">Morning (8–11am)</option>
-          <option value="early-afternoon">Early Afternoon (11am–2pm)</option>
-          <option value="late-afternoon">Late Afternoon (2–5pm)</option>
-        </select>
+        <!-- Populated by populateTimeSlotSelects() from time-slots.js, not
+             hardcoded here — see initDashboard(). -->
+        <select id="wm-slot"></select>
       </div>
       <div class="form-field"><label>Walker</label><select id="wm-walker"><option value="">Unassigned</option></select></div>
       <div class="form-field full"><label>Notes</label><textarea id="wm-notes" rows="2" placeholder="Any special instructions..."></textarea></div>
@@ -817,12 +815,9 @@
         <div style="font-size:11px;color:var(--text-light);margin-top:3px;">Hold Ctrl/Cmd to select multiple</div>
       </div>
       <div class="form-field"><label>Preferred time slot</label>
-        <select id="am-timeslot">
-          <option value="">Not set</option>
-          <option value="morning">Morning (8–11am)</option>
-          <option value="early-afternoon">Early Afternoon (11am–2pm)</option>
-          <option value="late-afternoon">Late Afternoon (2–5pm)</option>
-        </select>
+        <!-- Populated by populateTimeSlotSelects() from time-slots.js, not
+             hardcoded here — see initDashboard(). -->
+        <select id="am-timeslot"></select>
       </div>
     </div>
     <hr class="modal-divider">
@@ -959,6 +954,12 @@ import {
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { getStorage, ref as storageRef, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalkExtensionTotal, WALK_EXTENSION_PRICE, EXTRA_PET_FEE, MEDICATION_FEE } from '../pricing.js';
+// Walk time-of-day slot: keys + base label + clock range, shared with every
+// other page that shows or picks one (see time-slots.js's own header
+// comment). Deliberately NOT the careers/screening availability grids —
+// those stay separate, see buildApplicationAvailabilityGrid and
+// buildScreeningAvailabilityGrid below.
+import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
 import { calculateEarnings } from '../walker-pricing.js';
 import { showError } from '/js/status.js';
 
@@ -1146,7 +1147,22 @@ function randomAccountPassword() {
 }
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
+// #wm-slot (Add Walk) and #am-timeslot (Add Member) are static <select>
+// elements already in the page's HTML, not re-created per modal-open — so
+// they're populated once here, from time-slots.js, rather than server-
+// rendered with hardcoded <option> tags the way they used to be.
+function populateTimeSlotSelects() {
+  const optionsHTML = WALK_TIME_SLOTS.map(key =>
+    `<option value="${key}">${WALK_TIME_SLOT_LABELS[key]} (${WALK_TIME_SLOT_RANGES[key]})</option>`
+  ).join('');
+  const wmSlot = document.getElementById('wm-slot');
+  if (wmSlot) wmSlot.innerHTML = optionsHTML;
+  const amTimeslot = document.getElementById('am-timeslot');
+  if (amTimeslot) amTimeslot.innerHTML = `<option value="">Not set</option>${optionsHTML}`;
+}
+
 function initDashboard() {
+  populateTimeSlotSelects();
   subscribeWalks();
   subscribeMembers();
   subscribeWalkers();
@@ -1824,7 +1840,7 @@ function renderUpcomingWalks() {
     const walkerId = (w.walkerId||'').trim();
     const walker = allWalkers.find(k => k.id === walkerId);
     const date = w.date?.toDate?.() || new Date(w.date);
-    const slotLabel = { morning: 'Morning', 'early-afternoon': 'Early Afternoon', 'late-afternoon': 'Late Afternoon' }[w.timeSlot] || w.timeSlot;
+    const slotLabel = WALK_TIME_SLOT_LABELS[w.timeSlot] || w.timeSlot;
     const isUnassigned = !walkerId;
     const statusClass = isUnassigned ? 'unassigned' : w.status === 'completed' ? 'completed' : 'active';
     const statusLabel = isUnassigned ? 'Unassigned' : w.status === 'completed' ? 'Completed' : 'Scheduled';
@@ -1942,7 +1958,7 @@ function renderAvailabilityGrid() {
   if (!allWalkers.length) { container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-light);">No walkers yet.</div>'; return; }
   const days = ['mon','tue','wed','thu','fri','sat','sun'];
   const dayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  const slots = ['morning','early-afternoon','late-afternoon'];
+  const slots = WALK_TIME_SLOTS;
   const dotColors = ['#C17B6F','#8FA8A2','#2D6A40','#3730A3','#92400E'];
 
   container.innerHTML = allWalkers.map((w, i) => {
@@ -2537,7 +2553,9 @@ window.openWalkModal = async (walkId) => {
   const member = _members.find(m => m.id === (walk.memberId||"").trim());
   const walker = _walkers.find(k => k.id === (walk.walkerId||"").trim());
   const date = walk.date?.toDate?.() || new Date(walk.date);
-  const slotLabel = { morning: 'Morning (8–11am)', 'early-afternoon': 'Early Afternoon (11am–2pm)', 'late-afternoon': 'Late Afternoon (2–5pm)' }[walk.timeSlot] || walk.timeSlot;
+  const slotLabel = WALK_TIME_SLOT_LABELS[walk.timeSlot]
+    ? `${WALK_TIME_SLOT_LABELS[walk.timeSlot]} (${WALK_TIME_SLOT_RANGES[walk.timeSlot]})`
+    : walk.timeSlot;
   const isAssigned = !!(walk.walkerId || '').trim();
 
   const suggestions = _walkers.filter(w => w.status === 'active').map(w => {
@@ -3049,10 +3067,9 @@ window.openRequestItem = async (id) => {
     ];
   } else if (item.type === 'reschedule') {
     const walk = allWalks.find(w => w.id === item.walkId);
-    const slotLabel = { morning: 'Morning', 'early-afternoon': 'Early Afternoon', 'late-afternoon': 'Late Afternoon' };
     fields = [
       { label: 'Member', value: item.memberName || item.memberId || '–' },
-      { label: 'Currently Scheduled', value: walk ? `${fmtDate(walk.date)} · ${slotLabel[walk.timeSlot] || walk.timeSlot || '–'}` : 'Walk not found — may have been deleted' },
+      { label: 'Currently Scheduled', value: walk ? `${fmtDate(walk.date)} · ${WALK_TIME_SLOT_LABELS[walk.timeSlot] || walk.timeSlot || '–'}` : 'Walk not found — may have been deleted' },
       { label: 'Requested New Date', value: fmtDate(item.newDate) },
       { label: 'Requested New Time', value: item.newTimeSlot || '–' },
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
@@ -3590,9 +3607,7 @@ function renderServiceRequestReview(item) {
       <div class="form-field" id="rev-timeslot-field" style="display:none;"><label>Time Slot</label>
         <select id="rev-timeslot">
           <option value="" ${!item.timeSlot ? 'selected' : ''}>Not set</option>
-          <option value="morning" ${item.timeSlot === 'morning' ? 'selected' : ''}>Morning (8–11am)</option>
-          <option value="early-afternoon" ${item.timeSlot === 'early-afternoon' ? 'selected' : ''}>Early Afternoon (11am–2pm)</option>
-          <option value="late-afternoon" ${item.timeSlot === 'late-afternoon' ? 'selected' : ''}>Late Afternoon (2–5pm)</option>
+          ${WALK_TIME_SLOTS.map(key => `<option value="${key}" ${item.timeSlot === key ? 'selected' : ''}>${WALK_TIME_SLOT_LABELS[key]} (${WALK_TIME_SLOT_RANGES[key]})</option>`).join('')}
         </select>
       </div>
     </div>
@@ -4696,7 +4711,6 @@ window.openMemberDetail = async (id) => {
   }
 
   const walker = allWalkers.find(w => w.id === member.assignedWalkerId);
-  const slotLabel = { morning: 'Morning', 'early-afternoon': 'Early Afternoon', 'late-afternoon': 'Late Afternoon' };
 
   const fields = [
     { label: 'Name', value: member.name || '–' },
@@ -4706,7 +4720,7 @@ window.openMemberDetail = async (id) => {
     { label: 'Tier', value: member.tier || '–' },
     { label: 'Status', value: member.status ? member.status.charAt(0).toUpperCase() + member.status.slice(1) : '–' },
     { label: 'Walk Days', value: (member.defaultWalkDays || []).join(', ') || '–' },
-    { label: 'Time Slot', value: slotLabel[member.defaultTimeSlot] || member.defaultTimeSlot || '–' },
+    { label: 'Time Slot', value: WALK_TIME_SLOT_LABELS[member.defaultTimeSlot] || member.defaultTimeSlot || '–' },
     { label: 'Assigned Walker', value: walker?.name || 'Unassigned' },
     { label: 'Stripe Customer ID', value: billing.stripeCustomerId || '–' },
     { label: 'Stripe Subscription ID', value: billing.stripeSubscriptionId || '–' },
@@ -4943,7 +4957,10 @@ window.openWalkerDetail = (id) => {
 
   const days = ['mon','tue','wed','thu','fri','sat','sun'];
   const dayLabels = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
-  const slots = ['morning', 'early-afternoon', 'late-afternoon'];
+  // Keys shared with time-slots.js; the abbreviated wording here ('Early
+  // Aft.') is this grid's own — narrow admin column, not the canonical
+  // label — kept local on purpose (see time-slots.js's header comment).
+  const slots = WALK_TIME_SLOTS;
   const slotLabels = { morning: 'Morning', 'early-afternoon': 'Early Aft.', 'late-afternoon': 'Late Aft.' };
   const avail = walker.availability || {};
 
@@ -5035,7 +5052,7 @@ function renderWalkerEarningsSection(walker) {
 
 window.saveWalkerSchedule = async (walkerId, uid) => {
   const days = ['mon','tue','wed','thu','fri','sat','sun'];
-  const slots = ['morning', 'early-afternoon', 'late-afternoon'];
+  const slots = WALK_TIME_SLOTS;
   const availability = {};
   days.forEach(day => {
     availability[day] = slots.filter(slot => document.getElementById(`wd-${day}-${slot}`).checked);
