@@ -223,6 +223,10 @@
       </div>
       <div class="section-title">Next Up</div>
       <div id="upcomingList"><div style="text-align:center;padding:40px;color:var(--text-light);">Loading...</div></div>
+      <div id="todaysVisitsSection" style="display:none;">
+        <div class="section-title" style="margin-top:24px;">Today's Visits</div>
+        <div id="todaysVisitsList"></div>
+      </div>
       <div id="overnightAssignmentsSection" style="display:none;">
         <div class="section-title" style="margin-top:24px;">Overnight &amp; Check-In Assignments</div>
         <div id="overnightAssignmentsList"></div>
@@ -336,10 +340,11 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { initializeFirestore, memoryLocalCache, collection, query, where, onSnapshot, doc, getDoc, updateDoc, getDocs, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { initializeFirestore, memoryLocalCache, collection, query, where, onSnapshot, doc, getDoc, updateDoc, getDocs, addDoc, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 import { calculateEarnings, WALKER_RATES, WALKER_EXTRA_PET_FEE, WALKER_MEDICATION_FEE } from '../walker-pricing.js';
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
+import { VISIT_SLOT_LABELS } from '../visit-slots.js';
 import { showError } from '/js/status.js';
 
 // ─── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────────────
@@ -450,6 +455,7 @@ function loadData() {
       return da - db_;
     });
     renderOvernights();
+    renderTodaysVisits();
     renderEarnings();
   });
 
@@ -460,6 +466,7 @@ function loadData() {
     renderCalendar();
     renderHistory();
     renderOvernights();
+    renderTodaysVisits();
     renderEarnings();
   });
 
@@ -595,6 +602,149 @@ function renderUpcoming() {
 
   container.innerHTML = html;
 }
+
+// ── TODAY'S VISITS ───────────────────────────────────────────────────────────
+// Flattened from myOvernights[].visits (see generateOvernightVisits,
+// functions/index.js) — one row per individually-completable visit due
+// today, grouped by reservation. This is entirely separate from
+// completeOvernight()/openOvernightDetail below, which still mark the WHOLE
+// reservation done in one action — completing every visit here does not
+// touch that reservation-level status.
+function renderTodaysVisits() {
+  const section = document.getElementById('todaysVisitsSection');
+  const container = document.getElementById('todaysVisitsList');
+  if (!section || !container) return;
+
+  const groups = myOvernights
+    .map(o => ({
+      o,
+      visits: (Array.isArray(o.visits) ? o.visits : [])
+        .filter(v => v.status === 'expected' && walkDateStr(v.date) === todayDateStr()),
+    }))
+    .filter(g => g.visits.length);
+
+  if (!groups.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+
+  container.innerHTML = groups.map(({ o, visits }) => {
+    const member = allMembers.find(m => m.id === o.memberId);
+    const petNames = escapeHtml(getDogNames(member) || o.dogName || 'Pet');
+    const address = escapeHtml(member?.address || '–');
+    const serviceLabel = (o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin') ? 'Check-In' : 'Overnight';
+    const rows = visits.map(v => {
+      const slotLabel = VISIT_SLOT_LABELS[v.slot] || v.slot || '–';
+      return `<div class="walk-card" style="align-items:center;">
+        <div style="flex:1;">
+          <div style="font-size:13px;color:var(--text-mid);">${address}</div>
+          <div style="font-size:13px;color:var(--text-light);">${v.date} · ${slotLabel}</div>
+        </div>
+        <button class="btn-complete" style="width:auto;padding:8px 16px;" onclick="openVisitCompleteForm('${o.id}', '${v.id}')">Mark complete</button>
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:16px;">
+      <div style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:6px;">${petNames} · ${escapeHtml(serviceLabel)}</div>
+      ${rows}
+    </div>`;
+  }).join('');
+}
+
+// Reuses the walkModal shell, same as openOvernightDetail/openWalkDetail.
+// visit lives inside o.visits (an array field, not its own doc), so this
+// looks the reservation up first and finds the one entry by id.
+window.openVisitCompleteForm = (overnightId, visitId) => {
+  const o = myOvernights.find(x => x.id === overnightId);
+  const visit = o?.visits?.find(v => v.id === visitId);
+  if (!o || !visit) return;
+  const member = allMembers.find(m => m.id === o.memberId);
+  const petNames = escapeHtml(getDogNames(member) || o.dogName || 'Pet');
+  const slotLabel = VISIT_SLOT_LABELS[visit.slot] || visit.slot || '–';
+  const isCompleted = visit.status === 'completed';
+
+  document.getElementById('walkModalTitle').textContent = `${petNames} · ${slotLabel}`;
+  document.getElementById('walkModalContent').innerHTML = `
+    ${renderDogProfiles(member)}
+    <div class="detail-row"><span class="detail-label">Owner</span><span class="detail-value">${escapeHtml(member?.name || o.memberName) || '–'}</span></div>
+    <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${escapeHtml(member?.address) || '–'}</span></div>
+    <div class="detail-row"><span class="detail-label">Access</span><span class="detail-value">${escapeHtml(member?.accessNotes) || 'None'}</span></div>
+    ${renderEmergencyBlock(member)}
+    <div class="detail-row"><span class="detail-label">Date</span><span class="detail-value">${escapeHtml(visit.date)}</span></div>
+    <div class="detail-row"><span class="detail-label">Slot</span><span class="detail-value">${slotLabel}</span></div>
+    <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted ? '✓ Completed' : 'Expected'}</span></div>
+    ${isCompleted ? `
+      <div class="detail-row"><span class="detail-label">Note</span><span class="detail-value">${escapeHtml(visit.note) || 'None'}</span></div>
+      ${visit.photoUrl ? `<img src="${visit.photoUrl}" style="width:100%;border-radius:8px;margin-top:8px;" alt="Visit photo">` : ''}
+    ` : `
+      <div style="margin-top:16px;">
+        <label class="detail-label" style="display:block;margin-bottom:6px;">How'd it go? <span style="font-weight:400;color:#7A7A7A;">(sent to the owner)</span></label>
+        <textarea id="completeVisitNote" rows="2" placeholder="e.g. Great visit, ate well and went outside." style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;"></textarea>
+        <label class="detail-label" style="display:block;margin-top:10px;margin-bottom:6px;">Photo</label>
+        <input type="file" id="completeVisitPhoto" accept="image/*" capture="environment" style="width:100%;">
+        <div id="completeVisitError" style="color:#C17B6F;font-size:13px;margin-top:6px;display:none;"></div>
+      </div>
+      <button class="btn-complete" id="completeVisitBtn" onclick="completeVisit('${overnightId}', '${visitId}')">Mark as Completed</button>
+    `}
+  `;
+  document.getElementById('walkModal').classList.add('open');
+};
+
+// Reuses completeWalk()'s upload logic exactly (image check, 8MB cap,
+// uploadBytes/getDownloadURL) — only the Storage path and the write target
+// differ. A visit has no doc of its own: it's one entry in the overnights
+// doc's `visits` array, so this can't use arrayUnion (which appends, and
+// can't target "the entry with this id" for an in-place field change) —
+// it reads the array, replaces the one matching entry, and writes the
+// whole array back.
+window.completeVisit = async (overnightId, visitId) => {
+  const btn = document.getElementById('completeVisitBtn');
+  const errEl = document.getElementById('completeVisitError');
+  const note = document.getElementById('completeVisitNote')?.value.trim() || '';
+  const fileInput = document.getElementById('completeVisitPhoto');
+  const file = fileInput?.files?.[0] || null;
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  errEl.style.display = 'none';
+
+  try {
+    let photoUrl = null;
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        throw new Error('That file isn\'t an image — please choose a photo (JPG, PNG, etc.).');
+      }
+      if (file.size > 8 * 1024 * 1024) {
+        throw new Error('Photo is too large — please use a smaller image (under 8MB).');
+      }
+      const path = `overnight-photos/${overnightId}/${visitId}_${Date.now()}_${file.name}`;
+      const fileRef = storageRef(storage, path);
+      await uploadBytes(fileRef, file);
+      photoUrl = await getDownloadURL(fileRef);
+    }
+
+    const o = myOvernights.find(x => x.id === overnightId);
+    // Timestamp.now() (a client-clock value), NOT serverTimestamp() — that
+    // sentinel is rejected by Firestore the moment it's nested inside an
+    // array element, in every SDK, not just here. The array as a whole is
+    // still written through a normal updateDoc, so this is the one field
+    // that can't get the usual server-resolved timestamp treatment.
+    const visits = (o?.visits || []).map(v => v.id === visitId ? {
+      ...v,
+      status: 'completed',
+      completedAt: Timestamp.now(),
+      note,
+      photoUrl: photoUrl || null,
+      walkerId: walkerDoc?.id || '',
+      walkerName: walkerDoc?.name || '',
+    } : v);
+    await updateDoc(doc(db, 'overnights', overnightId), { visits });
+
+    document.getElementById('walkModal').classList.remove('open');
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Mark as Completed';
+  }
+};
 
 // ── OVERNIGHT / CHECK-IN ASSIGNMENTS ────────────────────────────────────────────
 function renderOvernights() {
