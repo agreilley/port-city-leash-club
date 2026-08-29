@@ -3599,10 +3599,48 @@ function syncVisitScheduleRows(defaultVisits) {
   }).join('');
 }
 
+// Which of reviewRecalcService / reviewRecalcOvernight belongs to the
+// review modal currently on screen — set by whichever renderer just built
+// it (renderServiceRequestReview / renderOvernightReview). Lets shared
+// helpers below (updateVisitScheduleCount) call back into "whatever's
+// actually open" without guessing from DOM shape.
+let _reviewRecalcFn = null;
+
 window.updateVisitScheduleCount = (dateStr, value) => {
   _reviewVisitSchedule[dateStr] = Math.max(0, parseInt(value, 10) || 0);
-  reviewRecalcService();
+  _reviewRecalcFn?.();
 };
+
+// Shared markup for the per-day Visit Schedule editor — one field, used
+// identically by both renderServiceRequestReview (service_request) and
+// renderOvernightReview (overnight_request), toggled visible only when the
+// selected service is a check-in visit. A single copy so a future layout
+// change to this field can't drift between the two review modals the way
+// the pricing logic already had (see isCheckin's own comment in
+// confirmRequestDates for that history).
+function visitScheduleFieldHTML() {
+  return `<div class="form-field" id="rev-visits-field" style="display:none;grid-column:1 / -1;"><label>Visit Schedule</label><div id="rev-visit-schedule"></div></div>`;
+}
+
+function setVisitScheduleFieldVisible(visible) {
+  const field = document.getElementById('rev-visits-field');
+  if (field) field.style.display = visible ? 'flex' : 'none';
+}
+
+// Shared core of "a check-in visit's price, from the admin-edited per-day
+// schedule" — used by both reviewRecalcService and reviewRecalcOvernight so
+// the two review modals can never compute this differently. Returns the
+// discounted total so callers that also drive a Final Total override field
+// (reviewRecalcOvernight) can seed it without recomputing anything.
+function computeAndRenderDropInPricing(extraPet, medication, travelDiscountPercent) {
+  syncVisitScheduleRows(_reviewItemVisitsPerDay);
+  const raw = computeDropInVisitTotal(extraPet, medication);
+  const { total, breakdown } = travelDiscountPercent > 0
+    ? applyTravelDiscount(raw.total, raw.breakdown, travelDiscountPercent)
+    : raw;
+  renderReviewBreakdown(breakdown, total);
+  return total;
+}
 
 // Shared by reviewRecalcService (live preview) and confirmRequestDates
 // (the actual charge amount) — computes a drop-in-visit's total from the
@@ -3690,6 +3728,7 @@ function renderServiceRequestReview(item) {
   _reviewVisitSchedule = {};
   _reviewItemVisitsPerDay = item.visitsPerDay || 1;
   _reviewMemberId = item.memberId || null;
+  _reviewRecalcFn = reviewRecalcService;
   document.getElementById('requestModalContent').innerHTML = `
     ${renderTravelDiscountBanner(_reviewMemberId)}
     <div class="form-grid">
@@ -3701,7 +3740,7 @@ function renderServiceRequestReview(item) {
           ${Object.entries(SERVICE_PRICES).map(([key, info]) => `<option value="${key}" ${resolveServiceKey(item.service) === key ? 'selected' : ''}>${info.name}</option>`).join('')}
         </select>
       </div>
-      <div class="form-field" id="rev-visits-field" style="display:none;grid-column:1 / -1;"><label>Visit Schedule</label><div id="rev-visit-schedule"></div></div>
+      ${visitScheduleFieldHTML()}
       <div class="form-field"><label>Start Date</label><input type="date" id="rev-start" value="${escapeHtml(toDateInputValue(item.startDate))}" onchange="reviewRecalcService()"></div>
       <div class="form-field" id="rev-end-field"><label>End Date</label><input type="date" id="rev-end" value="${escapeHtml(toDateInputValue(item.endDate))}" onchange="reviewRecalcService()"></div>
       <div class="form-field" id="rev-timeslot-field" style="display:none;"><label>Time Slot</label>
@@ -3783,7 +3822,7 @@ window.reviewRecalcService = () => {
   const isDropIn = service === 'drop-in-visit';
   document.getElementById('rev-end-field').style.display = isWalk ? 'none' : 'flex';
   document.getElementById('rev-timeslot-field').style.display = isWalk ? 'flex' : 'none';
-  document.getElementById('rev-visits-field').style.display = isDropIn ? 'flex' : 'none';
+  setVisitScheduleFieldVisible(isDropIn);
 
   const startDate = document.getElementById('rev-start').value;
   const endDate = document.getElementById('rev-end').value;
@@ -3793,14 +3832,9 @@ window.reviewRecalcService = () => {
   const travelDiscountPercent = getActiveTravelDiscountPercent(_reviewMemberId);
 
   if (isDropIn) {
-    syncVisitScheduleRows(_reviewItemVisitsPerDay);
-    const raw = computeDropInVisitTotal(extraPet, medication);
     // drop-in-visit is always a travel (night-unit) service — no isWalk-style
     // gate needed here, unlike the generic branch below.
-    const { total, breakdown } = travelDiscountPercent > 0
-      ? applyTravelDiscount(raw.total, raw.breakdown, travelDiscountPercent)
-      : raw;
-    renderReviewBreakdown(breakdown, total);
+    computeAndRenderDropInPricing(extraPet, medication, travelDiscountPercent);
     return;
   }
 
@@ -3822,6 +3856,9 @@ window.reviewRecalcService = () => {
 function renderOvernightReview(item) {
   _reviewTotalTouched = false;
   _reviewMemberId = item.memberId || null;
+  _reviewVisitSchedule = {};
+  _reviewItemVisitsPerDay = item.visitsPerDay || 1;
+  _reviewRecalcFn = reviewRecalcOvernight;
 
   document.getElementById('requestModalContent').innerHTML = `
     ${renderTravelDiscountBanner(_reviewMemberId)}
@@ -3833,6 +3870,7 @@ function renderOvernightReview(item) {
           <option value="checkin" ${item.service === 'checkin' ? 'selected' : ''}>Check-In Visit</option>
         </select>
       </div>
+      ${visitScheduleFieldHTML()}
       <div class="form-field"><label>Start Date</label><input type="date" id="rev-start" value="${escapeHtml(toDateInputValue(item.startDate))}" onchange="reviewRecalcOvernight()"></div>
       <div class="form-field"><label>End Date</label><input type="date" id="rev-end" value="${escapeHtml(toDateInputValue(item.endDate))}" onchange="reviewRecalcOvernight()"></div>
     </div>
@@ -3880,19 +3918,32 @@ window.reviewTravelDiscountAckChanged = () => {
 
 window.reviewRecalcOvernight = () => {
   const service = document.getElementById('rev-service').value;
+  const isCheckin = resolveServiceKey(service) === 'drop-in-visit';
+  setVisitScheduleFieldVisible(isCheckin);
   const startDate = document.getElementById('rev-start').value;
   const endDate = document.getElementById('rev-end').value;
   const extraPet = document.getElementById('rev-extra-pet').checked;
   const medication = document.getElementById('rev-medication').checked;
 
-  const raw = calculateServiceTotal({ serviceKey: service, startDate, endDate, extraPet, medication });
   // overnight_request is always a travel (night-unit) service — overnight
   // stay or check-in, both discount-eligible, no isWalk-style gate needed.
   const travelDiscountPercent = getActiveTravelDiscountPercent(_reviewMemberId);
-  const { total, breakdown } = travelDiscountPercent > 0
-    ? applyTravelDiscount(raw.total, raw.breakdown, travelDiscountPercent)
-    : raw;
-  renderReviewBreakdown(breakdown, total);
+
+  let total;
+  if (isCheckin) {
+    // Check-in booked through the overnight form now prices off the same
+    // admin-edited per-day schedule as one booked through service_request —
+    // see isCheckin's comment in confirmRequestDates for why this used to
+    // silently fall back to a flat estimate here.
+    total = computeAndRenderDropInPricing(extraPet, medication, travelDiscountPercent);
+  } else {
+    const raw = calculateServiceTotal({ serviceKey: service, startDate, endDate, extraPet, medication });
+    const applied = travelDiscountPercent > 0
+      ? applyTravelDiscount(raw.total, raw.breakdown, travelDiscountPercent)
+      : raw;
+    total = applied.total;
+    renderReviewBreakdown(applied.breakdown, applied.total);
+  }
   if (!_reviewTotalTouched) {
     document.getElementById('rev-total-override').value = total;
   }
@@ -4023,7 +4074,12 @@ window.confirmRequestDates = async (submissionId, item) => {
     // Only meaningful for standard-walk/extended-walk (rev-timeslot-field is
     // hidden otherwise) — '' from the "Not set" option normalizes to null.
     const timeSlot = document.getElementById('rev-timeslot')?.value || null;
-    const isDropIn = !isOvernightRequest && serviceKey === 'drop-in-visit';
+    // Keyed on serviceKey alone — a check-in visit booked through the
+    // overnight_request form (portal-request-extras.html's "Check-In Visit"
+    // option) is priced and scheduled exactly like one booked through
+    // service_request. Used both to pick the per-visit pricing path below
+    // and to decide whether visitSchedule gets captured at all.
+    const isCheckin = serviceKey === 'drop-in-visit';
 
     // Friends & Family — see renderTravelDiscountBanner/reviewRecalcService/
     // reviewRecalcOvernight, which already show and factor this discount
@@ -4049,13 +4105,19 @@ window.confirmRequestDates = async (submissionId, item) => {
         travelDiscountApplied = travelDiscountPercent > 0 ? !!ackCheckbox?.checked : false;
         travelDiscountPercentApplied = travelDiscountApplied ? travelDiscountPercent : 0;
       } else {
-        const r = calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet, medication });
+        // Reached only if admin clears the override field entirely — the
+        // override normally auto-fills (reviewRecalcOvernight), so this is
+        // the fallback path, but it must still price a check-in visit off
+        // the per-day schedule, not a flat days x rate estimate.
+        const r = isCheckin
+          ? computeDropInVisitTotal(extraPet, medication)
+          : calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet, medication });
         const applied = travelDiscountPercent > 0 ? applyTravelDiscount(r.total, r.breakdown, travelDiscountPercent) : r;
-        amountInDollars = applied.total; unitCount = r.unitCount;
+        amountInDollars = applied.total; unitCount = isCheckin ? r.totalVisits : r.unitCount;
         travelDiscountApplied = travelDiscountPercent > 0;
         travelDiscountPercentApplied = travelDiscountApplied ? travelDiscountPercent : 0;
       }
-    } else if (isDropIn) {
+    } else if (isCheckin) {
       // Check-in (drop-in-visit) prices off the admin-confirmed per-day
       // schedule (_reviewVisitSchedule, built by the review UI's Visit
       // Schedule editor), not a flat visitsPerDay x days multiplier.
@@ -4081,9 +4143,9 @@ window.confirmRequestDates = async (submissionId, item) => {
     // Confirmed per-day counts, carried onto the overnights doc server-side
     // so the scheduled charge (chargeScheduledReservations) and walker
     // payout both read the same admin-confirmed numbers the member was
-    // actually priced on, not the original estimate. overnight_request
+    // actually priced on, not the original estimate. A true overnight stay
     // keeps the exclusive-nights model — never a per-day count.
-    const visitSchedule = isDropIn
+    const visitSchedule = isCheckin
       ? Object.entries(_reviewVisitSchedule).map(([date, visits]) => ({ date, visits })).sort((a, b) => (a.date < b.date ? -1 : 1))
       : null;
 

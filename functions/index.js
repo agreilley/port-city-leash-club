@@ -3953,7 +3953,15 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
   const serviceKey = resolveServiceKey(reviewed.service);
   const serviceInfo = SERVICE_PRICES[serviceKey];
   const isWalk = !isOvernightRequest && serviceInfo?.unit === 'walk';
-  const isDropIn = !isOvernightRequest && serviceKey === 'drop-in-visit';
+  // Keyed on serviceKey alone, NOT also gated on !isOvernightRequest — a
+  // check-in visit booked through the overnight_request form (member picks
+  // "Check-In Visit" in portal-request-extras.html) is exactly as much a
+  // per-visit-schedule booking as one booked through service_request. The
+  // old `!isOvernightRequest &&` guard here meant that path never got a
+  // visitSchedule at all and was always priced as a flat estimate — see
+  // renderOvernightReview/reviewRecalcOvernight in admin/dashboard.html for
+  // the review-UI half of this fix.
+  const isCheckin = serviceKey === 'drop-in-visit';
 
   // Live member doc, not the submission's own ownerName/memberName snapshot
   // — same reasoning confirmOvernight's comment already gives ("the
@@ -4012,7 +4020,7 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
     return { docType: 'walk', docId: walkRef.id };
   }
 
-  if (isDropIn || isOvernightRequest) {
+  if (isCheckin || isOvernightRequest) {
     // 24-hour window before the card is touched, same as today — the
     // member has a real chance to change plans. chargeScheduledReservations
     // (unchanged) is what actually charges this once chargeScheduledFor
@@ -4033,10 +4041,10 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
       walkerId: '',
       extraPet: reviewed.extraPet,
       medication: reviewed.medication,
-      // visitSchedule only for check-ins (drop-in-visit) — overnight_request
-      // keeps the exclusive-nights model, same as confirmOvernight today
-      // (it never sets this field at all).
-      ...(isDropIn ? { visitSchedule: reviewed.visitSchedule } : {}),
+      // visitSchedule for any check-in visit booking, whichever form it was
+      // submitted through (service_request or overnight_request) — a true
+      // overnight-stay keeps the exclusive-nights model and never sets this.
+      ...(isCheckin ? { visitSchedule: reviewed.visitSchedule } : {}),
       confirmedTotalCents: Math.round(reviewed.amountInDollars * 100),
       // See markDatesConfirmed — chargeCustomerCard's Friends & Family guard
       // reads this off whichever doc it's handed, and chargeScheduledReservations
@@ -4048,10 +4056,10 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
     return { docType: 'overnight', docId: overnightRef.id, chargeScheduledFor };
   }
 
-  // Neither walk, drop-in, nor overnight_request — e.g. an overnight-stay
+  // Neither walk, check-in, nor overnight_request — e.g. an overnight-stay
   // booked through the public service_request form. No supplementary doc
   // is written, matching confirmServiceRequest's existing behavior exactly:
-  // only its isWalk and isDropIn branches ever write one; this third case
+  // only its isWalk and isCheckin branches ever write one; this third case
   // gets neither a walks nor an overnights record, and is charged
   // immediately below like a walk.
   return { docType: 'none' };
@@ -4061,10 +4069,10 @@ async function runServiceOrOvernightCharge(sub, submissionId, memberId, reviewed
   const { SERVICE_PRICES, resolveServiceKey } = await import('./pricing.js');
   const isOvernightRequest = sub.type === 'overnight_request';
   const serviceKey = resolveServiceKey(reviewed.service);
-  const isDropIn = !isOvernightRequest && serviceKey === 'drop-in-visit';
+  const isCheckin = serviceKey === 'drop-in-visit';
   const subRef = db.collection('submissions').doc(submissionId);
 
-  if (isDropIn || isOvernightRequest) {
+  if (isCheckin || isOvernightRequest) {
     await subRef.set({ paymentStatus: 'scheduled' }, { merge: true });
     return { paymentStatus: 'scheduled', chargeScheduledFor: null };
   }
@@ -4103,7 +4111,7 @@ async function runServiceOrOvernightCharge(sub, submissionId, memberId, reviewed
 
 // Dispatches to whichever of the three existing sendBookingConfirmedEmail
 // templates matches this booking — same selection logic confirmService-
-// Request/confirmOvernight use today (isDropIn/overnight_request ->
+// Request/confirmOvernight use today (isCheckin/overnight_request ->
 // portal-reservation-confirmed, isWalk -> walk-confirmed, else ->
 // portal-service-confirmed). Calls sendEmail directly rather than going
 // through the sendBookingConfirmedEmail onCall export — that export's only
@@ -4119,7 +4127,7 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
   const serviceKey = resolveServiceKey(reviewed.service);
   const serviceInfo = SERVICE_PRICES[serviceKey];
   const isWalk = !isOvernightRequest && serviceInfo?.unit === 'walk';
-  const isDropIn = !isOvernightRequest && serviceKey === 'drop-in-visit';
+  const isCheckin = serviceKey === 'drop-in-visit';
 
   const memberSnap = await db.collection('members').doc(memberId).get();
   const member = memberSnap.data();
@@ -4133,7 +4141,7 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
   const endDateStr = reviewed.endDate?.toDate ? isoDateStr(reviewed.endDate.toDate()) : null;
 
   let template, data;
-  if (isOvernightRequest || isDropIn) {
+  if (isOvernightRequest || isCheckin) {
     template = 'portal-reservation-confirmed';
     data = {
       firstName, petNames,
@@ -4141,7 +4149,7 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
       startDateStr, endDateStr,
       totalDollars: reviewed.amountInDollars,
       chargeDateStr: chargeResult.chargeScheduledFor?.toDate ? isoDateStr(chargeResult.chargeScheduledFor.toDate()) : null,
-      visitSchedule: isDropIn ? reviewed.visitSchedule : null,
+      visitSchedule: isCheckin ? reviewed.visitSchedule : null,
     };
   } else if (isWalk) {
     template = 'walk-confirmed';
