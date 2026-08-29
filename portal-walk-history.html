@@ -6,7 +6,7 @@
   <link rel="icon" type="image/png" href="images/favicon.png">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Walk History - Port City Leash Club</title>
+  <title>Care History - Port City Leash Club</title>
   <!-- Render-blocking on purpose — see js/portal-guard.css's own header for
        why this can't be JS-injected without reintroducing a chrome flash. -->
   <link rel="stylesheet" href="/js/portal-guard.css">
@@ -249,12 +249,40 @@
       align-items: center;
       justify-content: center;
       font-size: 28px;
-      
+      overflow: hidden;
       transition: all 0.2s;
+    }
+
+    .photo-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
     }
 
     .photo-item:hover {
       box-shadow: 0 4px 12px rgba(13, 27, 42, 0.1);
+    }
+
+    /* Record type badge — the one visual cue distinguishing a walk card
+       from an overnight/check-in visit card in the merged list. */
+    .record-badge {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 8px;
+      border-radius: 4px;
+      display: inline-block;
+      margin-top: 4px;
+    }
+    .record-badge.walk { background: rgba(26, 92, 48, 0.12); color: #1A5C30; }
+    .record-badge.visit { background: rgba(193, 123, 111, 0.15); color: #C17B6F; }
+
+    /* Deep-link target (?walk=... or ?overnight=...&visit=...) — a
+       temporary highlight so a member arriving from a text/email link can
+       find the specific record among everything else on the page. */
+    .visit-report.deep-link-highlight {
+      border-color: #C17B6F;
+      box-shadow: 0 0 0 3px rgba(193, 123, 111, 0.25);
     }
 
     /* Notes */
@@ -396,7 +424,7 @@
       <nav class="sidebar-nav">
         <a href="portal-dashboard.html" class="nav-item">Dashboard</a>
         <a href="portal-pet-profile.html" class="nav-item">Pet Profile</a>
-        <a href="portal-walk-history.html" class="nav-item active">Walk History</a>
+        <a href="portal-walk-history.html" class="nav-item active">Care History</a>
         <a href="portal-extras.html" class="nav-item">Additional Care</a>
         <a href="portal-referrals.html" class="nav-item">Refer a Friend</a>
         <a href="portal-account.html" class="nav-item">Account</a>
@@ -416,94 +444,125 @@
     <!-- Main Content -->
     <div class="main-content">
       <div class="page-header">
-        <h1 id="pageTitle" data-suffix="'s Walk History">Your Pet's Walk History</h1>
-        <p id="pageSubtitle" data-prefix="" data-suffix="'s completed walks and care updates">Your pet's completed walks and care updates</p>
+        <h1 id="pageTitle" data-suffix="'s Care History">Your Pet's Care History</h1>
+        <p id="pageSubtitle" data-prefix="" data-suffix="'s completed walks, overnight stays, and check-in visits">Your pet's completed walks, overnight stays, and check-in visits</p>
       </div>
 
       <!-- Filter Buttons -->
       <div class="filter-buttons">
-        <button class="filter-btn active" onclick="filterWalks('all', this)">All walks</button>
-        <button class="filter-btn" onclick="filterWalks('month', this)">This month</button>
-        <button class="filter-btn" onclick="filterWalks('last-month', this)">Last month</button>
+        <button class="filter-btn active" onclick="filterRecords('all', this)">All</button>
+        <button class="filter-btn" onclick="filterRecords('month', this)">This month</button>
+        <button class="filter-btn" onclick="filterRecords('last-month', this)">Last month</button>
       </div>
 
       <div id="walksContainer">
-        <div style="text-align:center;padding:48px 24px;color:#7A7A7A;font-size:14px;">Loading walk history…</div>
+        <div style="text-align:center;padding:48px 24px;color:#7A7A7A;font-size:14px;">Loading care history…</div>
       </div>
     </div>
   </div>
 
   <script>
-    let allWalks = [];
+    // allRecords holds BOTH completed walks and completed overnight/check-in
+    // visits, normalized to one shape so they can be merged into a single
+    // reverse-chronological list instead of two stacked sections. `type`
+    // ('walk' | 'visit') is what the merged renderer uses to pick the badge
+    // and detail line; `sortDate`/`monthKey`/`yearKey` are plain JS values so
+    // filtering/sorting never has to branch on Firestore-Timestamp-vs-string
+    // per record.
+    let allRecords = [];
 
-    // Walk notes are free text written by a walker (completeWalk() in
-    // walker/dashboard.html) and rendered here via innerHTML — unescaped,
-    // this is a stored-XSS path into a member's own browser the moment
-    // they open Walk History. Same escaping convention as esc() in
-    // walker/dashboard.html.
+    // Walk notes and visit notes are both free text written by a walker
+    // (completeWalk()/completeVisit() in walker/dashboard.html) and rendered
+    // here via innerHTML — unescaped, this is a stored-XSS path into a
+    // member's own browser the moment they open this page. Same escaping
+    // convention as esc() in walker/dashboard.html.
     function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
-    function filterWalks(period, button) {
-      document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-      button.classList.add('active');
-      renderWalks(period);
+    function toJsDate(val) {
+      return val?.toDate?.() || new Date(val);
     }
 
-    function renderWalks(period = 'all') {
+    function filterRecords(period, button) {
+      document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+      button.classList.add('active');
+      renderRecords(period);
+    }
+
+    function renderRecords(period = 'all') {
       const container = document.getElementById('walksContainer');
       const now = new Date();
       const currentMonth = now.getMonth();
       const currentYear = now.getFullYear();
 
-      let filtered = allWalks.filter(w => w.status === 'completed');
+      let filtered = allRecords;
 
       if (period === 'month') {
-        filtered = filtered.filter(w => {
-          const d = w.date?.toDate?.() || new Date(w.date);
-          return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-        });
+        filtered = filtered.filter(r => r.sortDate.getMonth() === currentMonth && r.sortDate.getFullYear() === currentYear);
       } else if (period === 'last-month') {
         const lm = currentMonth === 0 ? 11 : currentMonth - 1;
         const lmy = currentMonth === 0 ? currentYear - 1 : currentYear;
-        filtered = filtered.filter(w => {
-          const d = w.date?.toDate?.() || new Date(w.date);
-          return d.getMonth() === lm && d.getFullYear() === lmy;
-        });
+        filtered = filtered.filter(r => r.sortDate.getMonth() === lm && r.sortDate.getFullYear() === lmy);
       }
 
-      filtered.sort((a, b) => {
-        const da = a.date?.toDate?.() || new Date(a.date);
-        const db = b.date?.toDate?.() || new Date(b.date);
-        return db - da;
-      });
+      // Single reverse-chronological sort across BOTH record types — a
+      // member sees their week in order, not walks-then-visits. This is the
+      // one sort call for the whole merged list; each type no longer sorts
+      // independently the way allWalks used to.
+      filtered.sort((a, b) => b.sortDate - a.sortDate);
 
       if (!filtered.length) {
-        container.innerHTML = '<div style="text-align:center;padding:48px 24px;color:#7A7A7A;font-size:14px;">No completed walks yet.</div>';
+        container.innerHTML = '<div style="text-align:center;padding:48px 24px;color:#7A7A7A;font-size:14px;">No completed care yet.</div>';
         return;
       }
 
       const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-      container.innerHTML = filtered.map(w => {
-        const date = w.date?.toDate?.() || new Date(w.date);
-        const dateStr = monthNames[date.getMonth()] + ' ' + date.getDate() + ', ' + date.getFullYear();
-        const duration = (w.extended ? '45-minute walk' : (w.duration || '30-minute walk')) + (w.extended && w.extendedStatus === 'pending' ? ' (pending confirmation)' : '');
-        const slot = WALK_TIME_SLOT_LABELS[w.timeSlot] || w.timeSlot || '';
-        return '<div class="visit-report" data-month="' + (date.getMonth()+1) + '" data-year="' + date.getFullYear() + '">' +
+      container.innerHTML = filtered.map(r => {
+        const dateStr = monthNames[r.sortDate.getMonth()] + ' ' + r.sortDate.getDate() + ', ' + r.sortDate.getFullYear();
+        const photoHtml = r.photoUrl
+          ? '<div class="report-photos"><div class="photo-item"><img src="' + esc(r.photoUrl) + '" alt="Photo from ' + esc(r.badgeLabel) + '" loading="lazy"></div></div>'
+          : '';
+        return '<div class="visit-report" id="' + r.elementId + '" data-month="' + (r.sortDate.getMonth()+1) + '" data-year="' + r.sortDate.getFullYear() + '">' +
           '<div class="report-header">' +
-          '<div class="walker-avatar">🐾</div>' +
+          '<div class="walker-avatar">' + r.avatar + '</div>' +
           '<div class="walker-info">' +
-          '<div class="walker-name">' + esc(w.walkerName || 'Your Walker') + '</div>' +
-          '<div class="walker-role">' + slot + '</div>' +
+          '<div class="walker-name">' + esc(r.walkerName) + '</div>' +
+          '<div class="walker-role">' + esc(r.subLabel) + '</div>' +
+          '<span class="record-badge ' + r.type + '">' + esc(r.badgeLabel) + '</span>' +
           '</div>' +
           '<div class="report-date">' + dateStr + '</div>' +
           '</div>' +
           '<div class="report-content">' +
-          (w.notes ? '<div class="report-text">' + esc(w.notes) + '</div>' : '<div class="report-text" style="color:#aaa;font-style:italic;">No notes for this walk.</div>') +
-          '<div class="report-meta" style="margin-top:12px;font-size:13px;color:#7A7A7A;">' + duration + '</div>' +
+          (r.note ? '<div class="report-text">' + esc(r.note) + '</div>' : '<div class="report-text" style="color:#aaa;font-style:italic;">' + esc(r.noNoteText) + '</div>') +
+          photoHtml +
+          '<div class="report-meta" style="margin-top:12px;font-size:13px;color:#7A7A7A;">' + esc(r.metaLine) + '</div>' +
           '</div>' +
           '</div>';
       }).join('');
+
+      applyDeepLinkHighlight();
+    }
+
+    // ?walk={walkId} or ?overnight={overnightId}&visit={visitId} — scrolls
+    // the matching card into view and highlights it. If the id isn't in
+    // the currently-rendered set (wrong member, record doesn't exist, or
+    // simply not completed yet), this is a silent no-op: the page still
+    // shows the normal full list, no error state. Runs after every render
+    // (not just on load) so switching the period filter re-checks in case
+    // the deep-linked record is outside "This month"/"Last month".
+    function applyDeepLinkHighlight() {
+      const params = new URLSearchParams(location.search);
+      const walkId = params.get('walk');
+      const overnightId = params.get('overnight');
+      const visitId = params.get('visit');
+      const targetId = walkId ? ('record-walk-' + walkId)
+        : (overnightId && visitId) ? ('record-visit-' + overnightId + '-' + visitId)
+        : null;
+      if (!targetId) return;
+      const el = document.getElementById(targetId);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('deep-link-highlight');
     }
   </script>
 <script type="module">
@@ -513,6 +572,7 @@ import { initializeFirestore, memoryLocalCache, doc, getDoc, collection, query, 
 import { showError } from '/js/status.js';
 import { requireMemberDoc, showPortalLoadTimeout } from '/js/portal-guard.js';
 import { WALK_TIME_SLOT_LABELS } from './time-slots.js';
+import { VISIT_SLOT_LABELS } from './visit-slots.js';
 const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
 const app = getApps().find(a => a.name === 'member-app') || initializeApp(cfg, 'member-app');
 // Explicit persistence fallback chain — the SDK's default hierarchy probes
@@ -561,14 +621,72 @@ onAuthStateChanged(auth, async (user) => {
     if (subEl && subEl.dataset.prefix !== undefined && names.length)
       subEl.textContent = subEl.dataset.prefix + names.join(' & ') + (subEl.dataset.suffix || '');
 
-    // Load walks
-    const walksSnap = await getDocs(query(collection(db, 'walks'), where('memberId', '==', user.uid)));
-    window.allWalks = walksSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderWalks('all');
+    // Load walks and overnight/check-in reservations in parallel, then
+    // normalize both into the single allRecords shape the merged renderer
+    // expects. Neither query is paginated/limited — this always loads the
+    // member's ENTIRE history in one shot (pre-existing behavior for walks;
+    // the new overnights query matches it) — so a deep link can never land
+    // outside what's loaded. That's fine at today's volume, but it's an
+    // unbounded read that will eventually need a real limit/cursor as
+    // members accumulate years of history; this build didn't add that cap,
+    // it just didn't make the existing gap any worse.
+    const [walksSnap, overnightsSnap] = await Promise.all([
+      getDocs(query(collection(db, 'walks'), where('memberId', '==', user.uid))),
+      getDocs(query(collection(db, 'overnights'), where('memberId', '==', user.uid))),
+    ]);
+
+    const walkRecords = walksSnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(w => w.status === 'completed')
+      .map(w => {
+        const duration = (w.extended ? '45-minute walk' : (w.duration || '30-minute walk')) + (w.extended && w.extendedStatus === 'pending' ? ' (pending confirmation)' : '');
+        const slot = WALK_TIME_SLOT_LABELS[w.timeSlot] || w.timeSlot || '';
+        return {
+          type: 'walk',
+          elementId: 'record-walk-' + w.id,
+          sortDate: toJsDate(w.date),
+          avatar: '🐾',
+          walkerName: w.walkerName || 'Your Walker',
+          subLabel: slot,
+          badgeLabel: 'Dog Walk',
+          note: w.notes || '',
+          noNoteText: 'No notes for this walk.',
+          photoUrl: w.photoUrl || null,
+          metaLine: duration,
+        };
+      });
+
+    // Each overnights doc can carry many individually-completed visits
+    // (generateOvernightVisits, functions/index.js) — flatMap so every
+    // completed visit becomes its own card, not one card per reservation.
+    const visitRecords = overnightsSnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .flatMap(o => {
+        const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
+        const serviceLabel = isCheckin ? 'Check-In Visit' : 'Overnight Stay';
+        return (Array.isArray(o.visits) ? o.visits : [])
+          .filter(v => v.status === 'completed')
+          .map(v => ({
+            type: 'visit',
+            elementId: 'record-visit-' + o.id + '-' + v.id,
+            sortDate: toJsDate(v.date),
+            avatar: isCheckin ? '📍' : '🌙',
+            walkerName: v.walkerName || o.walkerName || 'Your Walker',
+            subLabel: VISIT_SLOT_LABELS[v.slot] || v.slot || '',
+            badgeLabel: serviceLabel,
+            note: v.note || '',
+            noNoteText: 'No notes for this visit.',
+            photoUrl: v.photoUrl || null,
+            metaLine: serviceLabel,
+          }));
+      });
+
+    allRecords = [...walkRecords, ...visitRecords];
+    renderRecords('all');
   } catch(e) {
-    console.error('walk history load:', e.message);
+    console.error('care history load:', e.message);
     document.getElementById('walksContainer').innerHTML = '';
-    showError("We couldn't load your walk history. Please try again.", { onRetry: () => location.reload() });
+    showError("We couldn't load your care history. Please try again.", { onRetry: () => location.reload() });
   }
 });
 </script>

@@ -37,7 +37,7 @@ const NAV_ITEMS = [
     icon: '<rect x="2" y="2" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="2" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="12" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="12" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/>',
   },
   {
-    label: 'Walks',
+    label: 'Care History',
     href: 'portal-walk-history.html',
     match: ['portal-walk-history', 'portal-extend-walk', 'portal-reschedule'],
     icon: '<path d="M4 11h14M4 6h14M4 16h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',

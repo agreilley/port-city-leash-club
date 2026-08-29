@@ -3397,6 +3397,18 @@ function twilioClient() {
   return require('twilio')(TWILIO_ACCOUNT_SID.value(), TWILIO_AUTH_TOKEN.value());
 }
 
+// A pet's name is free text (member/admin-entered) with no length limit
+// enforced anywhere upstream — truncated defensively wherever it's
+// interpolated into an SMS body next to a portal link, so an unusually
+// long name can never push the message past the 160-character single-
+// segment limit. Twilio silently bills a second segment for anything past
+// that, on every send, forever — this is cheap insurance against that, not
+// a cosmetic nicety.
+function truncateForSms(name, maxLen) {
+  if (!name || name.length <= maxLen) return name;
+  return name.slice(0, maxLen - 1) + '…';
+}
+
 // ── Gmail (email) ────────────────────────────────────────────────────────
 function gmailOAuthClient() {
   const { google } = require('googleapis');
@@ -5235,9 +5247,17 @@ exports.onWalkCompleted = onDocumentUpdated({
   if (!member.phone) return; // nothing to text
 
   const dogName = member.dogName || (Array.isArray(member.dogs) && member.dogs[0]?.name) || 'Your dog';
-  const body = after.notes
-    ? `${dogName} had a great walk! "${after.notes}" — Port City Leash Club`
-    : `${dogName} just finished their walk with Port City Leash Club! 🐾`;
+  // Links out to the walk's card in the portal (Care History) instead of
+  // attaching the photo as MMS media — one message works whether or not
+  // there's a photo, notes of any length are readable in full at the link
+  // rather than being crammed into the SMS itself, and the member can
+  // revisit it later instead of only seeing the photo once in a text
+  // thread. capped at 18 chars (see truncateForSms) so a long dog name can
+  // never push this over one SMS segment (160 chars) — verified against
+  // the actual link length below: fixed text + a worst-case-length walk id
+  // is 139 chars, +18 for name = 157, comfortably under the limit.
+  const walkLink = `${BUSINESS_PORTAL_ORIGIN}/portal-walk-history?walk=${event.params.walkId}`;
+  const body = `${truncateForSms(dogName, 18)} had a great walk! See notes and photos: ${walkLink}`;
 
   if (!twilioConfigured()) {
     await logConversationMessage(after.memberId, {
@@ -5253,7 +5273,6 @@ exports.onWalkCompleted = onDocumentUpdated({
       to: member.phone,
       from: TWILIO_PHONE_NUMBER.value(),
       body,
-      mediaUrl: after.photoUrl ? [after.photoUrl] : undefined,
     });
     await logConversationMessage(after.memberId, {
       channel: 'sms', direction: 'outbound', body, mediaUrl: after.photoUrl || null,
@@ -5335,6 +5354,119 @@ exports.onOvernightCompleted = onDocumentUpdated({
       }, { merge: true }).catch(writeErr => {
         console.error(`onOvernightCompleted: failed to write needsReview for ${after.memberId}:`, writeErr.message);
       });
+    }
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 9c. Automated per-visit completion notice — fires the moment a walker
+//    marks an individual overnight/check-in VISIT complete (completeVisit(),
+//    walker/dashboard.html), same "no admin involvement" posture as
+//    onWalkCompleted above. `visits` is a plain array field on the
+//    overnights doc (see generateOvernightVisits), not a subcollection, so
+//    there's no per-visit document to trigger on — this diffs before/after
+//    to find which specific visit(s) actually flipped
+//    expected -> completed in THIS write, and notifies once per visit.
+//
+//    Unlike onWalkCompleted/onOvernightCompleted, this trigger never writes
+//    back to the doc it's triggered by (no payout stamping happens here —
+//    that's still entirely calculateOvernightPayout's job, untouched), so
+//    there's no self-retrigger loop to guard against. The guard below only
+//    has to rule out a write that leaves an already-completed visit's
+//    status untouched (e.g. a later, unrelated edit to the same doc).
+//
+//    SMS and email are independent sends: each is fully contained in its
+//    own try/catch (sendEmail also never throws by its own contract — see
+//    functions/lib/email.js), so a Twilio failure can never prevent the
+//    email from going out, or vice versa.
+// ─────────────────────────────────────────────────────────────────────────
+exports.onOvernightVisitCompleted = onDocumentUpdated({
+  document: 'overnights/{overnightId}',
+  secrets: [TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, RESEND_API_KEY],
+}, async (event) => {
+  const before = event.data.before.data() || {};
+  const after = event.data.after.data() || {};
+  const overnightId = event.params.overnightId;
+
+  const afterVisits = Array.isArray(after.visits) ? after.visits : [];
+  if (!afterVisits.length) return;
+
+  const beforeById = new Map((Array.isArray(before.visits) ? before.visits : []).map(v => [v.id, v]));
+  const newlyCompleted = afterVisits.filter(v => v.status === 'completed' && beforeById.get(v.id)?.status !== 'completed');
+  if (!newlyCompleted.length) return;
+
+  if (!after.memberId) return;
+  const memberSnap = await db.collection('members').doc(after.memberId).get();
+  if (!memberSnap.exists) return;
+  const member = memberSnap.data();
+
+  const { VISIT_SLOT_LABELS } = await import('./visit-slots.js');
+  const isCheckin = after.serviceType === 'drop-in-visit' || after.serviceType === 'checkin';
+  const serviceLabel = isCheckin ? 'Check-In Visit' : 'Overnight Stay';
+  const petNames = Array.isArray(member.dogs) ? member.dogs.map((d) => d && d.name).filter(Boolean) : (member.dogName ? [member.dogName] : []);
+
+  for (const visit of newlyCompleted) {
+    const portalUrl = `${BUSINESS_PORTAL_ORIGIN}/portal-walk-history?overnight=${overnightId}&visit=${visit.id}`;
+
+    // ── SMS — mirrors onWalkCompleted's structure exactly: member-phone
+    // guard, twilioConfigured() check, pending_credentials fallback,
+    // conversations log write on every outcome. Generic body text (no pet
+    // name interpolated) so the 160-char budget is fixed and provably safe
+    // regardless of pet name length — unlike the walk link, an
+    // ?overnight=&visit= link alone leaves very little room (see this
+    // trigger's own char-count note in the commit report).
+    if (member.phone) {
+      const body = `Today's visit is complete. Notes and photos: ${portalUrl}`;
+      if (!twilioConfigured()) {
+        await logConversationMessage(after.memberId, {
+          channel: 'sms', direction: 'outbound', body, mediaUrl: visit.photoUrl || null,
+          sentBy: 'system', automated: true, status: 'pending_credentials',
+        }).catch((e) => console.error(`onOvernightVisitCompleted: pending_credentials log failed for visit ${visit.id}:`, e.message));
+      } else {
+        try {
+          const client = twilioClient();
+          const twilioMsg = await client.messages.create({ to: member.phone, from: TWILIO_PHONE_NUMBER.value(), body });
+          await logConversationMessage(after.memberId, {
+            channel: 'sms', direction: 'outbound', body, mediaUrl: visit.photoUrl || null,
+            sentBy: 'system', automated: true, status: 'sent', externalId: twilioMsg.sid,
+          });
+        } catch (e) {
+          console.error(`onOvernightVisitCompleted: SMS failed for visit ${visit.id}:`, e.message);
+          await logConversationMessage(after.memberId, {
+            channel: 'sms', direction: 'outbound', body, mediaUrl: visit.photoUrl || null,
+            sentBy: 'system', automated: true, status: 'failed',
+          }).catch((logErr) => console.error(`onOvernightVisitCompleted: failed-status log failed for visit ${visit.id}:`, logErr.message));
+        }
+      }
+    }
+
+    // ── Email — sent regardless of phone presence or Twilio configuration,
+    // unlike SMS above. idempotencyKey is per-visit (overnightId + visitId),
+    // not per-doc, so completing a second visit on the same reservation
+    // later is a fresh send, not deduped against the first visit's email.
+    if (member.email) {
+      try {
+        await sendEmail({
+          to: member.email,
+          template: 'visit-completed',
+          data: {
+            firstName: (member.name || '').trim().split(/\s+/)[0] || 'there',
+            petNames,
+            serviceLabel,
+            dateStr: visit.date,
+            slotLabel: VISIT_SLOT_LABELS[visit.slot] || visit.slot || '',
+            note: visit.note || '',
+            photoUrl: visit.photoUrl || null,
+            portalUrl,
+          },
+          idempotencyKey: `visit-completed:${overnightId}:${visit.id}`,
+        });
+      } catch (e) {
+        // sendEmail's own contract is "never throws" — this catch exists
+        // only as defense-in-depth so a future change to that contract
+        // can't silently take this whole trigger down with it.
+        console.error(`onOvernightVisitCompleted: email threw unexpectedly for visit ${visit.id}:`, e.message);
+      }
     }
   }
 });

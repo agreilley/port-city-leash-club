@@ -49,6 +49,7 @@ const TEMPLATES = {
   'portal-access': require('../templates/portal-access'),
   'referral-code-delivery': require('../templates/referral-code-delivery'),
   'billing-needs-review': require('../templates/billing-needs-review'),
+  'visit-completed': require('../templates/visit-completed'),
 };
 
 const MAX_ATTEMPTS = 3;
