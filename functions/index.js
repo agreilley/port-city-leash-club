@@ -3947,6 +3947,106 @@ function serviceChargeDescription(serviceKeyRaw, sub, servicePrices, resolveKey)
   return `Port City Leash Club - ${label}${who}`;
 }
 
+// Builds the per-visit tracking array written onto a new overnights doc —
+// one entry per individually-completable visit, so a 3-day/3-visit
+// reservation produces 9 trackable entries instead of one reservation-wide
+// completion. `id` is a real Firestore auto-ID (minted via .doc().id, never
+// written) rather than an array index, since index-based identity breaks
+// the moment any visit is ever removed/reordered and a read-modify-write
+// (see completeVisit in walker/dashboard.html) needs a stable key to find
+// the right entry again.
+//
+// Deliberately does NOT touch payout: this array is walker-facing
+// scheduling/completion state, entirely separate from
+// calculateOvernightPayout (walker-pricing.js), which keeps reading
+// visitSchedule's `visits` counts and the reservation-level `payout` stamp
+// exactly as it always has. See isCheckin's own comment above for why
+// visitSchedule itself now reaches this function for BOTH submission types.
+function generateOvernightVisits(reviewed, isCheckin) {
+  const mintVisitId = () => db.collection('overnights').doc().id;
+
+  if (isCheckin) {
+    const schedule = Array.isArray(reviewed.visitSchedule) ? reviewed.visitSchedule : [];
+    return schedule.flatMap((day) => {
+      const count = day.visits || 0;
+      // slots always arrives with length === visits from the admin editor
+      // (updateVisitScheduleCount keeps them in lockstep) — this fallback is
+      // defense against a malformed/missing slots array only, not an
+      // expected path.
+      const slots = Array.isArray(day.slots) && day.slots.length === count
+        ? day.slots
+        : Array(count).fill('midday');
+      return slots.map((slot) => ({
+        id: mintVisitId(),
+        date: day.date,
+        slot,
+        status: 'expected',
+        completedAt: null,
+        note: '',
+        photoUrl: null,
+        walkerId: '',
+        walkerName: '',
+      }));
+    });
+  }
+
+  // True overnight stay — flat $115/night to the member, $65/night to the
+  // walker (a composite that already bakes in a mid-day check-in — see
+  // WALKER_RATES.overnight's own comment in walker-pricing.js). Visits here
+  // are OPERATIONAL TRACKING ONLY: they never feed calculateServiceTotal
+  // (member price) or calculateOvernightPayout (walker pay), which is why
+  // this branch reads reviewed.overnightVisitPlan — separate from
+  // reviewed.visitSchedule, the field isCheckin's branch above uses and
+  // that payout actually keys off. Writing that field here, even just to
+  // reuse it, would flip this reservation's payout to per-visit — exactly
+  // the thing this separate field name exists to prevent.
+  //
+  // Prefers the admin's edited per-night plan (built by the Visit Schedule
+  // grid in renderOvernightReview, admin/dashboard.html) when present —
+  // that's where a walker's "the member gets back at 2pm, add a morning
+  // visit on the return day" case gets captured. Falls back to one visit
+  // per NIGHT (fixed at 'midday', the composite's baked-in check-in) only
+  // if no plan was supplied at all (e.g. older/malformed data) — nights are
+  // EXCLUSIVE of the return date, matching getDaysBetween's own convention:
+  // a Friday-to-Monday stay is 3 nights (Fri, Sat, Sun), not 4.
+  if (Array.isArray(reviewed.overnightVisitPlan) && reviewed.overnightVisitPlan.length) {
+    return reviewed.overnightVisitPlan.flatMap((day) => {
+      const slots = Array.isArray(day.slots) ? day.slots : [];
+      return slots.map((slot) => ({
+        id: mintVisitId(),
+        date: day.date,
+        slot,
+        status: 'expected',
+        completedAt: null,
+        note: '',
+        photoUrl: null,
+        walkerId: '',
+        walkerName: '',
+      }));
+    });
+  }
+
+  if (!reviewed.startDate || !reviewed.endDate) return [];
+  const dates = [];
+  const cursor = new Date(reviewed.startDate.toDate());
+  const end = new Date(reviewed.endDate.toDate());
+  while (cursor < end) { // exclusive of the return date — nights only
+    dates.push(isoDateStr(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates.map((date) => ({
+    id: mintVisitId(),
+    date,
+    slot: 'midday',
+    status: 'expected',
+    completedAt: null,
+    note: '',
+    photoUrl: null,
+    walkerId: '',
+    walkerName: '',
+  }));
+}
+
 async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, reviewed) {
   const { SERVICE_PRICES, resolveServiceKey } = await import('./pricing.js');
   const isOvernightRequest = sub.type === 'overnight_request';
@@ -4045,6 +4145,10 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
       // submitted through (service_request or overnight_request) — a true
       // overnight-stay keeps the exclusive-nights model and never sets this.
       ...(isCheckin ? { visitSchedule: reviewed.visitSchedule } : {}),
+      // Per-visit tracking — see generateOvernightVisits' own comment for
+      // why this is safe to write in the same create call rather than a
+      // follow-up update (no payout/pricing field above depends on it).
+      visits: generateOvernightVisits(reviewed, isCheckin),
       confirmedTotalCents: Math.round(reviewed.amountInDollars * 100),
       // See markDatesConfirmed — chargeCustomerCard's Friends & Family guard
       // reads this off whichever doc it's handed, and chargeScheduledReservations
@@ -4646,7 +4750,7 @@ exports.markDatesConfirmed = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KE
   await assertIsAdmin(request.auth);
   const {
     submissionId, service, startDate: startDateStr, endDate: endDateStr,
-    timeSlot, extraPet, medication, visitSchedule, amountInDollars, unitCount,
+    timeSlot, extraPet, medication, visitSchedule, overnightVisitPlan, amountInDollars, unitCount,
     travelDiscountApplied, travelDiscountPercent,
   } = request.data || {};
   if (!submissionId) throw new HttpsError('invalid-argument', 'submissionId is required.');
@@ -4679,6 +4783,12 @@ exports.markDatesConfirmed = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KE
     timeSlot: timeSlot ?? sub.timeSlot ?? null,
     extraPet: !!extraPet, medication: !!medication,
     visitSchedule: visitSchedule || null,
+    // Overnight-stay-only, and NEVER persisted onto the overnights doc
+    // itself (see generateOvernightVisits) — a separate field from
+    // visitSchedule specifically so it can never be mistaken for the field
+    // calculateOvernightPayout keys off. Only used, transiently, to seed
+    // that reservation's `visits` array at creation time.
+    overnightVisitPlan: overnightVisitPlan || null,
     amountInDollars,
     // Carried through to whichever doc chargeCustomerCard eventually reads
     // (submission, directly via the {...reviewed} merge below, or the

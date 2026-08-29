@@ -962,6 +962,7 @@ import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalk
 // those stay separate, see buildApplicationAvailabilityGrid and
 // buildScreeningAvailabilityGrid below.
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
+import { VISIT_SLOTS, VISIT_SLOT_LABELS, defaultSlotsForCount } from '../visit-slots.js';
 import { calculateEarnings } from '../walker-pricing.js';
 import { showError } from '/js/status.js';
 
@@ -3560,6 +3561,11 @@ let _reviewMemberId = null; // service_request/overnight_request review only —
 // persists across a Start/End Date edit so a day that survives the edit
 // keeps whatever count was already set for it, rather than resetting to
 // the member's flat estimate every time a date field changes.
+// Each day: { count, slots: [VISIT_SLOTS key, ...] } — slots.length always
+// equals count (kept in sync by updateVisitScheduleCount). count is what
+// computeDropInVisitTotal/payout/the server ever cared about before this
+// change; slots is new, additive state for visit generation
+// (runServiceOrOvernightBookingDoc) and has no effect on pricing.
 let _reviewVisitSchedule = {};
 let _reviewItemVisitsPerDay = 1; // the member's own estimate — default for any newly-added day
 
@@ -3567,10 +3573,11 @@ let _reviewItemVisitsPerDay = 1; // the member's own estimate — default for an
 // the current Start/End Date range — one row per calendar day, inclusive
 // of both bounds (drop-in-visit is priced as an inclusive day count, same
 // convention as calculateServiceTotal). A date already in
-// _reviewVisitSchedule keeps its count; a newly in-range date (or the
-// modal's first render) defaults to defaultVisits. Dates no longer in
-// range are dropped so a later widen-then-narrow doesn't resurrect a
-// stale count for a day that isn't being billed.
+// _reviewVisitSchedule keeps its count and slots; a newly in-range date (or
+// the modal's first render) defaults to defaultVisits, with slots defaulted
+// by defaultSlotsForCount. Dates no longer in range are dropped so a later
+// widen-then-narrow doesn't resurrect a stale count for a day that isn't
+// being billed.
 function syncVisitScheduleRows(defaultVisits) {
   const container = document.getElementById('rev-visit-schedule');
   if (!container) return;
@@ -3587,14 +3594,27 @@ function syncVisitScheduleRows(defaultVisits) {
   }
 
   const nextSchedule = {};
-  dates.forEach(d => { nextSchedule[d] = _reviewVisitSchedule[d] !== undefined ? _reviewVisitSchedule[d] : defaultVisits; });
+  dates.forEach(d => {
+    nextSchedule[d] = _reviewVisitSchedule[d] !== undefined
+      ? _reviewVisitSchedule[d]
+      : { count: defaultVisits, slots: defaultSlotsForCount(defaultVisits) };
+  });
   _reviewVisitSchedule = nextSchedule;
 
   container.innerHTML = dates.map(d => {
+    const { count, slots } = _reviewVisitSchedule[d];
     const label = new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0;">
-      <span style="font-size:13px;color:var(--navy);">${label}</span>
-      <input type="number" min="0" value="${_reviewVisitSchedule[d]}" style="width:64px;" onchange="updateVisitScheduleCount('${d}', this.value)">
+    const slotPickers = slots.map((slot, i) => `
+      <select style="font-size:12px;" onchange="updateVisitScheduleSlot('${d}', ${i}, this.value)">
+        ${VISIT_SLOTS.map(key => `<option value="${key}" ${slot === key ? 'selected' : ''}>${VISIT_SLOT_LABELS[key]}</option>`).join('')}
+      </select>
+    `).join('');
+    return `<div style="padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.05);">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+        <span style="font-size:13px;color:var(--navy);">${label}</span>
+        <input type="number" min="0" value="${count}" style="width:64px;" onchange="updateVisitScheduleCount('${d}', this.value)">
+      </div>
+      ${count > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">${slotPickers}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -3607,8 +3627,20 @@ function syncVisitScheduleRows(defaultVisits) {
 let _reviewRecalcFn = null;
 
 window.updateVisitScheduleCount = (dateStr, value) => {
-  _reviewVisitSchedule[dateStr] = Math.max(0, parseInt(value, 10) || 0);
+  const count = Math.max(0, parseInt(value, 10) || 0);
+  // Regenerates slots from scratch on every count change rather than
+  // preserving prior per-visit picks — simpler than reconciling "which of
+  // the old slots survive a shrink/grow," and the admin can still re-pick
+  // any slot afterward before confirming.
+  _reviewVisitSchedule[dateStr] = { count, slots: defaultSlotsForCount(count) };
   _reviewRecalcFn?.();
+};
+
+window.updateVisitScheduleSlot = (dateStr, index, slot) => {
+  const entry = _reviewVisitSchedule[dateStr];
+  if (!entry) return;
+  entry.slots[index] = slot;
+  // No recalc — slot choice doesn't affect price, only scheduling.
 };
 
 // Shared markup for the per-day Visit Schedule editor — one field, used
@@ -3619,7 +3651,7 @@ window.updateVisitScheduleCount = (dateStr, value) => {
 // the pricing logic already had (see isCheckin's own comment in
 // confirmRequestDates for that history).
 function visitScheduleFieldHTML() {
-  return `<div class="form-field" id="rev-visits-field" style="display:none;grid-column:1 / -1;"><label>Visit Schedule</label><div id="rev-visit-schedule"></div></div>`;
+  return `<div class="form-field" id="rev-visits-field" style="display:none;grid-column:1 / -1;"><label>Visit Schedule <span style="font-weight:400;color:var(--text-light);">(sets the total above)</span></label><div id="rev-visit-schedule"></div></div>`;
 }
 
 function setVisitScheduleFieldVisible(visible) {
@@ -3653,7 +3685,7 @@ function computeAndRenderDropInPricing(extraPet, medication, travelDiscountPerce
 function computeDropInVisitTotal(extraPet, medication) {
   const info = SERVICE_PRICES['drop-in-visit'];
   const days = Object.keys(_reviewVisitSchedule).length || 1;
-  const totalVisits = Object.values(_reviewVisitSchedule).reduce((a, b) => a + b, 0);
+  const totalVisits = Object.values(_reviewVisitSchedule).reduce((a, entry) => a + entry.count, 0);
   const serviceTotal = info.price * totalVisits;
   const extraPetTotal = extraPet ? EXTRA_PET_FEE * days : 0;
   const medicationTotal = medication ? MEDICATION_FEE * days : 0;
@@ -3663,6 +3695,104 @@ function computeDropInVisitTotal(extraPet, medication) {
     ...(medication ? [{ label: 'Medication admin', amount: medicationTotal }] : []),
   ];
   return { total: serviceTotal + extraPetTotal + medicationTotal, breakdown, totalVisits, days };
+}
+
+// ── Overnight-stay Visit Schedule (SCHEDULING ONLY — never pricing) ────────
+// A true overnight stay is a flat $115/night to the member and $65/night to
+// the walker (a composite that already bakes in one mid-day check-in — see
+// WALKER_RATES.overnight's comment in walker-pricing.js). This grid exists
+// so a walker's actual per-night visit plan can be tracked and adjusted
+// (e.g. adding a morning visit on the return day when the member gets back
+// mid-afternoon) WITHOUT that plan ever being able to change what the
+// member is charged or what the walker is paid — completely separate state
+// from _reviewVisitSchedule above, which check-ins route through
+// computeDropInVisitTotal specifically because check-in pricing IS
+// per-visit. Nothing in this block calls a pricing function, and its output
+// is carried to the server as `overnightVisitPlan`, a field name deliberately
+// distinct from `visitSchedule` — see confirmRequestDates and
+// generateOvernightVisits (functions/index.js) for why that distinction
+// has to be preserved all the way through.
+let _reviewOvernightVisitSchedule = {};
+
+// 1 visit/night defaults to 'midday' (the composite rate's baked-in
+// check-in), not defaultSlotsForCount's 'morning' default — that function is
+// still used once a day's count is manually pushed to 2+, where spreading
+// visits across the day makes more sense than stacking them all at midday.
+function defaultOvernightSlotsForCount(count) {
+  return count === 1 ? ['midday'] : defaultSlotsForCount(count);
+}
+
+// One row per calendar day INCLUDING the return day — unlike check-ins
+// (inclusive because every day is billed), the return day here defaults to
+// ZERO visits (the stay is already paid for as nights, and a walker doesn't
+// automatically owe a checkout-day visit), but it still needs its own
+// editable row so admin can add one when the member gets back late enough
+// to need it.
+function syncOvernightVisitScheduleRows() {
+  const container = document.getElementById('rev-overnight-visit-schedule');
+  if (!container) return;
+  const startStr = document.getElementById('rev-start')?.value;
+  const endStr = document.getElementById('rev-end')?.value;
+  if (!startStr || !endStr || endStr <= startStr) { container.innerHTML = ''; _reviewOvernightVisitSchedule = {}; return; }
+
+  const dates = [];
+  const cursor = new Date(`${startStr}T12:00:00`);
+  const end = new Date(`${endStr}T12:00:00`);
+  while (cursor <= end) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  const lastDate = dates[dates.length - 1];
+
+  const nextSchedule = {};
+  dates.forEach(d => {
+    if (_reviewOvernightVisitSchedule[d] !== undefined) { nextSchedule[d] = _reviewOvernightVisitSchedule[d]; return; }
+    const count = d === lastDate ? 0 : 1;
+    nextSchedule[d] = { count, slots: defaultOvernightSlotsForCount(count) };
+  });
+  _reviewOvernightVisitSchedule = nextSchedule;
+
+  container.innerHTML = dates.map(d => {
+    const { count, slots } = _reviewOvernightVisitSchedule[d];
+    const label = new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + (d === lastDate ? ' (return day)' : '');
+    const slotPickers = slots.map((slot, i) => `
+      <select style="font-size:12px;" onchange="updateOvernightVisitScheduleSlot('${d}', ${i}, this.value)">
+        ${VISIT_SLOTS.map(key => `<option value="${key}" ${slot === key ? 'selected' : ''}>${VISIT_SLOT_LABELS[key]}</option>`).join('')}
+      </select>
+    `).join('');
+    return `<div style="padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.05);">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+        <span style="font-size:13px;color:var(--navy);">${label}</span>
+        <input type="number" min="0" value="${count}" style="width:64px;" onchange="updateOvernightVisitScheduleCount('${d}', this.value)">
+      </div>
+      ${count > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">${slotPickers}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// Neither handler ever calls _reviewRecalcFn or touches rev-total-override —
+// that's the whole point of this being a separate grid from the check-in
+// one above. Re-rendering after a count change is a plain re-sync, not a
+// price recalculation.
+window.updateOvernightVisitScheduleCount = (dateStr, value) => {
+  const count = Math.max(0, parseInt(value, 10) || 0);
+  _reviewOvernightVisitSchedule[dateStr] = { count, slots: defaultOvernightSlotsForCount(count) };
+  syncOvernightVisitScheduleRows();
+};
+
+window.updateOvernightVisitScheduleSlot = (dateStr, index, slot) => {
+  const entry = _reviewOvernightVisitSchedule[dateStr];
+  if (!entry) return;
+  entry.slots[index] = slot;
+};
+
+function overnightVisitScheduleFieldHTML() {
+  return `<div class="form-field" id="rev-overnight-visits-field" style="display:none;grid-column:1 / -1;"><label>Visit Schedule <span style="font-weight:400;color:var(--text-light);">(scheduling only, does not change the total)</span></label><div id="rev-overnight-visit-schedule"></div></div>`;
+}
+
+function setOvernightVisitScheduleFieldVisible(visible) {
+  const field = document.getElementById('rev-overnight-visits-field');
+  if (field) field.style.display = visible ? 'flex' : 'none';
 }
 
 function toDateInputValue(val) {
@@ -3857,6 +3987,7 @@ function renderOvernightReview(item) {
   _reviewTotalTouched = false;
   _reviewMemberId = item.memberId || null;
   _reviewVisitSchedule = {};
+  _reviewOvernightVisitSchedule = {};
   _reviewItemVisitsPerDay = item.visitsPerDay || 1;
   _reviewRecalcFn = reviewRecalcOvernight;
 
@@ -3871,6 +4002,7 @@ function renderOvernightReview(item) {
         </select>
       </div>
       ${visitScheduleFieldHTML()}
+      ${overnightVisitScheduleFieldHTML()}
       <div class="form-field"><label>Start Date</label><input type="date" id="rev-start" value="${escapeHtml(toDateInputValue(item.startDate))}" onchange="reviewRecalcOvernight()"></div>
       <div class="form-field"><label>End Date</label><input type="date" id="rev-end" value="${escapeHtml(toDateInputValue(item.endDate))}" onchange="reviewRecalcOvernight()"></div>
     </div>
@@ -3920,6 +4052,7 @@ window.reviewRecalcOvernight = () => {
   const service = document.getElementById('rev-service').value;
   const isCheckin = resolveServiceKey(service) === 'drop-in-visit';
   setVisitScheduleFieldVisible(isCheckin);
+  setOvernightVisitScheduleFieldVisible(!isCheckin);
   const startDate = document.getElementById('rev-start').value;
   const endDate = document.getElementById('rev-end').value;
   const extraPet = document.getElementById('rev-extra-pet').checked;
@@ -3937,12 +4070,18 @@ window.reviewRecalcOvernight = () => {
     // silently fall back to a flat estimate here.
     total = computeAndRenderDropInPricing(extraPet, medication, travelDiscountPercent);
   } else {
+    // True overnight stay — flat per-night pricing, exactly as before this
+    // build. syncOvernightVisitScheduleRows only keeps that grid's date
+    // range in sync with Start/End Date below; it's a pure UI side effect
+    // and never feeds `raw`/`total` here — see that grid's own top comment
+    // for why it has to stay entirely outside this pricing path.
     const raw = calculateServiceTotal({ serviceKey: service, startDate, endDate, extraPet, medication });
     const applied = travelDiscountPercent > 0
       ? applyTravelDiscount(raw.total, raw.breakdown, travelDiscountPercent)
       : raw;
     total = applied.total;
     renderReviewBreakdown(applied.breakdown, applied.total);
+    syncOvernightVisitScheduleRows();
   }
   if (!_reviewTotalTouched) {
     document.getElementById('rev-total-override').value = total;
@@ -4145,14 +4284,29 @@ window.confirmRequestDates = async (submissionId, item) => {
     // payout both read the same admin-confirmed numbers the member was
     // actually priced on, not the original estimate. A true overnight stay
     // keeps the exclusive-nights model — never a per-day count.
+    // `visits` stays a plain count (unchanged shape — calculateOvernightPayout
+    // reads exactly this field and is out of scope for this change); `slots`
+    // is new, additive per-visit scheduling data consumed only by visit
+    // generation (runServiceOrOvernightBookingDoc), not by pricing or payout.
     const visitSchedule = isCheckin
-      ? Object.entries(_reviewVisitSchedule).map(([date, visits]) => ({ date, visits })).sort((a, b) => (a.date < b.date ? -1 : 1))
+      ? Object.entries(_reviewVisitSchedule).map(([date, entry]) => ({ date, visits: entry.count, slots: entry.slots })).sort((a, b) => (a.date < b.date ? -1 : 1))
+      : null;
+
+    // A true overnight stay's per-night visit plan — deliberately a
+    // DIFFERENT field name from visitSchedule above, sent only when this is
+    // an overnight_request AND not a check-in. Server-side
+    // (generateOvernightVisits, functions/index.js) uses this only to seed
+    // that reservation's `visits` tracking array; it's never persisted onto
+    // the overnights doc and never reaches calculateOvernightPayout, which
+    // is exactly why it can't reuse the visitSchedule field name.
+    const overnightVisitPlan = (isOvernightRequest && !isCheckin)
+      ? Object.entries(_reviewOvernightVisitSchedule).map(([date, entry]) => ({ date, slots: entry.slots })).sort((a, b) => (a.date < b.date ? -1 : 1))
       : null;
 
     const markDatesConfirmed = httpsCallable(fns, 'markDatesConfirmed');
     await markDatesConfirmed({
       submissionId, service, startDate: startDateStr, endDate: endDateStr,
-      timeSlot, extraPet, medication, visitSchedule, amountInDollars, unitCount,
+      timeSlot, extraPet, medication, visitSchedule, overnightVisitPlan, amountInDollars, unitCount,
       travelDiscountApplied, travelDiscountPercent: travelDiscountPercentApplied,
     });
 
