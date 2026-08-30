@@ -184,6 +184,22 @@ function easternTimeToUtc(year, monthIndex, day, hour, minute) {
   return new Date(Date.UTC(year, monthIndex, day, hour - offsetHours, minute, 0));
 }
 
+// The reverse of easternTimeToUtc: given any UTC instant, what calendar date
+// is it on the business's own clock? Reading a Date's own getUTCDate()/
+// getUTCMonth() answers "what calendar date in UTC", which is only the same
+// answer for an instant that isn't within a few hours of UTC midnight — true
+// today for every pauseEndDate (parseIsoDateStrict stamps noon UTC
+// specifically to stay clear of that boundary), but this makes the "what
+// date is this in America/New_York" question answered explicitly rather
+// than relying on that margin, for any instant this might ever be called on.
+function easternDateParts(date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(date);
+  const get = (type) => parseInt(parts.find(p => p.type === type).value, 10);
+  return { year: get('year'), monthIndex: get('month') - 1, day: get('day') };
+}
+
 // Create the actual walks/{memberId}_{date} documents for a member's
 // scheduled walk days in one month, from fromDay through month end.
 // Deterministic IDs (not addDoc-style random ones) make this naturally
@@ -2310,6 +2326,7 @@ exports.backfillNextMonthWalks = onCall({}, async (request) => {
 exports.resumePausedMemberships = onSchedule({
   schedule: '0 0 * * *',
   timeZone: 'America/New_York',
+  secrets: [RESEND_API_KEY],
 }, async () => {
   const now = new Date();
 
@@ -2325,6 +2342,40 @@ exports.resumePausedMemberships = onSchedule({
     if (!endDate || endDate > now) continue;
 
     await memberDoc.ref.update({ status: 'active' });
+
+    // Admin push notification — the pause side of a hold at least leaves an
+    // unread submissions row (see submitVacationHold's own 'vacation-hold'
+    // email); the resume side had NO admin-visible signal at all before this.
+    // Both manual-Stripe follow-ups this email prompts (clearing
+    // pause_collection, running chargeCurrentMonthWalks) apply whether or not
+    // this member has a subscription to resume walks for, so this fires
+    // unconditionally, ahead of the hasActiveSubscription check below.
+    //
+    // endedMidMonth: true whenever the hold's end date isn't the last day of
+    // its month, on the business's own America/New_York calendar (not
+    // endDate's raw UTC calendar date — see easternDateParts). syncMonthlyWalkQuantities
+    // only resyncs quantity on the 1st, so a mid-month resume leaves real,
+    // already-walked days this month that no automated job will bill —
+    // chargeCurrentMonthWalks is the existing manual tool for exactly that gap.
+    const { year: endYear, monthIndex: endMonthIndex, day: endDay } = easternDateParts(endDate);
+    const lastDayOfEndMonth = new Date(Date.UTC(endYear, endMonthIndex + 1, 0)).getUTCDate();
+    const endedMidMonth = endDay < lastDayOfEndMonth;
+
+    // sendEmail never throws (see functions/lib/email.js) and this runs
+    // after the status flip above has already committed, so a failed send
+    // has nothing left to roll back — same reasoning as onBillingNeedsReview.
+    await sendEmail({
+      to: ADMIN_EMAIL,
+      template: 'vacation-hold-resumed',
+      data: {
+        memberName: member.name || '',
+        memberId: memberDoc.id,
+        startDateStr: member.pauseStartDate?.toDate ? isoDateStr(member.pauseStartDate.toDate()) : null,
+        endDateStr: isoDateStr(endDate),
+        endedMidMonth,
+      },
+      idempotencyKey: `vacation-hold-resumed:${memberDoc.id}:${isoDateStr(endDate)}`,
+    });
 
     // Option 1 flag semantics: a paused subscribed member still has
     // hasActiveSubscription === true (pause is expressed by status alone), so
@@ -2362,7 +2413,7 @@ exports.resumePausedMemberships = onSchedule({
 //   3. If any of those deleted walks were in the CURRENT, already-billed
 //      calendar month, flags a suggested refund for admin review — never
 //      auto-refunds.
-exports.submitVacationHold = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+exports.submitVacationHold = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KEY] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'You must be signed in.');
   }
@@ -2512,6 +2563,25 @@ exports.submitVacationHold = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
     createdAt: FieldValue.serverTimestamp(),
   });
 
+  // Admin push notification — the pause_membership submission above is
+  // status: 'applied' (informational, not actionable) and only ever
+  // surfaces as an unread badge in the dashboard's Requests tab, which
+  // nobody sees until they happen to open it. This is the actual signal.
+  // sendEmail never throws (see functions/lib/email.js) and this runs
+  // after the hold has already committed above, so a failed send has
+  // nothing left to roll back — same reasoning as onBillingNeedsReview.
+  await sendEmail({
+    to: ADMIN_EMAIL,
+    template: 'vacation-hold',
+    data: {
+      memberName: member.name || '',
+      memberId,
+      startDateStr: isoDateStr(startDate),
+      endDateStr: isoDateStr(endDate),
+    },
+    idempotencyKey: `vacation-hold:${memberId}:${isoDateStr(startDate)}`,
+  });
+
   return { success: true, cancelledWalkCount: cancelledCount, suggestedRefundAmount };
 });
 
@@ -2611,13 +2681,15 @@ exports.issueRefund = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) =
 //    does on its own clock (automatic subscription renewal billing), rather
 //    than in direct response to one of the onCall functions above. Scope is
 //    deliberately minimal: exactly three events.
-//      - invoice.payment_failed: FLAG only (billingStatus: 'past_due') —
-//        does NOT stop walk generation. Both monthly crons run once a
-//        month, so the exposure window is already bounded by that cadence;
-//        Stripe's own retry schedule is what actually decides whether a
-//        decline resolves itself, and re-implementing that logic here would
-//        be redundant at best. This just gives admin visibility to act
-//        sooner than Stripe's own timeline if they choose to.
+//      - invoice.payment_failed: FLAG only (billingStatus: 'past_due', plus
+//        needsReview so onBillingNeedsReview actually emails admin — see that
+//        trigger and functions/templates/billing-needs-review.js) — does NOT
+//        stop walk generation. Both monthly crons run once a month, so the
+//        exposure window is already bounded by that cadence; Stripe's own
+//        retry schedule is what actually decides whether a decline resolves
+//        itself, and re-implementing that logic here would be redundant at
+//        best. This just gives admin visibility to act sooner than Stripe's
+//        own timeline if they choose to.
 //      - customer.subscription.deleted: Stripe's definitive final word
 //        (fires only after retries are exhausted, or a manual cancel) — THIS
 //        is what flips hasActiveSubscription: false, which both monthly
@@ -3189,7 +3261,14 @@ exports.stripeWebhook = onRequest({ secrets: [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_
       if (!memberId) {
         console.warn(`stripeWebhook: invoice.payment_failed for unresolvable customer ${invoice.customer} (event ${event.id})`);
       } else {
-        await billingRef(memberId).set({ billingStatus: 'past_due' }, { merge: true });
+        // needsReview (not just billingStatus) is what onBillingNeedsReview
+        // actually watches — without it this flag was invisible to admin
+        // outside of manually opening the member's row in the dashboard.
+        await billingRef(memberId).set({
+          billingStatus: 'past_due',
+          needsReview: true,
+          needsReviewReason: 'renewal_payment_failed',
+        }, { merge: true });
       }
     } else if (event.type === 'customer.subscription.deleted') {
       const subscription = event.data.object;

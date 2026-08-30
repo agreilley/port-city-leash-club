@@ -49,6 +49,8 @@ const TEMPLATES = {
   'portal-access': require('../templates/portal-access'),
   'referral-code-delivery': require('../templates/referral-code-delivery'),
   'billing-needs-review': require('../templates/billing-needs-review'),
+  'vacation-hold': require('../templates/vacation-hold'),
+  'vacation-hold-resumed': require('../templates/vacation-hold-resumed'),
   'visit-completed': require('../templates/visit-completed'),
 };
 

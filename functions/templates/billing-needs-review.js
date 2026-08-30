@@ -78,6 +78,10 @@ const REASON_INFO = {
     label: 'Multiple cards attached',
     blurb: "This member's Stripe customer has more than one card attached. Detach the extra card(s) manually in Stripe, leaving only the one that should stay on file.",
   },
+  renewal_payment_failed: {
+    label: 'Renewal payment failed',
+    blurb: "This member's monthly renewal charge failed (billingStatus is now 'past_due' on their billing record). Nothing in the app blocks them from continuing to book while past due, and Stripe's own retry schedule may still resolve this on its own. Check Stripe for the failure reason.",
+  },
 };
 
 // A reason with no entry above (a brand-new value added at a write site
