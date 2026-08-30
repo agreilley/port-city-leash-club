@@ -2151,6 +2151,107 @@ exports.chargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async
   return runChargeCurrentMonthWalks(memberId);
 });
 
+// previewChargeCurrentMonthWalks: read-only counterpart to
+// chargeCurrentMonthWalks, for the admin dashboard's "Charge Current Month
+// Walks" button (member detail modal) — lets an admin see the walk count,
+// date range, and dollar amount BEFORE committing to a real charge, and
+// says plainly if this member has already been charged for the current
+// period so a second click doesn't double-charge someone.
+//
+// Deliberately NOT a refactor of runChargeCurrentMonthWalks into a shared
+// helper — that function moves real money and writes real walk docs, and
+// bending its guard order to also serve a preview isn't worth the risk to
+// the thing that already works. Instead this mirrors the SAME guard order
+// (idempotency check, month-already-over, starts-next-month,
+// no-walks-remaining, no-time-slot, no-stripe-customer, no-payment-method)
+// using the same pure helpers (datesMatchingWeekdaysInMonth,
+// resolveMemberPriceId, easternTodayParts, toDateOrNull), but never calls
+// generateWalksForMember or paymentIntents.create — nothing here writes
+// anything. If runChargeCurrentMonthWalks's guard order or reasons ever
+// change, update this to match, or the preview will start lying.
+exports.previewChargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { memberId } = request.data || {};
+  if (!memberId) throw new HttpsError('invalid-argument', 'memberId is required.');
+
+  const memberRef = db.collection('members').doc(memberId);
+  const billing = billingRef(memberId);
+  const [memberDoc, billingDoc] = await Promise.all([memberRef.get(), billing.get()]);
+  const member = memberDoc.data();
+  if (!member) throw new HttpsError('not-found', 'Member record not found.');
+  const billingData = billingDoc.data() || {};
+
+  const priceId = resolveMemberPriceId(member.tier);
+  if (!priceId) {
+    return { ready: false, reason: 'no-subscription-tier', tier: member.tier || null };
+  }
+
+  const { year, monthIndex, day: todayDay } = easternTodayParts();
+  const periodKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+
+  const currentMonthCharge = billingData.currentMonthCharge;
+  if (currentMonthCharge && currentMonthCharge.periodKey === periodKey
+      && currentMonthCharge.status === 'charged') {
+    return {
+      ready: false, reason: 'already-charged', periodKey,
+      walkCount: currentMonthCharge.walkCount || 0,
+      amount: currentMonthCharge.amount || 0,
+      chargedAt: currentMonthCharge.chargedAt?.toDate?.().toISOString() || null,
+      paymentIntentId: currentMonthCharge.paymentIntentId || null,
+    };
+  }
+
+  const tomorrow = new Date(Date.UTC(year, monthIndex, todayDay + 1));
+  if (tomorrow.getUTCFullYear() !== year || tomorrow.getUTCMonth() !== monthIndex) {
+    return { ready: false, reason: 'month-already-over', periodKey };
+  }
+  let fromDay = tomorrow.getUTCDate();
+
+  const start = toDateOrNull(member.membershipStartDate);
+  if (start) {
+    const startsLaterMonth = start.getUTCFullYear() > year
+      || (start.getUTCFullYear() === year && start.getUTCMonth() > monthIndex);
+    if (startsLaterMonth) {
+      return { ready: false, reason: 'starts-next-month', periodKey };
+    }
+    if (start.getUTCFullYear() === year && start.getUTCMonth() === monthIndex) {
+      fromDay = Math.max(fromDay, start.getUTCDate());
+    }
+  }
+
+  const days = datesMatchingWeekdaysInMonth(member.defaultWalkDays, year, monthIndex, fromDay);
+  if (!days.length) {
+    return { ready: false, reason: 'no-walks-remaining', periodKey, fromDay };
+  }
+
+  if (!member.defaultTimeSlot) {
+    return { ready: false, reason: 'no-time-slot', periodKey, walkCount: days.length };
+  }
+
+  if (!billingData.stripeCustomerId) {
+    return { ready: false, reason: 'no-stripe-customer', periodKey, walkCount: days.length };
+  }
+
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+  const paymentMethods = await stripe.paymentMethods.list({ customer: billingData.stripeCustomerId, type: 'card' });
+  if (!paymentMethods.data.length) {
+    return { ready: false, reason: 'no-payment-method', periodKey, walkCount: days.length };
+  }
+
+  // Read-only price lookup — same call runChargeCurrentMonthWalks makes
+  // before charging, safe to repeat here since it never mutates anything.
+  const price = await stripe.prices.retrieve(priceId);
+  const unitAmount = price.unit_amount || 0;
+  const monthName = new Date(Date.UTC(year, monthIndex, 1))
+    .toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
+
+  return {
+    ready: true, periodKey, walkCount: days.length,
+    startDay: days[0], endDay: days[days.length - 1], monthName,
+    amount: (unitAmount * days.length) / 100, currency: price.currency || 'usd',
+  };
+});
+
 // ─────────────────────────────────────────────────────────────────────────
 // 3c. Recalculate every active member's walk-day count for the month that's
 //    just starting and push it to their Stripe subscription item. Runs at

@@ -15,8 +15,11 @@
 // will ever clear it for her. Same reasoning for the mid-month flag: quantity
 // resyncs only run monthly (syncMonthlyWalkQuantities, 1st of the month), so a
 // hold ending anywhere but the last day of the month leaves real billable days
-// this month that no automated job will catch, and chargeCurrentMonthWalks is
-// the existing manual tool for exactly that gap.
+// this month that no automated job will catch. The "Charge Current Month
+// Walks" button on this member's admin profile (admin/dashboard.html,
+// chargeCurrentMonthWalksForMember) is the tool for exactly that gap — it
+// previews the amount before charging and blocks a second charge for the
+// same period, so it's safe to click even if unsure whether it's already run.
 //
 // data: {
 //   memberName: string,     // member doc's `name`, or 'A member' if missing
@@ -49,7 +52,7 @@ function html(data) {
   });
 
   const midMonthHtml = data.endedMidMonth
-    ? `<p style="margin:20px 0 0;"><strong>This hold ended mid-month.</strong> The monthly Stripe quantity sync only runs on the 1st, so this member's subscription quantity won't reflect their resumed walks until next month on its own. Run <strong>chargeCurrentMonthWalks</strong> for this member to catch up the rest of this month's billing.</p>`
+    ? `<p style="margin:20px 0 0;"><strong>This hold ended mid-month.</strong> The monthly Stripe quantity sync only runs on the 1st, so this member's subscription quantity won't reflect their resumed walks until next month on its own. On this member's profile in the admin dashboard, use the <strong>Charge Current Month Walks</strong> button to catch up the rest of this month's billing — it shows the amount before charging and won't let you run it twice.</p>`
     : '';
 
   const body = `
@@ -83,7 +86,7 @@ function text(data) {
 
   if (data.endedMidMonth) {
     lines.push('');
-    lines.push('This hold ended mid-month. The monthly Stripe quantity sync only runs on the 1st, so this member\'s subscription quantity won\'t reflect their resumed walks until next month on its own. Run chargeCurrentMonthWalks for this member to catch up the rest of this month\'s billing.');
+    lines.push('This hold ended mid-month. The monthly Stripe quantity sync only runs on the 1st, so this member\'s subscription quantity won\'t reflect their resumed walks until next month on its own. On this member\'s profile in the admin dashboard, use the Charge Current Month Walks button to catch up the rest of this month\'s billing — it shows the amount before charging and won\'t let you run it twice.');
   }
 
   return wrapText({ bodyText: lines.join('\n') });

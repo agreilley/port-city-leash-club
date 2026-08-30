@@ -5150,11 +5150,35 @@ window.openMemberDetail = async (id) => {
       <button class="btn-secondary" style="padding:4px 12px;font-size:12px;white-space:nowrap;" onclick="toggleFriendsFamilyDiscount('${member.id}', ${!friendsFamilyActive})">${friendsFamilyActive ? 'Turn off' : 'Turn on'}</button>
     </div>` : '';
 
+  // Manual current-month catch-up charge — only Member-tier subscriptions
+  // bill this way (resolveMemberPriceId returns null for Travel, functions/
+  // index.js), so there's nothing useful this button could do for anyone
+  // else. The "last charge" line reads straight from billing.currentMonthCharge
+  // as already fetched above — it's whatever the most recent attempt was,
+  // not necessarily for the CURRENT period; the button's own preview step
+  // (previewChargeCurrentMonthWalks) is what actually checks the current
+  // period before allowing a charge, so this line is context, not the guard.
+  const lastCharge = billing.currentMonthCharge;
+  const lastChargeHTML = lastCharge ? `
+    <div style="font-size:12px;color:var(--text-mid);margin-bottom:8px;">
+      Last catch-up charge (period ${escapeHtml(lastCharge.periodKey || '–')}):
+      ${lastCharge.status === 'charged'
+        ? `$${(lastCharge.amount || 0).toFixed(2)} for ${lastCharge.walkCount || 0} walk${lastCharge.walkCount === 1 ? '' : 's'}, charged ${fmtDate(lastCharge.chargedAt)}`
+        : escapeHtml(lastCharge.status || 'unknown')}
+    </div>` : '';
+  const chargeCurrentMonthHTML = member.tier === 'Member' ? `
+    <div style="background:var(--sand-light);border-radius:6px;padding:8px 12px;margin-top:4px;margin-bottom:12px;">
+      <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:6px;">Current-month catch-up billing</div>
+      ${lastChargeHTML}
+      <button class="btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="chargeCurrentMonthWalksForMember('${member.id}')">Charge Current Month Walks</button>
+    </div>` : '';
+
   document.getElementById('memberDetailModalTitle').textContent = member.name || 'Member Details';
   document.getElementById('memberDetailModalContent').innerHTML = `
     <div class="form-grid">${fieldHTML}</div>
     ${reviewDismissHTML}
     ${friendsFamilyHTML}
+    ${chargeCurrentMonthHTML}
     <button class="btn-secondary" style="margin-top:4px;" onclick="openMemberPortalPreview('${member.id}')">Preview Member Portal</button>
     <hr class="modal-divider">
     <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Dogs</div>
@@ -5233,6 +5257,70 @@ window.toggleFriendsFamilyDiscount = async (memberId, active) => {
     openMemberDetail(memberId);
   } catch (e) {
     alert(`Couldn't update the friends and family discount: ${e.message}`);
+  }
+};
+
+// Manual current-month catch-up charge (functions/index.js:
+// chargeCurrentMonthWalks) — the tool for the gap syncMonthlyWalkQuantities/
+// generateMonthlyWalks leave when a member's billable walk-day count changes
+// mid-month; a mid-month vacation-hold resume is the documented case (see
+// vacation-hold-resumed.js). Deliberately two network round trips:
+// previewChargeCurrentMonthWalks never writes anything, so the admin sees
+// the exact walk count/date range/dollar amount — and whether this member
+// has ALREADY been charged for the current period — before the second call
+// (chargeCurrentMonthWalks) actually moves money. Re-opens the member
+// detail modal in every branch so the "last catch-up charge" line reflects
+// whatever just happened, success or not.
+window.chargeCurrentMonthWalksForMember = async (memberId) => {
+  let preview;
+  try {
+    const previewChargeCurrentMonthWalks = httpsCallable(fns, 'previewChargeCurrentMonthWalks');
+    preview = (await previewChargeCurrentMonthWalks({ memberId })).data;
+  } catch (e) {
+    alert(`Couldn't check this member's current-month billing: ${e.message}`);
+    return;
+  }
+
+  if (!preview.ready) {
+    // Keys match the `reason` strings previewChargeCurrentMonthWalks
+    // returns (functions/index.js) — keep this in sync if those change.
+    const messages = {
+      'no-subscription-tier': "This member's tier doesn't bill this way — only Member-tier subscriptions have a current-month catch-up charge.",
+      'already-charged': `Already charged for this period: $${(preview.amount || 0).toFixed(2)} for ${preview.walkCount || 0} walk${preview.walkCount === 1 ? '' : 's'} (period ${preview.periodKey}). Running it again would double-charge this member — nothing to do here.`,
+      'month-already-over': 'Nothing to charge — no billable days remain in the current month.',
+      'starts-next-month': "This member's subscription doesn't start until next month — nothing to charge yet.",
+      'no-walks-remaining': 'This member has no scheduled walk days left in the current month — nothing to charge.',
+      'no-time-slot': "This member has no default time slot set — set one first, since walks can't be generated without it.",
+      'no-stripe-customer': 'This member has no Stripe customer on file — start their membership subscription first.',
+      'no-payment-method': 'This member has no saved payment method on file — nothing can be charged.',
+    };
+    alert(messages[preview.reason] || `Nothing to charge (${preview.reason}).`);
+    openMemberDetail(memberId);
+    return;
+  }
+
+  const confirmed = confirm(
+    `Charge $${preview.amount.toFixed(2)} for ${preview.walkCount} walk${preview.walkCount === 1 ? '' : 's'} `
+    + `(${preview.monthName} ${preview.startDay}–${preview.endDay})?\n\n`
+    + `This is a one-time catch-up charge for the rest of the current billing period. `
+    + `It cannot be run twice for the same period — a repeat attempt will be blocked automatically.`
+  );
+  if (!confirmed) return;
+
+  try {
+    const chargeCurrentMonthWalks = httpsCallable(fns, 'chargeCurrentMonthWalks');
+    const result = (await chargeCurrentMonthWalks({ memberId })).data;
+    if (result.alreadyCharged) {
+      alert(`This member was already charged for this period — no new charge was made ($${(result.amount || 0).toFixed(2)} for ${result.walkCount || 0} walks).`);
+    } else if (result.skipped) {
+      alert(`Nothing was charged (${result.reason}).`);
+    } else {
+      alert(`Charged $${result.amount.toFixed(2)} for ${result.walkCount} walk${result.walkCount === 1 ? '' : 's'}.`);
+    }
+  } catch (e) {
+    alert(`Charge failed: ${e.message}`);
+  } finally {
+    openMemberDetail(memberId);
   }
 };
 
