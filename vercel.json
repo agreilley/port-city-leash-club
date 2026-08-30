@@ -3,6 +3,9 @@
   "outputDirectory": ".",
   "installCommand": "",
   "cleanUrls": true,
+  "redirects": [
+    { "source": "/dev/(.*)", "destination": "/404", "permanent": false }
+  ],
   "headers": [
     {
       "source": "/(.*)",
@@ -59,12 +62,6 @@
     },
     {
       "source": "/password-reset-complete",
-      "headers": [
-        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
-      ]
-    },
-    {
-      "source": "/dev/backfill-next-month-walks",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
       ]

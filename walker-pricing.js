@@ -8,10 +8,9 @@
 // pricing.js — deliberately a separate table since they're different
 // numbers for the same service (the business's margin).
 //
-// Holiday surcharge (listed on the walker Rate Card at +30%) is
-// deliberately NOT implemented — no rule was ever defined for which
-// dates count as a holiday or whether it's automatic vs admin-marked.
-// Skipped rather than guessed; revisit once that's decided.
+// No holiday surcharge — decided against on 2026-08-27, not an
+// oversight. It is not listed on the walker Rate Card and does not
+// need to be added; do not re-introduce it without a new decision.
 //
 // MIRRORED INTO functions/walker-pricing.js — Cloud Functions (walk/overnight
 // completion triggers, payout generation) can only deploy files inside
