@@ -39,6 +39,7 @@
 // describing a UI location, never user input.
 (function () {
   var MEASUREMENT_ID = 'G-PS9J4ZDHKE';
+  var ADS_ID = 'AW-18417285970';
 
   window.dataLayer = window.dataLayer || [];
   function gtag() { window.dataLayer.push(arguments); }
@@ -46,6 +47,7 @@
 
   gtag('js', new Date());
   gtag('config', MEASUREMENT_ID);
+  gtag('config', ADS_ID);
 
   var loader = document.createElement('script');
   loader.async = true;
