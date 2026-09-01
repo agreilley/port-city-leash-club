@@ -4274,12 +4274,27 @@ function renderServiceRequestReview(item) {
   });
   _reviewMemberId = item.memberId || null;
   _reviewRecalcFn = reviewRecalcService;
+  // A check-in booked through the member portal (portal-request-extras.html)
+  // is ALSO type: 'service_request' — the admin dispatch checks item.type
+  // before item.service, so it lands on this screen, built for the PUBLIC
+  // form's shape (ownerName/phone/address/dogs/extraPet/medication
+  // collected directly on the doc). A portal submission never carries any
+  // of those — only memberId/memberName and addonExtraPet/addonMedication —
+  // so this falls back to the member record, and to the alternate addon
+  // field names, wherever the direct ones are missing.
+  const member = _reviewMemberId ? allMembers.find(m => m.id === _reviewMemberId) : null;
+  const ownerName = item.ownerName || member?.name || item.memberName || '';
+  const phone = item.phone || member?.phone || '';
+  const address = item.address || member?.address || '';
+  const dogs = (item.dogs && item.dogs.length) ? item.dogs : (member?.dogs || []);
+  const extraPet = item.extraPet ?? item.addonExtraPet ?? false;
+  const medication = item.medication ?? item.addonMedication ?? false;
   document.getElementById('requestModalContent').innerHTML = `
     ${renderTravelDiscountBanner(_reviewMemberId)}
     <div class="form-grid">
-      <div class="modal-field"><div class="modal-label">Owner</div><div class="modal-value">${escapeHtml(item.ownerName || '–')}${item.email ? ' · ' + escapeHtml(item.email) : ''}</div></div>
-      <div class="modal-field"><div class="modal-label">Phone</div><div class="modal-value">${escapeHtml(item.phone || '–')}</div></div>
-      <div class="modal-field"><div class="modal-label">Address</div><div class="modal-value">${escapeHtml(item.address || '–')}</div></div>
+      <div class="modal-field"><div class="modal-label">Owner</div><div class="modal-value">${escapeHtml(ownerName || '–')}${item.email ? ' · ' + escapeHtml(item.email) : ''}</div></div>
+      <div class="modal-field"><div class="modal-label">Phone</div><div class="modal-value">${escapeHtml(phone || '–')}</div></div>
+      <div class="modal-field"><div class="modal-label">Address</div><div class="modal-value">${escapeHtml(address || '–')}</div></div>
       <div class="form-field"><label>Service</label>
         <select id="rev-service" onchange="reviewRecalcService()">
           ${Object.entries(SERVICE_PRICES).map(([key, info]) => `<option value="${key}" ${resolveServiceKey(item.service) === key ? 'selected' : ''}>${info.name}</option>`).join('')}
@@ -4297,10 +4312,10 @@ function renderServiceRequestReview(item) {
     </div>
     <div style="display:flex;gap:20px;margin-top:14px;">
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;">
-        <input type="checkbox" id="rev-extra-pet" ${item.extraPet ? 'checked' : ''} onchange="reviewRecalcService()" style="accent-color:var(--seafoam);"> Multiple pets
+        <input type="checkbox" id="rev-extra-pet" ${extraPet ? 'checked' : ''} onchange="reviewRecalcService()" style="accent-color:var(--seafoam);"> Multiple pets
       </label>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;">
-        <input type="checkbox" id="rev-medication" ${item.medication ? 'checked' : ''} onchange="reviewRecalcService()" style="accent-color:var(--seafoam);"> Medication admin
+        <input type="checkbox" id="rev-medication" ${medication ? 'checked' : ''} onchange="reviewRecalcService()" style="accent-color:var(--seafoam);"> Medication admin
       </label>
     </div>
     <hr class="modal-divider">
@@ -4316,7 +4331,7 @@ function renderServiceRequestReview(item) {
     ` : ''}
     <hr class="modal-divider">
     <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Pets</div>
-    ${renderPetDetailCards(item.dogs)}
+    ${renderPetDetailCards(dogs)}
   `;
   wireReviewDateGuard(reviewRecalcService);
   reviewRecalcService();
