@@ -302,7 +302,17 @@ service cloud.firestore {
           // cloud.firestore`), so this field MUST be read via bracket access —
           // dot access (request.resource.data.service) fails to compile.
           && request.resource.data['service'] is string && request.resource.data['service'].size() <= 100
-          && request.resource.data.visitsPerDay is string && request.resource.data.visitsPerDay.size() <= 50
+          // visitsPerDay was a string here to match service-request.html's
+          // original (buggy) unparsed write — that client-side bug got fixed
+          // to parseInt() the value into a real number, but this rule was
+          // never updated to match, which silently rejected every public
+          // service_request submission (permission-denied) from the moment
+          // the client fix deployed. Accepting either type here, rather than
+          // just switching to `is number`, so a stray cached tab still
+          // running the pre-fix page for a while longer isn't ALSO rejected.
+          && ((request.resource.data.visitsPerDay is string && request.resource.data.visitsPerDay.size() <= 50)
+              || (request.resource.data.visitsPerDay is number
+                  && request.resource.data.visitsPerDay >= 0 && request.resource.data.visitsPerDay <= 1000))
           && request.resource.data.meetGreetDateTime is string && request.resource.data.meetGreetDateTime.size() <= 100
           && request.resource.data.extraPet is bool
           && request.resource.data.medication is bool
