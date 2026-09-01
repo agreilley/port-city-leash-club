@@ -407,7 +407,13 @@ onAuthStateChanged(auth, async (user) => {
       const data = uidDoc.data();
       walkerDoc = { id: data.walkerId || uidDoc.id, ...data };
     } else {
-      // Fallback: query by uid field
+      // Fallback: query by uid field. Both walker docs carry the same uid
+      // field (createWalkerAccount writes identical data to both), so this
+      // can match either one — resolve through walkerId same as the
+      // primary branch above rather than trusting whichever doc the query
+      // happened to return first, which used to hand back the UID doc's
+      // own id (the wrong one — walks/overnights are keyed by the friendly
+      // id) whenever it sorted ahead of the friendly doc.
       const q = query(collection(db, 'walkers'), where('uid', '==', user.uid));
       const snap = await getDocs(q);
       if (snap.empty) {
@@ -416,7 +422,9 @@ onAuthStateChanged(auth, async (user) => {
         // Don't redirect — show empty state instead
         return;
       }
-      walkerDoc = { id: snap.docs[0].id, ...snap.docs[0].data() };
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const primary = docs.find(d => d.id === d.walkerId) || docs[0];
+      walkerDoc = { ...primary, id: primary.walkerId || primary.id };
     }
     document.getElementById('walkerName').textContent = walkerDoc.name || 'Walker';
     loadData();
@@ -444,6 +452,12 @@ function loadData() {
     renderCalendar();
     renderHistory();
     renderEarnings();
+  }, (err) => {
+    // Without this, a permission-denied read (e.g. walkerDoc.id resolving
+    // to the wrong id) fails completely silently — the walker just sees an
+    // empty dashboard forever with nothing in the console pointing at why.
+    console.error('walks subscription error:', err.code, err.message, 'walkerDoc.id:', walkerDoc.id);
+    showError("Couldn't load your assigned walks. Please refresh, or contact us if this keeps happening.");
   });
 
   // Subscribe to this walker's assigned overnight/check-in stays
@@ -457,6 +471,9 @@ function loadData() {
     renderOvernights();
     renderTodaysVisits();
     renderEarnings();
+  }, (err) => {
+    console.error('overnights subscription error:', err.code, err.message, 'walkerDoc.id:', walkerDoc.id);
+    showError("Couldn't load your assigned pet-sitting services. Please refresh, or contact us if this keeps happening.");
   });
 
   // Load members for dog/owner info
