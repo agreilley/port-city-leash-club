@@ -707,6 +707,40 @@
     </div>
   </div>
 
+  <!-- Reservation Detail Modal — for a calendar day with a confirmed or
+       pending overnight/drop-in reservation and no walk on it. Previously
+       that day had no click-through at all. Read-only, same INVARIANT as
+       the walk modal below: no Firestore writes in this file. -->
+  <div class="modal" id="reservationModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="reservationModalTitle">Reservation</h3>
+        <p id="reservationModalSubtitle">Reservation details</p>
+      </div>
+      <div class="modal-body">
+        <div class="detail-box">
+          <div class="detail-label">Status</div>
+          <p class="detail-value" id="reservationModalStatus">–</p>
+        </div>
+        <div class="detail-box">
+          <div class="detail-label">Dates</div>
+          <p class="detail-value" id="reservationModalDates">–</p>
+        </div>
+        <div class="detail-box">
+          <div class="detail-label" id="reservationModalTotalLabel">Total</div>
+          <p class="detail-value" id="reservationModalTotal">–</p>
+        </div>
+        <div class="detail-box" id="reservationModalScheduleBox" style="display:none;">
+          <div class="detail-label">Visit schedule</div>
+          <div id="reservationModalSchedule"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeReservationModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Walk Detail Modal -->
   <div class="modal" id="walkModal">
     <div class="modal-content">
@@ -1292,6 +1326,8 @@ function updateMetrics() {
         } else if (dayOvernight && dayOvernight.status === 'confirmed') {
           dayEl.classList.add(dayIsCheckin ? 'checkin-confirmed' : 'overnight-confirmed');
           dayEl.title = dayIsCheckin ? 'Drop-in visit (confirmed)' : 'Overnight stay (confirmed)';
+          dayEl.style.cursor = 'pointer';
+          dayEl.onclick = () => openReservationModal(dayOvernight);
         } else if (walkMap[day]) {
           if (w.status === 'completed') {
             dayEl.classList.add('completed');
@@ -1318,6 +1354,8 @@ function updateMetrics() {
         } else if (dayOvernight) {
           dayEl.classList.add(dayIsCheckin ? 'checkin-pending' : 'overnight-pending');
           dayEl.title = dayIsCheckin ? 'Drop-in visit (pending confirmation)' : 'Overnight stay (pending confirmation)';
+          dayEl.style.cursor = 'pointer';
+          dayEl.onclick = () => openReservationModal(dayOvernight);
         }
 
         calendarGrid.appendChild(dayEl);
@@ -1352,6 +1390,54 @@ function updateMetrics() {
         end: new Date(end.getFullYear(), end.getMonth(), end.getDate()),
       };
     }
+
+    // Reservation Detail Modal — for a calendar day whose fill comes from an
+    // overnight/drop-in entry with no walk on it (previously not clickable
+    // at all; see generateCalendar's day-cell loop). A pending entry has no
+    // admin-confirmed total or per-day schedule yet — it's still just the
+    // member's own estimate (estimatedTotal, in dollars) — so those sections
+    // degrade gracefully instead of showing confirmed-only data as if it
+    // were final.
+    function openReservationModal(entry) {
+      const isCheckin = isCheckinType(entry.serviceType);
+      const isPending = entry.status === 'pending';
+      const { start, end } = overnightBounds(entry);
+
+      document.getElementById('reservationModalTitle').textContent = isCheckin ? 'Drop-in visit' : 'Overnight stay';
+      document.getElementById('reservationModalSubtitle').textContent = isPending ? 'Pending confirmation' : 'Confirmed reservation';
+      document.getElementById('reservationModalStatus').textContent = isPending ? 'Pending confirmation' : 'Confirmed';
+      document.getElementById('reservationModalDates').textContent = formatOvernightRange(start, end);
+
+      const totalLabelEl = document.getElementById('reservationModalTotalLabel');
+      const totalEl = document.getElementById('reservationModalTotal');
+      if (!isPending && typeof entry.confirmedTotalCents === 'number') {
+        totalLabelEl.textContent = 'Total';
+        totalEl.textContent = `$${(entry.confirmedTotalCents / 100).toFixed(2)}`;
+      } else if (isPending && typeof entry.estimatedTotal === 'number') {
+        totalLabelEl.textContent = 'Estimated total';
+        totalEl.textContent = `$${entry.estimatedTotal.toFixed(2)}`;
+      } else {
+        totalLabelEl.textContent = 'Total';
+        totalEl.textContent = '–';
+      }
+
+      const scheduleBox = document.getElementById('reservationModalScheduleBox');
+      if (!isPending && isCheckin && Array.isArray(entry.visitSchedule) && entry.visitSchedule.length) {
+        document.getElementById('reservationModalSchedule').innerHTML = entry.visitSchedule.map(v => {
+          const d = new Date(`${v.date}T12:00:00`);
+          const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+          return `<p class="detail-value" style="margin:2px 0;">${label}: ${v.visits} visit${v.visits === 1 ? '' : 's'}</p>`;
+        }).join('');
+        scheduleBox.style.display = '';
+      } else {
+        scheduleBox.style.display = 'none';
+      }
+
+      document.getElementById('reservationModal').classList.add('show');
+    }
+    window.closeReservationModal = function() {
+      document.getElementById('reservationModal').classList.remove('show');
+    };
 
     // Cross-month notice above the calendar grid: per-day styling alone only
     // covers whatever month is currently displayed, so a confirmed overnight
