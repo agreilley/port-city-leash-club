@@ -197,19 +197,8 @@
               <option value="checkin">Check-In Visit · $25/visit</option>
             </select>
           </div>
-          <div class="field" id="visitsField" style="display:none;">
-            <label>Visits Per Day</label>
-            <select name="visits-per-day" onchange="updateSummary()">
-              <option>1 visit</option>
-              <option>2 visits</option>
-              <option>3 visits</option>
-              <option>4 visits</option>
-              <option>5 visits</option>
-              <option>6 visits</option>
-            </select>
-          </div>
           <div class="field full" id="visitScheduleField" style="display:none;">
-            <label>Visit Schedule <span style="font-weight:400;color:#7A7A7A;">(adjust any day that needs a different number — e.g. you're back mid-day)</span></label>
+            <label>Visits Per Day <span style="font-weight:400;color:#7A7A7A;">(set how many visits each day needs — e.g. fewer on the day you're back)</span></label>
             <div id="visitScheduleRows"></div>
           </div>
           <div class="field">
@@ -283,12 +272,14 @@
   // for a 2+ day check-in; a single day has nothing to vary.
   let _reqVisitSchedule = {};
 
+  const DEFAULT_VISITS_PER_DAY = 1;
+
   function syncReqVisitScheduleRows(defaultVisits) {
     const field = document.getElementById('visitScheduleField');
     const container = document.getElementById('visitScheduleRows');
     const startStr = document.getElementById('startDate').value;
     const endStr = document.getElementById('endDate').value;
-    if (!startStr || !endStr || endStr <= startStr) {
+    if (!startStr || !endStr || endStr < startStr) {
       field.style.display = 'none';
       _reqVisitSchedule = {};
       return;
@@ -324,7 +315,6 @@
   function updateServiceFields() {
     const service = document.getElementById('serviceSelect').value;
     const isCheckin = service === 'checkin';
-    document.getElementById('visitsField').style.display   = isCheckin ? 'flex' : 'none';
     document.getElementById('endDateField').style.display  = 'flex';
     document.getElementById('addonsField').style.display   = 'flex';
     // Service spans full width for overnight, half width for check-in
@@ -347,18 +337,19 @@
     const name    = SERVICE_NAMES[service];
     const start   = document.getElementById('startDate').value;
     const end     = document.getElementById('endDate').value;
-    const visitsEl = document.getElementById('visitsField')?.querySelector('select');
     const isCheckin = service === 'checkin';
-    const visitsPerDay = isCheckin ? parseInt(visitsEl?.value || '1') : 1;
     const extraPet = document.getElementById('addonExtraPet')?.checked || false;
     const medication = document.getElementById('addonMedication')?.checked || false;
 
     if (isCheckin) {
-      syncReqVisitScheduleRows(visitsPerDay);
+      syncReqVisitScheduleRows(DEFAULT_VISITS_PER_DAY);
     } else {
       document.getElementById('visitScheduleField').style.display = 'none';
       _reqVisitSchedule = {};
     }
+    // The per-day grid is the only source of visit counts now — this is the
+    // sole branch for check-in; the else branch only runs for overnight or
+    // before both dates are picked.
     const scheduleActive = isCheckin && Object.keys(_reqVisitSchedule).length > 0;
 
     let total, breakdown, days, totalVisits;
@@ -368,9 +359,9 @@
       }));
     } else {
       ({ total, breakdown, days } = calculateServiceTotal({
-        serviceKey: service, startDate: start, endDate: end, visitsPerDay, extraPet, medication,
+        serviceKey: service, startDate: start, endDate: end, visitsPerDay: DEFAULT_VISITS_PER_DAY, extraPet, medication,
       }));
-      totalVisits = isCheckin ? days * visitsPerDay : null;
+      totalVisits = null;
     }
     window._lastEstimatedTotal = total;
     const base = breakdown[0]?.amount ?? 0;
@@ -434,22 +425,29 @@
         return Timestamp.fromDate(new Date(y, m - 1, d, 12, 0, 0)); // noon local time avoids DST issues
       }
 
-      // Overnight has no per-day-visits concept, so it's explicitly null
-      // rather than omitted — a reader of this doc shouldn't have to guess
-      // whether a missing field means "not applicable" or "written before
-      // this field existed". This is the member's ESTIMATE input (what
-      // priced their own summary), not the authoritative billing quantity —
-      // that comes from the per-day schedule in a later batch.
-      const visitsPerDay = isOvernight
-        ? null
-        : parseInt(document.getElementById('visitsField')?.querySelector('select')?.value || '1');
-
       // Per-day override grid, same {date, visits} shape as
-      // service-request.html — empty for overnight or when the member never
-      // touched the grid (single-day check-in has nothing to vary).
+      // service-request.html — empty for overnight, since it has no
+      // per-day-visits concept at all.
       const visitSchedule = isOvernight
         ? []
         : Object.entries(_reqVisitSchedule).map(([date, visits]) => ({ date, visits }));
+
+      // visitsPerDay is no longer a member-facing input (the per-day grid
+      // above is) — kept as a single representative number (the schedule's
+      // average, rounded, clamped to the 1-6 range firestore.rules still
+      // enforces for check-ins) purely for admin's fallback default when
+      // extending the date range past what the member scheduled. Overnight
+      // has no per-day-visits concept, so it's explicitly null rather than
+      // omitted — a reader of this doc shouldn't have to guess whether a
+      // missing field means "not applicable" or "written before this field
+      // existed".
+      const visitsPerDay = isOvernight
+        ? null
+        : (() => {
+            const counts = Object.values(_reqVisitSchedule);
+            const avg = counts.length ? Math.round(counts.reduce((a, c) => a + c, 0) / counts.length) : 1;
+            return Math.min(6, Math.max(1, avg));
+          })();
 
       const data = {
         type: isOvernight ? 'overnight_request' : 'service_request',

@@ -382,19 +382,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           <select id="time-slot" name="time-slot"></select>
         </div>
         <div class="field full"><span class="date-error" id="dateError"></span></div>
-        <div class="field" id="visits-field">
-          <label for="visits">Visits Per Day</label>
-          <select id="visits" name="visits">
-            <option value="1">1 visit</option>
-            <option value="2">2 visits</option>
-            <option value="3">3 visits</option>
-            <option value="4">4 visits</option>
-            <option value="5">5 visits</option>
-            <option value="6">6 visits</option>
-          </select>
-        </div>
         <div class="field full" id="visit-schedule-field" style="display:none;">
-          <label>Visit Schedule <span style="font-weight:400;color:var(--text-light);">(adjust any day that needs a different number — e.g. you're back mid-day)</span></label>
+          <label>Visits Per Day <span style="font-weight:400;color:var(--text-light);">(set how many visits each day needs — e.g. fewer on the day you're back)</span></label>
           <div id="visit-schedule-rows"></div>
         </div>
         <div class="field full" id="addons-field" style="display:none;">
@@ -778,22 +767,23 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     updateSummary();
   });
   endInput.addEventListener('change', updateSummary);
-  document.getElementById('visits').addEventListener('change', updateSummary);
 
   const params = new URLSearchParams(window.location.search);
   const requested = params.get('service');
   const serviceSelect = document.getElementById('service');
   if (requested && PRICES[requested]) serviceSelect.value = requested;
 
-  // Per-day drop-in visit counts — {[dateStr]: count} — lets a customer flag
-  // upfront that they need fewer visits on a specific day (e.g. they're back
-  // mid-day on the departure day) instead of only being able to set one flat
-  // Visits Per Day number for the whole trip. Only shown for a 2+ day range;
-  // a single-day visit has nothing to vary, so the flat dropdown alone
-  // already covers it. Mirrors admin/dashboard.html's own
+  // Per-day drop-in visit counts — {[dateStr]: count} — this IS the Visits
+  // Per Day control for drop-in-visit service; there's no separate flat
+  // dropdown anymore (removed — showing both a flat default and a per-day
+  // grid that could disagree with it was confusing). Every day in the
+  // selected range gets its own row, defaulting to DEFAULT_VISITS_PER_DAY,
+  // so a customer picks dates first and then sets each day's count directly.
+  // Mirrors admin/dashboard.html's own
   // syncVisitScheduleRows/updateVisitScheduleCount (the confirmed-schedule
   // editor) closely, minus slot pickers — those are an admin scheduling
   // concern, not something set at intake.
+  const DEFAULT_VISITS_PER_DAY = 1;
   let _reqVisitSchedule = {};
 
   function syncReqVisitScheduleRows(defaultVisits) {
@@ -801,7 +791,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     const container = document.getElementById('visit-schedule-rows');
     const startStr = startInput.value;
     const endStr = endInput.value;
-    if (!startStr || !endStr || endStr <= startStr) {
+    if (!startStr || !endStr || endStr < startStr) {
       field.style.display = 'none';
       _reqVisitSchedule = {};
       return;
@@ -840,7 +830,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     const isPetSitting = isTravelDiscountService(service);
     document.getElementById('end-date-field').style.display  = isWalk ? 'none' : 'flex';
     document.getElementById('time-slot-field').style.display = isWalk ? 'flex' : 'none';
-    document.getElementById('visits-field').style.display    = service === 'drop-in-visit' ? 'flex' : 'none';
     document.getElementById('addons-field').style.display    = isPetSitting ? 'flex' : 'none';
     // Clear any stale date error (e.g. an end-date message when switching to a walk)
     dateError.style.display = 'none';
@@ -854,23 +843,24 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
     const isWalk    = service === 'standard-walk' || service === 'extended-walk';
     const isDropIn  = service === 'drop-in-visit';
-    const visits    = isDropIn ? (parseInt(document.getElementById('visits').value, 10) || 1) : 1;
     const extraPet  = document.getElementById('addon-extra-pet')?.checked || false;
     const medication = document.getElementById('addon-medication')?.checked || false;
 
     if (isDropIn) {
-      syncReqVisitScheduleRows(visits);
+      syncReqVisitScheduleRows(DEFAULT_VISITS_PER_DAY);
     } else {
       document.getElementById('visit-schedule-field').style.display = 'none';
       _reqVisitSchedule = {};
     }
+    // True once a valid drop-in date range exists (syncReqVisitScheduleRows
+    // populated at least one row) — the per-day grid is the only source of
+    // visit counts now, so this is the sole branch for drop-in-visit; the
+    // else branch below only ever runs for non-drop-in services or before
+    // both dates are picked.
     const scheduleActive = isDropIn && Object.keys(_reqVisitSchedule).length > 0;
 
     let grandTotal, breakdown, days, totalVisits;
     if (scheduleActive) {
-      // A 2+ day trip with its own per-day grid — this is the real total,
-      // not calculateServiceTotal's flat days*visits estimate, since the
-      // customer may have set different counts on different days.
       ({ total: grandTotal, breakdown, days, totalVisits } = calculateDropInScheduleTotal({
         schedule: _reqVisitSchedule, extraPet, medication,
       }));
@@ -879,11 +869,11 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         serviceKey: service,
         startDate: startInput.value,
         endDate: endInput.value,
-        visitsPerDay: visits,
+        visitsPerDay: DEFAULT_VISITS_PER_DAY,
         extraPet,
         medication,
       }));
-      totalVisits = isDropIn ? days * visits : null;
+      totalVisits = null;
     }
     const serviceTotal = breakdown[0]?.amount ?? info.price;
     const extraPetLine = breakdown.find(b => b.label === 'Multiple pets');
@@ -1127,13 +1117,20 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         endDate: localDateToTimestamp(endInput.value),
         timeSlot: isWalk ? (document.getElementById('time-slot')?.value || null) : null,
         notes: document.getElementById('care-notes')?.value || '',
-        visitsPerDay: parseInt(document.getElementById('visits')?.value, 10) || 1,
-        // Per-day overrides from the Visit Schedule grid (2+ day trips
-        // only — see syncReqVisitScheduleRows) — empty when the grid never
-        // showed, e.g. a single-day visit or a non-drop-in service. Same
-        // {date, visits} shape admin's own confirmed schedule already
-        // uses, so admin's review can seed directly from this instead of
-        // defaulting every day to the flat visitsPerDay above.
+        // visitsPerDay is no longer a customer-facing input (the per-day
+        // grid below is) — kept as a single representative number (the
+        // schedule's average, rounded) purely for admin's fallback default
+        // when extending the date range past what the customer scheduled.
+        // Empty schedule (non-drop-in service) falls back to 1.
+        visitsPerDay: (() => {
+          const counts = Object.values(_reqVisitSchedule);
+          if (!counts.length) return 1;
+          return Math.max(1, Math.round(counts.reduce((a, c) => a + c, 0) / counts.length));
+        })(),
+        // Per-day overrides from the Visit Schedule grid — empty for a
+        // non-drop-in service. Same {date, visits} shape admin's own
+        // confirmed schedule already uses, so admin's review can seed
+        // directly from this.
         visitSchedule: Object.entries(_reqVisitSchedule).map(([date, visits]) => ({ date, visits })),
         extraPet: document.getElementById('addon-extra-pet')?.checked || false,
         medication: document.getElementById('addon-medication')?.checked || false,
