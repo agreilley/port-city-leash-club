@@ -37,7 +37,7 @@ export const WALKER_RATES = {
 export const WALKER_EXTRA_PET_FEE = 5;
 export const WALKER_MEDICATION_FEE = 5;
 
-function isCheckinType(serviceType) {
+export function isCheckinType(serviceType) {
   return serviceType === 'checkin' || serviceType === 'drop-in-visit';
 }
 

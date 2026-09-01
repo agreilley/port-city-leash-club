@@ -208,8 +208,14 @@
     .calendar-day.completed { background: #8FA8A2; }
     .calendar-day.overnight-confirmed { background: #C17B6F; border: 1.5px solid #C17B6F; }
     .calendar-day.overnight-pending { background: #F0DEDB; border: 1.5px dashed #C17B6F; }
+    /* Drop-in visits get their own navy fill rather than reusing the
+       overnight rust — a confirmed check-in isn't an overnight stay and
+       shouldn't read as one on the calendar. */
+    .calendar-day.checkin-confirmed { background: #1C2F42; border: 1.5px solid #1C2F42; }
+    .calendar-day.checkin-pending { background: #DDE3E8; border: 1.5px dashed #1C2F42; }
     .calendar-day.completed .cal-day-num,
-    .calendar-day.overnight-confirmed .cal-day-num { color: white; }
+    .calendar-day.overnight-confirmed .cal-day-num,
+    .calendar-day.checkin-confirmed .cal-day-num { color: white; }
 
     /* Walk-overlap dot (bottom-right): a walk also exists on a day whose
        fill is driven by an overnight. Filled = the overnight is confirmed,
@@ -684,6 +690,14 @@
               <div class="legend-color" style="background: #F0DEDB; border: 1.5px dashed #C17B6F;"></div>
               <span>Overnight (pending)</span>
             </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background: #1C2F42;"></div>
+              <span>Drop-in visit (confirmed)</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-color" style="background: #DDE3E8; border: 1.5px dashed #1C2F42;"></div>
+              <span>Drop-in visit (pending)</span>
+            </div>
             <div class="legend-item" style="margin-left: auto; color: #888;">
               Click a walk to reschedule
             </div>
@@ -752,6 +766,7 @@ import { getFirestore, initializeFirestore, memoryLocalCache, doc, getDoc, colle
 import { showError } from '/js/status.js';
 import { requireMemberDoc, showPortalLoadTimeout } from '/js/portal-guard.js';
 import { WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
+import { isCheckinType } from './walker-pricing.js';
 const firebaseConfig = {
   apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
   authDomain: "port-city-leash-club-827ab.firebaseapp.com",
@@ -942,8 +957,14 @@ async function loadAndSubscribe(targetId) {
     showError(LOAD_ERROR_MSG);
   });
 
-  // Real-time pending overnight submissions
-  const pendingQ = query(collection(db, 'submissions'), where('memberId', '==', targetId), where('type', '==', 'overnight_request'));
+  // Real-time pending overnight/check-in submissions — a trigger only
+  // (re-runs loadOvernights, which does the real service-based filtering
+  // above); widened to service_request too so a pending drop-in visit
+  // actually causes a refresh instead of sitting stale until something
+  // else happens to touch the page. Matching every service_request here,
+  // not just check-ins, is harmless — an unrelated walk request just causes
+  // one extra loadOvernights call that changes nothing.
+  const pendingQ = query(collection(db, 'submissions'), where('memberId', '==', targetId), where('type', 'in', ['overnight_request', 'service_request']));
   onSnapshot(pendingQ, () => {
     loadOvernights(targetId);
   }, (err) => {
@@ -963,7 +984,14 @@ async function loadOvernights(uid) {
       const pendingSnap = await getDocs(query(collection(db, 'submissions'), where('memberId', '==', uid)));
       pending = pendingSnap.docs
         .map(d => ({ id: d.id, ...d.data() }))
-        .filter(s => s.type === 'overnight_request' && s.status !== 'confirmed')
+        // A drop-in visit requested through this same portal form is a
+        // service_request, not overnight_request (portal-request-extras.html
+        // keeps that type assignment as-is — admin's request routing depends
+        // on it) — matched here by service instead, on the same two values
+        // isCheckinType already checks. Declined excluded alongside confirmed:
+        // neither is still "pending."
+        .filter(s => (s.type === 'overnight_request' || (s.type === 'service_request' && isCheckinType(s.service)))
+          && s.status !== 'confirmed' && s.status !== 'declined')
         .map(s => ({ ...s, calendarType: 'overnight', status: 'pending' }));
     } catch(e) {
       console.warn('submissions read failed (rules?):', e.message);
@@ -1236,11 +1264,19 @@ function updateMetrics() {
         // case it's a genuine conflict (the overnight's midday check-in
         // covers the dog, so the walk is very likely no longer needed) and
         // gets flagged rather than silently hidden (rust fill + a seafoam dot
-        // marking the walk that still sits on it). A PENDING request is not
-        // a booking yet, so it must never suppress a real, already-scheduled
-        // walk — that's checked last, only once there's no walk to show
-        // instead.
-        if (overnightMap[day] && overnightMap[day].status === 'confirmed'
+        // marking the walk that still sits on it). This conflict framing is
+        // overnight-only, never a drop-in visit — a drop-in visit doesn't
+        // cover what a scheduled walk covers, so implying the walk isn't
+        // needed would be wrong and could mean a dog doesn't get walked. A
+        // confirmed check-in falls through to the plain confirmed-fill
+        // branch below instead, regardless of whether a walk also exists
+        // that day. A PENDING request is not a booking yet, so it must never
+        // suppress a real, already-scheduled walk — that's checked last,
+        // only once there's no walk to show instead.
+        const dayOvernight = overnightMap[day];
+        const dayIsCheckin = dayOvernight ? isCheckinType(dayOvernight.serviceType) : false;
+
+        if (dayOvernight && dayOvernight.status === 'confirmed' && !dayIsCheckin
             && walkMap[day] && walkMap[day].status !== 'completed') {
           dayEl.classList.add('overnight-confirmed');
           addWalkDot('confirmed');
@@ -1248,20 +1284,22 @@ function updateMetrics() {
           dayEl.title = 'Overnight stay (confirmed) — walk may not be needed';
           dayEl.style.cursor = 'pointer';
           dayEl.onclick = () => openWalkModal(w, cellDate);
-        } else if (overnightMap[day] && overnightMap[day].status === 'confirmed') {
-          dayEl.classList.add('overnight-confirmed');
-          dayEl.title = 'Overnight stay (confirmed)';
+        } else if (dayOvernight && dayOvernight.status === 'confirmed') {
+          dayEl.classList.add(dayIsCheckin ? 'checkin-confirmed' : 'overnight-confirmed');
+          dayEl.title = dayIsCheckin ? 'Drop-in visit (confirmed)' : 'Overnight stay (confirmed)';
         } else if (walkMap[day]) {
           if (w.status === 'completed') {
             dayEl.classList.add('completed');
-          } else if (overnightMap[day] && overnightMap[day].status === 'pending') {
-            // A pending overnight request never suppresses the walk (it
-            // isn't a booking), but it's still worth surfacing alongside it —
-            // same fill the day would get on its own, plus a dashed dot
-            // marking the walk that still sits on it.
-            dayEl.classList.add('overnight-pending');
+          } else if (dayOvernight && dayOvernight.status === 'pending') {
+            // A pending overnight or drop-in visit request never suppresses
+            // the walk (it isn't a booking), but it's still worth surfacing
+            // alongside it — same fill the day would get on its own, plus a
+            // dashed dot marking the walk that still sits on it. Purely
+            // informational either way, so unlike the confirmed branch
+            // above this doesn't need a check-in exemption.
+            dayEl.classList.add(dayIsCheckin ? 'checkin-pending' : 'overnight-pending');
             addWalkDot('pending');
-            dayEl.title = 'A pending overnight request also covers this day';
+            dayEl.title = dayIsCheckin ? 'A pending drop-in visit request also covers this day' : 'A pending overnight request also covers this day';
           } else {
             dayEl.classList.add('scheduled');
           }
@@ -1272,9 +1310,9 @@ function updateMetrics() {
           }
           dayEl.style.cursor = 'pointer';
           dayEl.onclick = () => openWalkModal(w, cellDate);
-        } else if (overnightMap[day]) {
-          dayEl.classList.add('overnight-pending');
-          dayEl.title = 'Overnight stay (pending confirmation)';
+        } else if (dayOvernight) {
+          dayEl.classList.add(dayIsCheckin ? 'checkin-pending' : 'overnight-pending');
+          dayEl.title = dayIsCheckin ? 'Drop-in visit (pending confirmation)' : 'Overnight stay (pending confirmation)';
         }
 
         calendarGrid.appendChild(dayEl);
@@ -1316,8 +1354,12 @@ function updateMetrics() {
     function renderOvernightConflicts() {
       const notice = document.getElementById('overnightConflictNotice');
       if (!notice) return;
+      // Same overnight-only conflict framing as the calendar cell above — a
+      // drop-in visit doesn't cover what a scheduled walk covers, so it's
+      // excluded here rather than telling a member a walk during a
+      // confirmed check-in isn't needed.
       const groups = myOvernights
-        .filter(o => o.status === 'confirmed')
+        .filter(o => o.status === 'confirmed' && !isCheckinType(o.serviceType))
         .map(o => {
           const { start, end } = overnightBounds(o);
           const walks = myWalks.filter(w => {
@@ -1392,13 +1434,22 @@ function updateMetrics() {
       // decided yet, so it gets a different note and never hides Extend.
       // Confirmed takes priority in the unlikely case both somehow overlap
       // the same day, matching the calendar cell's own priority order.
-      const confirmedOvernight = myOvernights.find(o => {
+      // confirmedOvernightAny (unfiltered) still drives Extend eligibility
+      // below, UNCHANGED — whether Extend should stay available alongside a
+      // confirmed drop-in visit is a separate question from this note's
+      // wording and hasn't been reviewed, so that existing behavior is left
+      // exactly as it was. confirmedOvernight (check-in-excluded) drives
+      // only the note text itself: a drop-in visit doesn't cover what a
+      // scheduled walk covers, so this note must never claim it does, same
+      // reasoning as the calendar cell and cross-month notice above.
+      const confirmedOvernightAny = myOvernights.find(o => {
         if (o.status !== 'confirmed') return false;
         const { start, end } = overnightBounds(o);
         return walkDateLocal >= start && walkDateLocal <= end;
       });
+      const confirmedOvernight = isCheckinType(confirmedOvernightAny?.serviceType) ? null : confirmedOvernightAny;
       const pendingOvernight = confirmedOvernight ? null : myOvernights.find(o => {
-        if (o.status !== 'pending') return false;
+        if (o.status !== 'pending' || isCheckinType(o.serviceType)) return false;
         const { start, end } = overnightBounds(o);
         return walkDateLocal >= start && walkDateLocal <= end;
       });
@@ -1426,10 +1477,14 @@ function updateMetrics() {
       // on a walk that's already extended (nothing to extend to) or one that
       // overlaps a CONFIRMED overnight (nothing to extend it to either). A
       // pending overnight is not a booking, so Extend stays available.
+      // Deliberately gated on confirmedOvernightAny, not confirmedOvernight —
+      // this still disables Extend during a confirmed drop-in visit too,
+      // exactly as it always has. Unlike the note above, that's an existing
+      // behavior this change isn't revisiting.
       const today = new Date(); today.setHours(0,0,0,0);
       const extendEligible = walkDateObj >= today
         && liveWalk.status !== 'cancelled' && liveWalk.status !== 'completed'
-        && !liveWalk.extended && !confirmedOvernight;
+        && !liveWalk.extended && !confirmedOvernightAny;
       document.getElementById('modalExtendBtn').style.display = extendEligible ? '' : 'none';
 
       document.getElementById('walkModal').classList.add('show');

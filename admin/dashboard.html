@@ -82,6 +82,7 @@
   .walk-chip.late-afternoon { background: #FEF3C7; color: #92400E; }
   .walk-chip.unassigned { background: #FEE2E2; color: #991B1B; }
   .walk-chip.overnight  { background: #E8F4F0; color: #2D7A5E; }
+  .walk-chip.checkin { background: #E4E9EE; color: var(--navy-mid); }
   .walk-chip.completed { background: var(--sand); color: var(--text-light); }
 
   /* ── CALENDAR LEGEND ── */
@@ -1000,7 +1001,7 @@ import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalk
 // buildScreeningAvailabilityGrid below.
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
 import { VISIT_SLOTS, VISIT_SLOT_LABELS, defaultSlotsForCount } from '../visit-slots.js';
-import { calculateEarnings } from '../walker-pricing.js';
+import { calculateEarnings, isCheckinType } from '../walker-pricing.js';
 import { showError } from '/js/status.js';
 
 // ─── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────────────
@@ -1971,9 +1972,12 @@ function renderCalendarDays() {
     // and can go stale if the member's profile changes afterward (falls back
     // to it only when the member can't be found at all).
     const oMember = overnightMap[d] ? allMembers.find(m => m.id === (overnightMap[d].memberId || '').trim()) : null;
-    const oDisplayName = escapeHtml(oMember?.name || overnightMap[d]?.memberName || overnightMap[d]?.memberId || 'Overnight');
+    const oIsCheckin = overnightMap[d] ? isCheckinType(overnightMap[d].serviceType) : false;
+    const oDisplayName = escapeHtml(oMember?.name || overnightMap[d]?.memberName || overnightMap[d]?.memberId || (oIsCheckin ? 'Drop-in visit' : 'Overnight'));
     const overnightChip = overnightMap[d]
-      ? `<div class="walk-chip overnight" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oDisplayName} · Overnight">🌙 ${oDisplayName}</div>`
+      ? (oIsCheckin
+          ? `<div class="walk-chip checkin" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oDisplayName} · Drop-in visit">${oDisplayName}</div>`
+          : `<div class="walk-chip overnight" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oDisplayName} · Overnight">🌙 ${oDisplayName}</div>`)
       : '';
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}</div>`;
   }
