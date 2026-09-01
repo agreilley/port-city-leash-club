@@ -2725,6 +2725,11 @@ window.openOvernightModal = (overnightId) => {
   const walker = _walkers.find(w => w.id === (o.walkerId || '').trim());
   const isAssigned = !!(o.walkerId || '').trim();
   const isCompleted = o.status === 'completed';
+  const isCheckin = isCheckinType(o.serviceType);
+  const hasSchedule = isCheckin && Array.isArray(o.visitSchedule) && o.visitSchedule.length > 0;
+  const scheduleRowsHTML = hasSchedule
+    ? o.visitSchedule.map(v => `<div class="modal-field"><div class="modal-label">${fmtDate(v.date)}</div><div class="modal-value">${v.visits} visit${v.visits === 1 ? '' : 's'}</div></div>`).join('')
+    : '';
 
   const walkerSelect = `<select id="manualOvernightWalkerSelect" style="width:100%;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:9px;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:10px;">
     <option value="">Select a walker...</option>
@@ -2747,7 +2752,7 @@ window.openOvernightModal = (overnightId) => {
     ${walkerSelect}
     <button class="btn-primary" style="width:100%;" onclick="assignOvernightWalkerManual('${overnightId}')">Assign</button>`;
 
-  document.getElementById('overnightModalTitle').textContent = `${escapeHtml(memberName)} · Overnight Stay`;
+  document.getElementById('overnightModalTitle').textContent = `${escapeHtml(memberName)} · ${isCheckin ? 'Drop-in visit' : 'Overnight Stay'}`;
   document.getElementById('overnightModalContent').innerHTML = `
     <div class="form-grid">
       <div class="modal-field"><div class="modal-label">Member</div><div class="modal-value">${escapeHtml(memberName)}</div></div>
@@ -2757,8 +2762,14 @@ window.openOvernightModal = (overnightId) => {
       <div class="modal-field"><div class="modal-label">Status</div><div class="modal-value">${isCompleted ? '✓ Completed' : o.status === 'confirmed' ? '✓ Confirmed' : escapeHtml(o.status || '–')}</div></div>
       <div class="modal-field"><div class="modal-label">Multiple Pets</div><div class="modal-value">${o.extraPet ? 'Yes' : 'No'}</div></div>
       <div class="modal-field"><div class="modal-label">Medication Admin</div><div class="modal-value">${o.medication ? 'Yes' : 'No'}</div></div>
+      <div class="modal-field"><div class="modal-label">Total</div><div class="modal-value">${typeof o.confirmedTotalCents === 'number' ? `$${(o.confirmedTotalCents / 100).toFixed(2)}` : '–'}</div></div>
       <div class="modal-field"><div class="modal-label">Notes</div><div class="modal-value">${escapeHtml(o.notes || '–')}</div></div>
     </div>
+    ${hasSchedule ? `
+    <hr class="modal-divider">
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Visit Schedule</div>
+    <div class="form-grid">${scheduleRowsHTML}</div>
+    ` : ''}
     <hr class="modal-divider">
     ${assignmentHTML}
     ${isAssigned && !isCompleted ? `<hr class="modal-divider"><button class="btn-secondary" style="width:100%;" onclick="markOvernightComplete('${overnightId}')">Mark Complete</button>` : ''}
