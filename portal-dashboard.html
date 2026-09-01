@@ -977,7 +977,7 @@ async function loadOvernights(uid) {
   let failed = false;
   try {
     const confirmedSnap = await getDocs(query(collection(db, 'overnights'), where('memberId', '==', uid)));
-    const confirmed = confirmedSnap.docs.map(d => ({ id: d.id, ...d.data(), calendarType: 'overnight', status: 'confirmed' }));
+    const confirmed = confirmedSnap.docs.map(d => ({ id: d.id, ...d.data(), status: 'confirmed' }));
 
     let pending = [];
     try {
@@ -992,7 +992,12 @@ async function loadOvernights(uid) {
         // neither is still "pending."
         .filter(s => (s.type === 'overnight_request' || (s.type === 'service_request' && isCheckinType(s.service)))
           && s.status !== 'confirmed' && s.status !== 'declined')
-        .map(s => ({ ...s, calendarType: 'overnight', status: 'pending' }));
+        // submissions docs carry the service type on `service`; overnights
+        // docs (the confirmed half above) carry it on `serviceType` — every
+        // downstream isCheckinType(o.serviceType) call assumes that field
+        // uniformly, so it's stamped here rather than patched at each read
+        // site. Read-side only — the submissions doc itself keeps `service`.
+        .map(s => ({ ...s, serviceType: s.service, status: 'pending' }));
     } catch(e) {
       console.warn('submissions read failed (rules?):', e.message);
       failed = true;
