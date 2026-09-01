@@ -786,6 +786,23 @@ exports.declineMembershipRequest = onCall({ secrets: [STRIPE_SECRET_KEY] }, asyn
 // with a real account and no card. overnight_request is NOT covered here —
 // it never creates a new account (always an existing member), so its
 // decline stays the simple client-side status update it always was.
+// True when this submission's own reservation (an overnights doc,
+// submissionId-linked — see runServiceOrOvernightBookingDoc) was already
+// cancelled via cancelOvernightReservation, which sends this exact same
+// decline email itself. Without this check, the recommended sequence for
+// an already-confirmed-but-stuck request — Cancel Reservation, then
+// Decline the request too, so it can't later auto-finalize in the
+// background and send a contradictory "confirmed" email — would email the
+// member the SAME "we can't accommodate this" message twice.
+async function reservationAlreadyDeclinedFor(submissionId) {
+  const snap = await db.collection('overnights')
+    .where('submissionId', '==', submissionId)
+    .where('status', '==', 'cancelled')
+    .limit(1)
+    .get();
+  return !snap.empty;
+}
+
 exports.declineServiceRequest = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KEY] }, async (request) => {
   await assertIsAdmin(request.auth);
   const { submissionId } = request.data || {};
@@ -807,7 +824,9 @@ exports.declineServiceRequest = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API
   // submission itself (the public form collects them) — sendRequestDeclinedEmail
   // reads those first and only falls back to the member doc for an
   // established member's request, which cleanup never deletes.
-  await sendRequestDeclinedEmail(sub, `sub:${submissionId}`);
+  if (!(await reservationAlreadyDeclinedFor(submissionId))) {
+    await sendRequestDeclinedEmail(sub, `sub:${submissionId}`);
+  }
   return result;
 });
 
@@ -840,7 +859,9 @@ exports.declineOvernightRequest = onCall({ secrets: [RESEND_API_KEY] }, async (r
   await subRef.set({
     status: 'declined', read: true, declinedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
-  await sendRequestDeclinedEmail(sub, `sub:${submissionId}`);
+  if (!(await reservationAlreadyDeclinedFor(submissionId))) {
+    await sendRequestDeclinedEmail(sub, `sub:${submissionId}`);
+  }
   return { success: true };
 });
 
