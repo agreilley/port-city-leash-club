@@ -2824,7 +2824,17 @@ window.openOvernightModal = (overnightId) => {
   function fmtDate(val) {
     if (!val) return '–';
     try {
-      const d = val.toDate ? val.toDate() : new Date(val);
+      // visitSchedule entries store date as a plain 'YYYY-MM-DD' string (the
+      // review grid's own key format), not a Firestore Timestamp like
+      // startDate/endDate below. new Date('YYYY-MM-DD') parses that as UTC
+      // midnight, which toLocaleDateString then renders in the browser's
+      // local zone — a day behind for any zone west of UTC (exactly what
+      // shifted Sept 1–2 to Aug 31–Sept 1 here). Parsing it at local noon
+      // instead, same convention every other per-day schedule builder in
+      // this codebase already uses, keeps it on the calendar date it says.
+      const d = val.toDate ? val.toDate()
+        : typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val) ? new Date(`${val}T12:00:00`)
+        : new Date(val);
       return d.toLocaleDateString('en-US', { weekday:'short', month:'long', day:'numeric', year:'numeric' });
     } catch { return '–'; }
   }
