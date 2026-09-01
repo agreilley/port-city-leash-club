@@ -4999,8 +4999,15 @@ function formatAttribution(attribution) {
 // collectAddMemberDogRows() so nothing typed is lost across a re-render.
 let _addMemberDogRows = [];
 
+// species/spayed/the six checkboxes were missing here entirely — the
+// request forms (service-request.html's collectDogs(), portal-pet-
+// profile.html's own editor) all collect them, but this editor had no
+// inputs for any of them, so seeding from a request's dogs[] (below) and
+// re-collecting on save silently dropped them for every member converted
+// through this modal, even ones who answered those exact questions.
 function dogRowHTML(dog, i) {
   const isOnly = _addMemberDogRows.length === 1;
+  const isCat = (dog.species || 'Dog') === 'Cat';
   return `
     <div style="border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:12px;margin-bottom:12px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
@@ -5012,8 +5019,23 @@ function dogRowHTML(dog, i) {
         <div class="form-field"><label>Breed</label><input type="text" id="am-dog-breed-${i}" placeholder="Golden Retriever" value="${escapeHtml(dog.breed)}"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
+        <div class="form-field"><label>Pet Type</label><select id="am-dog-species-${i}" onchange="updateAddMemberDogSpeciesFields(${i})"><option value="Dog"${!isCat ? ' selected' : ''}>Dog</option><option value="Cat"${isCat ? ' selected' : ''}>Cat</option></select></div>
+        <div class="form-field"><label>Spayed/Neutered?</label><select id="am-dog-spayed-${i}"><option${dog.spayed ? '' : ' selected'}>Select</option><option${dog.spayed === 'Yes' ? ' selected' : ''}>Yes</option><option${dog.spayed === 'No' ? ' selected' : ''}>No</option></select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
         <div class="form-field"><label>Age</label><input type="text" id="am-dog-age-${i}" placeholder="3" value="${escapeHtml(dog.age)}"></div>
         <div class="form-field"><label>Weight</label><input type="text" id="am-dog-weight-${i}" placeholder="55 lbs" value="${escapeHtml(dog.weight)}"></div>
+      </div>
+      <div class="form-field" style="margin-bottom:10px;">
+        <label>Helpful Context</label>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="am-dog-friendlyWithPeople-${i}"${dog.friendlyWithPeople ? ' checked' : ''}> Friendly with people</label>
+          <label id="am-dog-friendlyWithDogs-wrap-${i}" style="display:${isCat ? 'none' : 'flex'};align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="am-dog-friendlyWithDogs-${i}"${dog.friendlyWithDogs ? ' checked' : ''}> Friendly with other dogs</label>
+          <label id="am-dog-pullsOnLeash-wrap-${i}" style="display:${isCat ? 'none' : 'flex'};align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="am-dog-pullsOnLeash-${i}"${dog.pullsOnLeash ? ' checked' : ''}> Pulls on leash</label>
+          <label id="am-dog-indoorOnly-wrap-${i}" style="display:${isCat ? 'flex' : 'none'};align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="am-dog-indoorOnly-${i}"${dog.indoorOnly ? ' checked' : ''}> Indoor only</label>
+          <label id="am-dog-comfortableHandled-wrap-${i}" style="display:${isCat ? 'flex' : 'none'};align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="am-dog-comfortableHandled-${i}"${dog.comfortableHandled ? ' checked' : ''}> Comfortable being handled</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="am-dog-takesMedication-${i}"${dog.takesMedication ? ' checked' : ''}> Takes medication</label>
+        </div>
       </div>
       <div class="form-field" style="margin-bottom:10px;"><label>Notes</label><textarea id="am-dog-notes-${i}" placeholder="Anything else worth knowing…" style="height:60px;resize:vertical;">${escapeHtml(dog.notes)}</textarea></div>
       <div class="form-field" style="margin-bottom:10px;"><label>Temperament</label><textarea id="am-dog-temperament-${i}" placeholder="Friendly, energetic, shy…" style="height:60px;resize:vertical;">${escapeHtml(dog.temperament)}</textarea></div>
@@ -5027,6 +5049,21 @@ function dogRowHTML(dog, i) {
   `;
 }
 
+// Same show/hide-by-species pattern as portal-pet-profile.html's own dog
+// card (updateDogSpeciesFields) — kept as a separate function/id namespace
+// since this is a different page, not a shared import.
+window.updateAddMemberDogSpeciesFields = (i) => {
+  const isCat = document.getElementById(`am-dog-species-${i}`)?.value === 'Cat';
+  const dogsWrap = document.getElementById(`am-dog-friendlyWithDogs-wrap-${i}`);
+  const leashWrap = document.getElementById(`am-dog-pullsOnLeash-wrap-${i}`);
+  const indoorWrap = document.getElementById(`am-dog-indoorOnly-wrap-${i}`);
+  const handledWrap = document.getElementById(`am-dog-comfortableHandled-wrap-${i}`);
+  if (dogsWrap) dogsWrap.style.display = isCat ? 'none' : 'flex';
+  if (leashWrap) leashWrap.style.display = isCat ? 'none' : 'flex';
+  if (indoorWrap) indoorWrap.style.display = isCat ? 'flex' : 'none';
+  if (handledWrap) handledWrap.style.display = isCat ? 'flex' : 'none';
+};
+
 function renderDogRows() {
   document.getElementById('am-dogs-container').innerHTML = _addMemberDogRows.map(dogRowHTML).join('');
 }
@@ -5035,8 +5072,16 @@ function collectAddMemberDogRows() {
   return _addMemberDogRows.map((_, i) => ({
     name:         document.getElementById(`am-dog-name-${i}`)?.value.trim() || '',
     breed:        document.getElementById(`am-dog-breed-${i}`)?.value.trim() || '',
+    species:      document.getElementById(`am-dog-species-${i}`)?.value || 'Dog',
+    spayed:       ['Yes', 'No'].includes(document.getElementById(`am-dog-spayed-${i}`)?.value) ? document.getElementById(`am-dog-spayed-${i}`).value : '',
     age:          document.getElementById(`am-dog-age-${i}`)?.value.trim() || '',
     weight:       document.getElementById(`am-dog-weight-${i}`)?.value.trim() || '',
+    friendlyWithPeople: document.getElementById(`am-dog-friendlyWithPeople-${i}`)?.checked || false,
+    friendlyWithDogs:   document.getElementById(`am-dog-friendlyWithDogs-${i}`)?.checked || false,
+    pullsOnLeash:       document.getElementById(`am-dog-pullsOnLeash-${i}`)?.checked || false,
+    indoorOnly:         document.getElementById(`am-dog-indoorOnly-${i}`)?.checked || false,
+    comfortableHandled: document.getElementById(`am-dog-comfortableHandled-${i}`)?.checked || false,
+    takesMedication:    document.getElementById(`am-dog-takesMedication-${i}`)?.checked || false,
     notes:        document.getElementById(`am-dog-notes-${i}`)?.value.trim() || '',
     temperament:  document.getElementById(`am-dog-temperament-${i}`)?.value.trim() || '',
     walkingPrefs: document.getElementById(`am-dog-walkingPrefs-${i}`)?.value.trim() || '',
@@ -5048,7 +5093,12 @@ function collectAddMemberDogRows() {
 
 window.addDogRow = () => {
   _addMemberDogRows = collectAddMemberDogRows();
-  _addMemberDogRows.push({ name: '', breed: '', age: '', weight: '', notes: '', temperament: '', walkingPrefs: '', triggers: '', medications: '', allergies: '' });
+  _addMemberDogRows.push({
+    name: '', breed: '', species: 'Dog', spayed: '', age: '', weight: '',
+    friendlyWithPeople: false, friendlyWithDogs: false, pullsOnLeash: false,
+    indoorOnly: false, comfortableHandled: false, takesMedication: false,
+    notes: '', temperament: '', walkingPrefs: '', triggers: '', medications: '', allergies: '',
+  });
   renderDogRows();
 };
 
@@ -5127,10 +5177,17 @@ window.openAddMemberModal = (prefill, submissionId) => {
   // otherwise start with one blank row.
   _addMemberDogRows = (Array.isArray(prefill?.dogs) && prefill.dogs.length)
     ? prefill.dogs.map(d => ({
-        name: d.name || '', breed: d.breed || '', age: d.age || '', weight: d.weight || '', notes: d.notes || '',
-        temperament: d.temperament || '', walkingPrefs: d.walkingPrefs || '', triggers: d.triggers || '', medications: d.medications || '', allergies: d.allergies || '',
+        name: d.name || '', breed: d.breed || '', species: d.species || 'Dog', spayed: d.spayed || '', age: d.age || '', weight: d.weight || '',
+        friendlyWithPeople: d.friendlyWithPeople || false, friendlyWithDogs: d.friendlyWithDogs || false, pullsOnLeash: d.pullsOnLeash || false,
+        indoorOnly: d.indoorOnly || false, comfortableHandled: d.comfortableHandled || false, takesMedication: d.takesMedication || false,
+        notes: d.notes || '', temperament: d.temperament || '', walkingPrefs: d.walkingPrefs || '', triggers: d.triggers || '', medications: d.medications || '', allergies: d.allergies || '',
       }))
-    : [{ name: prefill?.dogName || '', breed: '', age: '', weight: '', notes: '', temperament: '', walkingPrefs: '', triggers: '', medications: '', allergies: '' }];
+    : [{
+        name: prefill?.dogName || '', breed: '', species: 'Dog', spayed: '', age: '', weight: '',
+        friendlyWithPeople: false, friendlyWithDogs: false, pullsOnLeash: false,
+        indoorOnly: false, comfortableHandled: false, takesMedication: false,
+        notes: '', temperament: '', walkingPrefs: '', triggers: '', medications: '', allergies: '',
+      }];
   renderDogRows();
 
   document.getElementById('addMemberModal').classList.add('open');
