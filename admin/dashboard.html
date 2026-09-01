@@ -1967,17 +1967,22 @@ function renderCalendarDays() {
       const label = escapeHtml(walker ? `${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`);
       return `<div class="walk-chip ${cls}" onclick="openWalkModal('${w.id}')" title="${label}">${label}</div>`;
     }).join('');
-    // Resolve the member live the same way the walk chip does above — the
-    // doc's own memberName is a snapshot from whenever it was created/seeded
-    // and can go stale if the member's profile changes afterward (falls back
-    // to it only when the member can't be found at all).
+    // Same dog-name-plus-walker convention as the walk chip above, not the
+    // owner's name — the overnights doc stamps its own dogName at creation
+    // (which dog(s) is this reservation actually for), so that's preferred
+    // over a live member lookup's first dog, which could be wrong for a
+    // multi-dog household. Falls back to a live lookup, then the member's
+    // own name, only if the doc predates dogName being stamped.
     const oMember = overnightMap[d] ? allMembers.find(m => m.id === (overnightMap[d].memberId || '').trim()) : null;
     const oIsCheckin = overnightMap[d] ? isCheckinType(overnightMap[d].serviceType) : false;
-    const oDisplayName = escapeHtml(oMember?.name || overnightMap[d]?.memberName || overnightMap[d]?.memberId || (oIsCheckin ? 'Drop-in visit' : 'Overnight'));
+    const oWkId = overnightMap[d] ? (overnightMap[d].walkerId || '').trim() : '';
+    const oWalker = oWkId ? allWalkers.find(k => k.id === oWkId) : null;
+    const oDogName = overnightMap[d]?.dogName || getMemberDogs(oMember)[0]?.name || oMember?.name?.split(' ')[0] || (oIsCheckin ? 'Drop-in visit' : 'Overnight');
+    const oLabel = escapeHtml(oWalker ? `${oDogName} / ${oWalker.name.split(' ')[0]}` : `${oDogName} · Unassigned`);
     const overnightChip = overnightMap[d]
       ? (oIsCheckin
-          ? `<div class="walk-chip checkin" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oDisplayName} · Drop-in visit">${oDisplayName}</div>`
-          : `<div class="walk-chip overnight" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oDisplayName} · Overnight">🌙 ${oDisplayName}</div>`)
+          ? `<div class="walk-chip checkin" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Drop-in visit">${oLabel}</div>`
+          : `<div class="walk-chip overnight" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Overnight">🌙 ${oLabel}</div>`)
       : '';
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}</div>`;
   }
