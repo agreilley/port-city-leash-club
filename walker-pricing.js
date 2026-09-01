@@ -72,7 +72,7 @@ export function calculateOvernightPayout(overnight) {
 
   const hasVisitSchedule = key === 'checkin' && Array.isArray(overnight.visitSchedule) && overnight.visitSchedule.length > 0;
   const units = hasVisitSchedule
-    ? overnight.visitSchedule.reduce((sum, d) => sum + (d.visits || 0), 0)
+    ? overnight.visitSchedule.reduce((sum, d) => sum + (Number(d.visits) || 0), 0)
     : days;
 
   const base = WALKER_RATES[key] * units;

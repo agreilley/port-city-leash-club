@@ -1055,7 +1055,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         endDate: localDateToTimestamp(endInput.value),
         timeSlot: isWalk ? (document.getElementById('time-slot')?.value || null) : null,
         notes: document.getElementById('care-notes')?.value || '',
-        visitsPerDay: document.getElementById('visits')?.value || '',
+        visitsPerDay: parseInt(document.getElementById('visits')?.value, 10) || 1,
         extraPet: document.getElementById('addon-extra-pet')?.checked || false,
         medication: document.getElementById('addon-medication')?.checked || false,
         dogs: collectDogs(),

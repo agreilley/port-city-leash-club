@@ -3685,7 +3685,7 @@ function computeAndRenderDropInPricing(extraPet, medication, travelDiscountPerce
 function computeDropInVisitTotal(extraPet, medication) {
   const info = SERVICE_PRICES['drop-in-visit'];
   const days = Object.keys(_reviewVisitSchedule).length || 1;
-  const totalVisits = Object.values(_reviewVisitSchedule).reduce((a, entry) => a + entry.count, 0);
+  const totalVisits = Object.values(_reviewVisitSchedule).reduce((a, entry) => a + (Number(entry.count) || 0), 0);
   const serviceTotal = info.price * totalVisits;
   const extraPetTotal = extraPet ? EXTRA_PET_FEE * days : 0;
   const medicationTotal = medication ? MEDICATION_FEE * days : 0;
@@ -3856,7 +3856,7 @@ function renderTravelDiscountBanner(memberId) {
 
 function renderServiceRequestReview(item) {
   _reviewVisitSchedule = {};
-  _reviewItemVisitsPerDay = item.visitsPerDay || 1;
+  _reviewItemVisitsPerDay = parseInt(item.visitsPerDay, 10) || 1;
   _reviewMemberId = item.memberId || null;
   _reviewRecalcFn = reviewRecalcService;
   document.getElementById('requestModalContent').innerHTML = `
@@ -3988,7 +3988,7 @@ function renderOvernightReview(item) {
   _reviewMemberId = item.memberId || null;
   _reviewVisitSchedule = {};
   _reviewOvernightVisitSchedule = {};
-  _reviewItemVisitsPerDay = item.visitsPerDay || 1;
+  _reviewItemVisitsPerDay = parseInt(item.visitsPerDay, 10) || 1;
   _reviewRecalcFn = reviewRecalcOvernight;
 
   document.getElementById('requestModalContent').innerHTML = `
