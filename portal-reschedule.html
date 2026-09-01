@@ -705,9 +705,18 @@ function updateSidebar() {
   const dogs = memberData.dogs?.length ? memberData.dogs : [{ name: memberData.dogName, breed: memberData.petBreed, age: memberData.petAge ? memberData.petAge + ' years' : '' }];
   // esc() — HTML-escape user-controlled dog fields before innerHTML (L-1)
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // Same fix as portal-pet-profile.html's own formatDogAge — age is free
+  // text a member typed, so a plain number gets "years old" appended,
+  // while anything already worded (e.g. "9 years", "Senior") is shown
+  // exactly as typed rather than risking "X years years old".
+  const formatDogAge = age => {
+    const trimmed = String(age).trim();
+    const n = /^\d+$/.test(trimmed) ? parseInt(trimmed, 10) : null;
+    return n !== null ? `${n} year${n === 1 ? '' : 's'} old` : `${trimmed} old`;
+  };
   const el = document.getElementById('sidebarPets');
   if (el) el.innerHTML = dogs.map(d => {
-    const info = [esc(d.breed), d.age ? esc(d.age) + ' old' : ''].filter(Boolean).join(' • ');
+    const info = [esc(d.breed), d.age ? esc(formatDogAge(d.age)) : ''].filter(Boolean).join(' • ');
     return '<div style="margin-bottom:10px;"><div class="pet-name">' + esc(d.name||'') + '</div><div class="pet-info">' + info + '</div></div>';
   }).join('');
 }
