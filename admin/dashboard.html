@@ -3910,6 +3910,15 @@ let _reviewMemberId = null; // service_request/overnight_request review only —
 let _reviewVisitSchedule = {};
 let _reviewItemVisitsPerDay = 1; // the member's own estimate — default for any newly-added day
 
+// The customer's own per-day overrides from intake (service-request.html /
+// portal-request-extras.html's Visit Schedule grid) — 'YYYY-MM-DD' -> visits.
+// Seeded once from item.visitSchedule by renderServiceRequestReview /
+// renderOvernightReview, reset with everything else above on a new item.
+// syncVisitScheduleRows consults this ahead of the flat _reviewItemVisitsPerDay
+// default so a customer's "fewer visits that one day" request pre-populates
+// the admin grid instead of admin having to notice and re-enter it by hand.
+let _reviewItemVisitSchedule = {};
+
 // Rebuilds _reviewVisitSchedule and the #rev-visit-schedule rows to match
 // the current Start/End Date range — one row per calendar day, inclusive
 // of both bounds (drop-in-visit is priced as an inclusive day count, same
@@ -3936,9 +3945,10 @@ function syncVisitScheduleRows(defaultVisits) {
 
   const nextSchedule = {};
   dates.forEach(d => {
-    nextSchedule[d] = _reviewVisitSchedule[d] !== undefined
-      ? _reviewVisitSchedule[d]
-      : { count: defaultVisits, slots: defaultSlotsForCount(defaultVisits) };
+    if (_reviewVisitSchedule[d] !== undefined) { nextSchedule[d] = _reviewVisitSchedule[d]; return; }
+    const seeded = _reviewItemVisitSchedule[d];
+    const count = seeded !== undefined ? seeded : defaultVisits;
+    nextSchedule[d] = { count, slots: defaultSlotsForCount(count) };
   });
   _reviewVisitSchedule = nextSchedule;
 
@@ -4198,6 +4208,10 @@ function renderTravelDiscountBanner(memberId) {
 function renderServiceRequestReview(item) {
   _reviewVisitSchedule = {};
   _reviewItemVisitsPerDay = parseInt(item.visitsPerDay, 10) || 1;
+  _reviewItemVisitSchedule = {};
+  (item.visitSchedule || []).forEach(({ date, visits }) => {
+    if (date) _reviewItemVisitSchedule[date] = Math.max(0, parseInt(visits, 10) || 0);
+  });
   _reviewMemberId = item.memberId || null;
   _reviewRecalcFn = reviewRecalcService;
   document.getElementById('requestModalContent').innerHTML = `
@@ -4330,6 +4344,10 @@ function renderOvernightReview(item) {
   _reviewVisitSchedule = {};
   _reviewOvernightVisitSchedule = {};
   _reviewItemVisitsPerDay = parseInt(item.visitsPerDay, 10) || 1;
+  _reviewItemVisitSchedule = {};
+  (item.visitSchedule || []).forEach(({ date, visits }) => {
+    if (date) _reviewItemVisitSchedule[date] = Math.max(0, parseInt(visits, 10) || 0);
+  });
   _reviewRecalcFn = reviewRecalcOvernight;
 
   document.getElementById('requestModalContent').innerHTML = `

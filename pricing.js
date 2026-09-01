@@ -153,6 +153,33 @@ export function calculateWalkExtensionTotal(walkCount) {
   return Math.max(walkCount, 0) * WALK_EXTENSION_PRICE;
 }
 
+// Per-day drop-in visit pricing, for a caller that has (or is building) an
+// actual per-day visit-count schedule rather than one flat visits-per-day
+// estimate applied uniformly across every day — e.g. a request where the
+// visitor is back mid-day and needs fewer visits that one day. schedule is
+// a plain {[dateStr]: count} map; days is simply how many keys it has, not
+// derived from any date-range math, so a caller building the schedule from
+// a start/end range already controls that via however many keys it puts
+// in. Mirrors admin/dashboard.html's own computeDropInVisitTotal (the
+// confirmed-schedule total there) rather than replacing it — that
+// function stays as-is; this is the same math made reusable for the
+// request forms' own live estimate, so a schedule-aware total exists in
+// exactly one place going forward instead of being reimplemented per form.
+export function calculateDropInScheduleTotal({ schedule, extraPet = false, medication = false } = {}) {
+  const info = SERVICE_PRICES['drop-in-visit'];
+  const days = Object.keys(schedule || {}).length;
+  const totalVisits = Object.values(schedule || {}).reduce((a, c) => a + (Number(c) || 0), 0);
+  const serviceTotal = info.price * totalVisits;
+  const extraPetTotal = extraPet ? EXTRA_PET_FEE * days : 0;
+  const medicationTotal = medication ? MEDICATION_FEE * days : 0;
+  const breakdown = [
+    { label: info.name, amount: serviceTotal },
+    ...(extraPet ? [{ label: 'Multiple pets', amount: extraPetTotal }] : []),
+    ...(medication ? [{ label: 'Medication admin', amount: medicationTotal }] : []),
+  ];
+  return { total: serviceTotal + extraPetTotal + medicationTotal, breakdown, days, totalVisits };
+}
+
 // The ONE place discount eligibility is decided — used by both the
 // discount-application call sites (admin/dashboard.html) and the
 // server-side assertion (functions/index.js's chargeCustomerCard), so they

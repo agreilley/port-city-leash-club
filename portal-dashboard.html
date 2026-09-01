@@ -1434,11 +1434,22 @@ function updateMetrics() {
       const totalLabelEl = document.getElementById('reservationModalTotalLabel');
       const totalEl = document.getElementById('reservationModalTotal');
       if (!isPending && typeof entry.confirmedTotalCents === 'number') {
+        // Confirmed: this is the real charge amount, shown in full — never
+        // diluted to a daily figure the way the pending estimate below is.
         totalLabelEl.textContent = 'Total';
         totalEl.textContent = `$${(entry.confirmedTotalCents / 100).toFixed(2)}`;
       } else if (isPending && typeof entry.estimatedTotal === 'number') {
-        totalLabelEl.textContent = 'Estimated total';
-        totalEl.textContent = `$${entry.estimatedTotal.toFixed(2)}`;
+        // Pending: a lump sum for a multi-day trip reads as sticker shock
+        // to a member who assumes it's a single day's rate. estimatedTotal
+        // is built from one flat visits-per-day figure applied uniformly
+        // across every day in the range (see service-request.html /
+        // portal-request-extras.html's own live estimate) — so dividing by
+        // the same day count pricing.js uses for this service type gives a
+        // real per-day rate, not an approximation.
+        const exclusiveDays = Math.round((end - start) / 86400000);
+        const days = isCheckin ? exclusiveDays + 1 : Math.max(exclusiveDays, 1);
+        totalLabelEl.textContent = 'Estimated daily rate';
+        totalEl.textContent = `$${(entry.estimatedTotal / days).toFixed(2)}/day`;
       } else {
         totalLabelEl.textContent = 'Total';
         totalEl.textContent = '–';

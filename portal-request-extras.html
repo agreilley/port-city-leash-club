@@ -208,6 +208,10 @@
               <option>6 visits</option>
             </select>
           </div>
+          <div class="field full" id="visitScheduleField" style="display:none;">
+            <label>Visit Schedule <span style="font-weight:400;color:#7A7A7A;">(adjust any day that needs a different number — e.g. you're back mid-day)</span></label>
+            <div id="visitScheduleRows"></div>
+          </div>
           <div class="field">
             <label>Start Date</label>
             <input type="date" id="startDate" name="start-date" onchange="updateSummary()">
@@ -267,12 +271,55 @@
 </div><!-- end portal-container -->
 
 <script type="module">
-  import { calculateServiceTotal } from './pricing.js';
+  import { calculateServiceTotal, calculateDropInScheduleTotal } from './pricing.js';
   import { showSuccess, showError } from '/js/status.js';
 
   // Display names only — actual pricing lives in pricing.js (SERVICE_PRICES,
   // via the 'overnight'/'checkin' aliases), not duplicated here.
   const SERVICE_NAMES = { overnight: 'Overnight Stay', checkin: 'Check-In Visit' };
+
+  // Same per-day override grid as service-request.html's own
+  // syncReqVisitScheduleRows — see that file's comment for why. Only shown
+  // for a 2+ day check-in; a single day has nothing to vary.
+  let _reqVisitSchedule = {};
+
+  function syncReqVisitScheduleRows(defaultVisits) {
+    const field = document.getElementById('visitScheduleField');
+    const container = document.getElementById('visitScheduleRows');
+    const startStr = document.getElementById('startDate').value;
+    const endStr = document.getElementById('endDate').value;
+    if (!startStr || !endStr || endStr <= startStr) {
+      field.style.display = 'none';
+      _reqVisitSchedule = {};
+      return;
+    }
+
+    const dates = [];
+    const cursor = new Date(`${startStr}T12:00:00`);
+    const end = new Date(`${endStr}T12:00:00`);
+    while (cursor <= end) {
+      dates.push(cursor.toISOString().slice(0, 10));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    const next = {};
+    dates.forEach(d => { next[d] = _reqVisitSchedule[d] !== undefined ? _reqVisitSchedule[d] : defaultVisits; });
+    _reqVisitSchedule = next;
+
+    field.style.display = 'flex';
+    container.innerHTML = dates.map(d => {
+      const label = new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:4px 0;border-bottom:1px solid rgba(0,0,0,0.05);">
+        <span style="font-size:13px;">${label}</span>
+        <input type="number" min="0" max="20" value="${_reqVisitSchedule[d]}" style="width:70px;" onchange="updateReqVisitScheduleCount('${d}', this.value)">
+      </div>`;
+    }).join('');
+  }
+
+  window.updateReqVisitScheduleCount = (dateStr, value) => {
+    _reqVisitSchedule[dateStr] = Math.max(0, parseInt(value, 10) || 0);
+    updateSummary();
+  };
 
   function updateServiceFields() {
     const service = document.getElementById('serviceSelect').value;
@@ -301,20 +348,37 @@
     const start   = document.getElementById('startDate').value;
     const end     = document.getElementById('endDate').value;
     const visitsEl = document.getElementById('visitsField')?.querySelector('select');
-    const visitsPerDay = service === 'checkin' ? parseInt(visitsEl?.value || '1') : 1;
+    const isCheckin = service === 'checkin';
+    const visitsPerDay = isCheckin ? parseInt(visitsEl?.value || '1') : 1;
     const extraPet = document.getElementById('addonExtraPet')?.checked || false;
     const medication = document.getElementById('addonMedication')?.checked || false;
 
-    const { total, breakdown, days } = calculateServiceTotal({
-      serviceKey: service, startDate: start, endDate: end, visitsPerDay, extraPet, medication,
-    });
+    if (isCheckin) {
+      syncReqVisitScheduleRows(visitsPerDay);
+    } else {
+      document.getElementById('visitScheduleField').style.display = 'none';
+      _reqVisitSchedule = {};
+    }
+    const scheduleActive = isCheckin && Object.keys(_reqVisitSchedule).length > 0;
+
+    let total, breakdown, days, totalVisits;
+    if (scheduleActive) {
+      ({ total, breakdown, days, totalVisits } = calculateDropInScheduleTotal({
+        schedule: _reqVisitSchedule, extraPet, medication,
+      }));
+    } else {
+      ({ total, breakdown, days } = calculateServiceTotal({
+        serviceKey: service, startDate: start, endDate: end, visitsPerDay, extraPet, medication,
+      }));
+      totalVisits = isCheckin ? days * visitsPerDay : null;
+    }
     window._lastEstimatedTotal = total;
     const base = breakdown[0]?.amount ?? 0;
     const extraPetLine = breakdown.find(b => b.label === 'Multiple pets');
     const medsLine = breakdown.find(b => b.label === 'Medication admin');
 
-    const qtyLabel = service === 'checkin'
-      ? `${days} day${days > 1 ? 's' : ''} × ${visitsPerDay} visit${visitsPerDay > 1 ? 's' : ''}`
+    const qtyLabel = isCheckin
+      ? `${days} day${days > 1 ? 's' : ''} · ${totalVisits} visit${totalVisits !== 1 ? 's' : ''} total`
       : (days > 1 ? ` × ${days}` : '');
 
     let lines = `<div class="summary-line"><span>${name}${qtyLabel ? ' · ' + qtyLabel : ''}</span><strong>$${base}</strong></div>`;
@@ -380,6 +444,13 @@
         ? null
         : parseInt(document.getElementById('visitsField')?.querySelector('select')?.value || '1');
 
+      // Per-day override grid, same {date, visits} shape as
+      // service-request.html — empty for overnight or when the member never
+      // touched the grid (single-day check-in has nothing to vary).
+      const visitSchedule = isOvernight
+        ? []
+        : Object.entries(_reqVisitSchedule).map(([date, visits]) => ({ date, visits }));
+
       const data = {
         type: isOvernight ? 'overnight_request' : 'service_request',
         memberId:   user.uid,
@@ -388,6 +459,7 @@
         startDate:  localDateToTimestamp(startStr),
         endDate:    localDateToTimestamp(endStr),
         visitsPerDay,
+        visitSchedule,
         notes:      document.querySelector('textarea[name=notes]')?.value || '',
         addonExtraPet:   document.getElementById('addonExtraPet')?.checked  || false,
         addonMedication: document.getElementById('addonMedication')?.checked || false,

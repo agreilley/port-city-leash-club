@@ -296,8 +296,8 @@ service cloud.firestore {
       // there's no existing sibling in THIS function to match instead.
       function validService() {
         return request.resource.data.keys().hasOnly(
-            ['type', 'service', 'startDate', 'endDate', 'timeSlot', 'notes', 'visitsPerDay', 'extraPet',
-             'medication', 'dogs', 'ownerName', 'email', 'phone', 'address',
+            ['type', 'service', 'startDate', 'endDate', 'timeSlot', 'notes', 'visitsPerDay', 'visitSchedule',
+             'extraPet', 'medication', 'dogs', 'ownerName', 'email', 'phone', 'address',
              'meetGreetDateTime', 'estimatedTotal', 'referredByCode', 'attribution', 'read', 'createdAt'])
           && request.resource.data.ownerName is string && request.resource.data.ownerName.size() <= 200
           && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
@@ -331,7 +331,13 @@ service cloud.firestore {
           && (request.resource.data.referredByCode == null
               || (request.resource.data.referredByCode is string && request.resource.data.referredByCode.size() <= 40))
           && (!('attribution' in request.resource.data) || validAttribution())
-          && request.resource.data.dogs is list && request.resource.data.dogs.size() <= 10;
+          && request.resource.data.dogs is list && request.resource.data.dogs.size() <= 10
+          // Per-day visit-count override grid (service-request.html's
+          // syncReqVisitScheduleRows) — always present, [] when the customer
+          // never touched it (overnight, or a single-day check-in with
+          // nothing to vary). Same no-per-element-check convention as dogs
+          // above; 60 covers any realistic date range with headroom.
+          && request.resource.data.visitSchedule is list && request.resource.data.visitSchedule.size() <= 60;
       }
 
       // Source: careers.html:361 (submitApplication) + :442 resume spread.
@@ -500,7 +506,7 @@ service cloud.firestore {
         return exists(/databases/$(database)/documents/members/$(request.auth.uid))
           && request.resource.data.keys().hasOnly(
             ['type', 'memberId', 'memberName', 'service', 'startDate', 'endDate',
-             'visitsPerDay', 'notes', 'addonExtraPet', 'addonMedication',
+             'visitsPerDay', 'visitSchedule', 'notes', 'addonExtraPet', 'addonMedication',
              'estimatedTotal', 'status', 'read', 'createdAt'])
           && request.resource.data.memberId == request.auth.uid
           && request.resource.data.memberName is string && request.resource.data.memberName.size() <= 200
@@ -524,7 +530,12 @@ service cloud.firestore {
               ? (request.resource.data.visitsPerDay is number
                   && request.resource.data.visitsPerDay >= 1
                   && request.resource.data.visitsPerDay <= 6)
-              : request.resource.data.visitsPerDay == null);
+              : request.resource.data.visitsPerDay == null)
+          // Per-day override grid (portal-request-extras.html's
+          // syncReqVisitScheduleRows) — same shape/cap as validService()'s
+          // visitSchedule above; always [] for overnight, since it has no
+          // per-day-visits concept at all.
+          && request.resource.data.visitSchedule is list && request.resource.data.visitSchedule.size() <= 60;
       }
 
       allow create: if (request.auth != null
