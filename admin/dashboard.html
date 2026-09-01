@@ -3925,7 +3925,7 @@ window.openRequestItem = async (id) => {
 // than admin blindly overriding a single dollar figure with no context.
 
 let _reviewWalkIds = [];    // walk_extension only — the request's original walkIds
-let _reviewTotalTouched = false; // overnight_request only — has admin manually edited the override total?
+let _reviewTotalTouched = false; // shared by renderOvernightReview and renderServiceRequestReview — has admin manually edited the override total?
 let _reviewMemberId = null; // service_request/overnight_request review only — whose travelDiscountPercent (if any) applies to this charge
 
 // ── drop-in-visit per-day schedule editor state ──
@@ -4238,6 +4238,7 @@ function renderTravelDiscountBanner(memberId) {
 }
 
 function renderServiceRequestReview(item) {
+  _reviewTotalTouched = false;
   _reviewVisitSchedule = {};
   _reviewItemVisitsPerDay = parseInt(item.visitsPerDay, 10) || 1;
   _reviewItemVisitSchedule = {};
@@ -4277,8 +4278,9 @@ function renderServiceRequestReview(item) {
     </div>
     <hr class="modal-divider">
     <div id="rev-breakdown" style="margin-bottom:8px;"></div>
-    <div style="display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:17px;color:var(--navy);">
-      <span>Total</span><span id="rev-total">$0</span>
+    <div class="form-field">
+      <label>Final Total — auto-calculated above, but editable if the member under-reported (e.g. a pet not on file)</label>
+      <input type="number" min="0" step="0.01" id="rev-total-override" oninput="reviewOverrideTotalTouched()" style="font-weight:600;font-size:16px;">
     </div>
     ${item.notes ? `
     <hr class="modal-divider">
@@ -4348,25 +4350,32 @@ window.reviewRecalcService = () => {
 
   const travelDiscountPercent = getActiveTravelDiscountPercent(_reviewMemberId);
 
+  let total;
   if (isDropIn) {
     // drop-in-visit is always a travel (night-unit) service — no isWalk-style
     // gate needed here, unlike the generic branch below.
-    computeAndRenderDropInPricing(extraPet, medication, travelDiscountPercent);
-    return;
+    total = computeAndRenderDropInPricing(extraPet, medication, travelDiscountPercent);
+  } else {
+    const raw = calculateServiceTotal({
+      serviceKey: service, startDate, endDate, extraPet, medication,
+    });
+    // This branch also covers a plain walk/extended-walk — Friends & Family
+    // must never discount those, so the gate here is the explicit travel-service
+    // allowlist (isTravelDiscountService), not just "not drop-in" and not a
+    // unit check — see that function's own comment in pricing.js for why.
+    const isTravelService = isTravelDiscountService(service);
+    const applied = (isTravelService && travelDiscountPercent > 0)
+      ? applyTravelDiscount(raw.total, raw.breakdown, travelDiscountPercent)
+      : raw;
+    total = applied.total;
+    renderReviewBreakdown(applied.breakdown, applied.total);
   }
-
-  const raw = calculateServiceTotal({
-    serviceKey: service, startDate, endDate, extraPet, medication,
-  });
-  // This branch also covers a plain walk/extended-walk — Friends & Family
-  // must never discount those, so the gate here is the explicit travel-service
-  // allowlist (isTravelDiscountService), not just "not drop-in" and not a
-  // unit check — see that function's own comment in pricing.js for why.
-  const isTravelService = isTravelDiscountService(service);
-  const { total, breakdown } = (isTravelService && travelDiscountPercent > 0)
-    ? applyTravelDiscount(raw.total, raw.breakdown, travelDiscountPercent)
-    : raw;
-  renderReviewBreakdown(breakdown, total);
+  // Same override-preserving pattern as reviewRecalcOvernight — only
+  // overwrite the Final Total field with the freshly computed number if
+  // admin hasn't already typed their own value into it.
+  if (!_reviewTotalTouched) {
+    document.getElementById('rev-total-override').value = total;
+  }
 };
 
 // ── overnight_request / checkin review ──
@@ -4650,12 +4659,27 @@ window.confirmRequestDates = async (submissionId, item) => {
     } else if (isCheckin) {
       // Check-in (drop-in-visit) prices off the admin-confirmed per-day
       // schedule (_reviewVisitSchedule, built by the review UI's Visit
-      // Schedule editor), not a flat visitsPerDay x days multiplier.
-      const r = computeDropInVisitTotal(extraPet, medication);
-      const applied = travelDiscountPercent > 0 ? applyTravelDiscount(r.total, r.breakdown, travelDiscountPercent) : r;
-      amountInDollars = applied.total; unitCount = r.totalVisits;
-      travelDiscountApplied = travelDiscountPercent > 0;
-      travelDiscountPercentApplied = travelDiscountApplied ? travelDiscountPercent : 0;
+      // Schedule editor), not a flat visitsPerDay x days multiplier — unless
+      // admin has overridden the total directly (rev-total-override, added
+      // to renderServiceRequestReview to match renderOvernightReview's own
+      // override field — same "member under-reported" escape hatch, now
+      // available regardless of which form the booking came in through).
+      const overrideStr = document.getElementById('rev-total-override')?.value;
+      if (overrideStr !== undefined && overrideStr !== '') {
+        amountInDollars = parseFloat(overrideStr);
+        unitCount = 1;
+        // No F&F ack checkbox exists on this review (unlike overnight's) —
+        // matches this branch's own non-override case below, which already
+        // applies the discount unconditionally whenever one is active.
+        travelDiscountApplied = travelDiscountPercent > 0;
+        travelDiscountPercentApplied = travelDiscountApplied ? travelDiscountPercent : 0;
+      } else {
+        const r = computeDropInVisitTotal(extraPet, medication);
+        const applied = travelDiscountPercent > 0 ? applyTravelDiscount(r.total, r.breakdown, travelDiscountPercent) : r;
+        amountInDollars = applied.total; unitCount = r.totalVisits;
+        travelDiscountApplied = travelDiscountPercent > 0;
+        travelDiscountPercentApplied = travelDiscountApplied ? travelDiscountPercent : 0;
+      }
     } else {
       const r = calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet, medication });
       // This same branch also handles a plain walk/extended-walk booked
