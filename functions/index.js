@@ -702,6 +702,65 @@ async function runDeclineRequestOrphanCleanup(stripe, subRef, sub) {
   return { success: true, stripeCustomerDeleted, accountDeleted: !!memberId };
 }
 
+// Sent from declineServiceRequest, declineOvernightRequest, and
+// cancelOvernightReservation — NOT declineMembershipRequest, which stays
+// silent for now (not asked for, and a declined membership signup usually
+// follows a conversation that already happened elsewhere, unlike a
+// one-time request/reservation that could otherwise be declined or
+// cancelled with zero visible sign anything happened).
+//
+// Accepts either shape this codebase uses for "someone's one-time
+// booking" — a submissions doc (service/dogs/ownerName, and email present
+// only for a public, net-new service_request) or an overnights doc
+// (serviceType/dogName singular/memberName, never its own email at all).
+// Falls back to the member doc for whichever fields the given shape
+// doesn't carry directly. Callers must call this BEFORE
+// runDeclineRequestOrphanCleanup for a true net-new decline: that function
+// can delete the member doc, and this needs to have already read it by
+// then.
+async function sendRequestDeclinedEmail(doc, contextId) {
+  let email = doc.email || null;
+  let name = doc.ownerName || doc.memberName || null;
+  let dogs = doc.dogs || (doc.dogName ? [{ name: doc.dogName }] : null);
+  if ((!email || !name || !dogs) && doc.memberId) {
+    const memberSnap = await db.collection('members').doc(doc.memberId).get();
+    const member = memberSnap.data();
+    if (member) {
+      email = email || member.email;
+      name = name || member.name;
+      dogs = (dogs && dogs.length) ? dogs : member.dogs;
+    }
+  }
+  if (!email) {
+    console.error(`sendRequestDeclinedEmail: no email found for ${contextId}.`);
+    return;
+  }
+
+  const { SERVICE_PRICES, resolveServiceKey } = await import('./pricing.js');
+  const serviceLabel = SERVICE_PRICES[resolveServiceKey(doc.service || doc.serviceType)]?.name
+    || doc.service || doc.serviceType || 'your request';
+  const petNames = (dogs || []).map((d) => d && d.name).filter(Boolean);
+  const startDateStr = doc.startDate?.toDate ? isoDateStr(doc.startDate.toDate()) : null;
+  const endDateStr = doc.endDate?.toDate ? isoDateStr(doc.endDate.toDate()) : null;
+
+  try {
+    await sendEmail({
+      to: email,
+      template: 'request-declined',
+      data: {
+        firstName: (name || '').trim().split(/\s+/)[0] || 'there',
+        petNames, serviceLabel, startDateStr, endDateStr,
+      },
+      idempotencyKey: `request-declined:${contextId}`,
+    });
+  } catch (e) {
+    // sendEmail's own contract is "never throws" — this catch exists only
+    // as defense-in-depth so a future change to that contract can't
+    // silently take the decline action down with it.
+    console.error(`sendRequestDeclinedEmail: threw unexpectedly for ${contextId}:`, e.message);
+  }
+}
+
 exports.declineMembershipRequest = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
   await assertIsAdmin(request.auth);
   const { submissionId } = request.data || {};
@@ -727,7 +786,7 @@ exports.declineMembershipRequest = onCall({ secrets: [STRIPE_SECRET_KEY] }, asyn
 // with a real account and no card. overnight_request is NOT covered here —
 // it never creates a new account (always an existing member), so its
 // decline stays the simple client-side status update it always was.
-exports.declineServiceRequest = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+exports.declineServiceRequest = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KEY] }, async (request) => {
   await assertIsAdmin(request.auth);
   const { submissionId } = request.data || {};
   if (!submissionId) throw new HttpsError('invalid-argument', 'submissionId is required.');
@@ -741,7 +800,92 @@ exports.declineServiceRequest = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (
   }
 
   const stripe = stripeClient(STRIPE_SECRET_KEY.value());
-  return runDeclineRequestOrphanCleanup(stripe, subRef, sub);
+  const result = await runDeclineRequestOrphanCleanup(stripe, subRef, sub);
+  // Safe to run AFTER cleanup even though cleanup can delete the member
+  // doc: that only happens for a true net-new decline, and a net-new
+  // service_request always carries email/ownerName directly on the
+  // submission itself (the public form collects them) — sendRequestDeclinedEmail
+  // reads those first and only falls back to the member doc for an
+  // established member's request, which cleanup never deletes.
+  await sendRequestDeclinedEmail(sub, `sub:${submissionId}`);
+  return result;
+});
+
+// overnight_request never needed runDeclineRequestOrphanCleanup's account
+// teardown — unlike a net-new service_request, this type is only ever
+// submitted by an existing, authenticated member (portal-request-extras.html),
+// so there's never an orphaned account to worry about. Was a plain
+// client-side updateDoc for exactly that reason; now a callable purely so
+// it can send the same decline notification declineServiceRequest does —
+// the status write itself is otherwise unchanged.
+exports.declineOvernightRequest = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { submissionId } = request.data || {};
+  if (!submissionId) throw new HttpsError('invalid-argument', 'submissionId is required.');
+
+  const subRef = db.collection('submissions').doc(submissionId);
+  const subSnap = await subRef.get();
+  const sub = subSnap.data();
+  if (!sub) throw new HttpsError('not-found', 'Submission not found.');
+  if (sub.type !== 'overnight_request') {
+    throw new HttpsError('failed-precondition', `Expected an overnight_request, got ${sub.type}.`);
+  }
+  if (sub.status === 'confirmed') {
+    throw new HttpsError('failed-precondition', 'This request already has billing started — decline does not apply.');
+  }
+  if (sub.status === 'declined') {
+    throw new HttpsError('failed-precondition', 'This request was already declined.');
+  }
+
+  await subRef.set({
+    status: 'declined', read: true, declinedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  await sendRequestDeclinedEmail(sub, `sub:${submissionId}`);
+  return { success: true };
+});
+
+// Cancels an already-CONFIRMED reservation (an overnights doc), not just
+// the request that created it — the gap that surfaced when a service/
+// overnight request got stuck (confirmed dates, no card, never finished —
+// see finalizeSubmissionIfReady) with a real reservation already created
+// and a walker already assigned: declining the SUBMISSION never touched
+// that reservation at all, leaving it live, still assigned, and still on
+// chargeScheduledReservations' every-15-minutes charge sweep regardless of
+// the submission's own status. This is the missing other half — it acts
+// directly on the reservation itself, independent of whatever the
+// originating submission's status says.
+//
+// chargePending: false stops chargeScheduledReservations from ever
+// touching this doc again (it only queries chargePending == true); status:
+// 'cancelled' is belt-and-suspenders, since CHARGEABLE_OVERNIGHT_STATUSES
+// no longer includes it either. Unassigns the walker unconditionally —
+// there's nothing left for them to do once this is cancelled, and an admin
+// shouldn't have to remember that as a separate manual step.
+exports.cancelOvernightReservation = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { overnightId } = request.data || {};
+  if (!overnightId) throw new HttpsError('invalid-argument', 'overnightId is required.');
+
+  const ref = db.collection('overnights').doc(overnightId);
+  const snap = await ref.get();
+  const data = snap.data();
+  if (!data) throw new HttpsError('not-found', 'Reservation not found.');
+  if (data.status === 'cancelled') {
+    throw new HttpsError('failed-precondition', 'This reservation was already cancelled.');
+  }
+  if (data.status === 'completed') {
+    throw new HttpsError('failed-precondition', "This reservation is already completed — it can't be cancelled.");
+  }
+  if (data.chargeAttempt?.status === 'charged') {
+    throw new HttpsError('failed-precondition', 'This reservation was already charged — cancelling here would not refund it. Refund in Stripe first, then cancel.');
+  }
+
+  await ref.set({
+    status: 'cancelled', chargePending: false, cancelledAt: FieldValue.serverTimestamp(),
+    walkerId: '', walkerName: '',
+  }, { merge: true });
+  await sendRequestDeclinedEmail(data, `ovn:${overnightId}`);
+  return { success: true };
 });
 
 // linkServiceRequestBilling removed — its only caller was

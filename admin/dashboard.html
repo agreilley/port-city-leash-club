@@ -2898,8 +2898,35 @@ window.openOvernightModal = (overnightId) => {
     <hr class="modal-divider">
     ${assignmentHTML}
     ${isAssigned && !isCompleted ? `<hr class="modal-divider"><button class="btn-secondary" style="width:100%;" onclick="markOvernightComplete('${overnightId}')">Mark Complete</button>` : ''}
+    ${!isCompleted && o.status !== 'cancelled' ? `<hr class="modal-divider"><button class="btn-secondary" style="width:100%;color:var(--rust);" onclick="cancelOvernightReservation('${overnightId}')">Cancel Reservation</button>` : ''}
   `;
   document.getElementById('overnightModal').classList.add('open');
+};
+
+// Cancels the RESERVATION itself (this overnights doc), not just a request
+// that led to it — declining a submission never touched an already-created
+// reservation (see cancelOvernightReservation's own comment, functions/
+// index.js), which could otherwise sit fully live — walker still assigned,
+// still due to be charged on the next chargeScheduledReservations sweep —
+// with nothing about a "declined" request anywhere near it. This is the
+// one place that actually stops all of that.
+window.cancelOvernightReservation = async (overnightId) => {
+  const confirmed = confirm(
+    "Cancel this reservation? This unassigns any walker, stops the scheduled charge, and emails the member to let them know. This can't be undone here."
+  );
+  if (!confirmed) return;
+  try {
+    const fn = httpsCallable(fns, 'cancelOvernightReservation');
+    await fn({ overnightId });
+    closeModal('overnightModal');
+    const msg = document.createElement('div');
+    msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#C17B6F;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
+    msg.textContent = 'Reservation cancelled';
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 3000);
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
 };
 
 window.assignOvernightWalker = async (overnightId, walkerId) => {
@@ -4826,7 +4853,12 @@ window.declineOvernightRequest = async (submissionId, item) => {
   const btn = document.getElementById('requestDeclineBtn');
   btn.textContent = 'Declining…'; btn.disabled = true;
   try {
-    await updateDoc(doc(db, 'submissions', submissionId), { status: 'declined', read: true });
+    // Routed through the same-named Cloud Function now (functions/index.js)
+    // instead of a plain updateDoc — the only reason to do that at all is
+    // so it can email the member that their request was declined, same as
+    // declineServiceRequest. Nothing else about the status write changed.
+    const fn = httpsCallable(fns, 'declineOvernightRequest');
+    await fn({ submissionId });
 
     closeModal('requestModal');
     const msg = document.createElement('div');
