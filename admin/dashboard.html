@@ -3213,20 +3213,6 @@ window.openRequestItem = async (id) => {
         <button class="btn-secondary" id="requestRetryFinalizeBtn" style="padding:4px 12px;font-size:12px;" onclick="retryRequestFinalize('${id}')">Retry</button>
         <button class="btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="clearRequestFinalizeError('${id}')">Dismiss</button>
       </div>`;
-  } else if (['service_request', 'overnight_request'].includes(item.type) && item.status === 'pending' && item.datesConfirmedAt) {
-    // Dates were confirmed (markDatesConfirmed ran) but finalize never
-    // completed and left nothing to retry — the state a member with a
-    // stale cardOnFile flag used to get stuck in forever, invisibly (the
-    // old silent gate, before service/overnight bookings could confirm
-    // without a card — see finalizeSubmissionIfReady, functions/index.js).
-    // Reuses the same button id/handler as the recorded-failure case above;
-    // retryFinalizeSubmission's own relaxed precondition is what actually
-    // allows this specific never-finalized case through.
-    errNotice.style.display = 'block';
-    errNotice.innerHTML = `Dates were confirmed for this request, but it never finished — no reservation status change, no confirmation email sent. This can happen if the member had no card on file at the time. Retrying now will confirm it and email them, asking for a card if one still isn't on file.
-      <div style="display:flex;gap:8px;margin-top:8px;">
-        <button class="btn-secondary" id="requestRetryFinalizeBtn" style="padding:4px 12px;font-size:12px;" onclick="retryRequestFinalize('${id}')">Retry</button>
-      </div>`;
   } else {
     errNotice.style.display = 'none';
     errNotice.innerHTML = '';
@@ -3808,8 +3794,17 @@ window.openRequestItem = async (id) => {
     // is what stops this note from telling admin something false.
     actionBtn.style.display = 'none';
     statusNote.style.display = 'block';
-    statusNote.textContent = memberBilling[item.memberId]?.cardOnFile
-      ? "Card is already on file, but billing hasn't started. Check Needs Attention — this request may be stuck and need a retry."
+    // Membership genuinely still can't start without a card (Stripe
+    // subscription creation requires one) — no Retry offered in the
+    // waiting-on-card case, since retrying would just fail again
+    // immediately. If a card IS already on file, this isn't a wait state
+    // at all — finalize should have run and didn't, so Retry is offered
+    // (retryFinalizeSubmission's relaxed precondition, functions/index.js,
+    // now allows a never-finalized request through with no prior recorded
+    // error, not just membership's original recorded-failure case).
+    statusNote.innerHTML = memberBilling[item.memberId]?.cardOnFile
+      ? `Card is already on file, but billing hasn't started — this request is stuck and needs a manual push.
+         <div style="margin-top:8px;"><button class="btn-secondary" id="requestRetryFinalizeBtn" style="padding:4px 12px;font-size:12px;" onclick="retryRequestFinalize('${item.id}')">Retry</button></div>`
       : "Account created — waiting on the member to add a card in their portal. Billing starts automatically once they do.";
     declineBtn.style.display = 'block';
     declineBtn.onclick = () => declineMembershipRequest(item.id);
@@ -3839,9 +3834,17 @@ window.openRequestItem = async (id) => {
     // the opposite.
     actionBtn.style.display = 'none';
     statusNote.style.display = 'block';
-    statusNote.textContent = memberBilling[item.memberId]?.cardOnFile
-      ? "Card is already on file, but billing hasn't started. Check Needs Attention — this request may be stuck and need a retry."
-      : "Dates confirmed — waiting on the member to add a card in their portal. Billing starts automatically once they do.";
+    // Unlike membership above, a one-time service/overnight booking no
+    // longer has to wait on a card at all (finalizeSubmissionIfReady,
+    // functions/index.js) — Retry pushes it through either way now: it
+    // confirms the booking and emails the member (asking for a card if one
+    // still isn't on file), rather than leaving it to resolve itself
+    // whenever the member happens to add one.
+    statusNote.innerHTML = (memberBilling[item.memberId]?.cardOnFile
+      ? "Card is already on file, but billing hasn't started — this request is stuck and needs a manual push."
+      : "Dates confirmed, but there's no card on file yet — this no longer has to wait for one.")
+      + ` Retrying now will confirm the booking and email the member, asking for a card if they still don't have one on file.
+         <div style="margin-top:8px;"><button class="btn-secondary" id="requestRetryFinalizeBtn" style="padding:4px 12px;font-size:12px;" onclick="retryRequestFinalize('${item.id}')">Retry</button></div>`;
     declineBtn.style.display = 'block';
     declineBtn.onclick = item.type === 'overnight_request'
       ? () => declineOvernightRequest(item.id, item)
