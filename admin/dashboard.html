@@ -906,6 +906,23 @@
   </div>
 </div>
 
+<!-- EDIT PETS MODAL — for an existing member (openEditMemberDogs), as
+     opposed to Add Member's dog editor above, which only ever runs at
+     creation time. Shares that exact same editor (dogRowHTML etc.) via
+     _dogEditorTarget = 'edit', so a future field added to one is
+     automatically available to both. -->
+<div class="modal-overlay" id="editMemberDogsModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('editMemberDogsModal')">×</button>
+    <div class="modal-title">Edit Pets</div>
+    <div id="editMemberDogsContainer"></div>
+    <button type="button" class="btn-secondary" onclick="addDogRow()" style="margin-bottom:16px;">+ Add another dog</button>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-primary" style="flex:1;" id="editMemberDogsSaveBtn" onclick="saveMemberDogs()">Save</button>
+      <button class="btn-secondary" onclick="closeModal('editMemberDogsModal')">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <!-- ADD WALKER MODAL -->
 <div class="modal-overlay" id="addWalkerModal">
@@ -4999,6 +5016,23 @@ function formatAttribution(attribution) {
 // collectAddMemberDogRows() so nothing typed is lost across a re-render.
 let _addMemberDogRows = [];
 
+// Shared dog editor, used by two different modals: Add Member (a fresh
+// standalone add, or converting a membership_request) and Edit Pets (an
+// already-existing member — see openEditMemberDogs below, added so a
+// member converted before the species/spayed/checkbox fix below existed
+// has a way to get that data filled in after the fact). Both modals reuse
+// the exact same render/collect functions rather than duplicating this
+// ~60-line template — DOG_EDITOR_TARGETS is the one thing that has to
+// differ between them (container + input-id prefix), so element ids can
+// never collide if both modals happen to have rendered into the DOM at
+// some point in the same session (only one is ever open at a time, but
+// neither fully removes its container's content when it closes).
+const DOG_EDITOR_TARGETS = {
+  am:   { container: 'am-dogs-container',        prefix: 'am-dog' },
+  edit: { container: 'editMemberDogsContainer',   prefix: 'edit-dog' },
+};
+let _dogEditorTarget = 'am';
+
 // species/spayed/the six checkboxes were missing here entirely — the
 // request forms (service-request.html's collectDogs(), portal-pet-
 // profile.html's own editor) all collect them, but this editor had no
@@ -5006,6 +5040,7 @@ let _addMemberDogRows = [];
 // re-collecting on save silently dropped them for every member converted
 // through this modal, even ones who answered those exact questions.
 function dogRowHTML(dog, i) {
+  const { prefix } = DOG_EDITOR_TARGETS[_dogEditorTarget];
   const isOnly = _addMemberDogRows.length === 1;
   const isCat = (dog.species || 'Dog') === 'Cat';
   return `
@@ -5015,35 +5050,35 @@ function dogRowHTML(dog, i) {
         ${!isOnly ? `<button type="button" onclick="removeDogRow(${i})" style="background:none;border:none;color:var(--rust);font-size:12px;cursor:pointer;padding:0;">Remove</button>` : ''}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
-        <div class="form-field"><label>Name</label><input type="text" id="am-dog-name-${i}" placeholder="Scout" value="${escapeHtml(dog.name)}"></div>
-        <div class="form-field"><label>Breed</label><input type="text" id="am-dog-breed-${i}" placeholder="Golden Retriever" value="${escapeHtml(dog.breed)}"></div>
+        <div class="form-field"><label>Name</label><input type="text" id="${prefix}-name-${i}" placeholder="Scout" value="${escapeHtml(dog.name)}"></div>
+        <div class="form-field"><label>Breed</label><input type="text" id="${prefix}-breed-${i}" placeholder="Golden Retriever" value="${escapeHtml(dog.breed)}"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
-        <div class="form-field"><label>Pet Type</label><select id="am-dog-species-${i}" onchange="updateAddMemberDogSpeciesFields(${i})"><option value="Dog"${!isCat ? ' selected' : ''}>Dog</option><option value="Cat"${isCat ? ' selected' : ''}>Cat</option></select></div>
-        <div class="form-field"><label>Spayed/Neutered?</label><select id="am-dog-spayed-${i}"><option${dog.spayed ? '' : ' selected'}>Select</option><option${dog.spayed === 'Yes' ? ' selected' : ''}>Yes</option><option${dog.spayed === 'No' ? ' selected' : ''}>No</option></select></div>
+        <div class="form-field"><label>Pet Type</label><select id="${prefix}-species-${i}" onchange="updateAddMemberDogSpeciesFields(${i})"><option value="Dog"${!isCat ? ' selected' : ''}>Dog</option><option value="Cat"${isCat ? ' selected' : ''}>Cat</option></select></div>
+        <div class="form-field"><label>Spayed/Neutered?</label><select id="${prefix}-spayed-${i}"><option${dog.spayed ? '' : ' selected'}>Select</option><option${dog.spayed === 'Yes' ? ' selected' : ''}>Yes</option><option${dog.spayed === 'No' ? ' selected' : ''}>No</option></select></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
-        <div class="form-field"><label>Age</label><input type="text" id="am-dog-age-${i}" placeholder="3" value="${escapeHtml(dog.age)}"></div>
-        <div class="form-field"><label>Weight</label><input type="text" id="am-dog-weight-${i}" placeholder="55 lbs" value="${escapeHtml(dog.weight)}"></div>
+        <div class="form-field"><label>Age</label><input type="text" id="${prefix}-age-${i}" placeholder="3" value="${escapeHtml(dog.age)}"></div>
+        <div class="form-field"><label>Weight</label><input type="text" id="${prefix}-weight-${i}" placeholder="55 lbs" value="${escapeHtml(dog.weight)}"></div>
       </div>
       <div class="form-field" style="margin-bottom:10px;">
         <label>Helpful Context</label>
         <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;">
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="am-dog-friendlyWithPeople-${i}"${dog.friendlyWithPeople ? ' checked' : ''}> Friendly with people</label>
-          <label id="am-dog-friendlyWithDogs-wrap-${i}" style="display:${isCat ? 'none' : 'flex'};align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="am-dog-friendlyWithDogs-${i}"${dog.friendlyWithDogs ? ' checked' : ''}> Friendly with other dogs</label>
-          <label id="am-dog-pullsOnLeash-wrap-${i}" style="display:${isCat ? 'none' : 'flex'};align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="am-dog-pullsOnLeash-${i}"${dog.pullsOnLeash ? ' checked' : ''}> Pulls on leash</label>
-          <label id="am-dog-indoorOnly-wrap-${i}" style="display:${isCat ? 'flex' : 'none'};align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="am-dog-indoorOnly-${i}"${dog.indoorOnly ? ' checked' : ''}> Indoor only</label>
-          <label id="am-dog-comfortableHandled-wrap-${i}" style="display:${isCat ? 'flex' : 'none'};align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="am-dog-comfortableHandled-${i}"${dog.comfortableHandled ? ' checked' : ''}> Comfortable being handled</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="am-dog-takesMedication-${i}"${dog.takesMedication ? ' checked' : ''}> Takes medication</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="${prefix}-friendlyWithPeople-${i}"${dog.friendlyWithPeople ? ' checked' : ''}> Friendly with people</label>
+          <label id="${prefix}-friendlyWithDogs-wrap-${i}" style="display:${isCat ? 'none' : 'flex'};align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="${prefix}-friendlyWithDogs-${i}"${dog.friendlyWithDogs ? ' checked' : ''}> Friendly with other dogs</label>
+          <label id="${prefix}-pullsOnLeash-wrap-${i}" style="display:${isCat ? 'none' : 'flex'};align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="${prefix}-pullsOnLeash-${i}"${dog.pullsOnLeash ? ' checked' : ''}> Pulls on leash</label>
+          <label id="${prefix}-indoorOnly-wrap-${i}" style="display:${isCat ? 'flex' : 'none'};align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="${prefix}-indoorOnly-${i}"${dog.indoorOnly ? ' checked' : ''}> Indoor only</label>
+          <label id="${prefix}-comfortableHandled-wrap-${i}" style="display:${isCat ? 'flex' : 'none'};align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="${prefix}-comfortableHandled-${i}"${dog.comfortableHandled ? ' checked' : ''}> Comfortable being handled</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;"><input type="checkbox" id="${prefix}-takesMedication-${i}"${dog.takesMedication ? ' checked' : ''}> Takes medication</label>
         </div>
       </div>
-      <div class="form-field" style="margin-bottom:10px;"><label>Notes</label><textarea id="am-dog-notes-${i}" placeholder="Anything else worth knowing…" style="height:60px;resize:vertical;">${escapeHtml(dog.notes)}</textarea></div>
-      <div class="form-field" style="margin-bottom:10px;"><label>Temperament</label><textarea id="am-dog-temperament-${i}" placeholder="Friendly, energetic, shy…" style="height:60px;resize:vertical;">${escapeHtml(dog.temperament)}</textarea></div>
-      <div class="form-field" style="margin-bottom:10px;"><label>Care Preferences</label><textarea id="am-dog-walkingPrefs-${i}" placeholder="Routine, favorite spots, any habits…" style="height:60px;resize:vertical;">${escapeHtml(dog.walkingPrefs)}</textarea></div>
-      <div class="form-field" style="margin-bottom:10px;"><label>Known Triggers</label><textarea id="am-dog-triggers-${i}" placeholder="Loud noises, other animals, specific situations…" style="height:60px;resize:vertical;">${escapeHtml(dog.triggers)}</textarea></div>
+      <div class="form-field" style="margin-bottom:10px;"><label>Notes</label><textarea id="${prefix}-notes-${i}" placeholder="Anything else worth knowing…" style="height:60px;resize:vertical;">${escapeHtml(dog.notes)}</textarea></div>
+      <div class="form-field" style="margin-bottom:10px;"><label>Temperament</label><textarea id="${prefix}-temperament-${i}" placeholder="Friendly, energetic, shy…" style="height:60px;resize:vertical;">${escapeHtml(dog.temperament)}</textarea></div>
+      <div class="form-field" style="margin-bottom:10px;"><label>Care Preferences</label><textarea id="${prefix}-walkingPrefs-${i}" placeholder="Routine, favorite spots, any habits…" style="height:60px;resize:vertical;">${escapeHtml(dog.walkingPrefs)}</textarea></div>
+      <div class="form-field" style="margin-bottom:10px;"><label>Known Triggers</label><textarea id="${prefix}-triggers-${i}" placeholder="Loud noises, other animals, specific situations…" style="height:60px;resize:vertical;">${escapeHtml(dog.triggers)}</textarea></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div class="form-field"><label>Medications</label><input type="text" id="am-dog-medications-${i}" placeholder="Any medications?" value="${escapeHtml(dog.medications)}"></div>
-        <div class="form-field"><label>Allergies</label><input type="text" id="am-dog-allergies-${i}" placeholder="Any known allergies?" value="${escapeHtml(dog.allergies)}"></div>
+        <div class="form-field"><label>Medications</label><input type="text" id="${prefix}-medications-${i}" placeholder="Any medications?" value="${escapeHtml(dog.medications)}"></div>
+        <div class="form-field"><label>Allergies</label><input type="text" id="${prefix}-allergies-${i}" placeholder="Any known allergies?" value="${escapeHtml(dog.allergies)}"></div>
       </div>
     </div>
   `;
@@ -5053,11 +5088,12 @@ function dogRowHTML(dog, i) {
 // card (updateDogSpeciesFields) — kept as a separate function/id namespace
 // since this is a different page, not a shared import.
 window.updateAddMemberDogSpeciesFields = (i) => {
-  const isCat = document.getElementById(`am-dog-species-${i}`)?.value === 'Cat';
-  const dogsWrap = document.getElementById(`am-dog-friendlyWithDogs-wrap-${i}`);
-  const leashWrap = document.getElementById(`am-dog-pullsOnLeash-wrap-${i}`);
-  const indoorWrap = document.getElementById(`am-dog-indoorOnly-wrap-${i}`);
-  const handledWrap = document.getElementById(`am-dog-comfortableHandled-wrap-${i}`);
+  const { prefix } = DOG_EDITOR_TARGETS[_dogEditorTarget];
+  const isCat = document.getElementById(`${prefix}-species-${i}`)?.value === 'Cat';
+  const dogsWrap = document.getElementById(`${prefix}-friendlyWithDogs-wrap-${i}`);
+  const leashWrap = document.getElementById(`${prefix}-pullsOnLeash-wrap-${i}`);
+  const indoorWrap = document.getElementById(`${prefix}-indoorOnly-wrap-${i}`);
+  const handledWrap = document.getElementById(`${prefix}-comfortableHandled-wrap-${i}`);
   if (dogsWrap) dogsWrap.style.display = isCat ? 'none' : 'flex';
   if (leashWrap) leashWrap.style.display = isCat ? 'none' : 'flex';
   if (indoorWrap) indoorWrap.style.display = isCat ? 'flex' : 'none';
@@ -5065,29 +5101,31 @@ window.updateAddMemberDogSpeciesFields = (i) => {
 };
 
 function renderDogRows() {
-  document.getElementById('am-dogs-container').innerHTML = _addMemberDogRows.map(dogRowHTML).join('');
+  const { container } = DOG_EDITOR_TARGETS[_dogEditorTarget];
+  document.getElementById(container).innerHTML = _addMemberDogRows.map(dogRowHTML).join('');
 }
 
 function collectAddMemberDogRows() {
+  const { prefix } = DOG_EDITOR_TARGETS[_dogEditorTarget];
   return _addMemberDogRows.map((_, i) => ({
-    name:         document.getElementById(`am-dog-name-${i}`)?.value.trim() || '',
-    breed:        document.getElementById(`am-dog-breed-${i}`)?.value.trim() || '',
-    species:      document.getElementById(`am-dog-species-${i}`)?.value || 'Dog',
-    spayed:       ['Yes', 'No'].includes(document.getElementById(`am-dog-spayed-${i}`)?.value) ? document.getElementById(`am-dog-spayed-${i}`).value : '',
-    age:          document.getElementById(`am-dog-age-${i}`)?.value.trim() || '',
-    weight:       document.getElementById(`am-dog-weight-${i}`)?.value.trim() || '',
-    friendlyWithPeople: document.getElementById(`am-dog-friendlyWithPeople-${i}`)?.checked || false,
-    friendlyWithDogs:   document.getElementById(`am-dog-friendlyWithDogs-${i}`)?.checked || false,
-    pullsOnLeash:       document.getElementById(`am-dog-pullsOnLeash-${i}`)?.checked || false,
-    indoorOnly:         document.getElementById(`am-dog-indoorOnly-${i}`)?.checked || false,
-    comfortableHandled: document.getElementById(`am-dog-comfortableHandled-${i}`)?.checked || false,
-    takesMedication:    document.getElementById(`am-dog-takesMedication-${i}`)?.checked || false,
-    notes:        document.getElementById(`am-dog-notes-${i}`)?.value.trim() || '',
-    temperament:  document.getElementById(`am-dog-temperament-${i}`)?.value.trim() || '',
-    walkingPrefs: document.getElementById(`am-dog-walkingPrefs-${i}`)?.value.trim() || '',
-    triggers:     document.getElementById(`am-dog-triggers-${i}`)?.value.trim() || '',
-    medications:  document.getElementById(`am-dog-medications-${i}`)?.value.trim() || '',
-    allergies:    document.getElementById(`am-dog-allergies-${i}`)?.value.trim() || '',
+    name:         document.getElementById(`${prefix}-name-${i}`)?.value.trim() || '',
+    breed:        document.getElementById(`${prefix}-breed-${i}`)?.value.trim() || '',
+    species:      document.getElementById(`${prefix}-species-${i}`)?.value || 'Dog',
+    spayed:       ['Yes', 'No'].includes(document.getElementById(`${prefix}-spayed-${i}`)?.value) ? document.getElementById(`${prefix}-spayed-${i}`).value : '',
+    age:          document.getElementById(`${prefix}-age-${i}`)?.value.trim() || '',
+    weight:       document.getElementById(`${prefix}-weight-${i}`)?.value.trim() || '',
+    friendlyWithPeople: document.getElementById(`${prefix}-friendlyWithPeople-${i}`)?.checked || false,
+    friendlyWithDogs:   document.getElementById(`${prefix}-friendlyWithDogs-${i}`)?.checked || false,
+    pullsOnLeash:       document.getElementById(`${prefix}-pullsOnLeash-${i}`)?.checked || false,
+    indoorOnly:         document.getElementById(`${prefix}-indoorOnly-${i}`)?.checked || false,
+    comfortableHandled: document.getElementById(`${prefix}-comfortableHandled-${i}`)?.checked || false,
+    takesMedication:    document.getElementById(`${prefix}-takesMedication-${i}`)?.checked || false,
+    notes:        document.getElementById(`${prefix}-notes-${i}`)?.value.trim() || '',
+    temperament:  document.getElementById(`${prefix}-temperament-${i}`)?.value.trim() || '',
+    walkingPrefs: document.getElementById(`${prefix}-walkingPrefs-${i}`)?.value.trim() || '',
+    triggers:     document.getElementById(`${prefix}-triggers-${i}`)?.value.trim() || '',
+    medications:  document.getElementById(`${prefix}-medications-${i}`)?.value.trim() || '',
+    allergies:    document.getElementById(`${prefix}-allergies-${i}`)?.value.trim() || '',
   }));
 }
 
@@ -5108,7 +5146,56 @@ window.removeDogRow = (i) => {
   renderDogRows();
 };
 
+// Edit Pets — for a member who already exists (converted before the
+// species/spayed/checkbox fix above existed, or just needs a correction).
+// openAddMemberModal has no equivalent for an existing member: it only
+// ever creates one (standalone or from a request). Reuses the exact same
+// dog editor as Add Member via _dogEditorTarget = 'edit', so both stay in
+// sync automatically — a future field added to one is available to both.
+let _editMemberDogsId = null;
+
+window.openEditMemberDogs = (memberId) => {
+  const member = allMembers.find(m => m.id === memberId);
+  if (!member) return;
+  _editMemberDogsId = memberId;
+  _dogEditorTarget = 'edit';
+  _addMemberDogRows = (Array.isArray(member.dogs) && member.dogs.length)
+    ? member.dogs.map(d => ({
+        name: d.name || '', breed: d.breed || '', species: d.species || 'Dog', spayed: d.spayed || '', age: d.age || '', weight: d.weight || '',
+        friendlyWithPeople: d.friendlyWithPeople || false, friendlyWithDogs: d.friendlyWithDogs || false, pullsOnLeash: d.pullsOnLeash || false,
+        indoorOnly: d.indoorOnly || false, comfortableHandled: d.comfortableHandled || false, takesMedication: d.takesMedication || false,
+        notes: d.notes || '', temperament: d.temperament || '', walkingPrefs: d.walkingPrefs || '', triggers: d.triggers || '', medications: d.medications || '', allergies: d.allergies || '',
+      }))
+    : [{
+        name: '', breed: '', species: 'Dog', spayed: '', age: '', weight: '',
+        friendlyWithPeople: false, friendlyWithDogs: false, pullsOnLeash: false,
+        indoorOnly: false, comfortableHandled: false, takesMedication: false,
+        notes: '', temperament: '', walkingPrefs: '', triggers: '', medications: '', allergies: '',
+      }];
+  renderDogRows();
+  document.getElementById('editMemberDogsModal').classList.add('open');
+};
+
+window.saveMemberDogs = async () => {
+  if (!_editMemberDogsId) return;
+  const btn = document.getElementById('editMemberDogsSaveBtn');
+  if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
+  try {
+    await updateDoc(doc(db, 'members', _editMemberDogsId), { dogs: collectAddMemberDogRows() });
+    closeModal('editMemberDogsModal');
+    openMemberDetail(_editMemberDogsId);
+  } catch (e) {
+    alert(`Couldn't save pet info: ${e.message}`);
+  } finally {
+    if (btn) { btn.textContent = 'Save'; btn.disabled = false; }
+  }
+};
+
 window.openAddMemberModal = (prefill, submissionId) => {
+  // Shared dog editor defaults to Edit Pets' target once that modal has
+  // been opened this session — reset it back here so Add Member's own
+  // container/id-prefix are used regardless of what ran last.
+  _dogEditorTarget = 'am';
   // Restore the form if it was replaced by the success screen
   restoreAddMemberModal();
   // Populate walker dropdown with current walkers. Reads the module-scoped
@@ -5518,7 +5605,10 @@ window.openMemberDetail = async (id) => {
     ${chargeCurrentMonthHTML}
     <button class="btn-secondary" style="margin-top:4px;" onclick="openMemberPortalPreview('${member.id}')">Preview Member Portal</button>
     <hr class="modal-divider">
-    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Dogs</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div style="font-weight:500;font-size:13px;color:var(--navy);">Dogs</div>
+      <button class="btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="openEditMemberDogs('${member.id}')">Edit</button>
+    </div>
     ${dogsHTML}
     <hr class="modal-divider">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
