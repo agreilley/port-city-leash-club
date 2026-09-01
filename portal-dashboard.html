@@ -1055,6 +1055,17 @@ window.signOutMember = () => {
 // ── POPULATE STATIC UI FROM MEMBER DOC ───────────────────────────────────────
 // esc() — HTML-escape user-controlled dog fields before innerHTML (L-1)
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+// Same fix as portal-pet-profile.html's own formatDogAge — age is free text
+// with no unit picker, so a bare number ("9") read as "9 old" with nothing
+// between them. Only that shape gets "year(s)" inserted; anything already
+// descriptive (e.g. the legacy petAge fallback's own "X years") is left as
+// typed rather than risking "X years years old".
+function formatDogAge(age) {
+  const trimmed = String(age).trim();
+  const n = /^\d+$/.test(trimmed) ? parseInt(trimmed, 10) : null;
+  return n !== null ? `${n} year${n === 1 ? '' : 's'} old` : `${trimmed} old`;
+}
 function populateMemberUI() {
   if (!memberData) return;
   const firstName = (memberData.name || '').split(' ')[0] || 'back';
@@ -1066,7 +1077,7 @@ function populateMemberUI() {
   const sidebarPets = document.getElementById('sidebarPets');
   if (sidebarPets) {
     sidebarPets.innerHTML = dogs.map(d => {
-      const info = [esc(d.breed), d.age ? `${esc(d.age)} old` : ''].filter(Boolean).join(' • ');
+      const info = [esc(d.breed), d.age ? esc(formatDogAge(d.age)) : ''].filter(Boolean).join(' • ');
       return `<div style="margin-bottom:10px;">
         <div class="pet-name">${esc(d.name || '')}</div>
         <div class="pet-info">${info || ''}</div>
@@ -1075,7 +1086,7 @@ function populateMemberUI() {
   } else {
     // Fallback for single pet-name/pet-info elements
     document.getElementById('sidebarDogName').textContent = dogs[0]?.name || '';
-    document.getElementById('sidebarDogInfo').textContent = [dogs[0]?.breed, dogs[0]?.age ? `${dogs[0].age} old` : ''].filter(Boolean).join(' • ');
+    document.getElementById('sidebarDogInfo').textContent = [dogs[0]?.breed, dogs[0]?.age ? formatDogAge(dogs[0].age) : ''].filter(Boolean).join(' • ');
   }
   const dogNames = dogs.map(d => d.name).filter(Boolean).join(' & ') || 'your dog';
   document.getElementById('modalDog').textContent = dogNames;

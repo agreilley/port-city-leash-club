@@ -585,10 +585,21 @@ function renderPage() {
 // esc() — HTML-escape user-controlled dog fields before innerHTML (L-1)
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
+// age is free text (the input has no unit picker), so a bare number is the
+// common case — "9" read as "9 old" with no unit. Only that specific shape
+// gets "year(s)" inserted; anything already descriptive (e.g. "6 months",
+// or the legacy petAge fallback's own "X years") is left exactly as typed
+// rather than risking "X years years old".
+function formatDogAge(age) {
+  const trimmed = String(age).trim();
+  const n = /^\d+$/.test(trimmed) ? parseInt(trimmed, 10) : null;
+  return n !== null ? `${n} year${n === 1 ? '' : 's'} old` : `${trimmed} old`;
+}
+
 function updateSidebar() {
   const sidebarPets = document.getElementById('sidebarPets');
   sidebarPets.innerHTML = currentDogs.map(d => {
-    const info = [esc(d.breed), d.age ? `${esc(d.age)} old` : ''].filter(Boolean).join(' • ');
+    const info = [esc(d.breed), d.age ? esc(formatDogAge(d.age)) : ''].filter(Boolean).join(' • ');
     return `<div style="margin-bottom:10px;">
       <div class="pet-name">${esc(d.name || '')}</div>
       <div class="pet-info">${info || ''}</div>
