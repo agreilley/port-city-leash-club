@@ -4503,7 +4503,7 @@ async function runServiceOrOvernightCharge(sub, submissionId, memberId, reviewed
 // itself is untouched, still used by confirmWalkExtension (unrelated to
 // this migration) and by the still-live old confirmServiceRequest/
 // confirmOvernight during this build.
-async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, memberId, reviewed, chargeResult) {
+async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, memberId, reviewed, chargeResult, cardOnFile = true) {
   const { SERVICE_PRICES, resolveServiceKey } = await import('./pricing.js');
   const isOvernightRequest = sub.type === 'overnight_request';
   const serviceKey = resolveServiceKey(reviewed.service);
@@ -4521,6 +4521,13 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
   const petNames = (sub.dogs && sub.dogs.length ? sub.dogs : (member.dogs || [])).map((d) => d && d.name).filter(Boolean);
   const startDateStr = reviewed.startDate?.toDate ? isoDateStr(reviewed.startDate.toDate()) : null;
   const endDateStr = reviewed.endDate?.toDate ? isoDateStr(reviewed.endDate.toDate()) : null;
+  // Confirming no longer waits on a card (finalizeSubmissionIfReady) — every
+  // template below needs to say so instead of stating a charge date/amount
+  // that isn't actually scheduled yet. addCardUrl always points at the same
+  // portal-account.html flag portal-dashboard.html's own no-card banner
+  // already uses to jump straight into "Update Payment Method".
+  const needsCard = !cardOnFile;
+  const addCardUrl = `${BUSINESS_PORTAL_ORIGIN}/portal-account?addCard=1`;
 
   let template, data;
   if (isOvernightRequest || isCheckin) {
@@ -4532,6 +4539,7 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
       totalDollars: reviewed.amountInDollars,
       chargeDateStr: chargeResult.chargeScheduledFor?.toDate ? isoDateStr(chargeResult.chargeScheduledFor.toDate()) : null,
       visitSchedule: isCheckin ? reviewed.visitSchedule : null,
+      needsCard, addCardUrl,
     };
   } else if (isWalk) {
     template = 'walk-confirmed';
@@ -4540,6 +4548,7 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
       walkTypeLabel: serviceInfo?.name || 'Walk',
       durationMinutes: serviceKey === 'extended-walk' ? 45 : 30,
       walks: [{ dateStr: startDateStr, slot: reviewed.timeSlot }],
+      needsCard, addCardUrl,
     };
   } else {
     // overnight-stay via the public service_request form — the third,
@@ -4551,6 +4560,7 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
       startDateStr, endDateStr,
       unitCount: Math.max(reviewed.unitCount || 1, 1),
       unitNoun: 'night',
+      needsCard, addCardUrl,
     };
   }
 
@@ -4725,7 +4735,19 @@ async function finalizeSubmissionIfReady(submissionId, { viaExplicitRetry = fals
   const cardOnFile = billingData.cardOnFile === true;
   const isMembership = sub.type === 'membership_request';
   const datesReady = isMembership || !!sub.datesConfirmedAt;
-  if (!cardOnFile || !datesReady) return { ready: false };
+  // Membership genuinely cannot proceed without a card — Stripe subscription
+  // creation requires a payment method attached, so this stays a hard,
+  // silent wait (portal-account.html's own "waiting on a card" notice covers
+  // that case). A one-time service/overnight booking has no such technical
+  // requirement: the charge (immediate, via runServiceOrOvernightCharge, or
+  // scheduled 24h out) already tolerates failing without undoing the
+  // booking. A missing card here used to block the ENTIRE confirmation —
+  // no reservation, no email, no way to notice or retry — rather than just
+  // the eventual charge. It no longer blocks anything; the missing card is
+  // flagged for admin instead (see the needsReview write below), and the
+  // confirmation email says a card is still needed.
+  if (isMembership && !cardOnFile) return { ready: false };
+  if (!datesReady) return { ready: false };
 
   const claimed = await db.runTransaction(async (tx) => {
     const freshSnap = await tx.get(subRef);
@@ -4778,8 +4800,26 @@ async function finalizeSubmissionIfReady(submissionId, { viaExplicitRetry = fals
       }
       emailResult = await sendMembershipConfirmationEmail(sub.memberId, submissionId);
     } else {
+      // Flagged immediately, not left to surface only when the eventual
+      // charge attempt fails — a scheduled reservation (check-in/overnight)
+      // doesn't even ATTEMPT a charge for another 24 hours, so without this,
+      // admin would have no way to know a card is needed until then. Never
+      // overwrites an existing, still-unresolved needsReview reason, same
+      // posture as recordFinalizeFailure's own write.
+      if (!cardOnFile) {
+        try {
+          const billingSnapNow = await billingRef(sub.memberId).get();
+          if (!billingSnapNow.data()?.needsReview) {
+            await billingRef(sub.memberId).set({
+              needsReview: true, needsReviewReason: 'no_card_on_file',
+            }, { merge: true });
+          }
+        } catch (e) {
+          console.error(`finalizeSubmissionIfReady: failed to flag no_card_on_file for ${sub.memberId}:`, e.message);
+        }
+      }
       const chargeResult = await runServiceOrOvernightCharge(sub, submissionId, sub.memberId, sub);
-      emailResult = await sendServiceOrOvernightConfirmationEmail(sub, submissionId, sub.memberId, sub, chargeResult);
+      emailResult = await sendServiceOrOvernightConfirmationEmail(sub, submissionId, sub.memberId, sub, chargeResult, cardOnFile);
       if (chargeResult.paymentStatus === 'failed') {
         chargeFailedMessage = `Charge failed: ${chargeResult.chargeError || 'unknown error'}`;
       }

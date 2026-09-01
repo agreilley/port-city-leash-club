@@ -2165,6 +2165,10 @@ const NEEDS_REVIEW_LABELS = {
     label: 'Reservation charge failed',
     title: "A confirmed pet sitting reservation's scheduled charge (24 hours after confirmation) failed — see the Cloud Functions logs for chargeScheduledReservations for the specific overnight and error, and the overnights doc's chargeAttempt field for the failure reason. Charge manually in Stripe once resolved.",
   },
+  no_card_on_file: {
+    label: 'No card on file',
+    title: "A service or overnight request was confirmed for this member with no card on file — the booking, reservation, and confirmation email all went through as normal (the member's email says a card is still needed), but there's nothing to charge yet. Once they add one, the scheduled or next charge will go through normally — dismiss this once it does.",
+  },
   finalize_charge_failed: {
     label: 'Finalize failed',
     title: "This member's card-on-file and dates were both confirmed, but something failed while starting billing or sending the confirmation — a subscription, a charge, or the email. See the specific request in the Requests view (it carries its own finalizeError with the exact failure) for what to fix, then resolve manually and dismiss both flags.",

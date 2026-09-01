@@ -16,6 +16,10 @@
 //   walks: [{ dateStr: string, slot: string }], // 'YYYY-MM-DD' + '5:00pm', at least one
 //   isNewAccount: boolean,
 //   portalSetupLink: string|null, // generatePasswordResetLink() output; required when isNewAccount is true
+//   needsCard: boolean|undefined, // true when there's no card on file yet (sendServiceOrOvernightConfirmationEmail
+//     // only); confirmWalkExtension's own calls never pass this, so it degrades to no note, which is
+//     // correct there — an extension is already charged by the time this email sends.
+//   addCardUrl: string|undefined, // portal-account.html's Update Payment Method flow; required when needsCard is true
 // }
 
 const {
@@ -82,12 +86,18 @@ async function html(data) {
     ? `If you have any questions, just reply here and it'll come straight to us.`
     : `If anything about your ${possessive(dogCount, 'dog', 'dogs')} care has changed, you can update their profile anytime in the portal. And if you have any questions, just reply here and it'll come straight to us.`;
 
+  const cardSection = data.needsCard ? `
+    <p style="margin:20px 0 0;">We don't have a card on file for you yet — add one so we can process the charge for this walk.</p>
+    ${renderButtonHtml({ href: data.addCardUrl, label: 'Add Your Card' })}
+  ` : '';
+
   const body = `
     <p style="margin:0 0 20px;">Hi ${escapeHtml(data.firstName || 'there')},</p>
     <p style="margin:0 0 20px;">Great news, your walk is booked and we've got ${escapeHtml(names)} covered.</p>
     ${block}
     <p style="margin:20px 0 0;">Your walker will send photos and a note afterward so you can see how it went.</p>
     ${portalSection}
+    ${cardSection}
     <p style="margin:20px 0 0;">${closingLine}</p>
     ${renderSignoffHtml(SIGNOFF_NAME, 'Talk soon,')}
   `;
@@ -120,6 +130,15 @@ async function text(data) {
       `Since this is your first time booking with us, we've set up a portal account so you can see your booking, update your ${possessive(dogCount, 'dog', 'dogs')} profile, and message us anytime.`,
       '',
       `Set up your portal access: ${data.portalSetupLink}`,
+      '',
+    );
+  }
+
+  if (data.needsCard) {
+    lines.push(
+      `We don't have a card on file for you yet — add one so we can process the charge for this walk.`,
+      '',
+      `Add your card: ${data.addCardUrl}`,
       '',
     );
   }
