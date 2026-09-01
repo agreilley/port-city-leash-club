@@ -5466,6 +5466,9 @@ window.saveMember = async () => {
       dogs, assignedWalkerId: walker,
       walksThisMonth: 0, status: 'active',
       attribution: window._addMemberSubmissionAttribution || null,
+      // No source request behind a standalone add, so nothing to seed
+      // ownerNotes from — both start blank, same structure every member has.
+      ownerNotes: '', internalNotes: '',
       createdAt: serverTimestamp()
     });
 
@@ -5680,6 +5683,14 @@ window.openMemberDetail = async (id) => {
     </div>
     ${dogsHTML}
     <hr class="modal-divider">
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:4px;">Owner Notes</div>
+    <div style="font-size:11px;color:var(--text-light);margin-bottom:6px;">From the original request, or added since — visible to the member on their own portal too.</div>
+    <textarea id="memberOwnerNotes" style="width:100%;min-height:60px;resize:vertical;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:8px;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:12px;">${escapeHtml(member.ownerNotes || '')}</textarea>
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:4px;">Internal Notes</div>
+    <div style="font-size:11px;color:var(--text-light);margin-bottom:6px;">Staff only — never shown to the member.</div>
+    <textarea id="memberInternalNotes" style="width:100%;min-height:60px;resize:vertical;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:8px;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:8px;">${escapeHtml(member.internalNotes || '')}</textarea>
+    <button class="btn-secondary" id="memberNotesSaveBtn" onclick="saveMemberNotes('${member.id}')">Save Notes</button>
+    <hr class="modal-divider">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
       <div style="font-weight:500;font-size:13px;color:var(--navy);">Vet &amp; Emergency Contacts</div>
       <button class="btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="openEditVetEmergency('${member.id}')">Edit</button>
@@ -5687,6 +5698,29 @@ window.openMemberDetail = async (id) => {
     ${renderVetEmergencyDetail(member)}
   `;
   document.getElementById('memberDetailModal').classList.add('open');
+};
+
+// ownerNotes is the member's own account-level Care Notes (seeded once
+// from the original request's general notes field, then editable by
+// either the member or admin) — visible on the member's own portal too.
+// internalNotes is staff-authored only, never shown to the member; the
+// firestore.rules self-update allowlist deliberately omits it, so a
+// member write attempt would be rejected even if this UI didn't exist.
+// Both save together since they're right next to each other in this one
+// modal — no reason to round-trip twice for two small text fields.
+window.saveMemberNotes = async (memberId) => {
+  const btn = document.getElementById('memberNotesSaveBtn');
+  const ownerNotes = document.getElementById('memberOwnerNotes')?.value || '';
+  const internalNotes = document.getElementById('memberInternalNotes')?.value || '';
+  if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
+  try {
+    await updateDoc(doc(db, 'members', memberId), { ownerNotes, internalNotes });
+    openMemberDetail(memberId);
+  } catch (e) {
+    alert(`Couldn't save notes: ${e.message}`);
+  } finally {
+    if (btn) { btn.textContent = 'Save Notes'; btn.disabled = false; }
+  }
 };
 
 // Read-only display for the member-detail modal — mirrors the tel:-link

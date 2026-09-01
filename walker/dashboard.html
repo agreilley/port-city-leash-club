@@ -668,6 +668,8 @@ window.openVisitCompleteForm = (overnightId, visitId) => {
     <div class="detail-row"><span class="detail-label">Parking</span><span class="detail-value">${escapeHtml(member?.parkingNotes) || 'None'}</span></div>
     <div class="detail-row"><span class="detail-label">Entry Code</span><span class="detail-value">${escapeHtml(member?.entryCode) || 'None'}</span></div>
     <div class="detail-row"><span class="detail-label">Access</span><span class="detail-value">${escapeHtml(member?.accessNotes) || 'None'}</span></div>
+    <div class="detail-row"><span class="detail-label">Owner Notes</span><span class="detail-value">${escapeHtml(member?.ownerNotes) || 'None'}</span></div>
+    <div class="detail-row"><span class="detail-label">Internal Notes</span><span class="detail-value">${escapeHtml(member?.internalNotes) || 'None'}</span></div>
     ${renderEmergencyBlock(member)}
     <div class="detail-row"><span class="detail-label">Date</span><span class="detail-value">${escapeHtml(visit.date)}</span></div>
     <div class="detail-row"><span class="detail-label">Slot</span><span class="detail-value">${slotLabel}</span></div>
@@ -817,6 +819,8 @@ window.openOvernightDetail = (overnightId) => {
     <div class="detail-row"><span class="detail-label">Parking</span><span class="detail-value">${escapeHtml(member?.parkingNotes) || 'None'}</span></div>
     <div class="detail-row"><span class="detail-label">Entry Code</span><span class="detail-value">${escapeHtml(member?.entryCode) || 'None'}</span></div>
     <div class="detail-row"><span class="detail-label">Access</span><span class="detail-value">${escapeHtml(member?.accessNotes) || 'None'}</span></div>
+    <div class="detail-row"><span class="detail-label">Owner Notes</span><span class="detail-value">${escapeHtml(member?.ownerNotes) || 'None'}</span></div>
+    <div class="detail-row"><span class="detail-label">Internal Notes</span><span class="detail-value">${escapeHtml(member?.internalNotes) || 'None'}</span></div>
     ${renderEmergencyBlock(member)}
     <div class="detail-row"><span class="detail-label">Start Date</span><span class="detail-value">${fmtFullDate(o.startDate)}</span></div>
     <div class="detail-row"><span class="detail-label">End Date</span><span class="detail-value">${fmtFullDate(o.endDate)}</span></div>
@@ -1021,6 +1025,8 @@ window.openWalkDetail = (walkId) => {
     <div class="detail-row"><span class="detail-label">Parking</span><span class="detail-value">${escapeHtml(member?.parkingNotes) || 'None'}</span></div>
     <div class="detail-row"><span class="detail-label">Entry Code</span><span class="detail-value">${escapeHtml(member?.entryCode) || 'None'}</span></div>
     <div class="detail-row"><span class="detail-label">Access</span><span class="detail-value">${escapeHtml(member?.accessNotes) || 'None'}</span></div>
+    <div class="detail-row"><span class="detail-label">Owner Notes</span><span class="detail-value">${escapeHtml(member?.ownerNotes) || 'None'}</span></div>
+    <div class="detail-row"><span class="detail-label">Internal Notes</span><span class="detail-value">${escapeHtml(member?.internalNotes) || 'None'}</span></div>
     ${renderEmergencyBlock(member)}
     <div class="detail-row"><span class="detail-label">Time Slot</span><span class="detail-value">${slotLabel}</span></div>
     <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted ? '✓ Completed' : isToday ? 'Today' : isPastDay ? 'Past' : 'Scheduled'}</span></div>

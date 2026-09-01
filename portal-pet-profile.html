@@ -407,6 +407,20 @@
       <!-- Dogs render here dynamically -->
       <div id="dogsContainer"></div>
 
+      <!-- Care Notes — account-level, separate from each dog's own Notes
+           field above and from Home Access's own Additional Notes below.
+           Seeded once from the original request's Care Notes box, editable
+           here afterward — also visible to admin and walkers. -->
+      <div class="section-card" id="careNotesCard" style="display:none;">
+        <h2 class="section-title">Care Notes</h2>
+        <div class="field-row full">
+          <div class="field-group">
+            <label class="field-label">Anything else we should know?</label>
+            <div class="field-value"><textarea id="careNotes" placeholder="General notes about your household or pets..."></textarea></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Home Access (shared across all dogs) -->
       <div class="section-card" id="homeAccessCard" style="display:none;">
         <h2 class="section-title">Home Access</h2>
@@ -544,6 +558,10 @@ function renderPage() {
   updateSidebar();
   updatePageHeader();
   renderDogCards();
+  // Care Notes — ownerNotes only; internalNotes (staff-authored) is
+  // deliberately never fetched or shown on this page at all.
+  document.getElementById('careNotes').value = memberData.ownerNotes || '';
+  document.getElementById('careNotesCard').style.display = '';
   // Home access
   document.getElementById('homeAddress').value = memberData.address || '';
   document.getElementById('parkingNotes').value = memberData.parkingNotes || '';
@@ -842,6 +860,7 @@ window.saveProfile = async () => {
       parkingNotes: document.getElementById('parkingNotes').value,
       entryCode:    document.getElementById('entryCode').value,
       accessNotes:  document.getElementById('accessNotes').value,
+      ownerNotes:   document.getElementById('careNotes').value,
       vet,
       emergencyContacts,
     });
@@ -865,6 +884,7 @@ window.saveProfile = async () => {
     memberData.dogName = updatedDogs[0].name;
     memberData.vet = vet;
     memberData.emergencyContacts = emergencyContacts;
+    memberData.ownerNotes = document.getElementById('careNotes').value;
     currentDogs = updatedDogs.map(d => ({ ...d }));
     currentEmergencyContacts = emergencyContacts.map(c => ({ ...c }));
     updateSidebar();

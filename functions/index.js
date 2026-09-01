@@ -3931,6 +3931,13 @@ exports.completeMeetGreetAndCreateAccount = onCall({
         walksThisMonth: 0,
         status: 'active',
         attribution: sub.attribution || null,
+        // ownerNotes: membership-request.html has no general free-text field
+        // (unlike service-request.html's Care Notes), so there's nothing to
+        // seed here — stays blank until the member or admin writes one.
+        // internalNotes: always starts blank; staff-authored only, never
+        // seeded from anything the customer submitted.
+        ownerNotes: '',
+        internalNotes: '',
       }
     : {
         name: sub.ownerName || '',
@@ -3941,6 +3948,13 @@ exports.completeMeetGreetAndCreateAccount = onCall({
         walksThisMonth: 0,
         status: 'active',
         attribution: sub.attribution || null,
+        // The general Care Notes box on service-request.html — account-level,
+        // deliberately separate from each dog's own per-pet notes field
+        // (dogs[].notes, already carried through via sub.dogs above and
+        // never touched here). Seeded once at creation, editable afterward
+        // by the member or admin — not a frozen copy of the submission.
+        ownerNotes: sub.notes || '',
+        internalNotes: '',
       };
 
   await db.collection('members').doc(uid).set({

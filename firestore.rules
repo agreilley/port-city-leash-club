@@ -45,12 +45,16 @@ service cloud.firestore {
       // Fields written by the two self-service portal pages that touch the
       // member doc directly: portal-account.html (name/phone/address) and
       // portal-pet-profile.html (dogs + the denormalized dogName/petBreed,
-      // the home-access fields, vet, and emergencyContacts). All are
-      // non-billing profile/access data. Deliberately EXCLUDED (admin- or
-      // Cloud-Function-only): tier, status, billingStatus,
-      // currentMonthCharge, membershipStartDate, pauseStartDate,
-      // pauseEndDate, defaultWalkDays, assignedWalkerId, and every stripe*
-      // key.
+      // the home-access fields, vet, emergencyContacts, and ownerNotes — the
+      // member's own account-level Care Notes, distinct from each dog's own
+      // notes field inside dogs[]). All are non-billing profile/access data.
+      // internalNotes is deliberately NOT in this list — staff-authored
+      // only, so a member can never write it even though they can read the
+      // rest of their own doc; it's only ever set via isAdmin() above.
+      // Deliberately EXCLUDED (admin- or Cloud-Function-only): tier, status,
+      // billingStatus, currentMonthCharge, membershipStartDate,
+      // pauseStartDate, pauseEndDate, defaultWalkDays, assignedWalkerId,
+      // internalNotes, and every stripe* key.
       allow update: if request.auth != null
         && request.auth.uid == id
         && request.resource.data.diff(resource.data).affectedKeys()
@@ -65,7 +69,8 @@ service cloud.firestore {
                 'entryCode',
                 'accessNotes',
                 'vet',
-                'emergencyContacts'
+                'emergencyContacts',
+                'ownerNotes'
               ]);
 
       // ── Billing (M-1) ──────────────────────────────────────────────────
