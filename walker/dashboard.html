@@ -85,11 +85,21 @@
   .my-walk-chip.morning { background: #EBF5EF; color: #1A5C30; }
   .my-walk-chip.early-afternoon { background: #EEF2FF; color: #3730A3; }
   .my-walk-chip.late-afternoon { background: #FEF3C7; color: #92400E; }
+  /* Pet-sitting visit slots reuse the walk-slot colors above wherever the
+     windows actually correspond (visit morning ~ walk morning, visit
+     midday == walk early-afternoon exactly); evening and last-out visits
+     run well past any walk slot (5–11pm), so they share this one new color
+     rather than needing a 5th, barely-distinguishable hue. */
+  .my-walk-chip.evening-night { background: #F3E8FF; color: #6B21A8; }
 
   /* MODAL */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; display: none; align-items: center; justify-content: center; }
   .modal-overlay.open { display: flex; }
-  .modal { background: white; border-radius: 10px; width: 100%; max-width: 500px; padding: 32px; position: relative; }
+  /* max-height/overflow used to live only in the mobile media query below,
+     so a modal taller than the window (e.g. the visit-complete form with a
+     photo field) had no way to scroll at all on a normal desktop window —
+     it just ran off both edges of the screen. */
+  .modal { background: white; border-radius: 10px; width: 100%; max-width: 500px; padding: 32px; position: relative; max-height: 85vh; overflow-y: auto; }
   .modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-light); }
   .modal-title { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 300; color: var(--navy); margin-bottom: 20px; }
   .detail-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid rgba(0,0,0,0.06); font-size: 14px; }
@@ -169,8 +179,10 @@
     .mobile-tab svg { opacity: 0.7; }
     .mobile-tab.active svg { opacity: 1; }
 
-    /* Modal: full-height sheet instead of centered card */
-    .modal { width: 100%; max-height: 85vh; overflow-y: auto; }
+    /* Modal: full-width sheet instead of a centered card. max-height/
+       overflow-y now live on the base .modal rule above (they apply at
+       every width, not just this one). */
+    .modal { width: 100%; }
   }
 </style>
 </head>
@@ -259,6 +271,9 @@
           </div>
           <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-light);">
             <div style="width:12px;height:12px;border-radius:3px;background:#FEF3C7;border:1px solid #92400E;"></div> Late Afternoon (2–5pm)
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-light);">
+            <div style="width:12px;height:12px;border-radius:3px;background:#F3E8FF;border:1px solid #6B21A8;"></div> Evening / Overnight Visit (5–11pm)
           </div>
         </div>
       </div>
@@ -895,15 +910,19 @@ function renderCalendar() {
     // so matching those against dayStr (via walkDateStr, same UTC-safe
     // comparison Today's Visits already uses) surfaces exactly the days
     // this walker actually has pet-sitting work, alongside their walks.
-    // No slot-color modifier — visit slots (morning/midday/evening/last-out)
-    // are a different vocabulary from walk slots and don't map onto the
-    // walk-slot legend below.
+    // Colored to match the walk-slot legend wherever a visit window
+    // actually corresponds to one (morning ~ morning, midday == early-
+    // afternoon exactly); evening and last-out run past any walk slot
+    // (5–11pm) and share the one 'evening-night' color added for them.
     const visitChips = myOvernights.flatMap(o => {
       const member = allMembers.find(m => m.id === o.memberId);
       const petNames = getDogNames(member) || o.dogName || 'Pet';
       return (Array.isArray(o.visits) ? o.visits : [])
         .filter(v => walkDateStr(v.date) === dayStr)
-        .map(v => `<div class="my-walk-chip" onclick="openVisitCompleteForm('${o.id}', '${v.id}')">${escapeHtml(petNames)}</div>`);
+        .map(v => {
+          const slotClass = v.slot === 'morning' ? 'morning' : v.slot === 'midday' ? 'early-afternoon' : 'evening-night';
+          return `<div class="my-walk-chip ${slotClass}" onclick="openVisitCompleteForm('${o.id}', '${v.id}')">${escapeHtml(petNames)}</div>`;
+        });
     }).join('');
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}${visitChips}</div>`;
   }
