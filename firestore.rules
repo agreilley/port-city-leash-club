@@ -616,5 +616,15 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow write: if false;
     }
+
+    // Every automated send (sendEmail, functions/lib/email.js) writes one
+    // doc here via the Admin SDK, regardless of outcome — this is the audit
+    // trail admin/dashboard.html's Email Log view reads. No non-admin case
+    // needs this at all — a member never reads their own send history, so
+    // there's no referrerId-style fallback here the way referralCodes has.
+    match /emailLog/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
   }
 }

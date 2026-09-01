@@ -112,8 +112,8 @@
 
   /* ── REQUESTS ── */
   .request-filters { display: flex; gap: 8px; margin-bottom: 20px; }
-  .request-filter, .request-status-filter, .conversation-filter, .conversation-category-filter, .referral-filter { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
-  .request-filter.active, .request-status-filter.active, .conversation-filter.active, .conversation-category-filter.active, .referral-filter.active { background: var(--navy); color: white; border-color: var(--navy); }
+  .request-filter, .request-status-filter, .conversation-filter, .conversation-category-filter, .referral-filter, .emaillog-filter { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
+  .request-filter.active, .request-status-filter.active, .conversation-filter.active, .conversation-category-filter.active, .referral-filter.active, .emaillog-filter.active { background: var(--navy); color: white; border-color: var(--navy); }
   .list-row { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 20px; margin-bottom: 12px; cursor: pointer; transition: box-shadow 0.15s; }
   .list-row:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
   .list-row.unread { border-left: 3px solid var(--rust); }
@@ -356,6 +356,10 @@
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h11A1.5 1.5 0 0 1 15 3.5v6A1.5 1.5 0 0 1 13.5 11H6l-3 3v-3H2.5A1.5 1.5 0 0 1 1 9.5v-6Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
     Messages
     <span class="badge" id="conversationsBadge" style="display:none;">0</span>
+  </a>
+  <a class="nav-item" data-view="emaillog" onclick="switchView('emaillog')">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M1 4.5l7 4.5 7-4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Email Log
   </a>
   <a class="nav-item" href="/admin/data-review">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3h10M3 8h10M3 13h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -663,6 +667,39 @@
       <div id="conversationsList"><div class="loading-spinner">Loading...</div></div>
     </div>
 
+    <!-- EMAIL LOG VIEW -->
+    <div class="view" id="view-emaillog">
+      <div class="request-filters">
+        <button class="emaillog-filter active" onclick="filterEmailLogStatus('all', this)">All</button>
+        <button class="emaillog-filter" onclick="filterEmailLogStatus('sent', this)">Sent</button>
+        <button class="emaillog-filter" onclick="filterEmailLogStatus('failed', this)">Failed</button>
+      </div>
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">Email Log</div>
+          <select id="emailLogTemplateFilter" onchange="filterEmailLogTemplate(this.value)" style="margin-right:8px;">
+            <option value="all">All templates</option>
+          </select>
+          <input class="table-search" type="text" id="emailLogSearchInput" placeholder="Search recipient email..." oninput="filterEmailLogSearch(this.value)">
+          <button class="btn-secondary" style="white-space:nowrap;margin-left:8px;" onclick="lookupEmailLogByAddress()">Full history for this address</button>
+        </div>
+        <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th>Sent</th>
+            <th>To</th>
+            <th>Template</th>
+            <th>Status</th>
+          </tr></thead>
+          <tbody id="emailLogTable"><tr><td colspan="4" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
+        </table>
+        </div>
+        <div style="padding:14px;text-align:center;">
+          <button class="btn-secondary" id="emailLogLoadMoreBtn" onclick="loadMoreEmailLog()" style="display:none;">Load older</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -950,7 +987,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import {
   initializeFirestore, memoryLocalCache, collection, collectionGroup, query, orderBy, onSnapshot,
-  doc, getDoc, getDocs, addDoc, updateDoc, setDoc, where,
+  doc, getDoc, getDocs, addDoc, updateDoc, setDoc, where, limit, startAfter,
   serverTimestamp, Timestamp, writeBatch, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
@@ -2509,6 +2546,159 @@ window.openReferralCodeDetail = (codeId) => {
     ${redemptionsHTML}
   `;
   document.getElementById('referralCodeDetailModal').classList.add('open');
+};
+
+// ── EMAIL LOG (read-only reporting) ────────────────────────────────────────
+// Every automated send (sendEmail, functions/lib/email.js) writes one doc
+// here regardless of outcome — this view is a thin read-only window onto
+// that collection. Unlike Referral Codes (small, loaded whole), emailLog is
+// append-only and grows without bound, so this pages by createdAt instead:
+// EMAIL_LOG_PAGE_SIZE per fetch, oldest page fetched only on demand (Load
+// older). Still a one-time getDocs per page, not onSnapshot — a send log
+// has no need to update live while the page sits open, same reasoning as
+// Referral Codes.
+const EMAIL_LOG_PAGE_SIZE = 100;
+let allEmailLog = [];
+let emailLogLastDoc = null;
+let emailLogExhausted = false;
+let currentEmailLogSearch = '';
+let currentEmailLogTemplateFilter = 'all';
+let currentEmailLogStatusFilter = 'all';
+
+function sortEmailLogDesc() {
+  allEmailLog.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+}
+
+async function loadEmailLog(isRefresh) {
+  if (isRefresh) {
+    allEmailLog = []; emailLogLastDoc = null; emailLogExhausted = false;
+  }
+  const tbody = document.getElementById('emailLogTable');
+  if (tbody && !allEmailLog.length) tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr>`;
+  await loadMoreEmailLog();
+}
+
+async function loadMoreEmailLog() {
+  if (emailLogExhausted) return;
+  const loadMoreBtn = document.getElementById('emailLogLoadMoreBtn');
+  if (loadMoreBtn) { loadMoreBtn.disabled = true; loadMoreBtn.textContent = 'Loading...'; }
+  try {
+    const constraints = emailLogLastDoc
+      ? [orderBy('createdAt', 'desc'), startAfter(emailLogLastDoc), limit(EMAIL_LOG_PAGE_SIZE)]
+      : [orderBy('createdAt', 'desc'), limit(EMAIL_LOG_PAGE_SIZE)];
+    const snap = await getDocs(query(collection(db, 'emailLog'), ...constraints));
+    if (snap.docs.length < EMAIL_LOG_PAGE_SIZE) emailLogExhausted = true;
+    if (snap.docs.length) emailLogLastDoc = snap.docs[snap.docs.length - 1];
+    const existingIds = new Set(allEmailLog.map(r => r.id));
+    snap.docs.forEach(d => { if (!existingIds.has(d.id)) allEmailLog.push({ id: d.id, ...d.data() }); });
+    sortEmailLogDesc();
+    renderEmailLogTable();
+  } catch (e) {
+    console.error('Failed to load email log:', e.message);
+    const tbody = document.getElementById('emailLogTable');
+    if (tbody && !allEmailLog.length) tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-light);padding:24px;">Couldn't load the email log right now.</td></tr>`;
+  } finally {
+    if (loadMoreBtn) { loadMoreBtn.disabled = false; loadMoreBtn.textContent = 'Load older'; loadMoreBtn.style.display = emailLogExhausted ? 'none' : 'block'; }
+  }
+}
+
+function fmtEmailLogDate(ts) {
+  if (!ts) return '–';
+  try {
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  } catch { return '–'; }
+}
+
+function renderEmailLogTable() {
+  const tbody = document.getElementById('emailLogTable');
+  if (!tbody) return;
+
+  // Template dropdown grows to cover whatever's actually been fetched so
+  // far, rather than a hardcoded list that could drift from the real
+  // TEMPLATES registry (functions/lib/email.js) — this view only ever
+  // shows a template once at least one send using it has been loaded.
+  const select = document.getElementById('emailLogTemplateFilter');
+  if (select) {
+    const current = select.value;
+    const options = Array.from(new Set(allEmailLog.map(r => r.template).filter(Boolean))).sort();
+    select.innerHTML = `<option value="all">All templates</option>` +
+      options.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+    select.value = options.includes(current) ? current : 'all';
+  }
+
+  let rows = allEmailLog;
+  if (currentEmailLogStatusFilter !== 'all') rows = rows.filter(r => r.status === currentEmailLogStatusFilter);
+  if (currentEmailLogTemplateFilter !== 'all') rows = rows.filter(r => r.template === currentEmailLogTemplateFilter);
+  if (currentEmailLogSearch) {
+    const q = currentEmailLogSearch.toLowerCase();
+    rows = rows.filter(r => (r.to || '').toLowerCase().includes(q));
+  }
+
+  if (!rows.length) {
+    const hint = allEmailLog.length ? ' — try "Full history for this address" for sends older than what\'s loaded' : '';
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-light);padding:24px;">No emails match${hint}.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr ${r.status === 'failed' ? `style="cursor:pointer;" onclick="showEmailLogError('${escapeHtml(r.id)}')"` : ''}>
+      <td>${fmtEmailLogDate(r.sentAt || r.createdAt)}</td>
+      <td>${escapeHtml(r.to || '–')}</td>
+      <td>${escapeHtml(r.template || '–')}</td>
+      <td><span class="status-badge ${r.status === 'sent' ? 'active' : 'pending'}">${escapeHtml(capitalize(r.status))}</span></td>
+    </tr>
+  `).join('');
+}
+
+window.showEmailLogError = (id) => {
+  const entry = allEmailLog.find(r => r.id === id);
+  alert(entry?.error || 'No error message on file.');
+};
+
+window.filterEmailLogStatus = (status, btn) => {
+  currentEmailLogStatusFilter = status;
+  document.querySelectorAll('.emaillog-filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderEmailLogTable();
+};
+
+window.filterEmailLogTemplate = (val) => {
+  currentEmailLogTemplateFilter = val;
+  renderEmailLogTable();
+};
+
+window.filterEmailLogSearch = (val) => {
+  currentEmailLogSearch = val;
+  renderEmailLogTable();
+};
+
+// The search box above only filters whatever pages have already been
+// loaded (EMAIL_LOG_PAGE_SIZE at a time) — for a member who hasn't been
+// emailed recently, their real history can sit entirely outside that
+// window. This runs a direct query instead, scoped to one exact address.
+// No orderBy paired with the where() here (Firestore requires a composite
+// index for that combination, which doesn't exist for emailLog) — the
+// results are merged into allEmailLog and sortEmailLogDesc handles order
+// entirely client-side instead.
+window.lookupEmailLogByAddress = async () => {
+  const val = (document.getElementById('emailLogSearchInput')?.value || '').trim();
+  if (!val || !val.includes('@')) {
+    alert('Enter a full email address above first — this looks up its complete history, beyond what\'s currently loaded.');
+    return;
+  }
+  try {
+    const snap = await getDocs(query(collection(db, 'emailLog'), where('to', '==', val)));
+    const existingIds = new Set(allEmailLog.map(r => r.id));
+    let added = 0;
+    snap.docs.forEach(d => {
+      if (!existingIds.has(d.id)) { allEmailLog.push({ id: d.id, ...d.data() }); added++; }
+    });
+    sortEmailLogDesc();
+    renderEmailLogTable();
+    if (!snap.docs.length) alert(`No emails found for ${val}.`);
+  } catch (e) {
+    alert(`Couldn't look up that address: ${e.message}`);
+  }
 };
 
 // ── WALK MODAL (ASSIGN) ───────────────────────────────────────────────────────
@@ -5934,7 +6124,7 @@ window.avSelectDate = avSelectDate;
 
 
 
-const viewTitles = { overview: 'Overview', calendar: 'Walk Calendar', walkers: 'Walkers', payouts: 'Payouts', members: 'Members', availability: 'Meet & Greet Availability', requests: 'Requests', referrals: 'Referral Codes', conversations: 'Messages' };
+const viewTitles = { overview: 'Overview', calendar: 'Walk Calendar', walkers: 'Walkers', payouts: 'Payouts', members: 'Members', availability: 'Meet & Greet Availability', requests: 'Requests', referrals: 'Referral Codes', conversations: 'Messages', emaillog: 'Email Log' };
 window.toggleSidebar = (force) => {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebarOverlay');
@@ -5957,12 +6147,14 @@ window.switchView = (view) => {
   const btnMember = '<button class="btn-primary" onclick="openAddMemberModal()">+ Add Member</button>';
   const btnWalker = '<button class="btn-primary" onclick="openAddWalkerModal()">+ Add Walker</button>';
   const btnRefreshReferrals = '<button class="btn-secondary" onclick="loadReferralCodes(true)">Refresh</button>';
+  const btnRefreshEmailLog = '<button class="btn-secondary" onclick="loadEmailLog(true)">Refresh</button>';
   const viewActions = {
     overview: btnSchedule + btnMember,
     calendar: btnSchedule,
     walkers: btnWalker,
     members: btnMember,
     referrals: btnRefreshReferrals,
+    emaillog: btnRefreshEmailLog,
   };
   actions.innerHTML = viewActions[view] || '';
 
@@ -5983,6 +6175,14 @@ window.switchView = (view) => {
   if (view === 'referrals' && !window._referralsInit) {
     window._referralsInit = true;
     loadReferralCodes();
+  }
+
+  // Email Log: same load-once posture as Referral Codes, for the same
+  // reason — a send history doesn't need to be live, and Refresh covers
+  // "check again."
+  if (view === 'emaillog' && !window._emailLogInit) {
+    window._emailLogInit = true;
+    loadEmailLog();
   }
 };
 </script>
