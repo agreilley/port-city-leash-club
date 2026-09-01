@@ -5150,6 +5150,23 @@ window.openMemberDetail = async (id) => {
       <button class="btn-secondary" style="padding:4px 12px;font-size:12px;white-space:nowrap;" onclick="toggleFriendsFamilyDiscount('${member.id}', ${!friendsFamilyActive})">${friendsFamilyActive ? 'Turn off' : 'Turn on'}</button>
     </div>` : '';
 
+  // Admin-side redemption for a member who qualifies for a discount but
+  // never entered a code at signup (applyReferralCodeToMember, functions/
+  // index.js). Only offered when the member has neither an existing
+  // discount nor an unconsumed referral credit — the server enforces this
+  // same guard, this is just so the box isn't sitting there inviting a call
+  // that's guaranteed to be refused.
+  const hasPendingReferralCredit = typeof billing.pendingReferralCredit === 'number' && billing.pendingReferralCredit > 0;
+  const applyReferralCodeHTML = (!hasFriendsFamilyDiscount && !hasPendingReferralCredit) ? `
+    <div style="background:var(--sand-light);border-radius:6px;padding:8px 12px;margin-top:4px;margin-bottom:12px;">
+      <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:6px;">Apply a referral code</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="text" id="applyReferralCodeInput" placeholder="Referral code" style="flex:1;padding:6px 8px;font-size:13px;border:1px solid var(--border);border-radius:4px;">
+        <button class="btn-secondary" style="padding:4px 12px;font-size:12px;white-space:nowrap;" onclick="lookupReferralCodeForMember('${member.id}')">Look Up</button>
+      </div>
+      <div id="applyReferralCodePreview" style="margin-top:8px;"></div>
+    </div>` : '';
+
   // Manual current-month catch-up charge — only Member-tier subscriptions
   // bill this way (resolveMemberPriceId returns null for Travel, functions/
   // index.js), so there's nothing useful this button could do for anyone
@@ -5178,6 +5195,7 @@ window.openMemberDetail = async (id) => {
     <div class="form-grid">${fieldHTML}</div>
     ${reviewDismissHTML}
     ${friendsFamilyHTML}
+    ${applyReferralCodeHTML}
     ${chargeCurrentMonthHTML}
     <button class="btn-secondary" style="margin-top:4px;" onclick="openMemberPortalPreview('${member.id}')">Preview Member Portal</button>
     <hr class="modal-divider">
@@ -5257,6 +5275,77 @@ window.toggleFriendsFamilyDiscount = async (memberId, active) => {
     openMemberDetail(memberId);
   } catch (e) {
     alert(`Couldn't update the friends and family discount: ${e.message}`);
+  }
+};
+
+// Admin-side counterpart to the code box a member fills in at signup — for
+// an existing member who qualifies for a discount but never entered one.
+// Two explicit steps, not one: Look Up previews exactly what the code
+// grants (via the same validateReferralCode callable the public forms use,
+// so the preview can never disagree with what actually gets applied), and
+// Apply requires its own confirm() on top of that — a discount is real
+// money on every future travel charge, so a single mis-click shouldn't be
+// enough to grant one. Only friends_family is wired up server-side right
+// now (applyReferralCodeToMember, functions/index.js) — member/partner
+// codes are a follow-up.
+window.lookupReferralCodeForMember = async (memberId) => {
+  const code = document.getElementById('applyReferralCodeInput')?.value.trim();
+  const previewEl = document.getElementById('applyReferralCodePreview');
+  if (!code || !previewEl) return;
+  previewEl.innerHTML = `<div style="font-size:12px;color:var(--text-light);">Looking up…</div>`;
+  try {
+    const validateReferralCode = httpsCallable(fns, 'validateReferralCode');
+    const { data } = await validateReferralCode({ code });
+    if (!data.valid) {
+      const reasonText = {
+        not_found: 'No such code.',
+        inactive: 'This code is inactive.',
+        expired: 'This code has expired.',
+        redemption_limit_reached: 'This code has already reached its redemption limit.',
+      }[data.reason] || 'This code is not valid.';
+      previewEl.innerHTML = `<div style="font-size:12px;color:#b91c1c;">${escapeHtml(reasonText)}</div>`;
+      return;
+    }
+    if (data.codeType === 'friends_family' && data.discountPercent) {
+      previewEl.innerHTML = `
+        <div style="font-size:12px;color:var(--navy);margin-bottom:6px;">This will grant a <strong>${data.discountPercent}% Friends &amp; Family</strong> discount.</div>
+        <button class="btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="applyReferralCode('${memberId}', ${data.discountPercent})">Apply This Code</button>
+      `;
+    } else {
+      // Every other source (member_referral/apartment/agent/email_capture)
+      // validates fine here — validateReferralCode doesn't know this is the
+      // admin tool — but applyReferralCodeToMember refuses anything that
+      // isn't friends_family server-side, so surface that up front rather
+      // than let the admin hit Apply and get a server error instead.
+      previewEl.innerHTML = `<div style="font-size:12px;color:#b45309;">This code type isn't supported by this tool yet — only Friends &amp; Family codes can be admin-applied right now.</div>`;
+    }
+  } catch (e) {
+    previewEl.innerHTML = `<div style="font-size:12px;color:#b91c1c;">${escapeHtml(e.message)}</div>`;
+  }
+};
+
+window.applyReferralCode = async (memberId, discountPercent) => {
+  const code = document.getElementById('applyReferralCodeInput')?.value.trim();
+  const previewEl = document.getElementById('applyReferralCodePreview');
+  if (!code) return;
+  if (!confirm(`Apply code "${code}" to this member, granting a ${discountPercent}% Friends and family discount?`)) return;
+  try {
+    const applyReferralCodeToMember = httpsCallable(fns, 'applyReferralCodeToMember');
+    const { data } = await applyReferralCodeToMember({ memberId, code });
+    // Same reasoning as toggleFriendsFamilyDiscount above: patch
+    // memberBilling locally rather than waiting on the members-collection
+    // onSnapshot, which a private/billing subdoc write never triggers. The
+    // request review modals (getActiveTravelDiscountPercent) read this
+    // cache directly — without this, confirming a pending request for this
+    // same member right after applying the code would still price it at
+    // 0% until some unrelated write happened to refresh memberBilling.
+    if (memberBilling[memberId]) {
+      memberBilling[memberId] = { ...memberBilling[memberId], travelDiscountPercent: data.discountPercent, travelDiscountActive: true };
+    }
+    openMemberDetail(memberId);
+  } catch (e) {
+    if (previewEl) previewEl.innerHTML = `<div style="font-size:12px;color:#b91c1c;">Couldn't apply this code: ${escapeHtml(e.message)}</div>`;
+    else alert(`Couldn't apply this code: ${e.message}`);
   }
 };
 

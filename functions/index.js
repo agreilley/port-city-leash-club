@@ -3969,7 +3969,7 @@ exports.completeMeetGreetAndCreateAccount = onCall({
   if (sub.referredByCode) {
     const codeSnapForType = await db.collection('referralCodes').doc(sub.referredByCode).get();
     if (codeSnapForType.exists && codeSnapForType.data().source === 'friends_family') {
-      friendsFamilyRedemption = await claimFriendsFamilyRedemption(sub.referredByCode, uid, submissionId);
+      friendsFamilyRedemption = await claimFriendsFamilyRedemption(sub.referredByCode, uid, { redeemedVia: 'self_service', submissionId });
     } else {
       const billingSnapForReferral = await billingRef(uid).get();
       if (!billingSnapForReferral.data()?.referredByCode) {
@@ -4071,7 +4071,16 @@ exports.completeMeetGreetAndCreateAccount = onCall({
 // caller (not silently dropped, but also not a needsReview flag, since
 // there is nothing here for an admin to reconcile: no discount was ever
 // granted, so there's nothing to undo).
-async function claimFriendsFamilyRedemption(codeId, memberId, submissionId) {
+// meta.redeemedVia distinguishes a self-service claim (signup-time, via
+// completeMeetGreetAndCreateAccount) from an admin-applied one
+// (applyReferralCodeToMember) in the redemptions subcollection below —
+// nothing about the validation/atomicity above changes based on which
+// caller this is; it's purely a record-keeping tag for whoever reads the
+// redemption doc later. submissionId is only ever set on the self-service
+// path (there's no submission behind an admin-applied redemption);
+// adminUid is only ever set on the admin path.
+async function claimFriendsFamilyRedemption(codeId, memberId, meta = {}) {
+  const { redeemedVia = 'self_service', submissionId = null, adminUid = null } = meta;
   const codeRef = db.collection('referralCodes').doc(codeId);
   try {
     return await db.runTransaction(async (tx) => {
@@ -4097,6 +4106,15 @@ async function claimFriendsFamilyRedemption(codeId, memberId, submissionId) {
         // anyone. setFriendsFamilyDiscountActive is the only other writer.
         travelDiscountActive: true,
       }, { merge: true });
+      // One redemption doc per member (keyed by memberId, not an auto-id) —
+      // matches the "one code per person" model this code type already
+      // enforces via maxRedemptions; a member can't redeem the same code
+      // twice anyway, so there's nothing a second doc would ever need to
+      // capture.
+      tx.set(codeRef.collection('redemptions').doc(memberId), {
+        memberId, redeemedVia, submissionId, adminUid,
+        redeemedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
       return { claimed: true, discountPercent: data.discountPercent };
     });
   } catch (e) {
@@ -4104,6 +4122,60 @@ async function claimFriendsFamilyRedemption(codeId, memberId, submissionId) {
     return { claimed: false, reason: 'error' };
   }
 }
+
+// Admin-side counterpart to the self-service claim above — for a member who
+// qualifies for a Friends & Family (or, later, a member/partner referral)
+// discount but never entered a code at signup. Currently only handles
+// friends_family; any other code source is refused with a clear message
+// rather than silently mis-applying claimFriendsFamilyRedemption's
+// friends_family-shaped write to a code that isn't one (a member_referral/
+// apartment/agent code has no discountPercent, so that write would silently
+// set travelDiscountPercent: undefined).
+//
+// The double-redemption guard below is deliberately checked here, before
+// ever reaching claimFriendsFamilyRedemption — that function only guards
+// the CODE side (maxRedemptions); it has no concept of "this member already
+// has a different discount/credit on file" since its only other caller
+// (completeMeetGreetAndCreateAccount) always runs against a brand-new
+// member with an empty billing doc.
+exports.applyReferralCodeToMember = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { memberId, code } = request.data || {};
+  if (!memberId || typeof code !== 'string' || !code.trim()) {
+    throw new HttpsError('invalid-argument', 'memberId and code are required.');
+  }
+  const codeId = code.trim();
+
+  const memberSnap = await db.collection('members').doc(memberId).get();
+  if (!memberSnap.exists) throw new HttpsError('not-found', 'Member not found.');
+
+  const billingSnap = await billingRef(memberId).get();
+  const billingData = billingSnap.data() || {};
+  if (billingData.travelDiscountPercent > 0) {
+    throw new HttpsError('failed-precondition', 'This member already has a Friends & Family discount on file — refusing to stack a second one.');
+  }
+  if (billingData.pendingReferralCredit > 0) {
+    throw new HttpsError('failed-precondition', 'This member already has an unconsumed referral credit on file — refusing to stack a second one.');
+  }
+
+  const codeSnap = await db.collection('referralCodes').doc(codeId).get();
+  if (!codeSnap.exists || codeSnap.data().status !== 'active') {
+    throw new HttpsError('failed-precondition', 'This code is not active.');
+  }
+  const codeData = codeSnap.data();
+  if (isReferralCodeExpired(codeData)) {
+    throw new HttpsError('failed-precondition', 'This code has expired.');
+  }
+  if (codeData.source !== 'friends_family') {
+    throw new HttpsError('failed-precondition', `Applying a "${codeData.source}" code isn't supported by this tool yet — only Friends & Family codes can be admin-applied right now.`);
+  }
+
+  const result = await claimFriendsFamilyRedemption(codeId, memberId, { redeemedVia: 'admin', adminUid: request.auth.uid });
+  if (!result.claimed) {
+    throw new HttpsError('failed-precondition', `Couldn't apply this code: ${result.reason}.`);
+  }
+  return { success: true, discountPercent: result.discountPercent };
+});
 
 // ─────────────────────────────────────────────────────────────────────────
 // SECTION 1 — structure only. runServiceOrOvernightBookingDoc and
