@@ -3213,6 +3213,20 @@ window.openRequestItem = async (id) => {
         <button class="btn-secondary" id="requestRetryFinalizeBtn" style="padding:4px 12px;font-size:12px;" onclick="retryRequestFinalize('${id}')">Retry</button>
         <button class="btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="clearRequestFinalizeError('${id}')">Dismiss</button>
       </div>`;
+  } else if (['service_request', 'overnight_request'].includes(item.type) && item.status === 'pending' && item.datesConfirmedAt) {
+    // Dates were confirmed (markDatesConfirmed ran) but finalize never
+    // completed and left nothing to retry — the state a member with a
+    // stale cardOnFile flag used to get stuck in forever, invisibly (the
+    // old silent gate, before service/overnight bookings could confirm
+    // without a card — see finalizeSubmissionIfReady, functions/index.js).
+    // Reuses the same button id/handler as the recorded-failure case above;
+    // retryFinalizeSubmission's own relaxed precondition is what actually
+    // allows this specific never-finalized case through.
+    errNotice.style.display = 'block';
+    errNotice.innerHTML = `Dates were confirmed for this request, but it never finished — no reservation status change, no confirmation email sent. This can happen if the member had no card on file at the time. Retrying now will confirm it and email them, asking for a card if one still isn't on file.
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn-secondary" id="requestRetryFinalizeBtn" style="padding:4px 12px;font-size:12px;" onclick="retryRequestFinalize('${id}')">Retry</button>
+      </div>`;
   } else {
     errNotice.style.display = 'none';
     errNotice.innerHTML = '';

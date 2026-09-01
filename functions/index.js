@@ -4979,7 +4979,18 @@ exports.retryFinalizeSubmission = onCall({
   const subSnap = await db.collection('submissions').doc(submissionId).get();
   const sub = subSnap.data();
   if (!sub) throw new HttpsError('not-found', 'Submission not found.');
-  if (!sub.finalizeError) {
+  // Also allowed with no recorded finalizeError at all: a request whose
+  // dates were confirmed (or, for membership, whose account was created)
+  // but that never actually reached 'confirmed' — the silent cardOnFile
+  // gate finalizeSubmissionIfReady used to have (before service/overnight
+  // bookings could confirm without a card) left exactly this state with
+  // NOTHING recorded to retry, on top of the ordinary recorded-failure
+  // case below. Scoped narrowly (still-pending/account_created, one of the
+  // three types finalize ever handles) so this can't be used to re-run an
+  // already-confirmed or declined request.
+  const neverFinalized = ['membership_request', 'service_request', 'overnight_request'].includes(sub.type)
+    && ['pending', 'account_created'].includes(sub.status);
+  if (!sub.finalizeError && !neverFinalized) {
     throw new HttpsError('failed-precondition', 'This request has no recorded finalize failure to retry.');
   }
   if (sub.finalizeErrorKind === 'charge_failed') {
