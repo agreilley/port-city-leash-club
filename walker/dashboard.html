@@ -673,7 +673,9 @@ window.openVisitCompleteForm = (overnightId, visitId) => {
   const visit = o?.visits?.find(v => v.id === visitId);
   if (!o || !visit) return;
   const member = allMembers.find(m => m.id === o.memberId);
-  const petNames = escapeHtml(getDogNames(member) || o.dogName || 'Pet');
+  // Unescaped — used only via .textContent below, same reasoning as
+  // openOvernightDetail's own dogNames.
+  const petNames = getDogNames(member) || o.dogName || 'Pet';
   const slotLabel = VISIT_SLOT_LABELS[visit.slot] || visit.slot || '–';
   const isCompleted = visit.status === 'completed';
 
@@ -814,7 +816,10 @@ window.openOvernightDetail = (overnightId) => {
   const o = myOvernights.find(x => x.id === overnightId);
   if (!o) return;
   const member = allMembers.find(m => m.id === o.memberId);
-  const dogNames = escapeHtml(getDogNames(member) || o.dogName || 'Pet');
+  // Unescaped — used only via .textContent below, which never interprets
+  // HTML, so escaping here just left a literal "&amp;" on screen for any
+  // multi-dog household instead of the "&" it was meant to render as.
+  const dogNames = getDogNames(member) || o.dogName || 'Pet';
   const serviceLabel = (o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin') ? 'Check-In' : 'Overnight';
   const isCompleted = o.status === 'completed';
 
@@ -875,6 +880,7 @@ function renderCalendar() {
 
   for (let d = 1; d <= daysInMonth; d++) {
     const isToday = d === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
+    const dayStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const dayWalks = myWalks.filter(w => {
       const wd = w.date?.toDate?.() || new Date(w.date);
       return wd.getFullYear() === calYear && wd.getMonth() === calMonth && wd.getDate() === d;
@@ -883,7 +889,23 @@ function renderCalendar() {
       const member = allMembers.find(m => m.id === w.memberId);
       return `<div class="my-walk-chip ${w.timeSlot}" onclick="openWalkDetail('${w.id}')">${escapeHtml(getDogNames(member))}</div>`;
     }).join('');
-    html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}</div>`;
+    // Overnight/check-in reservations never showed here at all — only
+    // recurring walks did. Each reservation expands into one visits[]
+    // entry per day it covers (generateOvernightVisits, functions/index.js),
+    // so matching those against dayStr (via walkDateStr, same UTC-safe
+    // comparison Today's Visits already uses) surfaces exactly the days
+    // this walker actually has pet-sitting work, alongside their walks.
+    // No slot-color modifier — visit slots (morning/midday/evening/last-out)
+    // are a different vocabulary from walk slots and don't map onto the
+    // walk-slot legend below.
+    const visitChips = myOvernights.flatMap(o => {
+      const member = allMembers.find(m => m.id === o.memberId);
+      const petNames = getDogNames(member) || o.dogName || 'Pet';
+      return (Array.isArray(o.visits) ? o.visits : [])
+        .filter(v => walkDateStr(v.date) === dayStr)
+        .map(v => `<div class="my-walk-chip" onclick="openVisitCompleteForm('${o.id}', '${v.id}')">${escapeHtml(petNames)}</div>`);
+    }).join('');
+    html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}${visitChips}</div>`;
   }
 
   const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
