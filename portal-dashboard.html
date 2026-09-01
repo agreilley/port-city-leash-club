@@ -636,7 +636,7 @@
             <div class="metric-detail">This month</div>
           </div>
           <div class="metric-card">
-            <div class="metric-label">Next Walk</div>
+            <div class="metric-label" id="nextWalkLabel">Next Walk</div>
             <div class="metric-value" id="nextWalkDay">–</div>
             <div class="metric-detail" id="nextWalkTime">–</div>
           </div>
@@ -1226,12 +1226,24 @@ function updateMetrics() {
   const remaining = total - completed;
   document.getElementById('walksRemaining').textContent = total ? `${remaining} of ${total}` : '–';
 
-  // Next upcoming walk
+  // Next upcoming walk — "None scheduled" reads as a problem for a
+  // Travel-tier member, who never has recurring walks at all (they use
+  // drop-in visits/overnight stays instead, tracked on the calendar below,
+  // not this card). Relabels the whole card for that tier rather than just
+  // the value, matching the same "No recurring walks" language the Care
+  // Plan banner and Membership card above already use for this exact
+  // distinction.
+  const isTravelOnly = memberData?.tier === 'Travel';
+  document.getElementById('nextWalkLabel').textContent = isTravelOnly ? 'Recurring Walks' : 'Next Walk';
+
   const upcoming = myWalks
     .filter(w => { const d = w.date?.toDate?.() || new Date(w.date); return d >= now && w.status !== 'completed' && w.status !== 'cancelled'; })
     .sort((a, b) => { const da = a.date?.toDate?.() || new Date(a.date); const db_ = b.date?.toDate?.() || new Date(b.date); return da - db_; });
 
-  if (upcoming.length) {
+  if (isTravelOnly) {
+    document.getElementById('nextWalkDay').textContent = 'No recurring walks';
+    document.getElementById('nextWalkTime').textContent = '–';
+  } else if (upcoming.length) {
     const nextDate = upcoming[0].date?.toDate?.() || new Date(upcoming[0].date);
     const diff = Math.round((nextDate - now) / 86400000);
     document.getElementById('nextWalkDay').textContent = diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : `In ${diff} days`;
