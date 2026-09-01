@@ -187,6 +187,13 @@ async function sendEmail({ to, template, data, replyTo, idempotencyKey }) {
     sentAt: result.ok ? FieldValue.serverTimestamp() : null,
     idempotencyKey: idempotencyKey || null,
     createdAt: FieldValue.serverTimestamp(),
+    // Stored so admin/dashboard.html's Email Log view can show what was
+    // actually sent, not just that something was — the rendered content
+    // was previously built here, handed to Resend, and discarded. text
+    // isn't shown anywhere yet, but it's a few hundred bytes and matches
+    // subject/html for free rather than needing a second migration if a
+    // plain-text view is ever added.
+    subject, html, text,
   }, { merge: true }).catch((e) => {
     console.error(`sendEmail: failed to write emailLog for ${template} -> ${to}:`, e.message);
   });

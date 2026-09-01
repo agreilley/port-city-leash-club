@@ -769,6 +769,22 @@
   </div>
 </div>
 
+<!-- EMAIL LOG DETAIL MODAL — iframes the stored html via srcdoc, same
+     mechanism as the member portal preview modal above (an iframe), just
+     rendering an inline string instead of a URL. Safe: this is our own
+     template output, generated server-side with the same escaping every
+     template already applies, viewed only behind the admin-gated dashboard. -->
+<div class="modal-overlay" id="emailLogDetailModal">
+  <div class="modal" style="max-width:700px;">
+    <button class="modal-close" onclick="closeModal('emailLogDetailModal')">×</button>
+    <div class="modal-title" id="emailLogDetailModalTitle">Email Details</div>
+    <div id="emailLogDetailModalMeta" class="form-grid" style="margin-bottom:14px;"></div>
+    <div id="emailLogDetailModalError" style="display:none;font-size:13px;color:#b91c1c;background:#fef2f2;border-radius:6px;padding:10px 12px;margin-bottom:14px;"></div>
+    <iframe id="emailLogDetailFrame" style="width:100%;height:60vh;border:1px solid rgba(0,0,0,0.1);border-radius:6px;display:none;"></iframe>
+    <div id="emailLogDetailNoContent" style="display:none;font-size:13px;color:var(--text-light);text-align:center;padding:24px;">This email was sent before content capture was added — only the metadata above is available.</div>
+  </div>
+</div>
+
 <!-- MEMBER PORTAL PREVIEW MODAL — iframes the member's own portal-dashboard.html
      with ?memberId=<id>. Admin's existing session throughout; no custom tokens,
      no auth switching. Read-only: portal-dashboard.html disables its own
@@ -2650,7 +2666,7 @@ function renderEmailLogTable() {
     return;
   }
   tbody.innerHTML = rows.map(r => `
-    <tr ${r.status === 'failed' ? `style="cursor:pointer;" onclick="showEmailLogError('${escapeHtml(r.id)}')"` : ''}>
+    <tr style="cursor:pointer;" onclick="openEmailLogDetail('${escapeHtml(r.id)}')">
       <td>${fmtEmailLogDate(r.sentAt || r.createdAt)}</td>
       <td>${escapeHtml(r.to || '–')}</td>
       <td>${escapeHtml(r.template || '–')}</td>
@@ -2659,9 +2675,45 @@ function renderEmailLogTable() {
   `).join('');
 }
 
-window.showEmailLogError = (id) => {
+// Every row opens this now, sent or failed — subject/html/text are stored
+// on every send attempt that got far enough to render (see sendEmail,
+// functions/lib/email.js), which includes a failed one whose only problem
+// was the Resend API call itself, not the render. A log entry from before
+// that field was added has none of the three, so the iframe is skipped in
+// favor of a plain note rather than rendering an empty srcdoc.
+window.openEmailLogDetail = (id) => {
   const entry = allEmailLog.find(r => r.id === id);
-  alert(entry?.error || 'No error message on file.');
+  if (!entry) return;
+
+  document.getElementById('emailLogDetailModalTitle').textContent = entry.subject || entry.template || 'Email Details';
+  document.getElementById('emailLogDetailModalMeta').innerHTML = [
+    { label: 'To', value: entry.to || '–' },
+    { label: 'Template', value: entry.template || '–' },
+    { label: 'Status', value: capitalize(entry.status) },
+    { label: 'Sent', value: fmtEmailLogDate(entry.sentAt || entry.createdAt) },
+  ].map(f => `<div class="modal-field"><div class="modal-label">${escapeHtml(f.label)}</div><div class="modal-value">${escapeHtml(f.value)}</div></div>`).join('');
+
+  const errorBox = document.getElementById('emailLogDetailModalError');
+  if (entry.status === 'failed' && entry.error) {
+    errorBox.textContent = entry.error;
+    errorBox.style.display = '';
+  } else {
+    errorBox.style.display = 'none';
+  }
+
+  const frame = document.getElementById('emailLogDetailFrame');
+  const noContent = document.getElementById('emailLogDetailNoContent');
+  if (entry.html) {
+    frame.srcdoc = entry.html;
+    frame.style.display = '';
+    noContent.style.display = 'none';
+  } else {
+    frame.srcdoc = '';
+    frame.style.display = 'none';
+    noContent.style.display = '';
+  }
+
+  document.getElementById('emailLogDetailModal').classList.add('open');
 };
 
 window.filterEmailLogStatus = (status, btn) => {
