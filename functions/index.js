@@ -635,6 +635,33 @@ async function runDeclineRequestOrphanCleanup(stripe, subRef, sub) {
   const memberId = sub.memberId || null;
   let stripeCustomerDeleted = true; // stays true — "nothing to delete" — unless a real customer is found below
 
+  // This cleanup exists for a NET-NEW customer's account — one that only
+  // exists because of THIS request (completeMeetGreetAndCreateAccount,
+  // triggered by that same one submission) — so declining it means the
+  // account was never really "a member" to begin with. It has no business
+  // running for an EXISTING member's request (e.g. a portal-submitted
+  // service_request from someone who already has an account, dogs, and
+  // other bookings): that decline should only ever touch THIS submission.
+  // Distinguishes the two the only reliable way available — any OTHER
+  // trace of this member (another submission, a walk, an overnight)
+  // means the account predates and outlives this one request, so the
+  // account/Stripe/Auth teardown below must be skipped entirely.
+  if (memberId) {
+    const [otherSubsSnap, overnightsSnap, walksSnap] = await Promise.all([
+      db.collection('submissions').where('memberId', '==', memberId).get(),
+      db.collection('overnights').where('memberId', '==', memberId).limit(1).get(),
+      db.collection('walks').where('memberId', '==', memberId).limit(1).get(),
+    ]);
+    const hasOtherSubmission = otherSubsSnap.docs.some((d) => d.id !== subRef.id);
+    const isEstablishedMember = hasOtherSubmission || !overnightsSnap.empty || !walksSnap.empty;
+    if (isEstablishedMember) {
+      await subRef.set({
+        status: 'declined', read: true, declinedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return { success: true, stripeCustomerDeleted: false, accountDeleted: false };
+    }
+  }
+
   if (memberId) {
     const billingSnap = await billingRef(memberId).get();
     const stripeCustomerId = billingSnap.data()?.stripeCustomerId;
