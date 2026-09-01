@@ -1157,12 +1157,49 @@ function isMemberProfileIncomplete(member) {
 // memberId — used by overnight_request and walk_extension, neither of
 // which capture pet/contact details on the submission itself (those live
 // on the member record, unlike service_request's public one-time form).
+// Catch-all safety net for the three submission types built from rich
+// public-facing forms (service_request, membership_request,
+// overnight_request): any field on the raw document not already covered
+// by that type's curated field list still shows here. This exists because
+// a curated list can silently omit a field — service_request's list had
+// no Notes row at all until this same change, and neither request type
+// had full per-dog detail until the Pets section below was added for
+// membership_request — with nothing forcing it to catch up when a form
+// adds a new field later. shownKeys is the exact set of item.<key>s that
+// type's curated list (or its Pets/member-context section) already reads,
+// so this only ever shows what's genuinely left over.
+function buildAdditionalDetailsHTML(item, shownKeys) {
+  const skip = new Set(['id', 'type', 'read', 'dogs', 'dogName', 'breed', 'age', 'weight', ...shownKeys]);
+  const extra = Object.entries(item)
+    .filter(([k, v]) => !skip.has(k) && v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => {
+      let display = v;
+      if (v && typeof v === 'object' && typeof v.toDate === 'function') {
+        try { display = v.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { display = '(date)'; }
+      } else if (typeof v === 'boolean') {
+        display = v ? 'Yes' : 'No';
+      } else if (Array.isArray(v)) {
+        display = v.length ? `${v.length} item${v.length === 1 ? '' : 's'} (see Firestore)` : '–';
+      } else if (typeof v === 'object') {
+        display = '(see Firestore)';
+      }
+      const label = k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+      return { label, value: String(display) };
+    });
+  if (!extra.length) return '';
+  return `<hr class="modal-divider"><div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Additional Details</div>
+    <div class="form-grid">${extra.map(f => `<div class="modal-field"><div class="modal-label">${escapeHtml(f.label)}</div><div class="modal-value">${escapeHtml(f.value)}</div></div>`).join('')}</div>`;
+}
+
 function renderMemberContextHTML(memberId) {
   const member = allMembers.find(m => m.id === memberId);
   if (!member) return '<div style="font-size:13px;color:var(--text-light);">Member record not found.</div>';
   const infoFields = [
     { label: 'Address', value: member.address || '–' },
     { label: 'Phone', value: member.phone || '–' },
+    { label: 'Parking Notes', value: member.parkingNotes || '–' },
+    { label: 'Entry Code', value: member.entryCode || '–' },
+    { label: 'Access Notes', value: member.accessNotes || '–' },
   ];
   const infoHTML = infoFields.map(f =>
     `<div class="modal-field"><div class="modal-label">${escapeHtml(f.label)}</div><div class="modal-value">${escapeHtml(f.value)}</div></div>`
@@ -3356,6 +3393,10 @@ window.openRequestItem = async (id) => {
       { label: 'Estimated Total', value: item.estimatedTotal ? `$${item.estimatedTotal}` : '–' },
       { label: 'Payment', value: item.paymentStatus ? item.paymentStatus.charAt(0).toUpperCase() + item.paymentStatus.slice(1) : 'Not yet confirmed' },
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
+      // Was missing entirely — the Care Notes free-text box on the public
+      // form, still shown live during review (renderServiceRequestReview),
+      // silently disappeared the moment a request was confirmed.
+      { label: 'Notes', value: item.notes || '–' },
       { label: 'Attribution', value: formatAttribution(item.attribution) },
       { label: 'Created At', value: fmtDate(item.createdAt) },
     ];
@@ -3578,8 +3619,29 @@ window.openRequestItem = async (id) => {
     let pendingResumeName = '';
     if (item.type === 'service_request') {
       extraHTML = `<hr class="modal-divider"><div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Pets</div>${renderPetDetailCards(item.dogs)}`;
+      extraHTML += buildAdditionalDetailsHTML(item, [
+        'ownerName', 'email', 'phone', 'address', 'service', 'startDate', 'endDate', 'visitsPerDay',
+        'extraPet', 'medication', 'meetGreetDateTime', 'estimatedTotal', 'paymentStatus', 'status',
+        'notes', 'attribution', 'createdAt',
+      ]);
+    } else if (item.type === 'membership_request') {
+      // Same Pets treatment service_request already had — the curated field
+      // list above only ever showed a one-line name/breed/age/weight
+      // summary, never the full per-dog detail (temperament, checkboxes,
+      // per-dog notes) that's actually on the document.
+      extraHTML = `<hr class="modal-divider"><div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Pets</div>${renderPetDetailCards(item.dogs)}`;
+      extraHTML += buildAdditionalDetailsHTML(item, [
+        'ownerName', 'email', 'phone', 'days', 'timeWindow', 'startDate', 'address', 'accessNotes',
+        'meetGreetDateTime', 'attribution', 'createdAt', 'stripeCustomerId', 'paymentMethodStatus',
+      ]);
     } else if ((item.type === 'overnight_request' || item.service === 'overnight' || item.service === 'checkin' || item.type === 'walk_extension') && item.memberId) {
       extraHTML = `<hr class="modal-divider">${renderMemberContextHTML(item.memberId)}`;
+      if (item.type === 'overnight_request') {
+        extraHTML += buildAdditionalDetailsHTML(item, [
+          'memberId', 'memberName', 'service', 'startDate', 'endDate', 'status',
+          'addonExtraPet', 'addonMedication', 'estimatedTotal', 'paymentStatus', 'notes',
+        ]);
+      }
     } else if (item.type === 'application') {
       // The applicant stores only resumePath, never a URL: getDownloadURL is a
       // read, and storage.rules allows reading resumes to admins only, so an
@@ -5514,6 +5576,13 @@ window.openMemberDetail = async (id) => {
     { label: 'Email', value: member.email || '–' },
     { label: 'Phone', value: member.phone || '–' },
     { label: 'Address', value: member.address || '–' },
+    // Set by the member themselves via portal-pet-profile.html's Home Access
+    // card — never shown anywhere in admin before this, so a member filling
+    // these in had no way for staff to actually see them without going into
+    // Firestore directly.
+    { label: 'Parking Notes', value: member.parkingNotes || '–' },
+    { label: 'Entry Code', value: member.entryCode || '–' },
+    { label: 'Access Notes', value: member.accessNotes || '–' },
     { label: 'Tier', value: member.tier || '–' },
     { label: 'Status', value: member.status ? member.status.charAt(0).toUpperCase() + member.status.slice(1) : '–' },
     { label: 'Walk Days', value: (member.defaultWalkDays || []).join(', ') || '–' },
