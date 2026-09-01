@@ -52,6 +52,7 @@ const TEMPLATES = {
   'vacation-hold': require('../templates/vacation-hold'),
   'vacation-hold-resumed': require('../templates/vacation-hold-resumed'),
   'visit-completed': require('../templates/visit-completed'),
+  'walk-completed': require('../templates/walk-completed'),
 };
 
 const MAX_ATTEMPTS = 3;

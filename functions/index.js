@@ -5469,7 +5469,7 @@ exports.twilioInboundWebhook = onRequest({ secrets: [TWILIO_AUTH_TOKEN] }, async
 // ─────────────────────────────────────────────────────────────────────────
 exports.onWalkCompleted = onDocumentUpdated({
   document: 'walks/{walkId}',
-  secrets: [TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER],
+  secrets: [TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, RESEND_API_KEY],
 }, async (event) => {
   const before = event.data.before.data() || {};
   const after = event.data.after.data() || {};
@@ -5510,46 +5510,87 @@ exports.onWalkCompleted = onDocumentUpdated({
   const memberSnap = await db.collection('members').doc(after.memberId).get();
   if (!memberSnap.exists) return;
   const member = memberSnap.data();
-  if (!member.phone) return; // nothing to text
 
   const dogName = member.dogName || (Array.isArray(member.dogs) && member.dogs[0]?.name) || 'Your dog';
-  // Links out to the walk's card in the portal (Care History) instead of
-  // attaching the photo as MMS media — one message works whether or not
-  // there's a photo, notes of any length are readable in full at the link
-  // rather than being crammed into the SMS itself, and the member can
-  // revisit it later instead of only seeing the photo once in a text
-  // thread. capped at 18 chars (see truncateForSms) so a long dog name can
-  // never push this over one SMS segment (160 chars) — verified against
-  // the actual link length below: fixed text + a worst-case-length walk id
-  // is 139 chars, +18 for name = 157, comfortably under the limit.
   const walkLink = `${BUSINESS_PORTAL_ORIGIN}/portal-walk-history?walk=${event.params.walkId}`;
-  const body = `${truncateForSms(dogName, 18)} had a great walk! See notes and photos: ${walkLink}`;
 
-  if (!twilioConfigured()) {
-    await logConversationMessage(after.memberId, {
-      channel: 'sms', direction: 'outbound', body, mediaUrl: after.photoUrl || null,
-      sentBy: 'system', automated: true, status: 'pending_credentials',
-    });
-    return;
+  // ── SMS — no-ops (member.phone check) if there's nothing to text. Left
+  // exactly as it was: still the only channel that stays silent while
+  // Twilio is unconfigured (pending_credentials log, no throw).
+  if (member.phone) {
+    // Links out to the walk's card in the portal (Care History) instead of
+    // attaching the photo as MMS media — one message works whether or not
+    // there's a photo, notes of any length are readable in full at the link
+    // rather than being crammed into the SMS itself, and the member can
+    // revisit it later instead of only seeing the photo once in a text
+    // thread. capped at 18 chars (see truncateForSms) so a long dog name can
+    // never push this over one SMS segment (160 chars) — verified against
+    // the actual link length below: fixed text + a worst-case-length walk id
+    // is 139 chars, +18 for name = 157, comfortably under the limit.
+    const body = `${truncateForSms(dogName, 18)} had a great walk! See notes and photos: ${walkLink}`;
+
+    if (!twilioConfigured()) {
+      await logConversationMessage(after.memberId, {
+        channel: 'sms', direction: 'outbound', body, mediaUrl: after.photoUrl || null,
+        sentBy: 'system', automated: true, status: 'pending_credentials',
+      });
+    } else {
+      try {
+        const client = twilioClient();
+        const twilioMsg = await client.messages.create({
+          to: member.phone,
+          from: TWILIO_PHONE_NUMBER.value(),
+          body,
+        });
+        await logConversationMessage(after.memberId, {
+          channel: 'sms', direction: 'outbound', body, mediaUrl: after.photoUrl || null,
+          sentBy: 'system', automated: true, status: 'sent', externalId: twilioMsg.sid,
+        });
+      } catch (e) {
+        await logConversationMessage(after.memberId, {
+          channel: 'sms', direction: 'outbound', body, mediaUrl: after.photoUrl || null,
+          sentBy: 'system', automated: true, status: 'failed',
+        });
+        console.error('Walk-update text failed:', e.message);
+      }
+    }
   }
 
-  try {
-    const client = twilioClient();
-    const twilioMsg = await client.messages.create({
-      to: member.phone,
-      from: TWILIO_PHONE_NUMBER.value(),
-      body,
-    });
-    await logConversationMessage(after.memberId, {
-      channel: 'sms', direction: 'outbound', body, mediaUrl: after.photoUrl || null,
-      sentBy: 'system', automated: true, status: 'sent', externalId: twilioMsg.sid,
-    });
-  } catch (e) {
-    await logConversationMessage(after.memberId, {
-      channel: 'sms', direction: 'outbound', body, mediaUrl: after.photoUrl || null,
-      sentBy: 'system', automated: true, status: 'failed',
-    });
-    console.error('Walk-update text failed:', e.message);
+  // ── Email — sent regardless of phone presence or Twilio configuration,
+  // same posture as onOvernightVisitCompleted's own email branch. Recurring
+  // walks previously had NO working notification channel at all (SMS
+  // silently no-ops without live Twilio credentials, and there was no
+  // email equivalent) — this closes that gap.
+  //
+  // Gated on the walker actually having left a note or photo — a plain
+  // "mark complete" with neither has nothing worth emailing about, and
+  // would otherwise send an empty "here's an update" for every single walk.
+  const hasUpdate = !!(after.notes || after.photoUrl);
+  if (member.email && hasUpdate) {
+    try {
+      const { WALK_TIME_SLOT_LABELS } = await import('./time-slots.js');
+      const petNames = Array.isArray(member.dogs) ? member.dogs.map((d) => d && d.name).filter(Boolean) : (member.dogName ? [member.dogName] : []);
+      await sendEmail({
+        to: member.email,
+        template: 'walk-completed',
+        data: {
+          firstName: (member.name || '').trim().split(/\s+/)[0] || 'there',
+          petNames,
+          dateStr: isoDateStr(after.date.toDate()),
+          slotLabel: WALK_TIME_SLOT_LABELS[after.timeSlot] || after.timeSlot || '',
+          note: after.notes || '',
+          photoUrl: after.photoUrl || null,
+          portalUrl: walkLink,
+        },
+        idempotencyKey: `walk-completed:${event.params.walkId}`,
+      });
+    } catch (e) {
+      // sendEmail's own contract is "never throws" — this catch exists only
+      // as defense-in-depth so a future change to that contract can't
+      // silently take this whole trigger (and the payout stamping above it)
+      // down with it.
+      console.error('onWalkCompleted: email threw unexpectedly:', e.message);
+    }
   }
 });
 

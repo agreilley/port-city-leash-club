@@ -2993,6 +2993,7 @@ window.openWalkModal = async (walkId) => {
       <div class="modal-field"><div class="modal-label">Status</div><div class="modal-value">${escapeHtml(walk.status || 'Scheduled')}</div></div>
     </div>
     <div class="modal-field"><div class="modal-label">Completion Notes</div><div class="modal-value">${escapeHtml(walk.notes || '–')}</div></div>
+    ${walk.photoUrl ? `<div class="modal-field" style="margin-top:10px;"><img src="${escapeHtml(walk.photoUrl)}" alt="Walk photo" style="max-width:100%;border-radius:8px;"></div>` : ''}
     <hr class="modal-divider">
     ${assignmentHTML}
   `;
