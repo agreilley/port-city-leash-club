@@ -760,6 +760,9 @@ function loadPageData() {
   // Pausing has no meaningful effect for Travel tier — no recurring walks to
   // cancel or refund — so the entry point is hidden rather than shown disabled.
   if (el('pauseMembershipRow')) el('pauseMembershipRow').style.display = isTravelOnly ? 'none' : '';
+  // Same reasoning as Pause Membership above — a Travel-only member has no
+  // recurring walk plan for a preferred-days/time-slot editor to apply to.
+  if (el('walk-schedule')) el('walk-schedule').style.display = isTravelOnly ? 'none' : '';
   // Walk schedule
   const days = (memberData.defaultWalkDays || []).join(', ');
   const slot = memberData.defaultTimeSlot || '';
