@@ -2008,7 +2008,7 @@ function renderCalendarDays() {
 
   // Build overnight map: day → overnight doc
   const overnightMap = {};
-  allOvernights.forEach(o => {
+  allOvernights.filter(o => o.status !== 'cancelled').forEach(o => {
     const start = o.startDate?.toDate?.() || new Date(o.startDate);
     const end   = o.endDate?.toDate?.()   || new Date(o.endDate);
     const s = new Date(start.getFullYear(), start.getMonth(), start.getDate());

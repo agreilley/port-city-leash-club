@@ -721,15 +721,25 @@ async function runDeclineRequestOrphanCleanup(stripe, subRef, sub) {
 async function sendRequestDeclinedEmail(doc, contextId) {
   let email = doc.email || null;
   let name = doc.ownerName || doc.memberName || null;
-  let dogs = doc.dogs || (doc.dogName ? [{ name: doc.dogName }] : null);
+  // doc.dogs (a real array) only ever comes from a submissions doc — an
+  // overnights doc has no such field, only a single dogName (the FIRST
+  // dog's name only — see runServiceOrOvernightBookingDoc). That singular
+  // fallback must never be treated as "good enough" ahead of the member
+  // record's full dogs[] — otherwise a multi-dog household's cancellation
+  // email silently drops every dog but the first. Only used as a last
+  // resort, after a member-record lookup has already been tried.
+  let dogs = (doc.dogs && doc.dogs.length) ? doc.dogs : null;
   if ((!email || !name || !dogs) && doc.memberId) {
     const memberSnap = await db.collection('members').doc(doc.memberId).get();
     const member = memberSnap.data();
     if (member) {
       email = email || member.email;
       name = name || member.name;
-      dogs = (dogs && dogs.length) ? dogs : member.dogs;
+      dogs = dogs || member.dogs;
     }
+  }
+  if (!dogs || !dogs.length) {
+    dogs = doc.dogName ? [{ name: doc.dogName }] : [];
   }
   if (!email) {
     console.error(`sendRequestDeclinedEmail: no email found for ${contextId}.`);
