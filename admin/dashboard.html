@@ -156,6 +156,12 @@
   .availability-row { display: grid; grid-template-columns: 160px repeat(7, 1fr); border-bottom: 1px solid rgba(0,0,0,0.05); }
   .availability-row:last-child { border-bottom: none; }
   .availability-walker { padding: 12px 16px; font-size: 13px; font-weight: 500; color: var(--navy); display: flex; align-items: center; gap: 8px; }
+  /* Each walker's overnight availability renders as a second, visually
+     paired sub-row directly under their walk-slot row — same 7-day
+     columns, same badge classes, so it reads as "the same data, one more
+     row" rather than a separate unrelated grid. */
+  .availability-row-overnight { background: var(--sand); }
+  .availability-walker-sub { padding: 8px 16px 8px 34px; font-size: 11px; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.04em; }
   .walker-dot { width: 10px; height: 10px; border-radius: 50%; }
   .availability-slot { padding: 8px; text-align: center; border-left: 1px solid rgba(0,0,0,0.04); }
   .slot-available { background: var(--green-light); border-radius: 4px; padding: 4px; font-size: 11px; color: var(--green); font-weight: 500; }
@@ -2109,6 +2115,11 @@ function renderAvailabilityGrid() {
 
   container.innerHTML = allWalkers.map((w, i) => {
     const avail = w.availability || {};
+    // Same fallback as openWalkerDetail's grid — a walker who's never had
+    // the new per-day field saved yet shows every day from their old
+    // blanket availableForOvernights boolean instead of reading as blank.
+    const overnightAvail = w.overnightAvailability || null;
+    const isOvernightDay = (day) => overnightAvail ? !!overnightAvail[day] : !!w.availableForOvernights;
     return `<div class="availability-row">
       <div class="availability-walker">
         <div class="walker-dot" style="background:${dotColors[i % dotColors.length]};"></div>
@@ -2120,6 +2131,14 @@ function renderAvailabilityGrid() {
         const cls = available === 3 ? 'slot-available' : available > 0 ? 'slot-partial' : 'slot-unavailable';
         const label = available === 3 ? 'All' : available > 0 ? `${available}/3` : 'Off';
         return `<div class="availability-slot" data-day="${dayLabels[di]}"><div class="${cls}">${label}</div></div>`;
+      }).join('')}
+    </div>
+    <div class="availability-row availability-row-overnight">
+      <div class="availability-walker-sub">Overnight</div>
+      ${days.map((day, di) => {
+        const on = isOvernightDay(day);
+        const cls = on ? 'slot-available' : 'slot-unavailable';
+        return `<div class="availability-slot" data-day="${dayLabels[di]}"><div class="${cls}">${on ? 'Yes' : 'Off'}</div></div>`;
       }).join('')}
     </div>`;
   }).join('');
@@ -3131,7 +3150,7 @@ window.createWalkerAccount = async () => {
       name, email, phone, uid, walkerId,
       zones, status: 'active', weeklyTarget: 20,
       availability: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] },
-      availableForOvernights: false
+      overnightAvailability: { mon: false, tue: false, wed: false, thu: false, fri: false, sat: false, sun: false }
     };
 
     // Both docs are written in ONE atomic batch — same pattern as
@@ -6300,17 +6319,31 @@ window.openWalkerDetail = (id) => {
   const slots = WALK_TIME_SLOTS;
   const slotLabels = { morning: 'Morning', 'early-afternoon': 'Early Aft.', 'late-afternoon': 'Late Aft.' };
   const avail = walker.availability || {};
+  // Per-day overnight availability replaces the old blanket
+  // availableForOvernights boolean. Kept as its own field rather than a
+  // 4th value inside availability[day] — that array's length feeds the
+  // main Walkers list's All/Partial/Off summary badges (renderAvailabilityGrid),
+  // and mixing in an unrelated 4th slot would silently throw that math off.
+  // A walker who was saved under the old boolean and has never had this
+  // new field written yet gets every day seeded from that boolean here —
+  // saving this grid always persists real per-day data going forward.
+  const overnightAvail = walker.overnightAvailability || null;
+  const isOvernightDayChecked = (day) => overnightAvail ? !!overnightAvail[day] : !!walker.availableForOvernights;
 
   const gridHTML = `
-    <div style="display:grid;grid-template-columns:90px repeat(3,1fr);gap:6px;align-items:center;">
+    <div style="display:grid;grid-template-columns:90px repeat(4,1fr);gap:6px;align-items:center;">
       <div></div>
       ${slots.map(s => `<div style="font-size:11px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--text-light);text-align:center;">${slotLabels[s]}</div>`).join('')}
+      <div style="font-size:11px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:var(--text-light);text-align:center;">Overnight</div>
       ${days.map(day => `
         <div style="font-size:12px;color:var(--navy);">${dayLabels[day]}</div>
         ${slots.map(slot => `
           <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;">
             <input type="checkbox" id="wd-${day}-${slot}" ${(avail[day] || []).includes(slot) ? 'checked' : ''} style="accent-color:var(--seafoam);">
           </label>`).join('')}
+        <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;">
+          <input type="checkbox" id="wd-${day}-overnight" ${isOvernightDayChecked(day) ? 'checked' : ''} style="accent-color:var(--seafoam);">
+        </label>
       `).join('')}
     </div>`;
 
@@ -6320,10 +6353,6 @@ window.openWalkerDetail = (id) => {
     <hr class="modal-divider">
     <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Availability</div>
     ${gridHTML}
-    <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:var(--navy);cursor:pointer;">
-      <input type="checkbox" id="wd-overnight" ${walker.availableForOvernights ? 'checked' : ''} style="accent-color:var(--seafoam);">
-      Available for overnight stays
-    </label>
     <div id="wd-save-status" style="font-size:12px;color:var(--text-light);margin-top:10px;min-height:16px;"></div>
     <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="saveWalkerSchedule('${walker.id}','${walker.uid}')">Save Schedule</button>
     <hr class="modal-divider">
@@ -6391,10 +6420,11 @@ window.saveWalkerSchedule = async (walkerId, uid) => {
   const days = ['mon','tue','wed','thu','fri','sat','sun'];
   const slots = WALK_TIME_SLOTS;
   const availability = {};
+  const overnightAvailability = {};
   days.forEach(day => {
     availability[day] = slots.filter(slot => document.getElementById(`wd-${day}-${slot}`).checked);
+    overnightAvailability[day] = document.getElementById(`wd-${day}-overnight`).checked;
   });
-  const availableForOvernights = document.getElementById('wd-overnight').checked;
 
   const statusEl = document.getElementById('wd-save-status');
   statusEl.textContent = 'Saving...';
@@ -6402,9 +6432,9 @@ window.saveWalkerSchedule = async (walkerId, uid) => {
 
   try {
     const batch = writeBatch(db);
-    batch.update(doc(db, 'walkers', walkerId), { availability, availableForOvernights });
+    batch.update(doc(db, 'walkers', walkerId), { availability, overnightAvailability });
     if (uid && uid !== walkerId && uid !== 'undefined') {
-      batch.update(doc(db, 'walkers', uid), { availability, availableForOvernights });
+      batch.update(doc(db, 'walkers', uid), { availability, overnightAvailability });
     }
     await batch.commit();
     statusEl.textContent = 'Saved.';

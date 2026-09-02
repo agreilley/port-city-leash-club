@@ -1273,27 +1273,30 @@ function renderSchedule() {
   const slotTextColors = { morning: '#1A5C30', 'early-afternoon': '#3730A3', 'late-afternoon': '#92400E' };
 
   const zones = walkerDoc.zones || [];
+  // Falls back to the old blanket availableForOvernights boolean for a
+  // walker who's never had this new per-day field saved by admin yet —
+  // same fallback admin's own grid uses (openWalkerDetail, admin/dashboard.html)
+  // — so this never renders as "off every day" for someone who was
+  // actually marked available under the old field.
+  const overnightAvail = walkerDoc.overnightAvailability || null;
+  const isOvernightDay = (day) => overnightAvail ? !!overnightAvail[day] : !!walkerDoc.availableForOvernights;
 
   container.innerHTML = `
     ${zones.length ? `<div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:14px 18px;margin-bottom:16px;">
       <div style="font-size:12px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);margin-bottom:4px;">Assigned Zones</div>
       <div style="font-size:14px;color:var(--navy);font-weight:500;">${zones.map(z => escapeHtml(z)).join(', ')}</div>
     </div>` : ''}
-    <div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:14px 18px;margin-bottom:16px;">
-      <div style="font-size:12px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);margin-bottom:4px;">Overnight Stays</div>
-      <div style="font-size:14px;color:${walkerDoc.availableForOvernights ? 'var(--green)' : 'var(--text-light)'};font-weight:500;">${walkerDoc.availableForOvernights ? 'Available' : 'Not available'}</div>
-    </div>
     <div style="display:grid;gap:8px;">
       ${days.map(d => {
         const daySlots = avail[d.key] || [];
-        const isOff = !daySlots.length;
+        const onOvernight = isOvernightDay(d.key);
+        const isOff = !daySlots.length && !onOvernight;
         return `<div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;">
           <div style="font-size:14px;font-weight:500;color:${isOff ? 'var(--text-light)' : 'var(--navy)'};">${d.label}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            ${isOff
-              ? '<span style="font-size:12px;color:var(--text-light);">Off</span>'
-              : daySlots.map(s => `<span style="background:${slotColors[s] || '#eee'};color:${slotTextColors[s] || '#666'};font-size:11px;font-weight:500;padding:3px 10px;border-radius:12px;">${slotLabels[s] || s}</span>`).join('')
-            }
+            ${isOff ? '<span style="font-size:12px;color:var(--text-light);">Off</span>' : ''}
+            ${daySlots.map(s => `<span style="background:${slotColors[s] || '#eee'};color:${slotTextColors[s] || '#666'};font-size:11px;font-weight:500;padding:3px 10px;border-radius:12px;">${slotLabels[s] || s}</span>`).join('')}
+            ${onOvernight ? '<span style="background:#E4E9EE;color:#1C2F42;font-size:11px;font-weight:500;padding:3px 10px;border-radius:12px;">Overnight</span>' : ''}
           </div>
         </div>`;
       }).join('')}
