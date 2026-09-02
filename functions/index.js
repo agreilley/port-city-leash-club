@@ -1204,6 +1204,140 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// 1b. Member-initiated feedback + tips on a completed walk or overnight/
+//    check-in visit (portal-walk-history.html's Care History cards). Both
+//    submitWalkFeedback and chargeWalkTip need the exact same "is this my
+//    own, already-completed record" lookup, over two different shapes (a
+//    single walks/{id} doc vs. one entry inside an overnights/{id}.visits[]
+//    array) — factored out once here rather than duplicated in both.
+// ─────────────────────────────────────────────────────────────────────────
+async function resolveOwnedCompletedRecord(uid, { recordType, walkId, overnightId, visitId } = {}) {
+  if (recordType === 'walk') {
+    if (!walkId) throw new HttpsError('invalid-argument', 'walkId is required.');
+    const ref = db.collection('walks').doc(walkId);
+    const snap = await ref.get();
+    const data = snap.data();
+    if (!data) throw new HttpsError('not-found', 'Walk not found.');
+    if (data.memberId !== uid) throw new HttpsError('permission-denied', 'That walk does not belong to you.');
+    if (data.status !== 'completed') throw new HttpsError('failed-precondition', 'This walk is not completed yet.');
+    return { kind: 'walk', ref, data, memberId: data.memberId };
+  }
+  if (recordType === 'visit') {
+    if (!overnightId || !visitId) throw new HttpsError('invalid-argument', 'overnightId and visitId are required.');
+    const ref = db.collection('overnights').doc(overnightId);
+    const snap = await ref.get();
+    const overnight = snap.data();
+    if (!overnight) throw new HttpsError('not-found', 'Reservation not found.');
+    if (overnight.memberId !== uid) throw new HttpsError('permission-denied', 'That reservation does not belong to you.');
+    const visit = (Array.isArray(overnight.visits) ? overnight.visits : []).find(v => v.id === visitId);
+    if (!visit) throw new HttpsError('not-found', 'Visit not found.');
+    if (visit.status !== 'completed') throw new HttpsError('failed-precondition', 'This visit is not completed yet.');
+    return { kind: 'visit', ref, data: visit, memberId: overnight.memberId };
+  }
+  throw new HttpsError('invalid-argument', 'recordType must be "walk" or "visit".');
+}
+
+// Merges `patch` onto the resolved record — a top-level field set for a
+// walk doc, or a replace-in-place of the matching visits[] element inside a
+// transaction for a visit (re-read fresh each retry, same pattern as
+// completeVisit's own visits-array update in walker/dashboard.html).
+async function writeOwnedRecordPatch(record, patch) {
+  if (record.kind === 'walk') {
+    await record.ref.set(patch, { merge: true });
+    return;
+  }
+  await db.runTransaction(async (tx) => {
+    const freshSnap = await tx.get(record.ref);
+    const freshVisits = (freshSnap.data()?.visits || [])
+      .map(v => v.id === record.data.id ? { ...v, ...patch } : v);
+    tx.update(record.ref, { visits: freshVisits });
+  });
+}
+
+exports.submitWalkFeedback = onCall({}, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const { rating, comment } = request.data || {};
+  const ratingNum = Number(rating);
+  if (!Number.isInteger(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+    throw new HttpsError('invalid-argument', 'rating must be an integer from 1 to 5.');
+  }
+  const trimmedComment = (typeof comment === 'string' ? comment : '').trim().slice(0, 1000) || null;
+
+  const record = await resolveOwnedCompletedRecord(request.auth.uid, request.data || {});
+  if (record.data.feedback) {
+    throw new HttpsError('already-exists', 'Feedback was already submitted for this one.');
+  }
+
+  await writeOwnedRecordPatch(record, {
+    feedback: { rating: ratingNum, comment: trimmedComment, submittedAt: Timestamp.now() },
+  });
+  return { success: true };
+});
+
+// Small, self-contained Stripe charge for a member-initiated tip —
+// deliberately NOT built on chargeCustomerCard below. That helper is wired
+// for SERVICE charges: it auto-applies a member's pendingReferralCredit
+// balance toward whatever it's charging, and unconditionally stamps
+// lastChargeId/lastChargeAmount/paymentMethodStatus onto whatever doc it's
+// handed. A tip must never silently consume credit meant for the member's
+// next real charge, and must never overwrite a reservation's own
+// charge-audit fields — portal-walk-history.html's tip-percentage presets
+// themselves read confirmedTotalCents/lastChargeAmount, so those fields
+// have to keep meaning exactly what the reservation was actually charged.
+async function runTipCharge(stripe, memberId, idempotencyKey, amountCents) {
+  const billingSnap = await billingRef(memberId).get();
+  const stripeCustomerId = billingSnap.data()?.stripeCustomerId;
+  if (!stripeCustomerId) {
+    return { chargeStatus: 'failed', amountCents, failureReason: 'No saved card on file.', attemptedAt: Timestamp.now() };
+  }
+  try {
+    const customer = await stripe.customers.retrieve(stripeCustomerId);
+    const paymentMethods = await stripe.paymentMethods.list({ customer: customer.id, type: 'card' });
+    if (!paymentMethods.data.length) {
+      return { chargeStatus: 'failed', amountCents, failureReason: 'No saved payment method.', attemptedAt: Timestamp.now() };
+    }
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountCents,
+      currency: 'usd',
+      customer: customer.id,
+      payment_method: paymentMethods.data[0].id,
+      off_session: true,
+      confirm: true,
+      description: 'Port City Leash Club — tip',
+    }, { idempotencyKey });
+    return { chargeStatus: 'charged', amountCents, paymentIntentId: paymentIntent.id, chargedAt: Timestamp.now() };
+  } catch (e) {
+    return { chargeStatus: 'failed', amountCents, failureReason: e.message, attemptedAt: Timestamp.now() };
+  }
+}
+
+exports.chargeWalkTip = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const amountCents = Math.round(Number(request.data?.amountInDollars) * 100);
+  if (!Number.isFinite(amountCents) || amountCents < 100) {
+    throw new HttpsError('invalid-argument', 'Tip must be at least $1.');
+  }
+
+  const record = await resolveOwnedCompletedRecord(request.auth.uid, request.data || {});
+  if (record.data.tip?.chargeStatus === 'charged') {
+    throw new HttpsError('already-exists', 'This one has already been tipped.');
+  }
+
+  const idempotencyKey = record.kind === 'walk'
+    ? `tip:walk:${record.ref.id}`
+    : `tip:visit:${record.ref.id}:${record.data.id}`;
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+  const result = await runTipCharge(stripe, record.memberId, idempotencyKey, amountCents);
+
+  await writeOwnedRecordPatch(record, { tip: result });
+
+  if (result.chargeStatus === 'failed') {
+    throw new HttpsError('internal', result.failureReason || 'Tip charge failed — please try again.');
+  }
+  return { success: true, amountCents };
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // 2. Charge the saved card for a one-time service (drop-in visit,
 //    overnight stay, standard/extended walk). Admin-triggered only —
 //    call this from the admin dashboard's "Confirm" button, after the
@@ -6173,24 +6307,41 @@ function isoDateStr(date) {
 // never recomputes from live WALKER_RATES, so a rate change after this
 // walk was completed can't retroactively change what this payment record
 // says it paid.
+// tipAmount reads only chargeStatus: 'charged' tips — a failed or never-
+// attempted tip contributes nothing, same posture as the payout amount
+// itself never guessing at an uncertain number.
+function chargedTipAmount(tip) {
+  return tip?.chargeStatus === 'charged' ? tip.amountCents / 100 : 0;
+}
+
 function walkItemFromSnap(snap) {
   const w = snap.data();
+  const tipAmount = chargedTipAmount(w.tip);
   return {
     type: 'walk', refCollection: 'walks', refId: snap.id, date: w.date,
     rateKey: w.payout.rateKey, rateApplied: w.payout.amount,
-    extraPet: false, medication: false, amount: w.payout.amount,
+    extraPet: false, medication: false, amount: w.payout.amount + tipAmount, tipAmount,
   };
 }
 
 // Same, for a claimed overnights/{id} doc — reads entirely from the
-// stamped `payout` (see onOvernightCompleted).
+// stamped `payout` (see onOvernightCompleted). payout is stamped ONCE for
+// the whole reservation (this doc's own top-level status), but a tip is
+// collected per completed VISIT inside it (portal-walk-history.html shows
+// one Care History card per visit) — so this sums every visit's tip into
+// the one payout item this reservation contributes. A tip added to a visit
+// AFTER this reservation's payout has already been generated and claimed
+// (payoutId set) is not retroactively picked up by a later payout run —
+// same "claimed once" model every other item here already has.
 function overnightItemFromSnap(snap) {
   const o = snap.data();
+  const tipAmount = (Array.isArray(o.visits) ? o.visits : [])
+    .reduce((sum, v) => sum + chargedTipAmount(v.tip), 0);
   return {
     type: o.payout.rateKey === 'checkin' ? 'checkin' : 'overnight',
     refCollection: 'overnights', refId: snap.id, date: o.startDate,
     rateKey: o.payout.rateKey, rateApplied: o.payout.rate,
-    extraPet: !!o.extraPet, medication: !!o.medication, amount: o.payout.amount,
+    extraPet: !!o.extraPet, medication: !!o.medication, amount: o.payout.amount + tipAmount, tipAmount,
   };
 }
 
@@ -6202,11 +6353,14 @@ function buildPayoutCounts(walkSnaps, overnightSnaps) {
     standard: { count: 0, total: 0 }, extended: { count: 0, total: 0 },
     checkin: { count: 0, total: 0 }, overnight: { count: 0, total: 0 },
     extraPet: { count: 0, total: 0 }, medication: { count: 0, total: 0 },
+    tips: { count: 0, total: 0 },
   };
   walkSnaps.forEach(snap => {
     const w = snap.data();
     counts[w.payout.rateKey].count++;
     counts[w.payout.rateKey].total += w.payout.amount;
+    const tipAmount = chargedTipAmount(w.tip);
+    if (tipAmount) { counts.tips.count++; counts.tips.total += tipAmount; }
   });
   overnightSnaps.forEach(snap => {
     const o = snap.data();
@@ -6214,6 +6368,9 @@ function buildPayoutCounts(walkSnaps, overnightSnaps) {
     counts[o.payout.rateKey].total += o.payout.baseTotal;
     if (o.payout.extraPetTotal) { counts.extraPet.count++; counts.extraPet.total += o.payout.extraPetTotal; }
     if (o.payout.medicationTotal) { counts.medication.count++; counts.medication.total += o.payout.medicationTotal; }
+    const tipAmount = (Array.isArray(o.visits) ? o.visits : [])
+      .reduce((sum, v) => sum + chargedTipAmount(v.tip), 0);
+    if (tipAmount) { counts.tips.count++; counts.tips.total += tipAmount; }
   });
   return counts;
 }

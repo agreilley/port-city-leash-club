@@ -1336,13 +1336,23 @@ function subscribePayouts() {
 // would actually do — but reads amounts only from each item's already-
 // stamped payout.amount, same as the real generator, never from a live
 // WALKER_RATES recalculation.
+// tipTotal mirrors chargedTipAmount/overnightItemFromSnap's summing in
+// functions/index.js exactly — a walk carries at most one tip, an overnight
+// doc sums whichever of its visits[] were tipped — so this preview's total
+// never disagrees with what generating would actually pay out.
+function tipTotal(d) {
+  if (Array.isArray(d.visits)) {
+    return d.visits.reduce((sum, v) => sum + (v.tip?.chargeStatus === 'charged' ? v.tip.amountCents / 100 : 0), 0);
+  }
+  return d.tip?.chargeStatus === 'charged' ? d.tip.amountCents / 100 : 0;
+}
 function computeUnclaimedPreview(walkerId) {
   const isUnclaimed = (d) => d.walkerId === walkerId && d.status === 'completed' && d.demo !== true && !d.payoutId;
   const walks = allWalks.filter(isUnclaimed);
   const overnights = allOvernights.filter(isUnclaimed);
   const items = [...walks, ...overnights];
   const unstamped = items.filter(d => !d.payout);
-  const total = items.filter(d => d.payout).reduce((sum, d) => sum + d.payout.amount, 0);
+  const total = items.filter(d => d.payout).reduce((sum, d) => sum + d.payout.amount + tipTotal(d), 0);
   return { count: items.length, total, unstamped };
 }
 
@@ -3095,7 +3105,13 @@ window.openWalkModal = async (walkId) => {
 };
 
 window.assignWalker = async (walkId, walkerId) => {
-  await updateDoc(doc(db, 'walks', walkId), { walkerId, status: 'scheduled', updatedAt: serverTimestamp() });
+  // Mirrors assignOvernightWalker above: keep walkerName in lockstep with
+  // walkerId here so anything reading a scheduled (not-yet-completed) walk's
+  // walkerName — before completeWalk stamps its own copy — isn't stuck on
+  // the generic fallback.
+  const _walkers = window.allWalkers || allWalkers;
+  const walkerName = walkerId ? (_walkers.find(w => w.id === walkerId)?.name || '') : '';
+  await updateDoc(doc(db, 'walks', walkId), { walkerId, walkerName, status: 'scheduled', updatedAt: serverTimestamp() });
   closeModal('walkModal');
 };
 

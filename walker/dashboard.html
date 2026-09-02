@@ -1247,6 +1247,8 @@ window.completeWalk = async (walkId) => {
       completedAt: serverTimestamp(),
       notes,
       photoUrl: photoUrl || null,
+      walkerId: walkerDoc?.id || '',
+      walkerName: walkerDoc?.name || '',
     });
 
     document.getElementById('walkModal').classList.remove('open');
@@ -1380,6 +1382,16 @@ function renderEarnings() {
   const paidPayouts = myPayouts.filter(p => p.status === 'paid');
   const totalPaid = paidPayouts.reduce((sum, p) => sum + (p.total || 0), 0);
 
+  // Total Tips: read live off this walker's own completed walks/visits, NOT
+  // from myPayouts — a charged tip should show up here the moment it's
+  // charged, not only once a payout batch has claimed it (payouts can lag
+  // days/weeks behind). Only chargeStatus: 'charged' counts, same rule the
+  // payout generator itself uses.
+  function tipAmount(tip) { return tip?.chargeStatus === 'charged' ? tip.amountCents / 100 : 0; }
+  let tipTotal = 0, tipCount = 0;
+  completedWalks.forEach(w => { const t = tipAmount(w.tip); if (t) { tipTotal += t; tipCount++; } });
+  completedOvernights.forEach(o => (o.visits || []).forEach(v => { const t = tipAmount(v.tip); if (t) { tipTotal += t; tipCount++; } }));
+
   function fmtPeriod(p) {
     const s = p.periodStart?.toDate?.() || new Date(p.periodStart);
     const e = p.periodEnd?.toDate?.() || new Date(p.periodEnd);
@@ -1403,7 +1415,7 @@ function renderEarnings() {
         const isPaid = p.status === 'paid';
         const items = (p.items || []).map(item => `
           <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:var(--text-mid);">
-            <span>${escapeHtml(item.type)} · ${fmtDate(item.date)}${item.extraPet ? ' · +pet' : ''}${item.medication ? ' · +med' : ''}</span>
+            <span>${escapeHtml(item.type)} · ${fmtDate(item.date)}${item.extraPet ? ' · +pet' : ''}${item.medication ? ' · +med' : ''}${item.tipAmount ? ` · +$${item.tipAmount} tip` : ''}</span>
             <span>$${item.amount}</span>
           </div>`).join('');
         return `
@@ -1430,7 +1442,7 @@ function renderEarnings() {
   ];
 
   container.innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:24px;">
+    <div class="stats-row" style="margin-bottom:24px;">
       <div class="stat-card">
         <div class="stat-label">This Week (Estimate)</div>
         <div class="stat-value" style="color:var(--rust);"><span style="font-family:'DM Sans',sans-serif;">$</span>${thisWeek.total}</div>
@@ -1440,6 +1452,11 @@ function renderEarnings() {
         <div class="stat-label">Total Paid (All Time)</div>
         <div class="stat-value" style="color:var(--green);"><span style="font-family:'DM Sans',sans-serif;">$</span>${totalPaid}</div>
         <div class="stat-sub">${paidPayouts.length} payment${paidPayouts.length !== 1 ? 's' : ''}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Tips (All Time)</div>
+        <div class="stat-value" style="color:var(--green);"><span style="font-family:'DM Sans',sans-serif;">$</span>${tipTotal}</div>
+        <div class="stat-sub">${tipCount} tip${tipCount !== 1 ? 's' : ''}</div>
       </div>
     </div>
 

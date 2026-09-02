@@ -304,6 +304,109 @@
       margin-bottom: 6px;
     }
 
+    /* Feedback + Tip */
+    .care-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .care-block { min-width: 0; }
+
+    .care-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #0D1B2A;
+      margin-bottom: 8px;
+    }
+
+    .star-picker { margin-bottom: 8px; }
+
+    .star {
+      font-size: 20px;
+      color: #C17B6F;
+      cursor: pointer;
+      user-select: none;
+      margin-right: 2px;
+    }
+
+    .feedback-comment {
+      width: 100%;
+      border: 1px solid #E5E0D8;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-family: inherit;
+      font-size: 13px;
+      color: #4A4A4A;
+      resize: vertical;
+      margin-bottom: 8px;
+    }
+
+    .care-btn {
+      background: white;
+      border: 1px solid #E5E0D8;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #0D1B2A;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .care-btn:hover:not(:disabled) {
+      background: #FAF8F4;
+      box-shadow: 0 2px 6px rgba(13, 27, 42, 0.08);
+    }
+
+    .care-btn:disabled { opacity: 0.6; cursor: default; }
+
+    .care-status {
+      font-size: 12px;
+      margin-top: 6px;
+      min-height: 14px;
+    }
+
+    .care-feedback-done, .care-tip-done {
+      font-size: 13px;
+      color: #4A4A4A;
+    }
+
+    .stars-display {
+      font-size: 16px;
+      color: #C17B6F;
+      letter-spacing: 1px;
+    }
+
+    .care-tip-done { color: #1A5C30; font-weight: 500; }
+
+    .tip-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .tip-other {
+      display: inline-flex;
+      gap: 6px;
+    }
+
+    .tip-other input {
+      width: 72px;
+      border: 1px solid #E5E0D8;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-family: inherit;
+      font-size: 12px;
+    }
+
+    @media (max-width: 768px) {
+      .care-actions { grid-template-columns: 1fr; }
+    }
+
     /* View Details Button */
     .view-details-btn {
       background: white;
@@ -492,6 +595,56 @@
       return val?.toDate?.() || new Date(val);
     }
 
+    // Feedback + tip block markup — a pure function of the record's current
+    // state, called both from renderRecords (initial paint) and from the
+    // submitCareFeedback/submitCareTip success handlers below (module
+    // script) to redraw just the one card that changed, so a single
+    // definition can never drift between "what a submitted card looks like"
+    // and "what actually gets shown after submitting."
+    function feedbackBlockHtml(r) {
+      if (r.feedback) {
+        return '<div class="care-feedback-done">' +
+          '<span class="stars-display">' + '★'.repeat(r.feedback.rating) + '☆'.repeat(5 - r.feedback.rating) + '</span>' +
+          (r.feedback.comment ? '<div class="report-text" style="margin-top:6px;margin-bottom:0;">' + esc(r.feedback.comment) + '</div>' : '') +
+          '</div>';
+      }
+      return '<div class="care-label">Rate this ' + (r.type === 'walk' ? 'walk' : 'visit') + '</div>' +
+        '<div class="star-picker" data-element-id="' + r.elementId + '">' +
+        [1, 2, 3, 4, 5].map(n => '<span class="star" data-value="' + n + '" onclick="setStarRating(\'' + r.elementId + '\',' + n + ')">☆</span>').join('') +
+        '</div>' +
+        '<textarea class="feedback-comment" id="comment-' + r.elementId + '" placeholder="Leave a comment (optional)" rows="2"></textarea>' +
+        '<button class="care-btn" onclick="submitCareFeedback(\'' + r.elementId + '\')">Submit Feedback</button>' +
+        '<div class="care-status" id="feedback-status-' + r.elementId + '"></div>';
+    }
+
+    function tipBlockHtml(r) {
+      if (r.tip && r.tip.chargeStatus === 'charged') {
+        const amt = r.tip.amountCents / 100;
+        return '<div class="care-tip-done">Tipped $' + (Number.isInteger(amt) ? amt : amt.toFixed(2)) + ' — thank you!</div>';
+      }
+      const presetPcts = [15, 20, 25];
+      const presets = presetPcts.map(pct => Math.max(1, Math.round((r.tipBase || 0) * pct / 100)));
+      return '<div class="care-label">Add a tip</div>' +
+        '<div class="tip-options">' +
+        presets.map((amt, i) => '<button class="care-btn tip-btn" onclick="submitCareTip(\'' + r.elementId + '\',' + amt + ')">' + presetPcts[i] + '% · $' + amt + '</button>').join('') +
+        '<span class="tip-other"><input type="number" min="1" step="1" id="tip-custom-' + r.elementId + '" placeholder="Other $">' +
+        '<button class="care-btn" onclick="submitCareTipCustom(\'' + r.elementId + '\')">Send</button></span>' +
+        '</div>' +
+        '<div class="care-status" id="tip-status-' + r.elementId + '"></div>';
+    }
+
+    // Live-updates the star display as the member picks a rating, before
+    // anything is submitted — data-selected on the picker itself is what
+    // submitCareFeedback reads at submit time.
+    function setStarRating(elementId, value) {
+      const picker = document.querySelector('.star-picker[data-element-id="' + elementId + '"]');
+      if (!picker) return;
+      picker.dataset.selected = value;
+      picker.querySelectorAll('.star').forEach(el => {
+        el.textContent = Number(el.dataset.value) <= value ? '★' : '☆';
+      });
+    }
+
     function filterRecords(period, button) {
       document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
       button.classList.add('active');
@@ -546,6 +699,10 @@
           (r.note ? '<div class="report-text">' + esc(r.note) + '</div>' : '<div class="report-text" style="color:#aaa;font-style:italic;">' + esc(r.noNoteText) + '</div>') +
           photoHtml +
           '<div class="report-meta" style="margin-top:12px;font-size:13px;color:#7A7A7A;">' + esc(r.metaLine) + '</div>' +
+          '<div class="care-actions">' +
+          '<div class="care-block" id="feedback-' + r.elementId + '">' + feedbackBlockHtml(r) + '</div>' +
+          '<div class="care-block" id="tip-' + r.elementId + '">' + tipBlockHtml(r) + '</div>' +
+          '</div>' +
           '</div>' +
           '</div>';
       }).join('');
@@ -579,10 +736,12 @@
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { initializeFirestore, memoryLocalCache, doc, getDoc, collection, query, where, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { showError } from '/js/status.js';
 import { requireMemberDoc, showPortalLoadTimeout } from '/js/portal-guard.js';
 import { WALK_TIME_SLOT_LABELS } from './time-slots.js';
 import { VISIT_SLOT_LABELS } from './visit-slots.js';
+import { MEMBER_WALK_RATE, SERVICE_PRICES } from './pricing.js';
 const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
 const app = getApps().find(a => a.name === 'member-app') || initializeApp(cfg, 'member-app');
 // Explicit persistence fallback chain — the SDK's default hierarchy probes
@@ -595,7 +754,106 @@ const auth = initializeAuth(app, {
 // Firestore already defaults to memory-only cache with no persistence
 // configured; making it explicit documents the choice on purpose.
 const db = initializeFirestore(app, { localCache: memoryLocalCache() });
+const functions = getFunctions(app);
 window.signOutMember = () => signOut(auth).then(() => window.location.href = 'portal-login.html');
+
+// The dollar base a tip's 15/20/25% presets are computed off — the actual
+// adjusted price the member paid, not a list price, wherever that's
+// knowable:
+//  - walks aren't charged individually (a flat monthly subscription covers
+//    them, unlike drop-in/overnight service), and Friends & Family/travel
+//    discounts never apply to walks anyway — so MEMBER_WALK_RATE (the same
+//    published rate shown everywhere else) IS the real number here, not an
+//    approximation.
+//  - a visit's reservation IS charged individually. lastChargeAmount is the
+//    truest number — chargeCustomerCard's final post-discount,
+//    post-referral-credit amount actually charged (functions/index.js).
+//    confirmedTotalCents is the discount-adjusted total set at confirm time,
+//    before that charge fires — used only until lastChargeAmount exists.
+//    Both are reservation-wide, so dividing by the visit count gives this
+//    one visit's share. SERVICE_PRICES list price is the last-resort
+//    fallback for a legacy/demo doc with neither.
+function walkTipBase() {
+  return MEMBER_WALK_RATE;
+}
+function visitTipBase(o) {
+  const nights = Array.isArray(o.visits) && o.visits.length ? o.visits.length : 1;
+  if (typeof o.lastChargeAmount === 'number') return o.lastChargeAmount / nights;
+  if (typeof o.confirmedTotalCents === 'number') return (o.confirmedTotalCents / 100) / nights;
+  const key = (o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin') ? 'drop-in-visit' : 'overnight-stay';
+  return SERVICE_PRICES[key]?.price || 0;
+}
+
+// Both handlers below read/write `allRecords` and call feedbackBlockHtml/
+// tipBlockHtml/setStarRating — all defined in the classic <script> above.
+// Classic-script top-level declarations are visible here the same way
+// renderRecords and allRecords already are (see that script's own
+// onAuthStateChanged call further down) — one shared global scope across
+// both script tags.
+window.submitCareFeedback = async (elementId) => {
+  const record = allRecords.find(r => r.elementId === elementId);
+  if (!record) return;
+  const picker = document.querySelector('.star-picker[data-element-id="' + elementId + '"]');
+  const rating = Number(picker?.dataset.selected || 0);
+  const statusEl = document.getElementById('feedback-status-' + elementId);
+  if (!rating) {
+    if (statusEl) { statusEl.textContent = 'Please select a star rating.'; statusEl.style.color = '#C17B6F'; }
+    return;
+  }
+  const commentEl = document.getElementById('comment-' + elementId);
+  const comment = commentEl?.value.trim() || '';
+  const btn = document.querySelector('#feedback-' + elementId + ' .care-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+  if (statusEl) statusEl.textContent = '';
+  try {
+    await httpsCallable(functions, 'submitWalkFeedback')({
+      recordType: record.recordType,
+      walkId: record.walkId,
+      overnightId: record.overnightId,
+      visitId: record.visitId,
+      rating,
+      comment,
+    });
+    record.feedback = { rating, comment: comment || null };
+    document.getElementById('feedback-' + elementId).innerHTML = feedbackBlockHtml(record);
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = e.message; statusEl.style.color = '#C17B6F'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Submit Feedback'; }
+  }
+};
+
+async function chargeTip(elementId, amount) {
+  const record = allRecords.find(r => r.elementId === elementId);
+  if (!record) return;
+  const statusEl = document.getElementById('tip-status-' + elementId);
+  const container = document.getElementById('tip-' + elementId);
+  if (!amount || amount <= 0) {
+    if (statusEl) { statusEl.textContent = 'Enter a tip amount.'; statusEl.style.color = '#C17B6F'; }
+    return;
+  }
+  container?.querySelectorAll('button').forEach(b => b.disabled = true);
+  if (statusEl) { statusEl.textContent = 'Charging…'; statusEl.style.color = '#7A7A7A'; }
+  try {
+    await httpsCallable(functions, 'chargeWalkTip')({
+      recordType: record.recordType,
+      walkId: record.walkId,
+      overnightId: record.overnightId,
+      visitId: record.visitId,
+      amountInDollars: amount,
+    });
+    record.tip = { chargeStatus: 'charged', amountCents: Math.round(amount * 100) };
+    document.getElementById('tip-' + elementId).innerHTML = tipBlockHtml(record);
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = e.message; statusEl.style.color = '#C17B6F'; }
+    container?.querySelectorAll('button').forEach(b => b.disabled = false);
+  }
+}
+
+window.submitCareTip = (elementId, amount) => chargeTip(elementId, amount);
+window.submitCareTipCustom = (elementId) => {
+  const input = document.getElementById('tip-custom-' + elementId);
+  chargeTip(elementId, Number(input?.value));
+};
 
 // If auth never resolves, OR resolves but the members/{uid} lookup inside
 // requireMemberDoc hangs (flaky connection), stop waiting and show a retry
@@ -663,6 +921,13 @@ onAuthStateChanged(auth, async (user) => {
           noNoteText: 'No notes for this walk.',
           photoUrl: w.photoUrl || null,
           metaLine: duration,
+          recordType: 'walk',
+          walkId: w.id,
+          overnightId: null,
+          visitId: null,
+          feedback: w.feedback || null,
+          tip: w.tip || null,
+          tipBase: walkTipBase(),
         };
       });
 
@@ -674,6 +939,7 @@ onAuthStateChanged(auth, async (user) => {
       .flatMap(o => {
         const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
         const serviceLabel = isCheckin ? 'Drop-In Visit' : 'Overnight Stay';
+        const base = visitTipBase(o);
         return (Array.isArray(o.visits) ? o.visits : [])
           .filter(v => v.status === 'completed')
           .map(v => ({
@@ -688,6 +954,13 @@ onAuthStateChanged(auth, async (user) => {
             noNoteText: 'No notes for this visit.',
             photoUrl: v.photoUrl || null,
             metaLine: serviceLabel,
+            recordType: 'visit',
+            walkId: null,
+            overnightId: o.id,
+            visitId: v.id,
+            feedback: v.feedback || null,
+            tip: v.tip || null,
+            tipBase: base,
           }));
       });
 
