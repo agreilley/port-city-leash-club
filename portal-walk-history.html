@@ -138,14 +138,17 @@
       border-color: #C17B6F;
     }
 
-    /* Visit Report Card */
+    /* Visit Report Card — same flat card treatment as portal-dashboard.html's
+       .metric-card and portal-extras.html's .service-card (white, hairline
+       border, no shadow) rather than this page's older tinted/shadowed
+       version, so Care History reads as the same design system as the rest
+       of the portal instead of a visibly older page. */
     .visit-report {
-      background: #FAF8F4;
-      border: 1px solid #E5E0D8;
+      background: white;
+      border: 0.5px solid #ddd;
       border-radius: 12px;
       padding: 24px;
       margin-bottom: 20px;
-      box-shadow: 0 1px 3px rgba(13, 27, 42, 0.04);
     }
 
     .report-header {
@@ -344,6 +347,14 @@
       margin-bottom: 8px;
     }
 
+    /* Same focus ring as portal-account.html's .field-input:focus — every
+       other form control in the portal gets one, this page's inputs didn't. */
+    .feedback-comment:focus, .tip-other input:focus {
+      outline: none;
+      border-color: #8FA8A2;
+      box-shadow: 0 0 0 3px rgba(143, 168, 162, 0.1);
+    }
+
     .care-btn {
       background: white;
       border: 1px solid #E5E0D8;
@@ -362,6 +373,23 @@
     }
 
     .care-btn:disabled { opacity: 0.6; cursor: default; }
+
+    /* The two actual submit actions (vs. the tip presets, which are quick-
+       select chips) get the portal's real primary-button treatment — same
+       values as portal-account.html's .btn-primary — so there's one clear
+       filled call to action per block instead of every button reading as
+       equally secondary. */
+    .care-btn-primary {
+      background: #C17B6F;
+      color: white;
+      border-color: #C17B6F;
+    }
+
+    .care-btn-primary:hover:not(:disabled) {
+      background: #A36358;
+      border-color: #A36358;
+      box-shadow: none;
+    }
 
     .care-status {
       font-size: 12px;
@@ -395,7 +423,7 @@
     }
 
     .tip-other input {
-      width: 72px;
+      width: 92px;
       border: 1px solid #E5E0D8;
       border-radius: 6px;
       padding: 6px 8px;
@@ -613,7 +641,7 @@
         [1, 2, 3, 4, 5].map(n => '<span class="star" data-value="' + n + '" onclick="setStarRating(\'' + r.elementId + '\',' + n + ')">☆</span>').join('') +
         '</div>' +
         '<textarea class="feedback-comment" id="comment-' + r.elementId + '" placeholder="Leave a comment (optional)" rows="2"></textarea>' +
-        '<button class="care-btn" onclick="submitCareFeedback(\'' + r.elementId + '\')">Submit Feedback</button>' +
+        '<button class="care-btn care-btn-primary" onclick="submitCareFeedback(\'' + r.elementId + '\')">Submit Feedback</button>' +
         '<div class="care-status" id="feedback-status-' + r.elementId + '"></div>';
     }
 
@@ -628,7 +656,7 @@
         '<div class="tip-options">' +
         presets.map((amt, i) => '<button class="care-btn tip-btn" onclick="submitCareTip(\'' + r.elementId + '\',' + amt + ')">' + presetPcts[i] + '% · $' + amt + '</button>').join('') +
         '<span class="tip-other"><input type="number" min="1" step="1" id="tip-custom-' + r.elementId + '" placeholder="Other $">' +
-        '<button class="care-btn" onclick="submitCareTipCustom(\'' + r.elementId + '\')">Send</button></span>' +
+        '<button class="care-btn care-btn-primary" onclick="submitCareTipCustom(\'' + r.elementId + '\')">Send</button></span>' +
         '</div>' +
         '<div class="care-status" id="tip-status-' + r.elementId + '"></div>';
     }
