@@ -5777,8 +5777,16 @@ window.openMemberDetail = async (id) => {
   // in-app remedy (retryReservationCharge, functions/index.js) — every
   // other reason needs the underlying issue fixed by hand elsewhere
   // (Stripe, Firestore), so Dismiss stays the only action for those.
+  //
+  // Deliberately NOT also filtered on chargeAttempt?.status === 'failed' —
+  // chargeCustomerCard throws before ever writing chargeAttempt when the
+  // member has no stripeCustomerId at all (the single most common cause of
+  // this exact flag), so that field is often never set even though the
+  // charge genuinely failed. needsReviewReason already being
+  // 'reservation_charge_failed' is itself the proof a failure happened —
+  // chargePending alone is enough to find which reservation it was.
   const failedOvernight = billing.needsReviewReason === 'reservation_charge_failed'
-    ? allOvernights.find(o => o.memberId === member.id && o.chargePending && o.chargeAttempt?.status === 'failed')
+    ? allOvernights.find(o => o.memberId === member.id && o.chargePending)
     : null;
   const retryChargeHTML = failedOvernight
     ? `<button class="btn-secondary" id="retryReservationChargeBtn" style="display:block;margin-top:8px;padding:4px 12px;font-size:12px;" onclick="retryReservationCharge('${failedOvernight.id}')">Retry Charge${typeof failedOvernight.confirmedTotalCents === 'number' ? ` ($${(failedOvernight.confirmedTotalCents / 100).toFixed(2)})` : ''}</button>`
