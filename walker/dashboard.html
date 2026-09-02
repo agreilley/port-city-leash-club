@@ -483,6 +483,7 @@ function loadData() {
       const db_ = b.startDate?.toDate?.() || new Date(b.startDate || 0);
       return da - db_;
     });
+    renderStats();
     renderOvernights();
     renderTodaysVisits();
     renderEarnings();
@@ -497,6 +498,7 @@ function loadData() {
     renderUpcoming();
     renderCalendar();
     renderHistory();
+    renderStats();
     renderOvernights();
     renderTodaysVisits();
     renderEarnings();
@@ -524,10 +526,17 @@ function renderStats() {
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   const thisWeek = myWalks.filter(w => { const d = w.date?.toDate?.() || new Date(w.date); return d >= now && d <= weekEnd; });
   const thisMonth = myWalks.filter(w => { const d = w.date?.toDate?.() || new Date(w.date); return d >= monthStart && d <= monthEnd; });
-  const completed = myWalks.filter(w => w.status === 'completed');
+  // "Completed · All time" reads as covering all of this walker's completed
+  // work, but only ever counted myWalks — a completed check-in/overnight
+  // visit (tracked inside myOvernights[].visits[], not its own walks doc)
+  // never counted at all, so a walker who'd only ever done pet-sitting
+  // visits saw a flatly wrong "0" here. Flattened the same way
+  // renderTodaysVisits already does.
+  const completedWalks = myWalks.filter(w => w.status === 'completed').length;
+  const completedVisits = myOvernights.reduce((sum, o) => sum + (Array.isArray(o.visits) ? o.visits.filter(v => v.status === 'completed').length : 0), 0);
   document.getElementById('stat-week').textContent = thisWeek.length;
   document.getElementById('stat-month').textContent = thisMonth.length;
-  document.getElementById('stat-completed').textContent = completed.length;
+  document.getElementById('stat-completed').textContent = completedWalks + completedVisits;
 }
 
 function getDogNames(member) {

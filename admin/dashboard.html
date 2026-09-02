@@ -2856,6 +2856,31 @@ window.openOvernightModal = (overnightId) => {
     ? o.visitSchedule.map(v => `<div class="modal-field"><div class="modal-label">${fmtDate(v.date)}</div><div class="modal-value">${v.visits} visit${v.visits === 1 ? '' : 's'}</div></div>`).join('')
     : '';
 
+  // The planned schedule above (o.visitSchedule: date -> visit COUNT) never
+  // showed whether any of those visits actually happened — o.visits (each
+  // individually completable by the walker, with its own status/note/photo)
+  // is a completely separate array this modal never read at all. A
+  // reservation could sit at Status: Confirmed here forever while the
+  // walker had already completed several of its visits, with nothing on
+  // this screen showing it.
+  const trackedVisits = Array.isArray(o.visits) ? o.visits : [];
+  const completedVisitCount = trackedVisits.filter(v => v.status === 'completed').length;
+  const visitProgressHTML = trackedVisits.length ? `
+    <hr class="modal-divider">
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Visits (${completedVisitCount} of ${trackedVisits.length} completed)</div>
+    ${trackedVisits.map(v => {
+      const isDone = v.status === 'completed';
+      return `<div style="padding:8px 0;border-bottom:1px solid rgba(0,0,0,0.06);">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:13px;color:var(--navy);">${fmtDate(v.date)} · ${escapeHtml(VISIT_SLOT_LABELS[v.slot] || v.slot || '–')}</span>
+          <span style="font-size:12px;font-weight:500;color:${isDone ? 'var(--green)' : 'var(--text-light)'};">${isDone ? '✓ Completed' : 'Expected'}</span>
+        </div>
+        ${v.note ? `<div style="font-size:12px;color:var(--text-mid);margin-top:4px;">${escapeHtml(v.note)}</div>` : ''}
+        ${v.photoUrl ? `<img src="${escapeHtml(v.photoUrl)}" alt="Visit photo" style="max-width:160px;border-radius:6px;margin-top:6px;display:block;">` : ''}
+      </div>`;
+    }).join('')}
+  ` : '';
+
   const walkerSelect = `<select id="manualOvernightWalkerSelect" style="width:100%;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:9px;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:10px;">
     <option value="">Select a walker...</option>
     ${_walkers.map(w => `<option value="${w.id}" ${w.id === (o.walkerId||'') ? 'selected' : ''}>${escapeHtml(w.name)}</option>`).join('')}
@@ -2895,6 +2920,7 @@ window.openOvernightModal = (overnightId) => {
     <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Visit Schedule</div>
     <div class="form-grid">${scheduleRowsHTML}</div>
     ` : ''}
+    ${visitProgressHTML}
     <hr class="modal-divider">
     ${assignmentHTML}
     ${isAssigned && !isCompleted ? `<hr class="modal-divider"><button class="btn-secondary" style="width:100%;" onclick="markOvernightComplete('${overnightId}')">Mark Complete</button>` : ''}
