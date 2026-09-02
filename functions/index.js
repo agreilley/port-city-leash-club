@@ -405,6 +405,14 @@ exports.confirmCardOnFile = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (requ
   await billing.set({
     cardOnFile: true,
     cardOnFileAt: FieldValue.serverTimestamp(),
+    // A card being added directly resolves the one needsReview reason
+    // whose entire premise is "there's no card yet" — without this, that
+    // flag (and admin's "No card on file" badge) sat there forever even
+    // after a member added a real card, since nothing else ever cleared
+    // it. Scoped to that one reason only — every other needsReview reason
+    // (a failed charge, a detach failure, etc.) is left exactly as-is;
+    // this isn't a general "clear all flags on any card write" reset.
+    ...(billingData?.needsReviewReason === 'no_card_on_file' ? { needsReview: false, needsReviewReason: null } : {}),
   }, { merge: true });
 
   // Card-on-file trigger for finalizeSubmissionIfReady (the other trigger
@@ -483,7 +491,14 @@ exports.getCardOnFile = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request)
   const pm = paymentMethods.data[0] || null;
   const isOnFile = !!pm;
   if (!!billingData?.cardOnFile !== isOnFile) {
-    await billing.set({ cardOnFile: isOnFile }, { merge: true }).catch(() => {});
+    await billing.set({
+      cardOnFile: isOnFile,
+      // Same reasoning as confirmCardOnFile's own write — a card newly
+      // showing up on file resolves the one needsReview reason whose
+      // entire premise is "there's no card yet." Every other reason is
+      // left untouched.
+      ...(isOnFile && billingData?.needsReviewReason === 'no_card_on_file' ? { needsReview: false, needsReviewReason: null } : {}),
+    }, { merge: true }).catch(() => {});
   }
 
   if (!pm) return { card: null };
