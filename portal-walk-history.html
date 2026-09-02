@@ -445,7 +445,7 @@
     <div class="main-content">
       <div class="page-header">
         <h1 id="pageTitle" data-suffix="'s Care History">Your Pet's Care History</h1>
-        <p id="pageSubtitle" data-prefix="" data-suffix="'s completed walks, overnight stays, and check-in visits">Your pet's completed walks, overnight stays, and check-in visits</p>
+        <p id="pageSubtitle" data-prefix="" data-suffix="'s completed walks, overnight stays, and drop-in visits">Your pet's completed walks, overnight stays, and drop-in visits</p>
       </div>
 
       <!-- Filter Buttons -->
@@ -673,7 +673,7 @@ onAuthStateChanged(auth, async (user) => {
       .map(d => ({ id: d.id, ...d.data() }))
       .flatMap(o => {
         const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
-        const serviceLabel = isCheckin ? 'Check-In Visit' : 'Overnight Stay';
+        const serviceLabel = isCheckin ? 'Drop-In Visit' : 'Overnight Stay';
         return (Array.isArray(o.visits) ? o.visits : [])
           .filter(v => v.status === 'completed')
           .map(v => ({

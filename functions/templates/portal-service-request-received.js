@@ -3,7 +3,7 @@
 // Sent when an EXISTING member submits a pet sitting request through the
 // portal (portal-request-extras.html) — overnight_request or service_request
 // with a memberId already on it. Always pet sitting: that page only offers
-// Overnight Stay and Check-In Visit, never a walk (see
+// Overnight Stay and Drop-In Visit, never a walk (see
 // portal-walk-request-received for the walk-family equivalent, sourced from
 // walk_extension submissions instead). No meet and greet section, unlike
 // the public-form templates: an existing member has already had one.

@@ -2047,11 +2047,11 @@ function renderCalendarDays() {
     const oIsCheckin = overnightMap[d] ? isCheckinType(overnightMap[d].serviceType) : false;
     const oWkId = overnightMap[d] ? (overnightMap[d].walkerId || '').trim() : '';
     const oWalker = oWkId ? allWalkers.find(k => k.id === oWkId) : null;
-    const oDogName = overnightMap[d]?.dogName || getMemberDogs(oMember)[0]?.name || oMember?.name?.split(' ')[0] || (oIsCheckin ? 'Drop-in visit' : 'Overnight');
+    const oDogName = overnightMap[d]?.dogName || getMemberDogs(oMember)[0]?.name || oMember?.name?.split(' ')[0] || (oIsCheckin ? 'Drop-In Visit' : 'Overnight');
     const oLabel = escapeHtml(oWalker ? `${oDogName} / ${oWalker.name.split(' ')[0]}` : `${oDogName} · Unassigned`);
     const overnightChip = overnightMap[d]
       ? (oIsCheckin
-          ? `<div class="walk-chip checkin" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Drop-in visit">${oLabel}</div>`
+          ? `<div class="walk-chip checkin" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Drop-In Visit">${oLabel}</div>`
           : `<div class="walk-chip overnight" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Overnight">🌙 ${oLabel}</div>`)
       : '';
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}</div>`;
@@ -2159,7 +2159,7 @@ const NEEDS_REVIEW_LABELS = {
   },
   overnight_payout_calc_failed: {
     label: 'Payout calc failed',
-    title: 'A completed overnight/check-in for this member failed to calculate a walker payout — see the Cloud Functions logs for onOvernightCompleted for the specific overnight and error. Fix the underlying overnight record, then stamp its payout manually.',
+    title: 'A completed overnight/drop-in for this member failed to calculate a walker payout — see the Cloud Functions logs for onOvernightCompleted for the specific overnight and error. Fix the underlying overnight record, then stamp its payout manually.',
   },
   reservation_charge_failed: {
     label: 'Reservation charge failed',
@@ -2208,7 +2208,7 @@ function renderMembersTable(filter = '') {
     return `<tr>
       <td data-label="Name"><strong>${escapeHtml(m.name)}</strong>${isMemberProfileIncomplete(m) ? ` <span class="status-badge unassigned" title="Vet and/or emergency contact info missing">Incomplete</span>` : ''}<br><span style="font-size:11px;color:var(--text-light);">${escapeHtml(m.email)}</span></td>
       <td data-label="Dog">${escapeHtml(memberDogNames(m) || '–')}</td>
-      <td data-label="Tier"><span class="status-badge active">${escapeHtml(m.tier || 'Member')}</span>${getActiveTravelDiscountPercent(m.id) ? ` <span class="status-badge pending" title="Friends & Family travel pricing — ${getActiveTravelDiscountPercent(m.id)}% off overnight, check-in, extra pet, and medication charges">F&amp;F ${getActiveTravelDiscountPercent(m.id)}%</span>` : ''}</td>
+      <td data-label="Tier"><span class="status-badge active">${escapeHtml(m.tier || 'Member')}</span>${getActiveTravelDiscountPercent(m.id) ? ` <span class="status-badge pending" title="Friends & Family travel pricing — ${getActiveTravelDiscountPercent(m.id)}% off overnight, drop-in, extra pet, and medication charges">F&amp;F ${getActiveTravelDiscountPercent(m.id)}%</span>` : ''}</td>
       <td data-label="Billing">${renderBillingBadge(memberBilling[m.id])}</td>
       <td data-label="Walks/Month">${m.walksThisMonth || 0}</td>
       <td data-label="Walker">${escapeHtml(walker?.name || '–')}</td>
@@ -2259,6 +2259,10 @@ function renderRequests() {
     return;
   }
   const typeLabels = { membership_request: 'Membership', service_request: 'Service', application: 'Application', walker_screening: 'Screening', contact: 'Contact', dog_update: 'Dog Update', overnight_request: 'Overnight', walker_incident: 'Incident', walker_schedule_request: 'Schedule', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Hold Refund', waitlist: 'Waitlist', walk_extension_reassignment: 'Extension Update' };
+  // overnight_request also covers a drop-in visit booked through that same form
+  // (service: 'checkin') — typeLabels alone can't tell those apart, so check
+  // item.service for this one type before falling back to the type-keyed map.
+  const requestTypeLabel = (i) => i.type === 'overnight_request' ? (i.service === 'checkin' ? 'Drop-In' : 'Overnight') : (typeLabels[i.type] || i.type);
   const shortDate = (val) => val?.toDate ? val.toDate().toLocaleDateString('en-US', {month:'short',day:'numeric'}) : '–';
   container.innerHTML = filtered.map(item => {
     const time = item.createdAt?.toDate?.() ? item.createdAt.toDate().toLocaleDateString('en-US', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '–';
@@ -2297,7 +2301,7 @@ function renderRequests() {
       : '';
     return `<div class="list-row ${item.read ? '' : 'unread'}" onclick="openRequestItem('${item.id}')">
       <div class="request-meta">
-        <span class="request-type ${typeClass}">${escapeHtml(typeLabels[item.type] || item.type)}</span>
+        <span class="request-type ${typeClass}">${escapeHtml(requestTypeLabel(item))}</span>
         <span class="request-name">${escapeHtml(item.name || item.ownerName || item.walkerName || item.memberName || 'Unknown')}</span>
         ${paymentBadge}
         ${finalizeErrorBadge}
@@ -2546,7 +2550,7 @@ window.promptGenerateFriendsFamilyCode = async () => {
   try {
     const generateFriendsFamilyCode = httpsCallable(fns, 'generateFriendsFamilyCode');
     const res = await generateFriendsFamilyCode({ maxRedemptions, notes });
-    alert(`Code created: ${res.data.code}\n\n40% off travel services (overnight, check-in, extra pet, medication), up to ${maxRedemptions} redemption${maxRedemptions === 1 ? '' : 's'}. Share it directly — it isn't emailed automatically.`);
+    alert(`Code created: ${res.data.code}\n\n40% off travel services (overnight, drop-in, extra pet, medication), up to ${maxRedemptions} redemption${maxRedemptions === 1 ? '' : 's'}. Share it directly — it isn't emailed automatically.`);
     loadReferralCodes(true);
   } catch (e) {
     alert(`Couldn't create the code: ${e.message}`);
@@ -2902,7 +2906,7 @@ window.openOvernightModal = (overnightId) => {
     ${walkerSelect}
     <button class="btn-primary" style="width:100%;" onclick="assignOvernightWalkerManual('${overnightId}')">Assign</button>`;
 
-  document.getElementById('overnightModalTitle').textContent = `${escapeHtml(memberName)} · ${isCheckin ? 'Drop-in visit' : 'Overnight Stay'}`;
+  document.getElementById('overnightModalTitle').textContent = `${escapeHtml(memberName)} · ${isCheckin ? 'Drop-In Visit' : 'Overnight Stay'}`;
   document.getElementById('overnightModalContent').innerHTML = `
     <div class="form-grid">
       <div class="modal-field"><div class="modal-label">Member</div><div class="modal-value">${escapeHtml(memberName)}</div></div>
@@ -3410,7 +3414,9 @@ window.openRequestItem = async (id) => {
 
   // Build clean field list based on submission type
   const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', walker_screening: 'Walker Screening', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report', walker_schedule_request: 'Walker Schedule Request', reschedule: 'Walk Reschedule Request', walk_extension: 'Walk Extension Request', walk_extension_reassignment: 'Walk Extension Update', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Vacation Hold Refund', waitlist: 'Waitlist Signup' };
-  const title = typeLabels[item.type] || 'Submission';
+  // overnight_request also covers a drop-in visit booked through that same form
+  // (service: 'checkin') — check item.service before falling back to the type-keyed map.
+  const title = item.type === 'overnight_request' ? (item.service === 'checkin' ? 'Drop-In Visit Request' : 'Overnight Request') : (typeLabels[item.type] || 'Submission');
 
   let fields = [];
   // Applications render availability as a grid (set in the application branch);
@@ -3471,7 +3477,7 @@ window.openRequestItem = async (id) => {
   } else if (item.type === 'overnight_request' || item.service === 'overnight' || item.service === 'checkin') {
     fields = [
       { label: 'Member', value: item.memberName || item.memberId || '–' },
-      { label: 'Service', value: item.service === 'overnight' ? 'Overnight Stay' : item.service === 'checkin' ? 'Check-In Visit' : item.service },
+      { label: 'Service', value: item.service === 'overnight' ? 'Overnight Stay' : item.service === 'checkin' ? 'Drop-In Visit' : item.service },
       { label: 'Start Date', value: fmtDate(item.startDate) },
       { label: 'End Date', value: fmtDate(item.endDate) },
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
@@ -4286,7 +4292,7 @@ function renderTravelDiscountBanner(memberId) {
     </div>`;
   }
   return `<div style="background:#FFF6E5;border:1px solid #F0D28A;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--navy);">
-    <strong>Friends and family — ${activePct}% off travel services.</strong> Applies automatically to overnight, check-in, extra pet, and medication charges for this member. Walk and membership charges are unaffected.
+    <strong>Friends and family — ${activePct}% off travel services.</strong> Applies automatically to overnight, drop-in, extra pet, and medication charges for this member. Walk and membership charges are unaffected.
   </div>`;
 }
 
@@ -4466,7 +4472,7 @@ function renderOvernightReview(item) {
       <div class="form-field"><label>Service</label>
         <select id="rev-service" onchange="reviewRecalcOvernight()">
           <option value="overnight" ${item.service === 'overnight' ? 'selected' : ''}>Overnight Stay</option>
-          <option value="checkin" ${item.service === 'checkin' ? 'selected' : ''}>Check-In Visit</option>
+          <option value="checkin" ${item.service === 'checkin' ? 'selected' : ''}>Drop-In Visit</option>
         </select>
       </div>
       ${visitScheduleFieldHTML()}
@@ -4682,7 +4688,7 @@ window.confirmRequestDates = async (submissionId, item) => {
     // hidden otherwise) — '' from the "Not set" option normalizes to null.
     const timeSlot = document.getElementById('rev-timeslot')?.value || null;
     // Keyed on serviceKey alone — a check-in visit booked through the
-    // overnight_request form (portal-request-extras.html's "Check-In Visit"
+    // overnight_request form (portal-request-extras.html's "Drop-In Visit"
     // option) is priced and scheduled exactly like one booked through
     // service_request. Used both to pick the per-visit pricing path below
     // and to decide whether visitSchedule gets captured at all.

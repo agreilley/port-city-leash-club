@@ -16,7 +16,7 @@
 // data: {
 //   firstName: string,
 //   petNames: string[],
-//   serviceLabel: string,          // e.g. "Check-In Visit" | "Overnight Stay"
+//   serviceLabel: string,          // e.g. "Drop-In Visit" | "Overnight Stay"
 //   startDateStr: string,          // 'YYYY-MM-DD'
 //   endDateStr: string,            // 'YYYY-MM-DD'
 //   totalDollars: number,

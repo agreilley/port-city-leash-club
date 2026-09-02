@@ -11,7 +11,7 @@
 // data: {
 //   firstName: string,
 //   petNames: string[],
-//   serviceLabel: string,      // e.g. "Check-In Visit" | "Overnight Stay" | "Standard Walk"
+//   serviceLabel: string,      // e.g. "Drop-In Visit" | "Overnight Stay" | "Standard Walk"
 //   startDateStr: string|null, // 'YYYY-MM-DD'
 //   endDateStr: string|null,   // 'YYYY-MM-DD'
 // }

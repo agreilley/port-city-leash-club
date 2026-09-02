@@ -15,7 +15,7 @@
 // data: {
 //   firstName: string,
 //   petNames: string[],
-//   serviceLabel: string,   // 'Overnight Stay' | 'Check-In Visit'
+//   serviceLabel: string,   // 'Overnight Stay' | 'Drop-In Visit'
 //   dateStr: string,        // 'YYYY-MM-DD'
 //   slotLabel: string,      // 'Morning' | 'Midday' | 'Evening' | 'Last Out'
 //   note: string,           // walker's free-text note, '' if none

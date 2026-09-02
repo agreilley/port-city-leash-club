@@ -172,7 +172,7 @@
   <div class="page-header">
     <div class="eyebrow" id="extraHelpEyebrow">Extra Help</div>
     <h1>Additional Care</h1>
-    <p>Book overnight stays and check-in visits. We'll confirm availability within 24 hours.</p>
+    <p>Book overnight stays and drop-in visits. We'll confirm availability within 24 hours.</p>
   </div>
 
   <div class="form-shell">
@@ -191,7 +191,7 @@
             <label>Service</label>
             <select id="serviceSelect" name="service" onchange="updateServiceFields()">
               <option value="overnight">Overnight Stay · $115/night</option>
-              <option value="checkin">Check-In Visit · $25/visit</option>
+              <option value="checkin">Drop-In Visit · $25/visit</option>
             </select>
           </div>
           <div class="field full" id="visitScheduleField" style="display:none;">
@@ -262,7 +262,7 @@
 
   // Display names only — actual pricing lives in pricing.js (SERVICE_PRICES,
   // via the 'overnight'/'checkin' aliases), not duplicated here.
-  const SERVICE_NAMES = { overnight: 'Overnight Stay', checkin: 'Check-In Visit' };
+  const SERVICE_NAMES = { overnight: 'Overnight Stay', checkin: 'Drop-In Visit' };
 
   // Same per-day override grid as service-request.html's own
   // syncReqVisitScheduleRows — see that file's comment for why. Only shown

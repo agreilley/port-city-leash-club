@@ -93,7 +93,7 @@ export function calculateEarnings(completedWalks, completedOvernights) {
   const breakdown = {
     standard: { label: 'Standard Walk', count: 0, total: 0 },
     extended: { label: 'Extended Walk', count: 0, total: 0 },
-    checkin: { label: 'Check-In Visit', count: 0, total: 0 },
+    checkin: { label: 'Drop-In Visit', count: 0, total: 0 },
     overnight: { label: 'Overnight Stay', count: 0, total: 0 },
     extraPet: { label: 'Multiple Pets', count: 0, total: 0 },
     medication: { label: 'Medication Admin', count: 0, total: 0 },

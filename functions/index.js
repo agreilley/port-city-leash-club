@@ -1315,7 +1315,7 @@ exports.chargeScheduledReservations = onSchedule({
       await chargeCustomerCard(stripe, candidate.ref, freshData, {
         chargeKey: `scheduled-reservation:${candidate.id}`,
         amountInDollars: (freshData.confirmedTotalCents || 0) / 100,
-        description: `Port City Leash Club - ${isCheckin ? 'Check-In Visits' : 'Overnight Stay'}`,
+        description: `Port City Leash Club - ${isCheckin ? 'Drop-In Visits' : 'Overnight Stay'}`,
         attemptField: 'chargeAttempt',
       });
       await candidate.ref.set({ chargePending: false }, { merge: true });
@@ -4550,7 +4550,7 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
   const isWalk = !isOvernightRequest && serviceInfo?.unit === 'walk';
   // Keyed on serviceKey alone, NOT also gated on !isOvernightRequest — a
   // check-in visit booked through the overnight_request form (member picks
-  // "Check-In Visit" in portal-request-extras.html) is exactly as much a
+  // "Drop-In Visit" in portal-request-extras.html) is exactly as much a
   // per-visit-schedule booking as one booked through service_request. The
   // old `!isOvernightRequest &&` guard here meant that path never got a
   // visitSchedule at all and was always priced as a flat estimate — see
@@ -5977,7 +5977,7 @@ exports.onOvernightVisitCompleted = onDocumentUpdated({
 
   const { VISIT_SLOT_LABELS } = await import('./visit-slots.js');
   const isCheckin = after.serviceType === 'drop-in-visit' || after.serviceType === 'checkin';
-  const serviceLabel = isCheckin ? 'Check-In Visit' : 'Overnight Stay';
+  const serviceLabel = isCheckin ? 'Drop-In Visit' : 'Overnight Stay';
   const petNames = Array.isArray(member.dogs) ? member.dogs.map((d) => d && d.name).filter(Boolean) : (member.dogName ? [member.dogName] : []);
 
   for (const visit of newlyCompleted) {
@@ -6362,7 +6362,7 @@ const REQUEST_TYPE_LABELS = {
   vacation_hold_refund: 'Vacation hold refund request',
   tier_change: 'Membership tier change request',
   dog_update: 'Dog roster update',
-  overnight_request: 'Overnight / check-in request',
+  overnight_request: 'Overnight / drop-in request',
   walker_incident: 'Walker incident report',
   walker_schedule_request: 'Walker schedule request',
 };
@@ -6470,7 +6470,7 @@ async function sendServiceRequestReceivedEmail(sub, submissionId) {
 
 // Existing member's portal pet-sitting request (overnight_request, or a
 // service_request that already carries memberId). portal-request-extras.html
-// only ever offers Overnight Stay / Check-In Visit — always pet sitting,
+// only ever offers Overnight Stay / Drop-In Visit — always pet sitting,
 // never a walk (portal walk requests are a separate submission type,
 // walk_extension, handled by sendPortalWalkRequestReceivedEmail). Neither
 // submission shape carries dogs[] or a name — both are resolved from the

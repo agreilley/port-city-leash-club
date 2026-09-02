@@ -692,11 +692,11 @@
             </div>
             <div class="legend-item">
               <div class="legend-color" style="background: #1C2F42;"></div>
-              <span>Drop-in visit (confirmed)</span>
+              <span>Drop-In Visit (confirmed)</span>
             </div>
             <div class="legend-item">
               <div class="legend-color" style="background: #DDE3E8; border: 1.5px dashed #1C2F42;"></div>
-              <span>Drop-in visit (pending)</span>
+              <span>Drop-In Visit (pending)</span>
             </div>
             <div class="legend-item" style="margin-left: auto; color: #888;">
               Click a walk to reschedule
@@ -1356,7 +1356,7 @@ function updateMetrics() {
           dayEl.onclick = () => openWalkModal(w, cellDate);
         } else if (dayOvernight && dayOvernight.status === 'confirmed') {
           dayEl.classList.add(dayIsCheckin ? 'checkin-confirmed' : 'overnight-confirmed');
-          dayEl.title = dayIsCheckin ? 'Drop-in visit (confirmed)' : 'Overnight stay (confirmed)';
+          dayEl.title = dayIsCheckin ? 'Drop-In Visit (confirmed)' : 'Overnight Stay (confirmed)';
           dayEl.style.cursor = 'pointer';
           dayEl.onclick = () => openReservationModal(dayOvernight);
         } else if (walkMap[day]) {
@@ -1384,7 +1384,7 @@ function updateMetrics() {
           dayEl.onclick = () => openWalkModal(w, cellDate);
         } else if (dayOvernight) {
           dayEl.classList.add(dayIsCheckin ? 'checkin-pending' : 'overnight-pending');
-          dayEl.title = dayIsCheckin ? 'Drop-in visit (pending confirmation)' : 'Overnight stay (pending confirmation)';
+          dayEl.title = dayIsCheckin ? 'Drop-In Visit (pending confirmation)' : 'Overnight Stay (pending confirmation)';
           dayEl.style.cursor = 'pointer';
           dayEl.onclick = () => openReservationModal(dayOvernight);
         }
@@ -1434,7 +1434,7 @@ function updateMetrics() {
       const isPending = entry.status === 'pending';
       const { start, end } = overnightBounds(entry);
 
-      document.getElementById('reservationModalTitle').textContent = isCheckin ? 'Drop-in visit' : 'Overnight stay';
+      document.getElementById('reservationModalTitle').textContent = isCheckin ? 'Drop-In Visit' : 'Overnight Stay';
       document.getElementById('reservationModalSubtitle').textContent = isPending ? 'Pending confirmation' : 'Confirmed reservation';
       document.getElementById('reservationModalStatus').textContent = isPending ? 'Pending confirmation' : 'Confirmed';
       document.getElementById('reservationModalDates').textContent = formatOvernightRange(start, end);

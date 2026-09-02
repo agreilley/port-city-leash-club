@@ -240,7 +240,7 @@
         <div id="todaysVisitsList"></div>
       </div>
       <div id="overnightAssignmentsSection" style="display:none;">
-        <div class="section-title" style="margin-top:24px;">Overnight &amp; Check-In Assignments</div>
+        <div class="section-title" style="margin-top:24px;">Overnight &amp; Drop-In Assignments</div>
         <div id="overnightAssignmentsList"></div>
       </div>
     </div>
@@ -671,7 +671,7 @@ function renderTodaysVisits() {
     const member = allMembers.find(m => m.id === o.memberId);
     const petNames = escapeHtml(getDogNames(member) || o.dogName || 'Pet');
     const address = escapeHtml(member?.address || '–');
-    const serviceLabel = (o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin') ? 'Check-In' : 'Overnight';
+    const serviceLabel = (o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin') ? 'Drop-In' : 'Overnight';
     const rows = visits.map(v => {
       const slotLabel = VISIT_SLOT_LABELS[v.slot] || v.slot || '–';
       return `<div class="walk-card" style="align-items:center;">
@@ -822,7 +822,7 @@ function renderOvernights() {
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
           <div style="font-size:16px;font-weight:600;color:var(--navy);">${dogNames}</div>
-          <div style="font-size:13px;color:var(--text-mid);">${memberName} · ${escapeHtml(o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin' ? 'Check-In' : 'Overnight')}</div>
+          <div style="font-size:13px;color:var(--text-mid);">${memberName} · ${escapeHtml(o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin' ? 'Drop-In' : 'Overnight')}</div>
           <div style="font-size:13px;color:var(--text-light);">${fmtDate(o.startDate)} – ${fmtDate(o.endDate)}${o.extraPet ? ' · Multiple pets' : ''}${o.medication ? ' · Medication' : ''}</div>
         </div>
         <span class="walk-status ${isCompleted ? 'completed' : 'scheduled'}">${isCompleted ? 'Completed' : 'Assigned'}</span>
@@ -845,7 +845,7 @@ window.openOvernightDetail = (overnightId) => {
   // HTML, so escaping here just left a literal "&amp;" on screen for any
   // multi-dog household instead of the "&" it was meant to render as.
   const dogNames = getDogNames(member) || o.dogName || 'Pet';
-  const serviceLabel = (o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin') ? 'Check-In' : 'Overnight';
+  const serviceLabel = (o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin') ? 'Drop-In' : 'Overnight';
   const isCompleted = o.status === 'completed';
 
   function fmtFullDate(val) {
@@ -1374,7 +1374,7 @@ function renderEarnings() {
   const rateRows = [
     ['Standard Walk (30 min)', WALKER_RATES.standard],
     ['Extended Walk (45 min)', WALKER_RATES.extended],
-    ['Check-In Visit', WALKER_RATES.checkin],
+    ['Drop-In Visit', WALKER_RATES.checkin],
     ['Overnight Stay (per night)', WALKER_RATES.overnight],
     ['Multiple Pets (per night)', WALKER_EXTRA_PET_FEE],
     ['Medication Admin (per night)', WALKER_MEDICATION_FEE],
