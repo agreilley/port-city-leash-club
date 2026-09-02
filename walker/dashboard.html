@@ -989,7 +989,13 @@ function renderHistory() {
       const member = allMembers.find(m => m.id === entry.walk.memberId);
       dogName = getDogNames(member);
       ownerName = member?.name || '–';
-      subLabel = WALK_TIME_SLOT_LABELS[entry.walk.timeSlot] || entry.walk.timeSlot;
+      const slotLabel = WALK_TIME_SLOT_LABELS[entry.walk.timeSlot] || entry.walk.timeSlot;
+      // Same duration text portal-walk-history.html shows the member —
+      // Standard vs. Extended was never surfaced anywhere in this portal
+      // before, so a walker had no way to tell which walk a given card was.
+      const duration = (entry.walk.extended ? '45-minute walk' : (entry.walk.duration || '30-minute walk'))
+        + (entry.walk.extended && entry.walk.extendedStatus === 'pending' ? ' (pending confirmation)' : '');
+      subLabel = `${slotLabel} · ${duration}`;
     } else {
       const member = allMembers.find(m => m.id === entry.overnight.memberId);
       dogName = getDogNames(member) || entry.overnight.dogName || 'Pet';
