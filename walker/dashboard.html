@@ -941,8 +941,8 @@ function renderCalendar() {
       return (Array.isArray(o.visits) ? o.visits : [])
         .filter(v => walkDateStr(v.date) === dayStr)
         .map(v => {
-          const text = `${escapeHtml(petNames)} · ${typeLabel}`;
-          return `<div class="my-walk-chip ${cls}" onclick="openVisitCompleteForm('${o.id}', '${v.id}')" title="${text}">${text}</div>`;
+          const name = escapeHtml(petNames);
+          return `<div class="my-walk-chip ${cls}" onclick="openVisitCompleteForm('${o.id}', '${v.id}')" title="${name} · ${typeLabel}">${name}</div>`;
         });
     }).join('');
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}${visitChips}</div>`;

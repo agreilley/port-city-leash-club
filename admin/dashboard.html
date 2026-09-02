@@ -2052,8 +2052,8 @@ function renderCalendarDays() {
     const oLabel = escapeHtml(oWalker ? `${oDogName} / ${oWalker.name.split(' ')[0]}` : `${oDogName} · Unassigned`);
     const overnightChip = overnightMap[d]
       ? (oIsCheckin
-          ? `<div class="walk-chip checkin" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Drop-In Visit">${oLabel} · Drop-In</div>`
-          : `<div class="walk-chip overnight" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Overnight">${oLabel} · Overnight</div>`)
+          ? `<div class="walk-chip checkin" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Drop-In Visit">${oLabel}</div>`
+          : `<div class="walk-chip overnight" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Overnight">${oLabel}</div>`)
       : '';
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}</div>`;
   }
