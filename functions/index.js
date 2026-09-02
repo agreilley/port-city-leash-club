@@ -490,14 +490,24 @@ exports.getCardOnFile = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request)
 
   const pm = paymentMethods.data[0] || null;
   const isOnFile = !!pm;
-  if (!!billingData?.cardOnFile !== isOnFile) {
+  // A card genuinely on file should always resolve a stray "no card on
+  // file" review flag — independent of whether the cardOnFile boolean
+  // itself needed correcting. Nesting this check inside the mismatch
+  // branch below (its original form) meant a member whose cardOnFile was
+  // ALREADY correctly true, but whose needsReviewReason got set to
+  // 'no_card_on_file' by some other confirmation run around the same
+  // time (finalizeSubmissionIfReady flags this per-submission, not
+  // per-billing-write, so it can race a card being added), would never
+  // self-heal here — this function saw no boolean mismatch, skipped the
+  // whole block, and nothing else ever re-checked it. Confirmed live: a
+  // member's billing doc sat at cardOnFile:true, needsReviewReason:
+  // 'no_card_on_file' indefinitely, surviving both a page reload and an
+  // admin dashboard fix to the table's own staleness.
+  const staleNoCardFlag = isOnFile && billingData?.needsReviewReason === 'no_card_on_file';
+  if (!!billingData?.cardOnFile !== isOnFile || staleNoCardFlag) {
     await billing.set({
       cardOnFile: isOnFile,
-      // Same reasoning as confirmCardOnFile's own write — a card newly
-      // showing up on file resolves the one needsReview reason whose
-      // entire premise is "there's no card yet." Every other reason is
-      // left untouched.
-      ...(isOnFile && billingData?.needsReviewReason === 'no_card_on_file' ? { needsReview: false, needsReviewReason: null } : {}),
+      ...(staleNoCardFlag ? { needsReview: false, needsReviewReason: null } : {}),
     }, { merge: true }).catch(() => {});
   }
 
