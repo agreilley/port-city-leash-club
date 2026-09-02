@@ -65,6 +65,10 @@
   .walk-status.scheduled { background: var(--green-light); color: var(--green); }
   .walk-status.completed { background: var(--sand); color: var(--text-light); }
   .walk-status.today { background: rgba(193,123,111,0.12); color: var(--rust); }
+  .type-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; margin-left: 6px; vertical-align: middle; }
+  .type-badge.walk { background: var(--green-light); color: var(--green); }
+  .type-badge.dropin { background: #E4E9EE; color: #1C2F42; }
+  .type-badge.overnight { background: #E8F4F0; color: #2D7A5E; }
   .empty-state { text-align: center; padding: 60px; color: var(--text-light); }
   .empty-state-title { font-size: 16px; font-weight: 500; color: var(--text-mid); margin-bottom: 8px; }
 
@@ -85,12 +89,13 @@
   .my-walk-chip.morning { background: #EBF5EF; color: #1A5C30; }
   .my-walk-chip.early-afternoon { background: #EEF2FF; color: #3730A3; }
   .my-walk-chip.late-afternoon { background: #FEF3C7; color: #92400E; }
-  /* Pet-sitting visit slots reuse the walk-slot colors above wherever the
-     windows actually correspond (visit morning ~ walk morning, visit
-     midday == walk early-afternoon exactly); evening and last-out visits
-     run well past any walk slot (5–11pm), so they share this one new color
-     rather than needing a 5th, barely-distinguishable hue. */
-  .my-walk-chip.evening-night { background: #F3E8FF; color: #6B21A8; }
+  /* Drop-in/overnight visit chips get their own colors (matching admin's
+     .walk-chip.checkin/.overnight) rather than reusing a walk time-slot
+     color — a visit chip used to be visually identical to a walk chip in
+     the same window, so the "· Drop-In"/"· Overnight" label below was the
+     only thing distinguishing them; this makes the color say it too. */
+  .my-walk-chip.dropin { background: #E4E9EE; color: #1C2F42; }
+  .my-walk-chip.overnight-visit { background: #E8F4F0; color: #2D7A5E; }
 
   /* MODAL */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; display: none; align-items: center; justify-content: center; }
@@ -204,7 +209,7 @@
   </a>
   <a class="nav-item" data-view="history" onclick="switchView('history')">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3.5l2.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-    Walk History
+    Care History
   </a>
   <a class="nav-item" data-view="schedule" onclick="switchView('schedule')">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -273,7 +278,10 @@
             <div style="width:12px;height:12px;border-radius:3px;background:#FEF3C7;border:1px solid #92400E;"></div> Late Afternoon (2–5pm)
           </div>
           <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-light);">
-            <div style="width:12px;height:12px;border-radius:3px;background:#F3E8FF;border:1px solid #6B21A8;"></div> Evening / Overnight Visit (5–11pm)
+            <div style="width:12px;height:12px;border-radius:3px;background:#E4E9EE;border:1px solid #1C2F42;"></div> Drop-In Visit
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-light);">
+            <div style="width:12px;height:12px;border-radius:3px;background:#E8F4F0;border:1px solid #2D7A5E;"></div> Overnight Visit
           </div>
         </div>
       </div>
@@ -281,7 +289,7 @@
 
     <!-- HISTORY VIEW -->
     <div class="view" id="view-history">
-      <div class="section-title">Walk History</div>
+      <div class="section-title">Care History</div>
       <div id="historyList"><div style="text-align:center;padding:40px;color:var(--text-light);">Loading...</div></div>
     </div>
 
@@ -921,18 +929,20 @@ function renderCalendar() {
     // so matching those against dayStr (via walkDateStr, same UTC-safe
     // comparison Today's Visits already uses) surfaces exactly the days
     // this walker actually has pet-sitting work, alongside their walks.
-    // Colored to match the walk-slot legend wherever a visit window
-    // actually corresponds to one (morning ~ morning, midday == early-
-    // afternoon exactly); evening and last-out run past any walk slot
-    // (5–11pm) and share the one 'evening-night' color added for them.
+    // Colored and labeled by SERVICE TYPE (drop-in vs. overnight), not by
+    // visit time slot, and never sharing a walk time-slot color — a plain
+    // dog name here used to be indistinguishable from a regular walk chip.
     const visitChips = myOvernights.flatMap(o => {
       const member = allMembers.find(m => m.id === o.memberId);
       const petNames = getDogNames(member) || o.dogName || 'Pet';
+      const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
+      const cls = isCheckin ? 'dropin' : 'overnight-visit';
+      const typeLabel = isCheckin ? 'Drop-In' : 'Overnight';
       return (Array.isArray(o.visits) ? o.visits : [])
         .filter(v => walkDateStr(v.date) === dayStr)
         .map(v => {
-          const slotClass = v.slot === 'morning' ? 'morning' : v.slot === 'midday' ? 'early-afternoon' : 'evening-night';
-          return `<div class="my-walk-chip ${slotClass}" onclick="openVisitCompleteForm('${o.id}', '${v.id}')">${escapeHtml(petNames)}</div>`;
+          const text = `${escapeHtml(petNames)} · ${typeLabel}`;
+          return `<div class="my-walk-chip ${cls}" onclick="openVisitCompleteForm('${o.id}', '${v.id}')" title="${text}">${text}</div>`;
         });
     }).join('');
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}${visitChips}</div>`;
@@ -944,30 +954,60 @@ function renderCalendar() {
 }
 
 // ── HISTORY ───────────────────────────────────────────────────────────────────
+const HISTORY_TYPE_META = {
+  walk: { label: 'Dog Walk', cls: 'walk' },
+  dropin: { label: 'Drop-In Visit', cls: 'dropin' },
+  overnight: { label: 'Overnight Stay', cls: 'overnight' },
+};
+
 function renderHistory() {
   const container = document.getElementById('historyList');
-  const past = myWalks.filter(w => {
-    return walkIsBeforeToday(w.date) || w.status === 'completed';
-  }).reverse();
+  const pastWalks = myWalks
+    .filter(w => walkIsBeforeToday(w.date) || w.status === 'completed')
+    .map(w => ({ type: 'walk', sortDate: w.date?.toDate?.() || new Date(w.date), onclick: `openWalkDetail('${w.id}')`, walk: w }));
 
-  if (!past.length) { container.innerHTML = '<div class="empty-state"><div class="empty-state-title">No walk history yet</div></div>'; return; }
+  // Completed drop-in/overnight visits, flattened the same way renderStats
+  // already does for the "Completed" stat — previously excluded entirely
+  // here, so a walker who only ever does pet-sitting visits saw an empty
+  // history despite a nonzero Completed count above it.
+  const pastVisits = myOvernights.flatMap(o => {
+    const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
+    return (Array.isArray(o.visits) ? o.visits : [])
+      .filter(v => v.status === 'completed')
+      .map(v => ({ type: isCheckin ? 'dropin' : 'overnight', sortDate: v.date?.toDate?.() || new Date(v.date), onclick: `openVisitCompleteForm('${o.id}', '${v.id}')`, overnight: o, visit: v }));
+  });
 
-  container.innerHTML = past.map(w => {
-    const member = allMembers.find(m => m.id === w.memberId);
-    const date = w.date?.toDate?.() || new Date(w.date);
-    const slotLabel = WALK_TIME_SLOT_LABELS[w.timeSlot] || w.timeSlot;
-    return `<div class="walk-card" onclick="openWalkDetail('${w.id}')">
+  const past = [...pastWalks, ...pastVisits].sort((a, b) => b.sortDate - a.sortDate);
+
+  if (!past.length) { container.innerHTML = '<div class="empty-state"><div class="empty-state-title">No care history yet</div></div>'; return; }
+
+  container.innerHTML = past.map(entry => {
+    const meta = HISTORY_TYPE_META[entry.type];
+    const date = entry.sortDate;
+    let dogName, ownerName, subLabel;
+    if (entry.type === 'walk') {
+      const member = allMembers.find(m => m.id === entry.walk.memberId);
+      dogName = getDogNames(member);
+      ownerName = member?.name || '–';
+      subLabel = WALK_TIME_SLOT_LABELS[entry.walk.timeSlot] || entry.walk.timeSlot;
+    } else {
+      const member = allMembers.find(m => m.id === entry.overnight.memberId);
+      dogName = getDogNames(member) || entry.overnight.dogName || 'Pet';
+      ownerName = member?.name || entry.overnight.memberName || '–';
+      subLabel = VISIT_SLOT_LABELS[entry.visit.slot] || entry.visit.slot || '';
+    }
+    return `<div class="walk-card" onclick="${entry.onclick}">
       <div class="walk-date-block">
         <div class="walk-date-day">${date.getDate()}</div>
         <div class="walk-date-month">${date.toLocaleString('en-US',{month:'short'})}</div>
       </div>
       <div class="walk-divider"></div>
       <div class="walk-info">
-        <div class="walk-dog">${escapeHtml(getDogNames(member))}</div>
-        <div class="walk-meta">${escapeHtml(member?.name || '–')}</div>
-        <div class="walk-slot">${slotLabel}</div>
+        <div class="walk-dog">${escapeHtml(dogName)}<span class="type-badge ${meta.cls}">${meta.label}</span></div>
+        <div class="walk-meta">${escapeHtml(ownerName)}</div>
+        <div class="walk-slot">${escapeHtml(subLabel)}</div>
       </div>
-      <span class="walk-status completed">${w.status === 'completed' ? 'Completed' : 'Past'}</span>
+      <span class="walk-status completed">${entry.type === 'walk' && entry.walk.status !== 'completed' ? 'Past' : 'Completed'}</span>
     </div>`;
   }).join('');
 }
@@ -1409,7 +1449,7 @@ function renderEarnings() {
 }
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
-const titles = { upcoming: 'Upcoming Walks', calendar: 'Calendar', history: 'Walk History', schedule: 'My Schedule', earnings: 'Earnings' };
+const titles = { upcoming: 'Upcoming Walks', calendar: 'Calendar', history: 'Care History', schedule: 'My Schedule', earnings: 'Earnings' };
 window.switchView = (view) => {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.nav-item, .mobile-tab').forEach(n => n.classList.remove('active'));

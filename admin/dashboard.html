@@ -442,6 +442,7 @@
         <div class="legend-item"><div class="legend-dot" style="background:#FEF3C7;border:1px solid #92400E;"></div> Late Afternoon</div>
         <div class="legend-item"><div class="legend-dot" style="background:#FEE2E2;border:1px solid #991B1B;"></div> Unassigned</div>
         <div class="legend-item"><div class="legend-dot" style="background:#E8F4F0;border:1px solid #8FA8A2;"></div> Overnight</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#E4E9EE;border:1px solid #1C2F42;"></div> Drop-In Visit</div>
       </div>
       <div class="calendar-header">
         <div class="calendar-nav">
@@ -2051,8 +2052,8 @@ function renderCalendarDays() {
     const oLabel = escapeHtml(oWalker ? `${oDogName} / ${oWalker.name.split(' ')[0]}` : `${oDogName} · Unassigned`);
     const overnightChip = overnightMap[d]
       ? (oIsCheckin
-          ? `<div class="walk-chip checkin" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Drop-In Visit">${oLabel}</div>`
-          : `<div class="walk-chip overnight" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Overnight">🌙 ${oLabel}</div>`)
+          ? `<div class="walk-chip checkin" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Drop-In Visit">${oLabel} · Drop-In</div>`
+          : `<div class="walk-chip overnight" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Overnight">${oLabel} · Overnight</div>`)
       : '';
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}</div>`;
   }
