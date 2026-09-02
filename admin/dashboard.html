@@ -1096,6 +1096,13 @@ let allWalks = [], allMembers = [], allWalkers = [], allRequests = [];
 // member doc itself — kept that way so it stays out of walkers' full-doc
 // read on members. See renderBillingBadge / subscribeMembers.
 let memberBilling = {};
+// One live listener per member's billing subdoc, keyed by memberId —
+// see subscribeMembers, which creates/tears these down as members
+// appear/disappear. Without a listener per doc, a change made only to
+// this subdoc (adding a card, a needsReview flag flipping, etc.) would
+// never refresh memberBilling until some unrelated write on the member
+// doc itself happened to re-run the old one-time batch fetch.
+const billingUnsubs = {};
 let calendarYear = new Date().getFullYear();
 let calendarMonth = new Date().getMonth();
 let currentRequestFilter = 'all';
@@ -1512,61 +1519,67 @@ window.markPayoutPaid = async (paymentId) => {
 };
 
 function subscribeMembers() {
-  onSnapshot(collection(db, 'members'), async snap => {
+  onSnapshot(collection(db, 'members'), snap => {
     allMembers = snap.docs.map(d => ({ id: d.id, ...d.data() })); window.allMembers = allMembers;
     renderAll();
     renderMembersTable();
     populateMemberSelect();
     updateStats();
 
-    // Billing health for the table view — fetched separately since it
-    // lives off the member doc (see memberBilling above). Table re-renders
-    // once this resolves; the first paint above just won't have badges yet.
+    // Billing health for the table view lives in a separate subdoc (see
+    // memberBilling above) that a card being added/removed, a needsReview
+    // flag flipping, etc. only ever writes directly — never the member doc
+    // itself — so a one-time fetch here would go stale the moment any of
+    // that happens and stay stale until an unrelated member-doc write
+    // happened to re-run this whole block (or the page was reloaded). A
+    // live listener per member's billing doc keeps this table accurate the
+    // moment any of it changes, with no dependency on the member doc.
+    //
     // needsReview is set by runFirstPaymentReferralCredit (functions/index.js)
     // when a new member's first payment looks like a possible self-referral
-    // (same phone as the member who referred them) — surfaced here rather
-    // than a new query, since this billing doc is already being fetched for
-    // every member on this page.
-    const entries = await Promise.all(allMembers.map(async m => {
-      const billingSnap = await getDoc(doc(db, 'members', m.id, 'private', 'billing'));
-      const data = billingSnap.exists() ? billingSnap.data() : {};
-      // needsReviewReason was missing here — renderBillingBadge reads it to
-      // pick the reason-specific NEEDS_REVIEW_LABELS entry, so without it
-      // every reason silently fell back to the generic "Needs review" text
-      // on this table (the member detail modal fetches billing directly and
-      // was unaffected). cardOnFile added so openRequestItem's
-      // awaiting-card notice can check the real flag instead of inferring
-      // it from status — see the "waiting on a card" branches there.
-      // currentMonthChargeAmount added so retryRequestFinalize's confirm()
-      // dialog can name a real dollar figure for a MEMBERSHIP charge_failed
-      // — that failure comes from runChargeCurrentMonthWalks
-      // (functions/index.js), which bills the member's whole month, not
-      // any single submission, so the amount lives here on billing, not on
-      // the request the dialog is otherwise keyed off of.
-      // travelDiscountPercent/travelDiscountActive were missing here —
-      // getActiveTravelDiscountPercent and every review/recalc/charge-prep
-      // site that calls it (reviewRecalcService, reviewRecalcOvernight,
-      // confirmRequestDates, renderTravelDiscountBanner) read them off this
-      // same memberBilling object, so without them here those sites always
-      // saw an empty billing entry and never applied a friends and family
-      // discount, no matter what was actually on file. travelDiscountActive
-      // uses the same !! boolean coercion as needsReview/cardOnFile above —
-      // a member whose billing doc has neither field (never claimed a code)
-      // resolves to travelDiscountPercent: 0, travelDiscountActive: false,
-      // which getActiveTravelDiscountPercent already treats as inactive.
-      return [m.id, {
-        billingStatus: data.billingStatus,
-        needsReview: !!data.needsReview,
-        needsReviewReason: data.needsReviewReason || null,
-        cardOnFile: !!data.cardOnFile,
-        currentMonthChargeAmount: typeof data.currentMonthCharge?.amount === 'number' ? data.currentMonthCharge.amount : null,
-        travelDiscountPercent: typeof data.travelDiscountPercent === 'number' ? data.travelDiscountPercent : 0,
-        travelDiscountActive: !!data.travelDiscountActive,
-      }];
-    }));
-    memberBilling = Object.fromEntries(entries);
-    renderMembersTable();
-    updateNeedsAttentionStat();
+    // (same phone as the member who referred them).
+    // needsReviewReason: renderBillingBadge reads it to pick the
+    // reason-specific NEEDS_REVIEW_LABELS entry (the member detail modal
+    // fetches billing directly and was never affected by this).
+    // cardOnFile: read by openRequestItem's awaiting-card notice, so it
+    // reflects the real flag instead of inferring it from status.
+    // currentMonthChargeAmount: retryRequestFinalize's confirm() dialog
+    // names a real dollar figure for a MEMBERSHIP charge_failed from this —
+    // that failure comes from runChargeCurrentMonthWalks (functions/index.js),
+    // which bills the member's whole month, not any single submission, so
+    // the amount lives here on billing, not on the request itself.
+    // travelDiscountPercent/travelDiscountActive: read by
+    // getActiveTravelDiscountPercent and every review/recalc/charge-prep
+    // site that calls it (reviewRecalcService, reviewRecalcOvernight,
+    // confirmRequestDates, renderTravelDiscountBanner). Same !! boolean
+    // coercion as needsReview/cardOnFile — a member whose billing doc has
+    // neither field (never claimed a code) resolves to
+    // travelDiscountPercent: 0, travelDiscountActive: false, which
+    // getActiveTravelDiscountPercent already treats as inactive.
+    const currentIds = new Set(allMembers.map(m => m.id));
+    // Stop listening for members that no longer exist — otherwise this
+    // leaks a listener per deleted member forever, each one writing into
+    // memberBilling for an id nothing else will ever read again.
+    for (const id of Object.keys(billingUnsubs)) {
+      if (!currentIds.has(id)) { billingUnsubs[id](); delete billingUnsubs[id]; delete memberBilling[id]; }
+    }
+    for (const m of allMembers) {
+      if (billingUnsubs[m.id]) continue; // already subscribed
+      billingUnsubs[m.id] = onSnapshot(doc(db, 'members', m.id, 'private', 'billing'), billingSnap => {
+        const data = billingSnap.exists() ? billingSnap.data() : {};
+        memberBilling[m.id] = {
+          billingStatus: data.billingStatus,
+          needsReview: !!data.needsReview,
+          needsReviewReason: data.needsReviewReason || null,
+          cardOnFile: !!data.cardOnFile,
+          currentMonthChargeAmount: typeof data.currentMonthCharge?.amount === 'number' ? data.currentMonthCharge.amount : null,
+          travelDiscountPercent: typeof data.travelDiscountPercent === 'number' ? data.travelDiscountPercent : 0,
+          travelDiscountActive: !!data.travelDiscountActive,
+        };
+        renderMembersTable();
+        updateNeedsAttentionStat();
+      }, err => console.error('billing subscription error for', m.id, err.code, err.message));
+    }
   });
 }
 
