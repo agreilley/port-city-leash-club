@@ -1011,7 +1011,15 @@ async function loadOvernights(uid) {
   let failed = false;
   try {
     const confirmedSnap = await getDocs(query(collection(db, 'overnights'), where('memberId', '==', uid)));
-    const confirmed = confirmedSnap.docs.map(d => ({ id: d.id, ...d.data(), status: 'confirmed' }));
+    // A cancelled reservation (cancelOvernightReservation, admin/dashboard.html)
+    // must never reach the calendar at all — excluded before the status
+    // field below gets unconditionally forced to 'confirmed', which
+    // otherwise relabeled a cancelled reservation right back to "confirmed"
+    // regardless of what was actually in Firestore.
+    const confirmed = confirmedSnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(o => o.status !== 'cancelled')
+      .map(o => ({ ...o, status: 'confirmed' }));
 
     let pending = [];
     try {
