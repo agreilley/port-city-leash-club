@@ -2177,7 +2177,7 @@ const NEEDS_REVIEW_LABELS = {
   },
   reservation_charge_failed: {
     label: 'Reservation charge failed',
-    title: "A confirmed pet sitting reservation's scheduled charge (24 hours after confirmation) failed — see the Cloud Functions logs for chargeScheduledReservations for the specific overnight and error, and the overnights doc's chargeAttempt field for the failure reason. Charge manually in Stripe once resolved.",
+    title: "A confirmed pet sitting reservation's scheduled charge (24 hours after confirmation) failed — usually because the member had no card on file yet. Once that's fixed, use Retry Charge below to charge it in-app, or charge manually in Stripe if you'd rather.",
   },
   no_card_on_file: {
     label: 'No card on file',
@@ -5773,9 +5773,20 @@ window.openMemberDetail = async (id) => {
   // dismissBillingReview (functions/index.js) and NEEDS_REVIEW_LABELS above.
   // Only shown when the flag is actually set; nothing to dismiss otherwise.
   const reviewInfo = NEEDS_REVIEW_LABELS[billing.needsReviewReason] || { title: 'Referral credit issuance was skipped for this member and needs a manual look.' };
+  // reservation_charge_failed is the one needsReview reason with an actual
+  // in-app remedy (retryReservationCharge, functions/index.js) — every
+  // other reason needs the underlying issue fixed by hand elsewhere
+  // (Stripe, Firestore), so Dismiss stays the only action for those.
+  const failedOvernight = billing.needsReviewReason === 'reservation_charge_failed'
+    ? allOvernights.find(o => o.memberId === member.id && o.chargePending && o.chargeAttempt?.status === 'failed')
+    : null;
+  const retryChargeHTML = failedOvernight
+    ? `<button class="btn-secondary" id="retryReservationChargeBtn" style="display:block;margin-top:8px;padding:4px 12px;font-size:12px;" onclick="retryReservationCharge('${failedOvernight.id}')">Retry Charge${typeof failedOvernight.confirmedTotalCents === 'number' ? ` ($${(failedOvernight.confirmedTotalCents / 100).toFixed(2)})` : ''}</button>`
+    : '';
   const reviewDismissHTML = billing.needsReview ? `
     <div style="font-size:12px;color:#b45309;background:#fffbeb;border-radius:6px;padding:8px 12px;margin-top:4px;margin-bottom:12px;">
       ${escapeHtml(reviewInfo.title)}
+      ${retryChargeHTML}
       <button class="btn-secondary" style="display:block;margin-top:8px;padding:4px 12px;font-size:12px;" onclick="dismissMemberBillingReview('${member.id}')">Dismiss review flag</button>
     </div>` : '';
 
@@ -5912,11 +5923,12 @@ function renderVetEmergencyDetail(member) {
 
 // Manually clears billing.needsReview once admin has resolved the
 // underlying issue themselves (in Stripe, in Firestore, wherever the fix
-// actually lives) — there's no in-app retry for any needsReview reason yet,
-// so this is an acknowledgment, not a re-verification. Re-opens the member
-// detail modal on success so the badge disappears immediately, and updates
-// memberBilling so the members-table badge clears without waiting for the
-// next onSnapshot tick.
+// actually lives) — an acknowledgment, not a re-verification. Every reason
+// except reservation_charge_failed (see retryReservationCharge below) still
+// has no in-app remedy, so this stays the only action for those. Re-opens
+// the member detail modal on success so the badge disappears immediately,
+// and updates memberBilling so the members-table badge clears without
+// waiting for the next onSnapshot tick.
 window.dismissMemberBillingReview = async (memberId) => {
   if (!confirm('Dismiss this review flag? Only do this once the underlying issue has actually been fixed.')) return;
   try {
@@ -5929,6 +5941,34 @@ window.dismissMemberBillingReview = async (memberId) => {
     openMemberDetail(memberId);
   } catch (e) {
     alert(`Couldn't dismiss the review flag: ${e.message}`);
+  }
+};
+
+// Manual retry for a reservation whose scheduled charge failed (see
+// retryReservationCharge, functions/index.js) — typically because the
+// member had no card on file yet at charge time. Names the actual amount
+// in the confirm() dialog for the same reason retryRequestFinalize's
+// charge_failed path does: this is a REAL new charge attempt, not a
+// resend, and the server has no way to know if admin already charged it
+// manually in Stripe instead of waiting.
+window.retryReservationCharge = async (overnightId) => {
+  const o = allOvernights.find(x => x.id === overnightId);
+  const amount = typeof o?.confirmedTotalCents === 'number' ? `$${(o.confirmedTotalCents / 100).toFixed(2)}` : 'the reservation total';
+  const confirmed = confirm(
+    `This attempts a NEW charge of ${amount} against this member's card on file — not a resend, a real charge.\n\n` +
+    `Only continue if you have NOT already charged this manually in Stripe. If you have, this would charge them twice.`
+  );
+  if (!confirmed) return;
+  const btn = document.getElementById('retryReservationChargeBtn');
+  if (btn) { btn.textContent = 'Charging…'; btn.disabled = true; }
+  try {
+    const retryReservationChargeFn = httpsCallable(fns, 'retryReservationCharge');
+    await retryReservationChargeFn({ overnightId });
+    alert('Charge succeeded.');
+    if (o?.memberId) openMemberDetail(o.memberId);
+  } catch (e) {
+    alert(`Couldn't charge this reservation: ${e.message}`);
+    if (btn) { btn.textContent = 'Retry Charge'; btn.disabled = false; }
   }
 };
 

@@ -1346,6 +1346,60 @@ exports.chargeScheduledReservations = onSchedule({
   }
 });
 
+// retryReservationCharge: admin-only manual retry for a reservation whose
+// scheduled charge failed (see NEEDS_REVIEW_LABELS.reservation_charge_failed,
+// admin/dashboard.html) — chargeScheduledReservations above gives up after
+// MAX_SCHEDULED_CHARGE_ATTEMPTS and just leaves the flag for manual
+// resolution, which until now meant charging in Stripe directly. This lets
+// admin retry the exact same charge in-app once the underlying problem
+// (usually: member had no card on file yet) is actually fixed.
+//
+// Uses the SAME chargeKey the scheduled sweep uses — chargeCustomerCard's
+// own idempotency guard #1 blocks only a prior 'charged' outcome for that
+// key, never a prior 'failed' one, so this can never double-charge a
+// reservation the sweep already succeeded on, and is safe to click more
+// than once if it fails again.
+exports.retryReservationCharge = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { overnightId } = request.data || {};
+  if (!overnightId) throw new HttpsError('invalid-argument', 'overnightId is required.');
+
+  const ref = db.collection('overnights').doc(overnightId);
+  const snap = await ref.get();
+  const data = snap.data();
+  if (!data) throw new HttpsError('not-found', 'Reservation not found.');
+  if (!CHARGEABLE_OVERNIGHT_STATUSES.includes(data.status)) {
+    throw new HttpsError('failed-precondition', `This reservation's status (${data.status}) can't be charged.`);
+  }
+  if (data.chargeAttempt?.status === 'charged') {
+    throw new HttpsError('failed-precondition', 'This reservation was already charged.');
+  }
+
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+  const isCheckin = data.serviceType === 'checkin' || data.serviceType === 'drop-in-visit';
+  await chargeCustomerCard(stripe, ref, data, {
+    chargeKey: `scheduled-reservation:${overnightId}`,
+    amountInDollars: (data.confirmedTotalCents || 0) / 100,
+    description: `Port City Leash Club - ${isCheckin ? 'Drop-In Visits' : 'Overnight Stay'}`,
+    attemptField: 'chargeAttempt',
+  });
+  await ref.set({ chargePending: false }, { merge: true });
+
+  // Only clears the review flag on an EXACT reason match — same posture as
+  // confirmCardOnFile/getCardOnFile's own needsReview clears — so this
+  // never clobbers a different, unrelated needsReview reason that happens
+  // to be set on this member at the same time.
+  if (data.memberId) {
+    const billing = billingRef(data.memberId);
+    const billingSnap = await billing.get();
+    if (billingSnap.data()?.needsReviewReason === 'reservation_charge_failed') {
+      await billing.set({ needsReview: false, needsReviewReason: null }, { merge: true }).catch(() => {});
+    }
+  }
+
+  return { success: true };
+});
+
 // ─────────────────────────────────────────────────────────────────────────
 // 3. Start a recurring monthly membership subscription (Essential /
 //    Standard / Daily). Triggered after a member's card is confirmed on
