@@ -494,6 +494,14 @@ function loadData() {
     renderStats();
     renderOvernights();
     renderTodaysVisits();
+    // Care History merges myWalks + myOvernights (renderHistory below), but
+    // was only ever re-rendered from the walks listener above — this
+    // listener firing (a walker completing a visit, or overnights simply
+    // loading after walks already did) never redrew it. A pet-sitting-only
+    // walker could go their whole session with an empty-looking Care
+    // History even after completing real visits, since nothing here ever
+    // told it to look again.
+    renderHistory();
     renderEarnings();
   }, (err) => {
     console.error('overnights subscription error:', err.code, err.message, 'walkerDoc.id:', walkerDoc.id);
@@ -791,7 +799,28 @@ window.completeVisit = async (overnightId, visitId) => {
       walkerId: walkerDoc?.id || '',
       walkerName: walkerDoc?.name || '',
     } : v);
-    await updateDoc(doc(db, 'overnights', overnightId), { visits });
+
+    // Completing the last outstanding visit also closes out the whole
+    // reservation, in this same write — previously a walker had to come
+    // back and separately hit "Mark as Completed" on the reservation itself
+    // (completeOvernight below) even after every individual visit was
+    // already done. That second step is what actually flips this doc's own
+    // `status`, which is what onOvernightCompleted (functions/index.js)
+    // watches to stamp payout — a forgotten second click didn't just leave
+    // the reservation looking unfinished, it silently left the walker
+    // unpaid for it. `visits.length` guards against an empty array (no
+    // visits generated at all) trivially satisfying .every() and auto-
+    // completing a reservation that was never really underway; the
+    // `o.status !== 'completed'` check keeps this a no-op on a reservation
+    // that's already closed, same guard completeOvernight relies on via the
+    // modal only showing its button while `!isCompleted`.
+    const allVisitsComplete = visits.length > 0 && visits.every(v => v.status === 'completed');
+    const updatePayload = { visits };
+    if (allVisitsComplete && o.status !== 'completed') {
+      updatePayload.status = 'completed';
+      updatePayload.completedAt = serverTimestamp();
+    }
+    await updateDoc(doc(db, 'overnights', overnightId), updatePayload);
 
     document.getElementById('walkModal').classList.remove('open');
   } catch (e) {
