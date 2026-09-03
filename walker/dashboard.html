@@ -802,6 +802,12 @@ window.openVisitCompleteForm = (overnightId, visitId) => {
   const petNames = getDogNames(member) || o.dogName || 'Pet';
   const slotLabel = VISIT_SLOT_LABELS[visit.slot] || visit.slot || '–';
   const isCompleted = visit.status === 'completed';
+  // Same day-gate as openWalkDetail's canComplete — without it, any visit
+  // in a multi-day overnight stay could be marked complete (with a note and
+  // photos sent straight to the owner) days before it was actually due.
+  const isToday = walkIsToday(visit.date);
+  const isPastDay = walkIsBeforeToday(visit.date);
+  const canComplete = isToday || isPastDay;
 
   document.getElementById('walkModalTitle').textContent = `${petNames} · ${slotLabel}`;
   document.getElementById('walkModalContent').innerHTML = `
@@ -817,11 +823,11 @@ window.openVisitCompleteForm = (overnightId, visitId) => {
     ${renderEmergencyBlock(member)}
     <div class="detail-row"><span class="detail-label">Date</span><span class="detail-value">${escapeHtml(visit.date)}</span></div>
     <div class="detail-row"><span class="detail-label">Slot</span><span class="detail-value">${slotLabel}</span></div>
-    <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted ? '✓ Completed' : 'Expected'}</span></div>
+    <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted ? '✓ Completed' : isToday ? 'Today' : isPastDay ? 'Past' : 'Scheduled'}</span></div>
     ${isCompleted ? `
       <div class="detail-row"><span class="detail-label">Note</span><span class="detail-value">${escapeHtml(visit.note) || 'None'}</span></div>
       ${completionPhotosHtml(visit.photoUrls, visit.photoUrl, 'Visit photo')}
-    ` : `
+    ` : canComplete ? `
       <div style="margin-top:16px;">
         <label class="detail-label" style="display:block;margin-bottom:6px;">How'd it go? <span style="font-weight:400;color:#7A7A7A;">(sent to the owner)</span></label>
         <textarea id="completeVisitNote" rows="2" placeholder="e.g. Great visit, ate well and went outside." style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;"></textarea>
@@ -830,6 +836,8 @@ window.openVisitCompleteForm = (overnightId, visitId) => {
         <div id="completeVisitError" style="color:#C17B6F;font-size:13px;margin-top:6px;display:none;"></div>
       </div>
       <button class="btn-complete" id="completeVisitBtn" onclick="completeVisit('${overnightId}', '${visitId}')">Mark as Completed</button>
+    ` : `
+      <p style="margin-top:16px;font-size:13px;color:#7A7A7A;">You'll be able to mark this visit complete starting the day it's scheduled.</p>
     `}
   `;
   document.getElementById('walkModal').classList.add('open');
