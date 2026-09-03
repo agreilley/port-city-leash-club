@@ -454,6 +454,17 @@
             <div id="becomeMemberTimeSlotRadios" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 8px;"></div>
           </div>
 
+          <div class="field-group" style="margin-bottom: 20px; max-width: 220px;">
+            <label class="field-label" for="bm-start-date">Preferred Start Date</label>
+            <!-- min/value set at load by the IIFE next to populateBecomeMemberTimeSlotRadios below —
+                 same "2 days' notice" floor membership-request.html's own startDate picker uses,
+                 minus that form's now-obsolete launch-date floor. Walks only ever actually start
+                 the 1st of next month regardless (runGenerateInitialWalks, functions/index.js) —
+                 this only lets a member push their OWN first month to start mid-month instead of
+                 day 1, same as the public form's field does. -->
+            <input type="date" class="field-input" id="bm-start-date" style="margin-top:8px;">
+          </div>
+
           <div id="becomeMemberError" style="display:none;color:#C17B6F;font-size:13px;margin-bottom:12px;"></div>
           <div class="section-actions">
             <button class="btn btn-primary" id="becomeMemberBtn" onclick="submitBecomeMember()">Request Membership</button>
@@ -740,6 +751,19 @@ let hasPendingReservationCharge = false;
   `).join('');
 })();
 
+// Same "2 days' notice" floor as membership-request.html's own startDate
+// picker (minus that form's launch-date floor, moot now that launch has
+// already passed) — picker opens on the earliest allowed date.
+(function initBecomeMemberStartDate() {
+  const input = document.getElementById('bm-start-date');
+  if (!input) return;
+  const minDate = new Date();
+  minDate.setDate(minDate.getDate() + 2);
+  const minDateStr = minDate.toISOString().split('T')[0];
+  input.min = minDateStr;
+  input.value = minDateStr;
+})();
+
 // Same list for every recurring member — see loadPageData()'s membership-card
 // section for why. '$50 credit every 50 walks' is forward-looking copy for a
 // feature that isn't built yet.
@@ -905,6 +929,8 @@ window.submitBecomeMember = async () => {
 
   const requestedWalkDays = Array.from(document.querySelectorAll('#become-member-form input[type="checkbox"]:checked')).map(c => c.value);
   const requestedTimeSlot = document.querySelector('input[name="becomeMemberTimeSlot"]:checked')?.value || '';
+  const startDateInput = document.getElementById('bm-start-date');
+  const startDateStr = startDateInput?.value || '';
 
   if (!requestedWalkDays.length) {
     errEl.textContent = 'Pick at least one walk day.';
@@ -916,15 +942,26 @@ window.submitBecomeMember = async () => {
     errEl.style.display = 'block';
     return;
   }
+  if (!startDateStr || startDateStr < startDateInput.min) {
+    errEl.textContent = `Please choose a start date on or after ${startDateInput.min}.`;
+    errEl.style.display = 'block';
+    return;
+  }
 
   btn.disabled = true;
   btn.textContent = 'Submitting…';
   try {
+    // Noon UTC, same convention as every other date-only field this app
+    // stores (submitAddWalk, generateWalksForMember) — avoids the date
+    // shifting a day back when later read in US timezones.
+    const [y, m, d] = startDateStr.split('-').map(Number);
+    const requestedStartDate = Timestamp.fromDate(new Date(Date.UTC(y, m - 1, d, 12, 0, 0)));
     await addDoc(collection(db, 'submissions'), {
       type: 'membership_request',
       memberId: userId,
       requestedWalkDays,
       requestedTimeSlot,
+      startDate: requestedStartDate,
       status: 'awaiting_review',
       read: false,
       createdAt: serverTimestamp(),

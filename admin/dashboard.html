@@ -3795,7 +3795,13 @@ window.openRequestItem = async (id) => {
       extraHTML += `<hr class="modal-divider">${renderMemberContextHTML(item.memberId)}`;
       extraHTML += `<hr class="modal-divider"><div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Requested schedule</div>`
         + `<div class="modal-field"><div class="modal-label">Days</div><div class="modal-value">${escapeHtml(item.requestedWalkDays.join(', '))}</div></div>`
-        + `<div class="modal-field"><div class="modal-label">Time Slot</div><div class="modal-value">${escapeHtml(WALK_TIME_SLOT_LABELS[item.requestedTimeSlot] || item.requestedTimeSlot || '–')}</div></div>`;
+        + `<div class="modal-field"><div class="modal-label">Time Slot</div><div class="modal-value">${escapeHtml(WALK_TIME_SLOT_LABELS[item.requestedTimeSlot] || item.requestedTimeSlot || '–')}</div></div>`
+        // Only ever shifts which day WITHIN next month walk generation starts
+        // from (runGenerateInitialWalks, functions/index.js) — walks and the
+        // first charge both still land in next calendar month regardless, so
+        // this is worth a one-line caveat here rather than reading as "their
+        // membership starts on this exact date."
+        + `<div class="modal-field"><div class="modal-label">Requested Start Date</div><div class="modal-value">${escapeHtml(fmtDate(item.startDate))}${item.startDate ? ' <span style="color:var(--text-light);font-weight:400;">(shifts which day next month walks start from &mdash; billing and walks both still begin next calendar month regardless)</span>' : ''}</div></div>`;
     } else if (item.type === 'membership_request') {
       // Same Pets treatment service_request already had — the curated field
       // list above only ever showed a one-line name/breed/age/weight
