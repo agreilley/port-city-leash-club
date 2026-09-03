@@ -6146,13 +6146,17 @@ exports.onWalkCompleted = onDocumentUpdated({
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// 9b. Overnight/check-in payout rate-stamping — completeOvernight() in
-//    walker/dashboard.html is a plain client write with no prior server-side
-//    hook (unlike walks, which already had onWalkCompleted for SMS). Same
-//    guard pattern as onWalkCompleted, same reasoning: fixes what a
-//    completed overnight is worth at the moment it's marked done, immune to
-//    WALKER_RATES changing later. No SMS/member-notification counterpart
-//    exists for overnights, so this trigger only does the rate stamp.
+// 9b. Overnight/check-in payout rate-stamping — fires once this doc's own
+//    `status` reaches 'completed', which now only ever happens as a side
+//    effect of completeVisit() (walker/dashboard.html) finishing the last
+//    outstanding visit on the reservation, a plain client write with no
+//    prior server-side hook (unlike walks, which already had
+//    onWalkCompleted for SMS). Same guard pattern as onWalkCompleted, same
+//    reasoning: fixes what a completed overnight is worth at the moment
+//    it's marked done, immune to WALKER_RATES changing later. No SMS/
+//    member-notification counterpart exists for overnights at the
+//    reservation level (per-visit notifications are onOvernightVisitCompleted's
+//    job instead), so this trigger only does the rate stamp.
 // ─────────────────────────────────────────────────────────────────────────
 exports.onOvernightCompleted = onDocumentUpdated({
   document: 'overnights/{overnightId}',
@@ -6302,7 +6306,13 @@ exports.onOvernightVisitCompleted = onDocumentUpdated({
     // unlike SMS above. idempotencyKey is per-visit (overnightId + visitId),
     // not per-doc, so completing a second visit on the same reservation
     // later is a fresh send, not deduped against the first visit's email.
-    if (member.email) {
+    // Gated on the walker actually having left a note or photo for THIS
+    // visit — same rule and reasoning as onWalkCompleted's hasUpdate guard
+    // above; a plain "mark complete" with neither has nothing worth
+    // emailing about. Checked per-visit (not per-doc) since newlyCompleted
+    // can contain several visits in one write, each with its own note/photo.
+    const hasUpdate = !!(visit.note || visit.photoUrl);
+    if (member.email && hasUpdate) {
       try {
         await sendEmail({
           to: member.email,

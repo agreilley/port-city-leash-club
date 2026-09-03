@@ -663,10 +663,9 @@ function renderUpcoming() {
 // ── TODAY'S VISITS ───────────────────────────────────────────────────────────
 // Flattened from myOvernights[].visits (see generateOvernightVisits,
 // functions/index.js) — one row per individually-completable visit due
-// today, grouped by reservation. This is entirely separate from
-// completeOvernight()/openOvernightDetail below, which still mark the WHOLE
-// reservation done in one action — completing every visit here does not
-// touch that reservation-level status.
+// today, grouped by reservation. Completing every visit here IS what closes
+// out the reservation itself (see completeVisit's own allVisitsComplete
+// check) — there's no separate reservation-level completion action anymore.
 function renderTodaysVisits() {
   const section = document.getElementById('todaysVisitsSection');
   const container = document.getElementById('todaysVisitsList');
@@ -801,19 +800,17 @@ window.completeVisit = async (overnightId, visitId) => {
     } : v);
 
     // Completing the last outstanding visit also closes out the whole
-    // reservation, in this same write — previously a walker had to come
-    // back and separately hit "Mark as Completed" on the reservation itself
-    // (completeOvernight below) even after every individual visit was
-    // already done. That second step is what actually flips this doc's own
-    // `status`, which is what onOvernightCompleted (functions/index.js)
-    // watches to stamp payout — a forgotten second click didn't just leave
-    // the reservation looking unfinished, it silently left the walker
-    // unpaid for it. `visits.length` guards against an empty array (no
-    // visits generated at all) trivially satisfying .every() and auto-
-    // completing a reservation that was never really underway; the
-    // `o.status !== 'completed'` check keeps this a no-op on a reservation
-    // that's already closed, same guard completeOvernight relies on via the
-    // modal only showing its button while `!isCompleted`.
+    // reservation, in this same write. This is now the ONLY way a
+    // reservation's own `status` reaches 'completed' — the old separate
+    // reservation-level "Mark as Completed" button (completeOvernight) was
+    // removed: it let a walker skip straight to closing the reservation
+    // without ever completing the individual visits underneath it, which
+    // still stamped payout (onOvernightCompleted, functions/index.js) with
+    // no note/photo ever captured and no visit-completed email ever sent to
+    // the member. `visits.length` guards against an empty array (no visits
+    // generated at all) trivially satisfying .every() and auto-completing a
+    // reservation that was never really underway; the `o.status !==
+    // 'completed'` check keeps this a no-op on an already-closed one.
     const allVisitsComplete = visits.length > 0 && visits.every(v => v.status === 'completed');
     const updatePayload = { visits };
     if (allVisitsComplete && o.status !== 'completed') {
@@ -912,17 +909,9 @@ window.openOvernightDetail = (overnightId) => {
     ${o.extraPet ? `<div class="detail-row"><span class="detail-label">Multiple Pets</span><span class="detail-value">Yes</span></div>` : ''}
     ${o.medication ? `<div class="detail-row"><span class="detail-label">Medication</span><span class="detail-value">Yes</span></div>` : ''}
     <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted ? '✓ Completed' : 'Assigned'}</span></div>
-    ${!isCompleted ? `<button class="btn-complete" style="margin-top:12px;" onclick="completeOvernight('${o.id}')">Mark as Completed</button>` : ''}
+    ${!isCompleted ? `<p style="margin-top:12px;font-size:13px;color:var(--text-light);">Complete each visit below to close this reservation out — it finishes itself once every visit is done.</p>` : ''}
   `;
   document.getElementById('walkModal').classList.add('open');
-};
-
-window.completeOvernight = async (overnightId) => {
-  await updateDoc(doc(db, 'overnights', overnightId), {
-    status: 'completed',
-    completedAt: serverTimestamp(),
-  });
-  document.getElementById('walkModal').classList.remove('open');
 };
 
 // ── CALENDAR ──────────────────────────────────────────────────────────────────
