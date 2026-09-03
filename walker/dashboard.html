@@ -360,6 +360,13 @@
   </a>
 </nav>
 
+<!-- HEIC->JPEG conversion for completion photos (see uploadCompletionPhotos
+     below) — a classic script exposing window.heic2any, since the library
+     only ships a browser UMD build, not an ES module. Loaded here rather
+     than dynamically imported so it's already warm by the time a walker
+     actually completes something, instead of adding a network round trip
+     to their first upload. -->
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
@@ -415,11 +422,41 @@ function escapeHtml(str) {
 // two. Extracted once rather than duplicated so the validation rules can
 // never drift between walks and visits.
 const MAX_COMPLETION_PHOTOS = 3;
+const HEIC_PATTERN = /^image\/hei(c|f)/i;
+const HEIC_EXTENSION_PATTERN = /\.hei[cf]$/i;
 async function uploadCompletionPhotos(fileList, storagePathPrefix) {
   const files = Array.from(fileList || []).slice(0, MAX_COMPLETION_PHOTOS);
   const urls = [];
   for (let i = 0; i < files.length; i++) {
-    const file = files[i];
+    let file = files[i];
+
+    // iPhones default to HEIC, and Samsung Android has too since the
+    // Galaxy S10 — the browser's own file picker sometimes auto-converts
+    // HEIC to JPEG on pick (Safari/WebKit), but that's inconsistent across
+    // iOS versions and doesn't happen on Android at all. Chrome, Firefox,
+    // and any non-Apple browser can't render a raw HEIC in an <img> tag —
+    // broken image icon for the member, even though it looked fine to the
+    // walker on their own phone. Converting explicitly here guarantees
+    // every photo that reaches Storage is viewable everywhere, regardless
+    // of what phone or browser uploaded it. file.type is checked first;
+    // the filename extension is a fallback since MIME-type sniffing for
+    // HEIC is itself inconsistent across browsers.
+    if (HEIC_PATTERN.test(file.type) || HEIC_EXTENSION_PATTERN.test(file.name)) {
+      if (typeof window.heic2any !== 'function') {
+        throw new Error('This photo is in HEIC format and the converter failed to load — check your connection and try again.');
+      }
+      try {
+        let converted = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.8 });
+        // heic2any returns an array of Blobs instead of one when the
+        // source HEIC contains multiple embedded images (e.g. a Live
+        // Photo) — only the first is relevant for a single completion photo.
+        if (Array.isArray(converted)) converted = converted[0];
+        file = new File([converted], file.name.replace(HEIC_EXTENSION_PATTERN, '.jpg'), { type: 'image/jpeg' });
+      } catch (e) {
+        throw new Error('That photo couldn\'t be converted — please try a different photo.');
+      }
+    }
+
     // Must be an image. This mirrors the Storage rule
     // (contentType.matches('image/.*')) so a wrong file type produces a
     // clear message here instead of an opaque permission error from the
@@ -428,7 +465,10 @@ async function uploadCompletionPhotos(fileList, storagePathPrefix) {
       throw new Error('That file isn\'t an image — please choose a photo (JPG, PNG, etc.).');
     }
     // Cap upload size at 8MB — plenty for a phone photo, avoids someone
-    // accidentally uploading a huge raw file over cell data.
+    // accidentally uploading a huge raw file over cell data. Checked on the
+    // possibly-converted file, since that's what actually gets uploaded —
+    // a re-encoded JPEG can end up larger than the original HEIC, which
+    // compresses more efficiently at the same visual quality.
     if (file.size > 8 * 1024 * 1024) {
       throw new Error('Photo is too large — please use a smaller image (under 8MB).');
     }
