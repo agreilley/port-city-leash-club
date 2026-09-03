@@ -111,87 +111,104 @@
       max-width: 900px;
     }
 
+    /* Matches portal-account.html's own tokens exactly (this page is a
+       linked sub-page of Account, not a standalone one) rather than the
+       flatter card style used on portal-dashboard/extras — visual
+       consistency with the page it's reached from wins here. */
     .page-header {
-      margin-bottom: 28px;
+      margin-bottom: 32px;
     }
     .page-header h1 {
-      font-size: 26px;
+      font-size: 28px;
       font-weight: 500;
-      color: #0D1B2A;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
     }
     .page-header p {
       font-size: 14px;
-      color: #7A7A7A;
-    }
-
-    .contact-card {
-      background: white;
-      border-radius: 12px;
-      border: 0.5px solid #ddd;
-      max-width: 560px;
-      padding: 32px;
-    }
-
-    .known-fields {
-      display: flex;
-      gap: 24px;
-      padding-bottom: 20px;
-      margin-bottom: 20px;
-      border-bottom: 1px solid rgba(0,0,0,0.06);
-    }
-    .known-field-label {
-      font-size: 11px;
-      color: #7A7A7A;
-      margin-bottom: 3px;
-    }
-    .known-field-value {
-      font-size: 14px;
-      color: #0D1B2A;
-      font-weight: 500;
-    }
-
-    .form-group {
-      margin-bottom: 20px;
-    }
-
-    label {
-      display: block;
-      font-size: 12px;
       color: #888;
-      margin-bottom: 8px;
-      font-weight: 500;
     }
 
-    select, textarea {
-      width: 100%;
-      padding: 10px;
-      border: 0.5px solid #ddd;
-      border-radius: 8px;
+    .section-card {
+      background: #FAF8F4;
+      border: 1px solid #E5E0D8;
+      border-radius: 12px;
+      padding: 32px;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 3px rgba(13, 27, 42, 0.04);
+      max-width: 560px;
+    }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 20px;
+    }
+    .field-row.full {
+      grid-template-columns: 1fr;
+    }
+
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: #7A7A7A;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .field-input {
+      padding: 10px 12px;
+      border: 1px solid #E5E0D8;
+      background: white;
+      border-radius: 6px;
       font-size: 14px;
       font-family: inherit;
       color: #0D1B2A;
+      width: 100%;
     }
 
-    textarea {
+    .field-input:focus {
+      outline: none;
+      border-color: #8FA8A2;
+      box-shadow: 0 0 0 3px rgba(143, 168, 162, 0.1);
+    }
+
+    textarea.field-input {
       resize: vertical;
       min-height: 120px;
     }
 
-    .btn-submit {
-      background: #C17B6F;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      padding: 12px 24px;
-      font-size: 14px;
+    .section-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .btn {
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 13px;
       font-weight: 500;
       font-family: inherit;
+      border: none;
       cursor: pointer;
-      transition: background 0.2s;
+      transition: all 0.2s;
     }
-    .btn-submit:hover { background: #b06a60; }
-    .btn-submit:disabled { background: #ddd; color: #888; cursor: not-allowed; }
+
+    .btn-primary {
+      background: #C17B6F;
+      color: white;
+    }
+    .btn-primary:hover { background: #A36358; }
+    .btn-primary:disabled { background: #ddd; color: #888; cursor: not-allowed; }
 
   /* ── PORTAL MOBILE ─────────────────────────────────────────────────────── */
   @media (max-width: 768px) {
@@ -199,9 +216,9 @@
     .sidebar { display: none !important; }
     .portal-container { display: block !important; }
     .main-content { margin-left: 0 !important; padding: 20px 16px !important; }
-    .page-header h1 { font-size: 22px; }
-    .contact-card { padding: 20px; max-width: 100%; }
-    .known-fields { flex-direction: column; gap: 12px; }
+    .page-header h1 { font-size: 24px; }
+    .section-card { padding: 20px; max-width: 100%; }
+    .field-row { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -240,22 +257,24 @@
       <!-- Post-submit status banner mounts here (above the form, so it stays visible after the form hides on success) -->
       <div data-status-container></div>
 
-      <div class="contact-card">
-        <div class="known-fields">
-          <div>
-            <div class="known-field-label">Name</div>
-            <div class="known-field-value" id="contactName">–</div>
+      <div class="section-card">
+        <h2 class="section-title">Send us a message</h2>
+
+        <div class="field-row">
+          <div class="field-group">
+            <label class="field-label">Name</label>
+            <input type="text" class="field-input" id="contactName" value="" readonly title="From your account — contact us to change it">
           </div>
-          <div>
-            <div class="known-field-label">Email</div>
-            <div class="known-field-value" id="contactEmail">–</div>
+          <div class="field-group">
+            <label class="field-label">Email</label>
+            <input type="email" class="field-input" id="contactEmail" value="" readonly title="From your account — contact us to change it">
           </div>
         </div>
 
-        <div id="contact-form">
-          <div class="form-group">
-            <label for="contactTopic">What's this about?</label>
-            <select id="contactTopic">
+        <div class="field-row full">
+          <div class="field-group">
+            <label class="field-label">What's this about?</label>
+            <select class="field-input" id="contactTopic">
               <option value="">Select a topic</option>
               <option>Billing question</option>
               <option>Membership question</option>
@@ -264,12 +283,18 @@
               <option>Something else</option>
             </select>
           </div>
-          <div class="form-group">
-            <label for="contactMessage">Message</label>
-            <textarea id="contactMessage" placeholder="How can we help?"></textarea>
+        </div>
+
+        <div class="field-row full">
+          <div class="field-group">
+            <label class="field-label">Message</label>
+            <textarea class="field-input" id="contactMessage" placeholder="How can we help?"></textarea>
           </div>
-          <div id="contactError" style="display:none;color:#C17B6F;font-size:13px;margin-bottom:12px;"></div>
-          <button class="btn-submit" id="contactSubmitBtn" onclick="submitPortalContact()">Send Message</button>
+        </div>
+
+        <div id="contactError" style="display:none;color:#C17B6F;font-size:13px;"></div>
+        <div class="section-actions">
+          <button class="btn btn-primary" id="contactSubmitBtn" onclick="submitPortalContact()">Send Message</button>
         </div>
       </div>
     </div>
@@ -314,8 +339,8 @@ onAuthStateChanged(auth, async (user) => {
   clearTimeout(authTimeoutId);
   if (!memberData) return;
   updateSidebar();
-  document.getElementById('contactName').textContent = memberData.name || '–';
-  document.getElementById('contactEmail').textContent = memberData.email || '–';
+  document.getElementById('contactName').value = memberData.name || '';
+  document.getElementById('contactEmail').value = memberData.email || '';
 });
 
 function updateSidebar() {
