@@ -984,14 +984,22 @@ function renderHistory() {
     .filter(w => walkIsBeforeToday(w.date) || w.status === 'completed')
     .map(w => ({ type: 'walk', sortDate: w.date?.toDate?.() || new Date(w.date), onclick: `openWalkDetail('${w.id}')`, walk: w }));
 
-  // Completed drop-in/overnight visits, flattened the same way renderStats
-  // already does for the "Completed" stat — previously excluded entirely
-  // here, so a walker who only ever does pet-sitting visits saw an empty
-  // history despite a nonzero Completed count above it.
+  // Drop-in/overnight visits, flattened the same way renderStats already
+  // does for the "Completed" stat. Same inclusion rule as pastWalks above —
+  // a visit whose date has passed shows up here even if it was never
+  // marked complete, badged "Past" below, instead of staying invisible.
+  // That "Past" badge is exactly the missed-check-in signal: previously an
+  // overdue, unconfirmed visit gave no indication anywhere in Care History
+  // that it was ever sitting there. Walks and visits should stay in lockstep
+  // on this kind of status-display logic going forward — this file has a
+  // history of one getting a fix the other doesn't (see this same function's
+  // git history for completed-visits-excluded-entirely, and the email/
+  // hasUpdate gate in functions/index.js for another instance of the same
+  // pattern).
   const pastVisits = myOvernights.flatMap(o => {
     const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
     return (Array.isArray(o.visits) ? o.visits : [])
-      .filter(v => v.status === 'completed')
+      .filter(v => walkIsBeforeToday(v.date) || v.status === 'completed')
       .map(v => ({ type: isCheckin ? 'dropin' : 'overnight', sortDate: v.date?.toDate?.() || new Date(v.date), onclick: `openVisitCompleteForm('${o.id}', '${v.id}')`, overnight: o, visit: v }));
   });
 
@@ -1031,7 +1039,7 @@ function renderHistory() {
         <div class="walk-meta">${escapeHtml(ownerName)}</div>
         <div class="walk-slot">${escapeHtml(subLabel)}</div>
       </div>
-      <span class="walk-status completed">${entry.type === 'walk' && entry.walk.status !== 'completed' ? 'Past' : 'Completed'}</span>
+      <span class="walk-status completed">${(entry.type === 'walk' ? entry.walk.status : entry.visit.status) === 'completed' ? 'Completed' : 'Past'}</span>
     </div>`;
   }).join('');
 }
