@@ -5584,6 +5584,91 @@ exports.markDatesConfirmed = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KE
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// Re-sends a booking confirmation for an ALREADY-confirmed walk or overnight/
+// check-in reservation — e.g. the member says they never got it, or admin
+// wants to nudge someone who still hasn't added a card. Unlike the original
+// send (sendServiceOrOvernightConfirmationEmail), which runs at confirm time
+// with the `reviewed` review-screen data already in scope, this rebuilds the
+// template data entirely from the persisted walks/{id} or overnights/{id}
+// doc — everything either template needs is already stored there, so there's
+// nothing for the admin caller to re-supply beyond which record. needsCard
+// is read live off billing rather than reused from the original send, so a
+// member who's added a card since then correctly stops seeing that button.
+// Always a genuinely new send: the idempotencyKey is unique per call (not
+// reused from the original booking-confirmed:${submissionId} key), since the
+// whole point is to send again, not to hit sendEmail's own dedupe guard.
+exports.resendBookingConfirmationEmail = onCall({
+  secrets: [RESEND_API_KEY],
+}, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { recordType, id } = request.data || {};
+  if (recordType !== 'walk' && recordType !== 'overnight') {
+    throw new HttpsError('invalid-argument', 'recordType must be "walk" or "overnight".');
+  }
+  if (!id) throw new HttpsError('invalid-argument', 'id is required.');
+
+  const { SERVICE_PRICES } = await import('./pricing.js');
+  const recordRef = db.collection(recordType === 'walk' ? 'walks' : 'overnights').doc(id);
+  const recordSnap = await recordRef.get();
+  const record = recordSnap.data();
+  if (!record) throw new HttpsError('not-found', `${recordType === 'walk' ? 'Walk' : 'Reservation'} not found.`);
+  if (!record.memberId) throw new HttpsError('failed-precondition', 'This record has no member attached.');
+
+  const memberSnap = await db.collection('members').doc(record.memberId).get();
+  const member = memberSnap.data();
+  if (!member || !member.email) {
+    throw new HttpsError('failed-precondition', 'This member has no email on file.');
+  }
+  const firstName = (member.name || '').trim().split(/\s+/)[0] || 'there';
+  const petNames = (Array.isArray(member.dogs) ? member.dogs : []).map((d) => d && d.name).filter(Boolean);
+
+  const billingSnap = await billingRef(record.memberId).get();
+  const needsCard = !billingSnap.data()?.stripeCustomerId;
+  const addCardUrl = `${BUSINESS_PORTAL_ORIGIN}/portal-account?addCard=1`;
+
+  let template, data;
+  if (recordType === 'walk') {
+    template = 'walk-confirmed';
+    data = {
+      firstName, dogNames: petNames,
+      walkTypeLabel: record.extended ? 'Extended Walk' : 'Standard Walk',
+      durationMinutes: record.extended ? 45 : 30,
+      walks: [{ dateStr: record.date?.toDate ? isoDateStr(record.date.toDate()) : null, slot: record.timeSlot || null }],
+      needsCard, addCardUrl,
+    };
+  } else {
+    // Both overnight-stay and drop-in-visit reservations live in the same
+    // overnights collection with the same shape (see the unified booking
+    // flow this file's top-of-file comment describes) and both use this one
+    // template — see sendServiceOrOvernightConfirmationEmail's identical
+    // isOvernightRequest-or-isCheckin branch above.
+    const isCheckin = record.serviceType === 'drop-in-visit' || record.serviceType === 'checkin';
+    template = 'portal-reservation-confirmed';
+    data = {
+      firstName, petNames,
+      serviceLabel: SERVICE_PRICES[record.serviceType]?.name || record.serviceType,
+      startDateStr: record.startDate?.toDate ? isoDateStr(record.startDate.toDate()) : null,
+      endDateStr: record.endDate?.toDate ? isoDateStr(record.endDate.toDate()) : null,
+      totalDollars: typeof record.confirmedTotalCents === 'number' ? record.confirmedTotalCents / 100 : null,
+      chargeDateStr: record.chargeScheduledFor?.toDate ? isoDateStr(record.chargeScheduledFor.toDate()) : null,
+      visitSchedule: isCheckin ? record.visitSchedule || null : null,
+      needsCard, addCardUrl,
+    };
+  }
+
+  const result = await sendEmail({
+    to: member.email,
+    template,
+    data: { ...data, isNewAccount: false, portalSetupLink: null },
+    idempotencyKey: `booking-confirmed:resend:${recordType}:${id}:${Date.now()}`,
+  });
+  if (!result.ok) {
+    throw new HttpsError('internal', `Confirmation email failed to send: ${result.error}`);
+  }
+  return { success: true, sentTo: member.email, template };
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // Booking-confirmed email — portal-service-confirmed or walk-confirmed,
 // fired from confirmServiceRequest / confirmOvernight / confirmWalkExtension
 // in admin/dashboard.html, for EVERY confirmation (new account or existing

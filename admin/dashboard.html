@@ -5889,6 +5889,35 @@ window.openMemberDetail = async (id) => {
       <button class="btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="chargeCurrentMonthWalksForMember('${member.id}')">Charge Current Month Walks</button>
     </div>` : '';
 
+  // Most recent non-cancelled walks/overnights for this member — lets admin
+  // resend the exact booking-confirmation email (walk-confirmed or portal-
+  // reservation-confirmed) for a specific booking without having to know
+  // its raw doc id. Capped at 5 most recent so this never turns into a full
+  // booking history browser — that's what Care History / the calendar are
+  // for; this is just "resend the one they say they never got."
+  const recentBookings = [
+    ...allWalks.filter(w => w.memberId === member.id && w.status !== 'cancelled').map(w => ({
+      recordType: 'walk', id: w.id,
+      date: w.date?.toDate?.() || new Date(w.date),
+      label: (w.extended ? 'Extended Walk' : 'Walk') + ' — ' + fmtDate(w.date),
+    })),
+    ...allOvernights.filter(o => o.memberId === member.id && o.status !== 'cancelled').map(o => ({
+      recordType: 'overnight', id: o.id,
+      date: o.startDate?.toDate?.() || new Date(o.startDate),
+      label: (SERVICE_PRICES[o.serviceType]?.name || o.serviceType || 'Reservation') + ' — ' + fmtDate(o.startDate),
+    })),
+  ].sort((a, b) => b.date - a.date).slice(0, 5);
+  const resendBookingHTML = recentBookings.length ? `
+    <div style="background:var(--sand-light);border-radius:6px;padding:8px 12px;margin-top:4px;margin-bottom:12px;">
+      <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:6px;">Resend booking confirmation</div>
+      <div style="font-size:11px;color:var(--text-light);margin-bottom:8px;">Re-sends the original confirmation email (including the Add a Card button, if this member still hasn't added one) for one of their recent bookings.</div>
+      ${recentBookings.map(b => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;">
+          <span style="font-size:12px;color:var(--navy);">${escapeHtml(b.label)}</span>
+          <button class="btn-secondary" id="resend-booking-${b.recordType}-${b.id}" style="padding:4px 12px;font-size:12px;" onclick="resendBookingConfirmation('${b.recordType}','${b.id}')">Resend Email</button>
+        </div>`).join('')}
+    </div>` : '';
+
   document.getElementById('memberDetailModalTitle').textContent = member.name || 'Member Details';
   document.getElementById('memberDetailModalContent').innerHTML = `
     <div class="form-grid">${fieldHTML}</div>
@@ -5896,6 +5925,7 @@ window.openMemberDetail = async (id) => {
     ${friendsFamilyHTML}
     ${applyReferralCodeHTML}
     ${chargeCurrentMonthHTML}
+    ${resendBookingHTML}
     <button class="btn-secondary" style="margin-top:4px;" onclick="openMemberPortalPreview('${member.id}')">Preview Member Portal</button>
     <hr class="modal-divider">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
@@ -6172,6 +6202,20 @@ window.chargeCurrentMonthWalksForMember = async (memberId) => {
     alert(`Charge failed: ${e.message}`);
   } finally {
     openMemberDetail(memberId);
+  }
+};
+
+window.resendBookingConfirmation = async (recordType, id) => {
+  const btn = document.getElementById(`resend-booking-${recordType}-${id}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    const resendBookingConfirmationEmail = httpsCallable(fns, 'resendBookingConfirmationEmail');
+    const result = (await resendBookingConfirmationEmail({ recordType, id })).data;
+    alert(`Confirmation email resent to ${result.sentTo}.`);
+  } catch (e) {
+    alert(`Couldn't resend the confirmation email: ${e.message}`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Resend Email'; }
   }
 };
 
