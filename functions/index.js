@@ -4676,7 +4676,7 @@ function generateOvernightVisits(reviewed, isCheckin) {
         status: 'expected',
         completedAt: null,
         note: '',
-        photoUrl: null,
+        photoUrls: [],
         walkerId: '',
         walkerName: '',
       }));
@@ -4712,7 +4712,7 @@ function generateOvernightVisits(reviewed, isCheckin) {
         status: 'expected',
         completedAt: null,
         note: '',
-        photoUrl: null,
+        photoUrls: [],
         walkerId: '',
         walkerName: '',
       }));
@@ -4734,7 +4734,7 @@ function generateOvernightVisits(reviewed, isCheckin) {
     status: 'expected',
     completedAt: null,
     note: '',
-    photoUrl: null,
+    photoUrls: [],
     walkerId: '',
     walkerName: '',
   }));
@@ -6082,7 +6082,7 @@ exports.onWalkCompleted = onDocumentUpdated({
 
     if (!twilioConfigured()) {
       await logConversationMessage(after.memberId, {
-        channel: 'sms', direction: 'outbound', body, mediaUrl: after.photoUrl || null,
+        channel: 'sms', direction: 'outbound', body, mediaUrl: after.photoUrls?.[0] || null,
         sentBy: 'system', automated: true, status: 'pending_credentials',
       });
     } else {
@@ -6094,12 +6094,12 @@ exports.onWalkCompleted = onDocumentUpdated({
           body,
         });
         await logConversationMessage(after.memberId, {
-          channel: 'sms', direction: 'outbound', body, mediaUrl: after.photoUrl || null,
+          channel: 'sms', direction: 'outbound', body, mediaUrl: after.photoUrls?.[0] || null,
           sentBy: 'system', automated: true, status: 'sent', externalId: twilioMsg.sid,
         });
       } catch (e) {
         await logConversationMessage(after.memberId, {
-          channel: 'sms', direction: 'outbound', body, mediaUrl: after.photoUrl || null,
+          channel: 'sms', direction: 'outbound', body, mediaUrl: after.photoUrls?.[0] || null,
           sentBy: 'system', automated: true, status: 'failed',
         });
         console.error('Walk-update text failed:', e.message);
@@ -6116,7 +6116,7 @@ exports.onWalkCompleted = onDocumentUpdated({
   // Gated on the walker actually having left a note or photo — a plain
   // "mark complete" with neither has nothing worth emailing about, and
   // would otherwise send an empty "here's an update" for every single walk.
-  const hasUpdate = !!(after.notes || after.photoUrl);
+  const hasUpdate = !!(after.notes || (Array.isArray(after.photoUrls) && after.photoUrls.length));
   if (member.email && hasUpdate) {
     try {
       const { WALK_TIME_SLOT_LABELS } = await import('./time-slots.js');
@@ -6130,7 +6130,7 @@ exports.onWalkCompleted = onDocumentUpdated({
           dateStr: isoDateStr(after.date.toDate()),
           slotLabel: WALK_TIME_SLOT_LABELS[after.timeSlot] || after.timeSlot || '',
           note: after.notes || '',
-          photoUrl: after.photoUrl || null,
+          photoUrls: after.photoUrls || [],
           portalUrl: walkLink,
         },
         idempotencyKey: `walk-completed:${event.params.walkId}`,
@@ -6281,7 +6281,7 @@ exports.onOvernightVisitCompleted = onDocumentUpdated({
       const body = `Today's visit is complete. Notes and photos: ${portalUrl}`;
       if (!twilioConfigured()) {
         await logConversationMessage(after.memberId, {
-          channel: 'sms', direction: 'outbound', body, mediaUrl: visit.photoUrl || null,
+          channel: 'sms', direction: 'outbound', body, mediaUrl: visit.photoUrls?.[0] || null,
           sentBy: 'system', automated: true, status: 'pending_credentials',
         }).catch((e) => console.error(`onOvernightVisitCompleted: pending_credentials log failed for visit ${visit.id}:`, e.message));
       } else {
@@ -6289,13 +6289,13 @@ exports.onOvernightVisitCompleted = onDocumentUpdated({
           const client = twilioClient();
           const twilioMsg = await client.messages.create({ to: member.phone, from: TWILIO_PHONE_NUMBER.value(), body });
           await logConversationMessage(after.memberId, {
-            channel: 'sms', direction: 'outbound', body, mediaUrl: visit.photoUrl || null,
+            channel: 'sms', direction: 'outbound', body, mediaUrl: visit.photoUrls?.[0] || null,
             sentBy: 'system', automated: true, status: 'sent', externalId: twilioMsg.sid,
           });
         } catch (e) {
           console.error(`onOvernightVisitCompleted: SMS failed for visit ${visit.id}:`, e.message);
           await logConversationMessage(after.memberId, {
-            channel: 'sms', direction: 'outbound', body, mediaUrl: visit.photoUrl || null,
+            channel: 'sms', direction: 'outbound', body, mediaUrl: visit.photoUrls?.[0] || null,
             sentBy: 'system', automated: true, status: 'failed',
           }).catch((logErr) => console.error(`onOvernightVisitCompleted: failed-status log failed for visit ${visit.id}:`, logErr.message));
         }
@@ -6311,7 +6311,7 @@ exports.onOvernightVisitCompleted = onDocumentUpdated({
     // above; a plain "mark complete" with neither has nothing worth
     // emailing about. Checked per-visit (not per-doc) since newlyCompleted
     // can contain several visits in one write, each with its own note/photo.
-    const hasUpdate = !!(visit.note || visit.photoUrl);
+    const hasUpdate = !!(visit.note || (Array.isArray(visit.photoUrls) && visit.photoUrls.length));
     if (member.email && hasUpdate) {
       try {
         await sendEmail({
@@ -6324,7 +6324,7 @@ exports.onOvernightVisitCompleted = onDocumentUpdated({
             dateStr: visit.date,
             slotLabel: VISIT_SLOT_LABELS[visit.slot] || visit.slot || '',
             note: visit.note || '',
-            photoUrl: visit.photoUrl || null,
+            photoUrls: visit.photoUrls || [],
             portalUrl,
           },
           idempotencyKey: `visit-completed:${overnightId}:${visit.id}`,

@@ -2923,7 +2923,7 @@ window.openOvernightModal = (overnightId) => {
           <span style="font-size:12px;font-weight:500;color:${isDone ? 'var(--green)' : 'var(--text-light)'};">${isDone ? '✓ Completed' : 'Expected'}</span>
         </div>
         ${v.note ? `<div style="font-size:12px;color:var(--text-mid);margin-top:4px;">${escapeHtml(v.note)}</div>` : ''}
-        ${v.photoUrl ? `<img src="${escapeHtml(v.photoUrl)}" alt="Visit photo" style="max-width:160px;border-radius:6px;margin-top:6px;display:block;">` : ''}
+        ${completionPhotosHtml(v.photoUrls, v.photoUrl, 'Visit photo', '160px')}
       </div>`;
     }).join('')}
   ` : '';
@@ -3097,7 +3097,7 @@ window.openWalkModal = async (walkId) => {
       <div class="modal-field"><div class="modal-label">Status</div><div class="modal-value">${escapeHtml(walk.status || 'Scheduled')}</div></div>
     </div>
     <div class="modal-field"><div class="modal-label">Completion Notes</div><div class="modal-value">${escapeHtml(walk.notes || '–')}</div></div>
-    ${walk.photoUrl ? `<div class="modal-field" style="margin-top:10px;"><img src="${escapeHtml(walk.photoUrl)}" alt="Walk photo" style="max-width:100%;border-radius:8px;"></div>` : ''}
+    ${(Array.isArray(walk.photoUrls) && walk.photoUrls.length) || walk.photoUrl ? `<div class="modal-field" style="margin-top:10px;">${completionPhotosHtml(walk.photoUrls, walk.photoUrl, 'Walk photo', '100%')}</div>` : ''}
     <hr class="modal-divider">
     ${assignmentHTML}
   `;
@@ -5250,6 +5250,17 @@ setTimeout(() => { _addMemberModalOriginalHTML = document.querySelector('#addMem
 // crafted breed/name field can't run script in the admin's authenticated session.
 function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Renders a completed walk/visit's photos (up to 3, walker/dashboard.html's
+// own MAX_COMPLETION_PHOTOS). Falls back to the legacy singular `photoUrl`
+// field for anything completed before multi-photo support existed.
+function completionPhotosHtml(photoUrls, legacyPhotoUrl, altText, maxWidth) {
+  const urls = Array.isArray(photoUrls) && photoUrls.length ? photoUrls : (legacyPhotoUrl ? [legacyPhotoUrl] : []);
+  if (!urls.length) return '';
+  return `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">`
+    + urls.map(u => `<img src="${escapeHtml(u)}" alt="${altText}" style="max-width:${maxWidth};border-radius:6px;display:block;">`).join('')
+    + `</div>`;
 }
 
 // Formats the attribution map (Phase 1 analytics) into one readable string

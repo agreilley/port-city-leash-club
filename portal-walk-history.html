@@ -710,8 +710,8 @@
 
       container.innerHTML = filtered.map(r => {
         const dateStr = monthNames[r.sortDate.getMonth()] + ' ' + r.sortDate.getDate() + ', ' + r.sortDate.getFullYear();
-        const photoHtml = r.photoUrl
-          ? '<div class="report-photos"><div class="photo-item"><img src="' + esc(r.photoUrl) + '" alt="Photo from ' + esc(r.badgeLabel) + '" loading="lazy"></div></div>'
+        const photoHtml = r.photoUrls.length
+          ? '<div class="report-photos">' + r.photoUrls.map(u => '<div class="photo-item"><img src="' + esc(u) + '" alt="Photo from ' + esc(r.badgeLabel) + '" loading="lazy"></div></div>').join('') + '</div>'
           : '';
         return '<div class="visit-report" id="' + r.elementId + '" data-month="' + (r.sortDate.getMonth()+1) + '" data-year="' + r.sortDate.getFullYear() + '">' +
           '<div class="report-header">' +
@@ -947,7 +947,7 @@ onAuthStateChanged(auth, async (user) => {
           badgeLabel: 'Dog Walk',
           note: w.notes || '',
           noNoteText: 'No notes for this walk.',
-          photoUrl: w.photoUrl || null,
+          photoUrls: Array.isArray(w.photoUrls) && w.photoUrls.length ? w.photoUrls : (w.photoUrl ? [w.photoUrl] : []),
           metaLine: duration,
           recordType: 'walk',
           walkId: w.id,
@@ -980,7 +980,7 @@ onAuthStateChanged(auth, async (user) => {
             badgeLabel: serviceLabel,
             note: v.note || '',
             noNoteText: 'No notes for this visit.',
-            photoUrl: v.photoUrl || null,
+            photoUrls: Array.isArray(v.photoUrls) && v.photoUrls.length ? v.photoUrls : (v.photoUrl ? [v.photoUrl] : []),
             metaLine: serviceLabel,
             recordType: 'visit',
             walkId: null,

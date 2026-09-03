@@ -19,7 +19,7 @@
 //   dateStr: string,        // 'YYYY-MM-DD'
 //   slotLabel: string,      // 'Morning' | 'Midday' | 'Evening' | 'Last Out'
 //   note: string,           // walker's free-text note, '' if none
-//   photoUrl: string | null,
+//   photoUrls: string[],    // up to 3, [] if none
 //   portalUrl: string,      // deep link back to this visit's card in the portal
 // }
 
@@ -48,8 +48,9 @@ function html(data) {
   const noteHtml = data.note
     ? `<p style="margin:20px 0 0;">${escapeHtml(data.note)}</p>`
     : '';
-  const photoHtml = data.photoUrl
-    ? `<p style="margin:20px 0 0;"><img src="${escapeHtml(data.photoUrl)}" alt="A photo from today's visit" style="max-width:100%;border-radius:8px;display:block;"></p>`
+  const photoUrls = Array.isArray(data.photoUrls) ? data.photoUrls : [];
+  const photoHtml = photoUrls.length
+    ? `<p style="margin:20px 0 0;">${photoUrls.map((url) => `<img src="${escapeHtml(url)}" alt="A photo from today's visit" style="max-width:100%;border-radius:8px;display:block;margin-bottom:8px;">`).join('')}</p>`
     : '';
 
   const body = `
@@ -89,7 +90,10 @@ function text(data) {
   ];
 
   if (data.note) lines.push(data.note, '');
-  if (data.photoUrl) lines.push(`Photo: ${data.photoUrl}`, '');
+  if (Array.isArray(data.photoUrls) && data.photoUrls.length) {
+    data.photoUrls.forEach((url, i) => lines.push(`Photo ${i + 1}: ${url}`));
+    lines.push('');
+  }
 
   lines.push(
     `View in your portal: ${data.portalUrl}`,
