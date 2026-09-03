@@ -4248,8 +4248,10 @@ async function sendGmailMessage({ to, subject, body, threadId, inReplyTo, refere
 // It welcomes them, confirms what they signed up for, and carries a
 // set-password link so they can reach the portal — no temp password is ever
 // relayed. The link is a Firebase password-reset link, which doubles as
-// first-time password setup; it lands on Firebase's hosted action page (the
-// Console Action URL isn't customized yet) and continues to the portal login.
+// first-time password setup; the Console Action URL is customized
+// project-wide to portal-password-reset.html (see that page, and the
+// ?welcome=1/continueUrl handling on the walker branch below), which
+// continues on to the right portal login afterward.
 //
 // Defined here, after GOOGLE_CLIENT_ID/SECRET and BUSINESS_EMAIL_ADDRESS: the
 // secrets array in the options object is read at module load, not call time,
