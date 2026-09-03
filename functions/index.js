@@ -813,6 +813,80 @@ exports.declineMembershipRequest = onCall({ secrets: [STRIPE_SECRET_KEY] }, asyn
   return runDeclineRequestOrphanCleanup(stripe, subRef, sub);
 });
 
+// ─────────────────────────────────────────────────────────────────────────
+// Confirms a portal-submitted "Become a Member" request — an existing
+// (Travel-tier) member with a portal account, dogs on file, and a card
+// already on file, requesting to start the recurring Member subscription.
+// Deliberately NOT routed through declineMembershipRequest's cleanup or
+// completeMeetGreetAndCreateAccount's account-creation path above — both
+// assume a net-new prospect with no account yet; this member already has
+// a legitimate Stripe customer from a prior one-time booking, so nothing
+// here should ever touch or delete it.
+//
+// Distinguished from a public-form membership_request by carrying
+// memberId + requestedWalkDays/requestedTimeSlot at creation (see
+// portal-account.html's submitBecomeMember) — a public submission never
+// has memberId set until admin runs it through Add Member, and uses the
+// free-text days/timeWindow fields instead.
+//
+// status starts at 'awaiting_review', NOT 'pending' — confirmCardOnFile
+// (above) auto-runs finalizeSubmissionIfReady on every one of a member's
+// 'pending' submissions the instant they touch their card, which would
+// let this request start billing before admin ever reviewed it if the
+// member happened to update their card in the meantime. This function
+// flips status to 'pending' and calls finalizeSubmissionIfReady in the
+// same request, right after actually setting up the member doc it
+// depends on — so there's no window where a 'pending' status exists
+// without the tier/schedule already being real.
+exports.confirmMembershipUpgradeRequest = onCall({
+  secrets: [STRIPE_SECRET_KEY, RESEND_API_KEY],
+}, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { submissionId } = request.data || {};
+  if (!submissionId) throw new HttpsError('invalid-argument', 'submissionId is required.');
+
+  const subRef = db.collection('submissions').doc(submissionId);
+  const subSnap = await subRef.get();
+  const sub = subSnap.data();
+  if (!sub) throw new HttpsError('not-found', 'Submission not found.');
+  if (sub.type !== 'membership_request' || !sub.memberId || !Array.isArray(sub.requestedWalkDays)) {
+    throw new HttpsError('failed-precondition', 'This isn\'t a portal membership-upgrade request.');
+  }
+  if (sub.status !== 'awaiting_review') {
+    throw new HttpsError('failed-precondition', `This request has already been acted on (status: ${sub.status}).`);
+  }
+  if (!sub.requestedWalkDays.length || !sub.requestedTimeSlot) {
+    throw new HttpsError('failed-precondition', 'The request is missing a walk day or time slot.');
+  }
+
+  const memberRef = db.collection('members').doc(sub.memberId);
+  const memberSnap = await memberRef.get();
+  const member = memberSnap.data();
+  if (!member) throw new HttpsError('not-found', 'Member not found.');
+  if (member.tier === 'Member') {
+    throw new HttpsError('failed-precondition', 'This member is already a Member.');
+  }
+
+  await memberRef.set({
+    tier: 'Member',
+    status: 'active',
+    defaultWalkDays: sub.requestedWalkDays,
+    defaultTimeSlot: sub.requestedTimeSlot,
+  }, { merge: true });
+
+  await subRef.set({ status: 'pending' }, { merge: true });
+
+  await finalizeSubmissionIfReady(submissionId);
+
+  // finalizeSubmissionIfReady records partial failures (a failed first
+  // charge, a failed confirmation email) on the submission itself rather
+  // than throwing — re-read it so the admin sees the real outcome instead
+  // of a blanket "success" that might be hiding a stuck charge.
+  const finalSnap = await subRef.get();
+  const final = finalSnap.data() || {};
+  return { success: true, status: final.status || null, finalizeError: final.finalizeError || null };
+});
+
 // service_request never carried this cleanup before — declining used to be
 // a plain client-side status update (admin/dashboard.html), safe only
 // because no account could exist yet at decline time under the old flow.
@@ -1694,11 +1768,8 @@ async function runCreateMembershipSubscription(submissionId, memberId) {
     }, { merge: true });
     await batch.commit();
 
-    // TODO(cancel): a future cancellation flow MUST do all three together:
-    //   (a) set hasActiveSubscription: false on the member doc
-    //   (b) delete or null the billing subdoc (members/{id}/private/billing)
-    //   (c) stripe.subscriptions.cancel(...)
-    // Missing (a) or (b) will leave crons trying to bill a cancelled member.
+    // Cancellation: see exports.cancelMembership below, which does all
+    // three things this TODO originally called for.
 
     return { success: true, subscriptionId: subscription.id, quantity };
   } catch (e) {
@@ -1720,6 +1791,79 @@ exports.createMembershipSubscription = onCall({ secrets: [STRIPE_SECRET_KEY] }, 
     throw new HttpsError('invalid-argument', 'submissionId and memberId are required.');
   }
   return runCreateMembershipSubscription(submissionId, memberId);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Cancels a Member's recurring subscription. Admin-only by design — cancel-
+// membership is deliberately NOT a member-facing self-service action (see
+// the FAQ's own "email us and we'll take care of it" answer). This closes
+// the TODO(cancel) gap above: previously nothing in the app actually
+// cancelled anything — a cancellation request was handled entirely outside
+// this system, in the Stripe dashboard, with nothing here ever reflecting
+// it, leaving the crons (generateMonthlyWalks, chargeCurrentMonthWalks)
+// still trying to bill someone who'd supposedly cancelled.
+//
+// Does all three things that TODO called for, plus two more that follow
+// from them: (a) hasActiveSubscription: false, the durable cron filter —
+// see its own comment at the top of this file; (b) null the subscription-
+// specific billing fields, NOT the whole subdoc — stripeCustomerId stays,
+// since the Stripe customer itself is still real and legitimate (e.g. for
+// a future one-time booking) even once the recurring subscription is gone;
+// (c) stripe.subscriptions.cancel(...), tolerating an already-gone
+// subscription rather than erroring on it (nothing left to clean up there
+// either way). Reverts tier to 'Travel' and status to 'active' has its own
+// note below — this is what lets a cancelled member re-request membership
+// later through the exact same "Become a Member" portal flow
+// (confirmMembershipUpgradeRequest above), rather than needing a manual
+// fix to un-stick them.
+//
+// Deliberately does NOT touch any already-generated `walks` docs — per the
+// FAQ, walks already scheduled for the current month still happen;
+// cancellation only stops FUTURE months from generating.
+exports.cancelMembership = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { memberId } = request.data || {};
+  if (!memberId) throw new HttpsError('invalid-argument', 'memberId is required.');
+
+  const memberRef = db.collection('members').doc(memberId);
+  const memberSnap = await memberRef.get();
+  const member = memberSnap.data();
+  if (!member) throw new HttpsError('not-found', 'Member not found.');
+  if (member.tier !== 'Member' || member.hasActiveSubscription !== true) {
+    throw new HttpsError('failed-precondition', 'This member has no active membership subscription to cancel.');
+  }
+
+  const billingSnap = await billingRef(memberId).get();
+  const subscriptionId = billingSnap.data()?.stripeSubscriptionId;
+
+  if (subscriptionId) {
+    const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+    try {
+      await stripe.subscriptions.cancel(subscriptionId);
+    } catch (e) {
+      // A subscription Stripe already considers gone (deleted, or the id
+      // is stale) has nothing left to cancel — that's success for our
+      // purposes, not a failure. Any other Stripe error still blocks: this
+      // must not silently mark cancelled while the member is really still
+      // being billed.
+      if (e.code !== 'resource_missing') {
+        throw new HttpsError('internal', `Stripe cancellation failed: ${e.message}`);
+      }
+    }
+  }
+
+  await memberRef.set({
+    tier: 'Travel',
+    status: 'active',
+    hasActiveSubscription: false,
+  }, { merge: true });
+  await billingRef(memberId).set({
+    stripeSubscriptionId: null,
+    stripeSubscriptionItemId: null,
+    billingStatus: 'cancelled',
+  }, { merge: true });
+
+  return { success: true };
 });
 
 // ─────────────────────────────────────────────────────────────────────────

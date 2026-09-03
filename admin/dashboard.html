@@ -2305,7 +2305,14 @@ function renderRequests() {
   // overnight_request also covers a drop-in visit booked through that same form
   // (service: 'checkin') — typeLabels alone can't tell those apart, so check
   // item.service for this one type before falling back to the type-keyed map.
-  const requestTypeLabel = (i) => i.type === 'overnight_request' ? (i.service === 'checkin' ? 'Drop-In' : 'Overnight') : (typeLabels[i.type] || i.type);
+  // A portal-submitted "Become a Member" request is also type membership_request
+  // (see confirmMembershipUpgradeRequest, functions/index.js) but carries
+  // memberId + requestedWalkDays from creation, unlike the public form — worth
+  // its own label so it doesn't read as a duplicate of a brand-new signup.
+  const isMembershipUpgradeRequest = (i) => i.type === 'membership_request' && !!i.memberId && Array.isArray(i.requestedWalkDays);
+  const requestTypeLabel = (i) => i.type === 'overnight_request' ? (i.service === 'checkin' ? 'Drop-In' : 'Overnight')
+    : isMembershipUpgradeRequest(i) ? 'Become a Member'
+    : (typeLabels[i.type] || i.type);
   const shortDate = (val) => val?.toDate ? val.toDate().toLocaleDateString('en-US', {month:'short',day:'numeric'}) : '–';
   container.innerHTML = filtered.map(item => {
     const time = item.createdAt?.toDate?.() ? item.createdAt.toDate().toLocaleDateString('en-US', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '–';
@@ -2319,6 +2326,10 @@ function renderRequests() {
     if (item.type === 'walker_incident') preview = escapeHtml((item.message || '').slice(0, 80));
     else if (item.type === 'pause_membership') preview = `${shortDate(item.pauseStartDate)} – ${shortDate(item.pauseEndDate)}`; // shortDate() output is always a safe locale date string
     else if (item.type === 'vacation_hold_refund') preview = `${escapeHtml(item.cancelledWalkCount || 0)} walk${item.cancelledWalkCount === 1 ? '' : 's'} · ${item.status === 'needs_review' ? "refund couldn't be computed" : `suggested $${escapeHtml(item.suggestedRefundAmount || 0)}`}`;
+    else if (isMembershipUpgradeRequest(item)) {
+      const requester = allMembers.find(m => m.id === item.memberId);
+      preview = escapeHtml(requester?.name || item.memberId) + ' · ' + escapeHtml((item.requestedWalkDays || []).join(', '));
+    }
     else preview = escapeHtml(item.email || '') + (item.dogName ? ' · ' + escapeHtml(item.dogName) : item.dogNames ? ' · ' + escapeHtml(item.dogNames) : '');
     // paymentStatus is either chargeAndTrackPayment's fixed
     // 'charged'/'skipped'/'failed' enum, or 'scheduled' (runServiceOrOvernightCharge's
@@ -3747,6 +3758,15 @@ window.openRequestItem = async (id) => {
         'extraPet', 'medication', 'meetGreetDateTime', 'estimatedTotal', 'paymentStatus', 'status',
         'notes', 'attribution', 'createdAt',
       ]);
+    } else if (item.type === 'membership_request' && item.memberId && Array.isArray(item.requestedWalkDays)) {
+      // Portal-submitted "Become a Member" request from an existing (Travel-
+      // tier) member — same member-context treatment as overnight_request/
+      // walk_extension below, since this is never a net-new prospect with
+      // pet details to show; the member's own record already has that.
+      extraHTML = `<hr class="modal-divider">${renderMemberContextHTML(item.memberId)}`;
+      extraHTML += `<hr class="modal-divider"><div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Requested schedule</div>`
+        + `<div class="modal-field"><div class="modal-label">Days</div><div class="modal-value">${escapeHtml(item.requestedWalkDays.join(', '))}</div></div>`
+        + `<div class="modal-field"><div class="modal-label">Time Slot</div><div class="modal-value">${escapeHtml(WALK_TIME_SLOT_LABELS[item.requestedTimeSlot] || item.requestedTimeSlot || '–')}</div></div>`;
     } else if (item.type === 'membership_request') {
       // Same Pets treatment service_request already had — the curated field
       // list above only ever showed a one-line name/breed/age/weight
@@ -3892,6 +3912,22 @@ window.openRequestItem = async (id) => {
         alert(`Couldn't save that: ${e.message}`);
       }
     };
+  } else if (item.type === 'membership_request' && item.memberId && Array.isArray(item.requestedWalkDays) && item.status === 'awaiting_review') {
+    // Portal "Become a Member" request, still awaiting admin review — see
+    // confirmMembershipUpgradeRequest (functions/index.js). No meet & greet
+    // gate: this is an existing, already-known member, not a net-new
+    // prospect. One click sets tier/schedule on the member doc and runs
+    // the same subscription/walks/charge/email pipeline a net-new
+    // membership_request uses once its account exists.
+    actionBtn.textContent = 'Confirm & Start Membership';
+    actionBtn.style.display = 'block';
+    actionBtn.onclick = () => confirmMembershipUpgrade(item.id);
+    declineBtn.style.display = 'block';
+    // Plain status update, not declineMembershipRequest — that function's
+    // Stripe-customer cleanup assumes a net-new prospect who never should
+    // have had one. This member's Stripe customer is real and predates
+    // this request; declining must never touch it.
+    declineBtn.onclick = () => declineMembershipUpgrade(item.id);
   } else if (item.type === 'membership_request' && item.status === 'account_created') {
     // Account exists. If billing.cardOnFile is genuinely false, awaiting
     // the member — finalizeSubmissionIfReady (functions/index.js) starts
@@ -5900,6 +5936,19 @@ window.openMemberDetail = async (id) => {
       <button class="btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="chargeCurrentMonthWalksForMember('${member.id}')">Charge Current Month Walks</button>
     </div>` : '';
 
+  // Admin-only by design (see cancelMembership, functions/index.js — the
+  // FAQ's cancellation answer is deliberately "email us", not a self-
+  // service portal button). Only shown when there's an actual subscription
+  // to cancel — hasActiveSubscription is the same durable flag the crons
+  // themselves gate on, so this can never claim to offer cancelling
+  // something that isn't really active.
+  const cancelMembershipHTML = member.tier === 'Member' && member.hasActiveSubscription === true ? `
+    <div style="background:var(--sand-light);border-radius:6px;padding:8px 12px;margin-top:4px;margin-bottom:12px;">
+      <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:6px;">Cancel membership</div>
+      <div style="font-size:11px;color:var(--text-light);margin-bottom:8px;">Cancels the Stripe subscription and stops future billing. Walks already scheduled for this month still happen.</div>
+      <button class="btn-secondary" id="cancelMembershipBtn" style="padding:4px 12px;font-size:12px;color:var(--rust);" onclick="cancelMembershipForMember('${member.id}')">Cancel Membership</button>
+    </div>` : '';
+
   // Most recent non-cancelled walks/overnights for this member — lets admin
   // resend the exact booking-confirmation email (walk-confirmed or portal-
   // reservation-confirmed) for a specific booking without having to know
@@ -5936,6 +5985,7 @@ window.openMemberDetail = async (id) => {
     ${friendsFamilyHTML}
     ${applyReferralCodeHTML}
     ${chargeCurrentMonthHTML}
+    ${cancelMembershipHTML}
     ${resendBookingHTML}
     <button class="btn-secondary" style="margin-top:4px;" onclick="openMemberPortalPreview('${member.id}')">Preview Member Portal</button>
     <hr class="modal-divider">
@@ -6213,6 +6263,68 @@ window.chargeCurrentMonthWalksForMember = async (memberId) => {
     alert(`Charge failed: ${e.message}`);
   } finally {
     openMemberDetail(memberId);
+  }
+};
+
+window.cancelMembershipForMember = async (memberId) => {
+  const member = allMembers.find(m => m.id === memberId);
+  const confirmed = confirm(
+    `Cancel ${member?.name || 'this member'}'s membership?\n\n`
+    + `This cancels their Stripe subscription and stops future billing. Walks already scheduled for this month still happen — this does not touch or remove them.`
+  );
+  if (!confirmed) return;
+
+  const btn = document.getElementById('cancelMembershipBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
+  try {
+    const cancelMembership = httpsCallable(fns, 'cancelMembership');
+    await cancelMembership({ memberId });
+    alert('Membership cancelled.');
+  } catch (e) {
+    alert(`Couldn't cancel: ${e.message}`);
+  } finally {
+    openMemberDetail(memberId);
+  }
+};
+
+window.confirmMembershipUpgrade = async (submissionId) => {
+  const btn = document.getElementById('requestActionBtn');
+  btn.textContent = 'Starting…'; btn.disabled = true;
+  try {
+    const confirmMembershipUpgradeRequest = httpsCallable(fns, 'confirmMembershipUpgradeRequest');
+    const result = (await confirmMembershipUpgradeRequest({ submissionId })).data;
+
+    closeModal('requestModal');
+    const msg = document.createElement('div');
+    const ok = result.status === 'confirmed' && !result.finalizeError;
+    msg.style.cssText = `position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:${ok ? '#2D9E5E' : '#C17B6F'};color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;max-width:80%;text-align:center;`;
+    msg.textContent = ok
+      ? 'Membership started'
+      : `Membership request processed, but needs a look: ${result.finalizeError || 'status is ' + result.status}`;
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), ok ? 3000 : 6000);
+  } catch (e) {
+    btn.textContent = 'Confirm & Start Membership'; btn.disabled = false;
+    alert('Error: ' + e.message);
+  }
+};
+
+// Plain status update — see this button's own onclick comment for why this
+// deliberately does NOT go through declineMembershipRequest's Stripe cleanup.
+window.declineMembershipUpgrade = async (submissionId) => {
+  const btn = document.getElementById('requestDeclineBtn');
+  btn.textContent = 'Declining…'; btn.disabled = true;
+  try {
+    await updateDoc(doc(db, 'submissions', submissionId), { status: 'declined', read: true });
+    closeModal('requestModal');
+    const msg = document.createElement('div');
+    msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#C17B6F;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
+    msg.textContent = 'Membership request declined';
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 3000);
+  } catch (e) {
+    btn.textContent = 'Decline'; btn.disabled = false;
+    alert('Error: ' + e.message);
   }
 };
 

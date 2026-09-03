@@ -413,6 +413,58 @@
         </div>
       </div>
 
+      <!-- Become a Member — Travel-tier (pet-sitting-only) clients only. Shown/
+           hidden and switched between its two states (request form vs. pending
+           notice) by loadPageData(), below. -->
+      <div class="section-card" id="become-member" style="display:none;">
+        <h2 class="section-title">Become a Leash Club Member</h2>
+        <p style="font-size: 13px; color: #7A7A7A; margin-bottom: 20px;">Add recurring dog walks to your account. Tell us your preferred days and time — we'll confirm and get your first walks on the calendar.</p>
+
+        <div id="become-member-form">
+          <div class="field-group" style="margin-bottom: 20px;">
+            <label class="field-label">Preferred Days</label>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 12px; margin-top: 8px;">
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 14px;">
+                <input type="checkbox" id="bm-day-monday" value="monday"> Monday
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 14px;">
+                <input type="checkbox" id="bm-day-tuesday" value="tuesday"> Tuesday
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 14px;">
+                <input type="checkbox" id="bm-day-wednesday" value="wednesday"> Wednesday
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 14px;">
+                <input type="checkbox" id="bm-day-thursday" value="thursday"> Thursday
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 14px;">
+                <input type="checkbox" id="bm-day-friday" value="friday"> Friday
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 14px;">
+                <input type="checkbox" id="bm-day-saturday" value="saturday"> Saturday
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 14px;">
+                <input type="checkbox" id="bm-day-sunday" value="sunday"> Sunday
+              </label>
+            </div>
+          </div>
+
+          <div class="field-group" style="margin-bottom: 20px;">
+            <label class="field-label">Preferred Time Slot</label>
+            <!-- Populated by populateBecomeMemberTimeSlotRadios() below, from time-slots.js. -->
+            <div id="becomeMemberTimeSlotRadios" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 8px;"></div>
+          </div>
+
+          <div id="becomeMemberError" style="display:none;color:#C17B6F;font-size:13px;margin-bottom:12px;"></div>
+          <div class="section-actions">
+            <button class="btn btn-primary" id="becomeMemberBtn" onclick="submitBecomeMember()">Request Membership</button>
+          </div>
+        </div>
+
+        <div id="become-member-pending" style="display:none;font-size:14px;color:#4A4A4A;">
+          Your membership request is in — we're reviewing it and will confirm shortly.
+        </div>
+      </div>
+
       <!-- Default Walk Schedule -->
       <div class="section-card" id="walk-schedule">
         <h2 class="section-title">Default Walk Schedule</h2>
@@ -525,8 +577,11 @@
       <!-- Get in Touch -->
       <div class="section-card">
         <h2 class="section-title">Get in Touch</h2>
-        <p style="color:#7A7A7A;margin-bottom:16px;">Questions about your membership, a walk, or your dog? Email us anytime — we typically reply within a few hours.</p>
-        <a href="mailto:hello@portcityleashclub.com" style="font-weight:600;color:#C17B6F;">hello@portcityleashclub.com</a>
+        <p style="color:#7A7A7A;margin-bottom:16px;">Questions about your membership, a walk, or your dog? Send us a message and we'll reply within 24 hours, or email us directly.</p>
+        <div class="section-actions" style="align-items:center;">
+          <a href="portal-contact.html" style="text-decoration:none;"><button class="btn btn-primary">Contact Us</button></a>
+          <a href="mailto:hello@portcityleashclub.com" style="font-weight:600;color:#C17B6F;">hello@portcityleashclub.com</a>
+        </div>
       </div>
 
       <!-- Password & Security -->
@@ -671,6 +726,18 @@ let hasPendingReservationCharge = false;
   `).join('');
 })();
 
+// Separate name ("becomeMemberTimeSlot") from the schedule editor's radios
+// above so the two forms never fight over the same checked state.
+(function populateBecomeMemberTimeSlotRadios() {
+  const container = document.getElementById('becomeMemberTimeSlotRadios');
+  if (!container) return;
+  container.innerHTML = WALK_TIME_SLOTS.map(key => `
+    <label style="display: flex; align-items: center; gap: 8px;  font-size: 14px;">
+      <input type="radio" name="becomeMemberTimeSlot" value="${key}"> ${WALK_TIME_SLOT_LABELS[key]} (${WALK_TIME_SLOT_RANGES[key]})
+    </label>
+  `).join('');
+})();
+
 // Same list for every recurring member — see loadPageData()'s membership-card
 // section for why. '$50 credit every 50 walks' is forward-looking copy for a
 // feature that isn't built yet.
@@ -734,7 +801,7 @@ function updateSidebar() {
 
 window.signOutMember = () => signOut(auth).then(() => window.location.href = 'portal-login.html');
 
-function loadPageData() {
+async function loadPageData() {
   if (!memberData) return;
   const el = id => document.getElementById(id);
   // Personal info
@@ -772,6 +839,12 @@ function loadPageData() {
   // Same reasoning as Pause Membership above — a Travel-only member has no
   // recurring walk plan for a preferred-days/time-slot editor to apply to.
   if (el('walk-schedule')) el('walk-schedule').style.display = isTravelOnly ? 'none' : '';
+  // Become a Member — the inverse: only a Travel-tier client has anything
+  // to upgrade. A real recurring Member never sees this card at all.
+  if (el('become-member')) {
+    el('become-member').style.display = isTravelOnly ? '' : 'none';
+    if (isTravelOnly) await refreshBecomeMemberState();
+  }
   // Walk schedule
   const days = (memberData.defaultWalkDays || []).join(', ');
   const slot = memberData.defaultTimeSlot || '';
@@ -789,6 +862,81 @@ function loadPageData() {
     if (radio) radio.checked = true;
   }
 }
+
+// ─── Become a Member ───────────────────────────────────────────────────────
+// Switches the become-member card between its two states: the request form,
+// or a "we're reviewing it" notice if one's already in flight. Re-checked
+// every loadPageData() call (not cached), so a member who submits, leaves,
+// and comes back — or who gets confirmed while the tab is open and later
+// reloads — always sees the state that actually matches Firestore rather
+// than whatever the form last showed.
+async function refreshBecomeMemberState() {
+  const formEl = document.getElementById('become-member-form');
+  const pendingEl = document.getElementById('become-member-pending');
+  if (!formEl || !pendingEl || !userId) return;
+  try {
+    const q = query(
+      collection(db, 'submissions'),
+      where('memberId', '==', userId),
+      where('type', '==', 'membership_request'),
+      where('status', '==', 'awaiting_review'),
+      limit(1)
+    );
+    const snap = await getDocs(q);
+    const hasPending = !snap.empty;
+    formEl.style.display = hasPending ? 'none' : '';
+    pendingEl.style.display = hasPending ? 'block' : 'none';
+  } catch (e) {
+    // Fails open to the form — worse case is a member re-submits (harmless;
+    // admin just sees two identical requests), not being silently unable
+    // to ever request membership because of a transient read error.
+    console.error('refreshBecomeMemberState:', e.message);
+    formEl.style.display = '';
+    pendingEl.style.display = 'none';
+  }
+}
+
+window.submitBecomeMember = async () => {
+  const errEl = document.getElementById('becomeMemberError');
+  const btn = document.getElementById('becomeMemberBtn');
+  errEl.style.display = 'none';
+
+  const requestedWalkDays = Array.from(document.querySelectorAll('#become-member-form input[type="checkbox"]:checked')).map(c => c.value);
+  const requestedTimeSlot = document.querySelector('input[name="becomeMemberTimeSlot"]:checked')?.value || '';
+
+  if (!requestedWalkDays.length) {
+    errEl.textContent = 'Pick at least one walk day.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!requestedTimeSlot) {
+    errEl.textContent = 'Pick a preferred time slot.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+  try {
+    await addDoc(collection(db, 'submissions'), {
+      type: 'membership_request',
+      memberId: userId,
+      requestedWalkDays,
+      requestedTimeSlot,
+      status: 'awaiting_review',
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+    showSuccess('Request submitted — we\'ll confirm and start your membership shortly.');
+    await refreshBecomeMemberState();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Request Membership';
+  }
+};
 
 // ─── Orphaned walk-extension resolution (rolling two-month schedule) ──────
 // updateWalkSchedule returns { success:false, needsResolution:true,
