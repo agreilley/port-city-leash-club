@@ -3476,7 +3476,14 @@ window.openRequestItem = async (id) => {
   const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', walker_screening: 'Walker Screening', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report', walker_schedule_request: 'Walker Schedule Request', reschedule: 'Walk Reschedule Request', walk_extension: 'Walk Extension Request', walk_extension_reassignment: 'Walk Extension Update', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Vacation Hold Refund', waitlist: 'Waitlist Signup' };
   // overnight_request also covers a drop-in visit booked through that same form
   // (service: 'checkin') — check item.service before falling back to the type-keyed map.
-  const title = item.type === 'overnight_request' ? (item.service === 'checkin' ? 'Drop-In Visit Request' : 'Overnight Request') : (typeLabels[item.type] || 'Submission');
+  // Portal-submitted "Become a Member" requests carry a memberId but none of
+  // the ownerName/email fields a net-new signup has — name the requester
+  // directly in the title instead of showing the generic type label with
+  // nothing to identify who it's actually for.
+  const isMembershipUpgradeRequestTitle = item.type === 'membership_request' && item.memberId && Array.isArray(item.requestedWalkDays);
+  const title = isMembershipUpgradeRequestTitle
+    ? `Become a Member — ${allMembers.find(m => m.id === item.memberId)?.name || 'Unknown member'}`
+    : item.type === 'overnight_request' ? (item.service === 'checkin' ? 'Drop-In Visit Request' : 'Overnight Request') : (typeLabels[item.type] || 'Submission');
 
   let fields = [];
   // Applications render availability as a grid (set in the application branch);
@@ -3484,7 +3491,20 @@ window.openRequestItem = async (id) => {
   // matrix as its own full-width table (comfortGridHTML).
   let availabilityGridHTML = '';
   let comfortGridHTML = '';
-  if (item.type === 'membership_request') {
+  if (item.type === 'membership_request' && item.memberId && Array.isArray(item.requestedWalkDays)) {
+    // Portal-submitted "Become a Member" request from an existing member —
+    // none of the net-new-signup fields below (ownerName/email/days/dogs/
+    // meetGreetDateTime/etc.) were ever collected, since we already have all
+    // of that on the member's own record. This top grid stays minimal;
+    // renderMemberContextHTML + "Requested schedule" further down (the
+    // extraHTML branch, same isMembershipUpgradeRequest condition) is where
+    // the actual useful detail — who they are and what they asked for —
+    // renders instead.
+    fields = [
+      { label: 'Status', value: item.status || '–' },
+      { label: 'Created At', value: fmtDate(item.createdAt) },
+    ];
+  } else if (item.type === 'membership_request') {
     const dogsDisplay = Array.isArray(item.dogs) && item.dogs.length
       ? item.dogs.map(d => `${d.name || 'Unnamed'} (${[d.breed, d.age, d.weight].filter(Boolean).join(', ') || 'no details'})`).join('; ')
       : '–';
@@ -3763,7 +3783,16 @@ window.openRequestItem = async (id) => {
       // tier) member — same member-context treatment as overnight_request/
       // walk_extension below, since this is never a net-new prospect with
       // pet details to show; the member's own record already has that.
-      extraHTML = `<hr class="modal-divider">${renderMemberContextHTML(item.memberId)}`;
+      // renderMemberContextHTML deliberately never shows name/email (every
+      // OTHER caller already has those in its own field list) — this is the
+      // one caller that doesn't, so they're added explicitly here instead of
+      // widening that shared helper for one case.
+      const upgradeMember = allMembers.find(m => m.id === item.memberId);
+      extraHTML = `<div class="form-grid">`
+        + `<div class="modal-field"><div class="modal-label">Name</div><div class="modal-value">${escapeHtml(upgradeMember?.name || '–')}</div></div>`
+        + `<div class="modal-field"><div class="modal-label">Email</div><div class="modal-value">${escapeHtml(upgradeMember?.email || '–')}</div></div>`
+        + `</div>`;
+      extraHTML += `<hr class="modal-divider">${renderMemberContextHTML(item.memberId)}`;
       extraHTML += `<hr class="modal-divider"><div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Requested schedule</div>`
         + `<div class="modal-field"><div class="modal-label">Days</div><div class="modal-value">${escapeHtml(item.requestedWalkDays.join(', '))}</div></div>`
         + `<div class="modal-field"><div class="modal-label">Time Slot</div><div class="modal-value">${escapeHtml(WALK_TIME_SLOT_LABELS[item.requestedTimeSlot] || item.requestedTimeSlot || '–')}</div></div>`;
