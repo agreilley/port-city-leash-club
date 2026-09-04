@@ -1062,9 +1062,13 @@
     <div id="conversationComposeError" style="color:#C17B6F;font-size:13px;margin-bottom:8px;display:none;"></div>
     <div style="display:flex;gap:8px;align-items:flex-end;">
       <div style="flex:1;">
+        <!-- Text (SMS) archived — no Twilio account/number set up. See
+             sendMemberMessage (functions/index.js) for the commented-out
+             original implementation; restore that plus the "Text" option
+             here (and in the dynamic rebuild in openConversation below)
+             once Twilio is configured. -->
         <select id="convoChannel" style="margin-bottom:6px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
           <option value="email">Email</option>
-          <option value="sms">Text</option>
         </select>
         <input type="text" id="convoSubject" placeholder="Subject" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;margin-bottom:6px;">
         <textarea id="convoBody" rows="3" placeholder="Type a reply..." style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;"></textarea>
@@ -1817,15 +1821,13 @@ window.openConversation = async (memberId) => {
   document.getElementById('conversationThread').innerHTML = '<div class="loading-spinner">Loading...</div>';
   document.getElementById('conversationModal').classList.add('open');
 
-  // Default the reply channel to whichever this member actually has on file,
-  // preferring the channel their last message came in on.
+  // Reply channel is email-only for now — Text (SMS) is archived (no
+  // Twilio account/number set up; see sendMemberMessage, functions/
+  // index.js). Restore the hasPhone/sms branches here once it's back.
   const channelSel = document.getElementById('convoChannel');
-  const hasEmail = !!convo.memberEmail, hasPhone = !!convo.memberPhone;
-  channelSel.innerHTML =
-    (hasEmail ? '<option value="email">Email</option>' : '') +
-    (hasPhone ? '<option value="sms">Text</option>' : '');
-  channelSel.value = convo.lastMessageChannel && ((convo.lastMessageChannel==='email'&&hasEmail)||(convo.lastMessageChannel==='sms'&&hasPhone))
-    ? convo.lastMessageChannel : (hasPhone ? 'sms' : 'email');
+  const hasEmail = !!convo.memberEmail;
+  channelSel.innerHTML = hasEmail ? '<option value="email">Email</option>' : '';
+  channelSel.value = 'email';
   document.getElementById('convoSubject').value = '';
   document.getElementById('convoBody').value = '';
   toggleConvoSubjectField();

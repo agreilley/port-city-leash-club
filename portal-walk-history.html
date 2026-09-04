@@ -281,6 +281,37 @@
     .record-badge.visit { background: rgba(193, 123, 111, 0.15); color: #C17B6F; }
     .record-badge.reservation { background: rgba(143, 168, 162, 0.2); color: #5c7570; }
 
+    /* Reservation card: every completed visit clustered as one sub-item
+       inside a single card, instead of scattered as its own top-level
+       card — same note/photo look each visit always had, just nested. */
+    .reservation-updates {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .reservation-update-item {
+      padding: 14px 16px;
+      background: #FAF8F4;
+      border: 1px solid #E5E0D8;
+      border-radius: 8px;
+    }
+    .reservation-update-item .report-text { margin-bottom: 10px; }
+    .reservation-update-item .report-text:last-child { margin-bottom: 0; }
+    .reservation-update-item .report-photos { margin-bottom: 0; }
+    .reservation-update-date {
+      font-size: 12px;
+      font-weight: 600;
+      color: #0D1B2A;
+      margin-bottom: 8px;
+    }
+    .care-pending-note {
+      font-size: 13px;
+      color: #7A7A7A;
+      font-style: italic;
+      padding: 4px 0 0;
+    }
+
     /* Deep-link target (?walk=... or ?overnight=...&visit=...) — a
        temporary highlight so a member arriving from a text/email link can
        find the specific record among everything else on the page. */
@@ -711,9 +742,7 @@
 
       container.innerHTML = filtered.map(r => {
         const dateStr = monthNames[r.sortDate.getMonth()] + ' ' + r.sortDate.getDate() + ', ' + r.sortDate.getFullYear();
-        const photoHtml = r.photoUrls.length
-          ? '<div class="report-photos">' + r.photoUrls.map(u => '<div class="photo-item"><img src="' + esc(u) + '" alt="Photo from ' + esc(r.badgeLabel) + '" loading="lazy"></div></div>').join('') + '</div>'
-          : '';
+        const bodyHtml = r.type === 'reservation' ? reservationBodyHtml(r) : walkBodyHtml(r);
         return '<div class="visit-report" id="' + r.elementId + '" data-month="' + (r.sortDate.getMonth()+1) + '" data-year="' + r.sortDate.getFullYear() + '">' +
           '<div class="report-header">' +
           '<div class="walker-avatar">' + r.avatar + '</div>' +
@@ -724,24 +753,53 @@
           '</div>' +
           '<div class="report-date">' + dateStr + '</div>' +
           '</div>' +
-          '<div class="report-content">' +
-          (r.note ? '<div class="report-text">' + esc(r.note) + '</div>' : (r.noNoteText ? '<div class="report-text" style="color:#aaa;font-style:italic;">' + esc(r.noNoteText) + '</div>' : '')) +
-          photoHtml +
-          '<div class="report-meta" style="margin-top:12px;font-size:13px;color:#7A7A7A;">' + esc(r.metaLine) + '</div>' +
-          '<div class="care-actions">' +
-          // Individual visit cards keep their tip prompt but drop the rating
-          // prompt — that lives once on the reservation-level card instead
-          // (see reservationRecords above). The reservation card itself is
-          // the mirror image: rating only, no tip (tipping stays tied to a
-          // specific day, not the stay as a whole).
-          (r.type !== 'visit' ? '<div class="care-block" id="feedback-' + r.elementId + '">' + feedbackBlockHtml(r) + '</div>' : '') +
-          (r.type !== 'reservation' ? '<div class="care-block" id="tip-' + r.elementId + '">' + tipBlockHtml(r) + '</div>' : '') +
-          '</div>' +
-          '</div>' +
+          '<div class="report-content">' + bodyHtml + '</div>' +
           '</div>';
       }).join('');
 
       applyDeepLinkHighlight();
+    }
+
+    // A single walk's note/photos, followed by its own rating + tip.
+    function walkBodyHtml(r) {
+      const photoHtml = r.photoUrls.length
+        ? '<div class="report-photos">' + r.photoUrls.map(u => '<div class="photo-item"><img src="' + esc(u) + '" alt="Photo from ' + esc(r.badgeLabel) + '" loading="lazy"></div>').join('') + '</div>'
+        : '';
+      return (r.note ? '<div class="report-text">' + esc(r.note) + '</div>' : '<div class="report-text" style="color:#aaa;font-style:italic;">' + esc(r.noNoteText) + '</div>') +
+        photoHtml +
+        '<div class="report-meta" style="margin-top:12px;font-size:13px;color:#7A7A7A;">' + esc(r.metaLine) + '</div>' +
+        '<div class="care-actions">' +
+        '<div class="care-block" id="feedback-' + r.elementId + '">' + feedbackBlockHtml(r) + '</div>' +
+        '<div class="care-block" id="tip-' + r.elementId + '">' + tipBlockHtml(r) + '</div>' +
+        '</div>';
+    }
+
+    // Every completed visit in the stay, clustered into this one card (each
+    // update keeps the same note/photo look a standalone card used to have,
+    // just nested rather than scattered as its own top-level entry) —
+    // followed by ONE rating + tip for the whole reservation, only once the
+    // whole thing is done (isComplete). Still growing/in-progress stays show
+    // their updates so far, with a plain note in place of those actions.
+    function reservationBodyHtml(r) {
+      const updatesHtml = r.visitUpdates.map(v => {
+        const photoHtml = v.photoUrls.length
+          ? '<div class="report-photos">' + v.photoUrls.map(u => '<div class="photo-item"><img src="' + esc(u) + '" alt="Photo from ' + esc(v.dateStr) + '" loading="lazy"></div>').join('') + '</div>'
+          : '';
+        return '<div class="reservation-update-item">' +
+          '<div class="reservation-update-date">' + esc(v.dateStr) + (v.slotLabel ? ' · ' + esc(v.slotLabel) : '') + '</div>' +
+          (v.note ? '<div class="report-text">' + esc(v.note) + '</div>' : '<div class="report-text" style="color:#aaa;font-style:italic;">No notes for this visit.</div>') +
+          photoHtml +
+          '</div>';
+      }).join('');
+
+      const actionsHtml = r.isComplete
+        ? '<div class="care-actions">' +
+          '<div class="care-block" id="feedback-' + r.elementId + '">' + feedbackBlockHtml(r) + '</div>' +
+          '<div class="care-block" id="tip-' + r.elementId + '">' + tipBlockHtml(r) + '</div>' +
+          '</div>'
+        : '<div class="care-pending-note">Rating and tip will be available once this stay is complete.</div>';
+
+      return '<div class="reservation-updates">' + updatesHtml + '</div>' + actionsHtml;
     }
 
     // ?walk={walkId} or ?overnight={overnightId}&visit={visitId} — scrolls
@@ -755,9 +813,13 @@
       const params = new URLSearchParams(location.search);
       const walkId = params.get('walk');
       const overnightId = params.get('overnight');
-      const visitId = params.get('visit');
+      // ?visit= used to target that one visit's own card; visits are now
+      // clustered inside their reservation's card (see reservationRecords),
+      // so any link carrying &visit= — including ones already sent in past
+      // visit-completed emails — still resolves, just to the whole
+      // reservation's card instead of a since-removed per-visit one.
       const targetId = walkId ? ('record-walk-' + walkId)
-        : (overnightId && visitId) ? ('record-visit-' + overnightId + '-' + visitId)
+        : overnightId ? ('record-overnight-' + overnightId)
         : null;
       if (!targetId) return;
       const el = document.getElementById(targetId);
@@ -799,21 +861,23 @@ window.signOutMember = () => signOut(auth).then(() => window.location.href = 'po
 //    discounts never apply to walks anyway — so MEMBER_WALK_RATE (the same
 //    published rate shown everywhere else) IS the real number here, not an
 //    approximation.
-//  - a visit's reservation IS charged individually. lastChargeAmount is the
-//    truest number — chargeCustomerCard's final post-discount,
-//    post-referral-credit amount actually charged (functions/index.js).
-//    confirmedTotalCents is the discount-adjusted total set at confirm time,
-//    before that charge fires — used only until lastChargeAmount exists.
-//    Both are reservation-wide, so dividing by the visit count gives this
-//    one visit's share. SERVICE_PRICES list price is the last-resort
-//    fallback for a legacy/demo doc with neither.
+//  - a reservation IS charged individually. lastChargeAmount is the truest
+//    number — chargeCustomerCard's final post-discount, post-referral-
+//    credit amount actually charged (functions/index.js). confirmedTotalCents
+//    is the discount-adjusted total set at confirm time, before that charge
+//    fires — used only until lastChargeAmount exists. Both are reservation-
+//    wide totals used AS-IS, not divided across visits: tipping is a single
+//    reservation-level action now (one tip per stay, not per visit — see
+//    reservationRecords above), so the suggested amounts should reflect what
+//    the member actually paid for the whole stay, not a fractional share of
+//    it. SERVICE_PRICES list price is the last-resort fallback for a
+//    legacy/demo doc with neither.
 function walkTipBase() {
   return MEMBER_WALK_RATE;
 }
-function visitTipBase(o) {
-  const nights = Array.isArray(o.visits) && o.visits.length ? o.visits.length : 1;
-  if (typeof o.lastChargeAmount === 'number') return o.lastChargeAmount / nights;
-  if (typeof o.confirmedTotalCents === 'number') return (o.confirmedTotalCents / 100) / nights;
+function reservationTipBase(o) {
+  if (typeof o.lastChargeAmount === 'number') return o.lastChargeAmount;
+  if (typeof o.confirmedTotalCents === 'number') return o.confirmedTotalCents / 100;
   const key = (o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin') ? 'drop-in-visit' : 'overnight-stay';
   return SERVICE_PRICES[key]?.price || 0;
 }
@@ -966,77 +1030,60 @@ onAuthStateChanged(auth, async (user) => {
       });
 
     // Each overnights doc can carry many individually-completed visits
-    // (generateOvernightVisits, functions/index.js) — flatMap so every
-    // completed visit becomes its own card, not one card per reservation.
-    // These stay per-visit for NOTES/PHOTOS/TIPS (a member still sees and
-    // can tip each individual day) — only the rating/feedback prompt moves
-    // to the reservation level below, so a 7-visit stay doesn't ask for 7
-    // separate ratings.
+    // (generateOvernightVisits, functions/index.js) — clustered into ONE
+    // card per RESERVATION rather than one card per visit, since a member
+    // experiences a multi-day stay as one continuous thing, not N separate
+    // services. The card appears as soon as the first visit completes (so a
+    // member can still check in day-by-day during a long stay) and grows
+    // in place as more visits finish; its sort position tracks the most
+    // recent update so it keeps rising to the top of the feed. Rating and
+    // tip are reservation-wide — both gated on the WHOLE reservation being
+    // done (status flips to 'completed' automatically once the last visit
+    // is marked done; see completeVisit, walker/dashboard.html) — and the
+    // tip is based on the full reservation charge, not divided per visit:
+    // splitting it made a single tip look tiny relative to what the member
+    // actually paid, and members don't think in per-visit fractions for
+    // one stay they're tipping on once.
     const overnightsData = overnightsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const visitRecords = overnightsData
-      .flatMap(o => {
-        const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
-        const serviceLabel = isCheckin ? 'Drop-In Visit' : 'Overnight Stay';
-        const base = visitTipBase(o);
-        return (Array.isArray(o.visits) ? o.visits : [])
-          .filter(v => v.status === 'completed')
-          .map(v => ({
-            type: 'visit',
-            elementId: 'record-visit-' + o.id + '-' + v.id,
-            sortDate: toJsDate(v.date),
-            avatar: isCheckin ? '📍' : '🌙',
-            walkerName: v.walkerName || o.walkerName || 'Your Walker',
-            subLabel: VISIT_SLOT_LABELS[v.slot] || v.slot || '',
-            badgeLabel: serviceLabel,
-            note: v.note || '',
-            noNoteText: 'No notes for this visit.',
-            photoUrls: Array.isArray(v.photoUrls) && v.photoUrls.length ? v.photoUrls : (v.photoUrl ? [v.photoUrl] : []),
-            metaLine: serviceLabel,
-            recordType: 'visit',
-            walkId: null,
-            overnightId: o.id,
-            visitId: v.id,
-            feedback: null, // per-visit rating removed — see reservationRecords below
-            tip: v.tip || null,
-            tipBase: base,
-          }));
-      });
-
-    // One card per fully-completed RESERVATION (status flips to 'completed'
-    // automatically once its last visit is marked done — see completeVisit,
-    // walker/dashboard.html), carrying the single reservation-wide rating
-    // prompt. No tip here — tipping stays attached to the individual visit
-    // cards above, where a member is tipping for a specific day, not the
-    // stay as a whole.
     const reservationRecords = overnightsData
-      .filter(o => o.status === 'completed')
       .map(o => {
+        const completedVisits = (Array.isArray(o.visits) ? o.visits : []).filter(v => v.status === 'completed');
+        if (!completedVisits.length) return null; // nothing completed yet — no card
+
         const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
         const serviceLabel = isCheckin ? 'Drop-In Visits' : 'Overnight Stay';
-        const completedCount = (Array.isArray(o.visits) ? o.visits : []).filter(v => v.status === 'completed').length;
+        const sortedVisits = [...completedVisits].sort((a, b) => toJsDate(a.date) - toJsDate(b.date));
+        const isComplete = o.status === 'completed';
+
         return {
           type: 'reservation',
           elementId: 'record-overnight-' + o.id,
-          sortDate: toJsDate(o.completedAt || o.endDate),
+          // Most recent activity, not the stay's end date — so the card
+          // keeps surfacing near the top of the feed as new visits land,
+          // rather than sitting wherever the LAST day happens to fall once
+          // the whole thing is finally done.
+          sortDate: toJsDate(sortedVisits[sortedVisits.length - 1].date),
           avatar: isCheckin ? '📍' : '🌙',
           walkerName: o.walkerName || 'Your Walker',
-          subLabel: completedCount + ' visit' + (completedCount === 1 ? '' : 's') + ' completed',
+          subLabel: completedVisits.length + ' visit' + (completedVisits.length === 1 ? '' : 's') + ' completed' + (isComplete ? '' : ' so far'),
           badgeLabel: serviceLabel,
-          note: '',
-          noNoteText: '',
-          photoUrls: [],
-          metaLine: serviceLabel + ' — see individual visits above for notes and photos',
+          visitUpdates: sortedVisits.map(v => ({
+            dateStr: toJsDate(v.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            slotLabel: VISIT_SLOT_LABELS[v.slot] || v.slot || '',
+            note: v.note || '',
+            photoUrls: Array.isArray(v.photoUrls) && v.photoUrls.length ? v.photoUrls : (v.photoUrl ? [v.photoUrl] : []),
+          })),
+          isComplete,
           recordType: 'overnight',
-          walkId: null,
           overnightId: o.id,
-          visitId: null,
           feedback: o.feedback || null,
-          tip: null,
-          tipBase: 0,
+          tip: o.tip || null,
+          tipBase: reservationTipBase(o),
         };
-      });
+      })
+      .filter(Boolean);
 
-    allRecords = [...walkRecords, ...visitRecords, ...reservationRecords];
+    allRecords = [...walkRecords, ...reservationRecords];
     renderRecords('all');
   } catch(e) {
     console.error('care history load:', e.message);

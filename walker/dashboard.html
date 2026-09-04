@@ -1255,7 +1255,7 @@ window.openWalkDetail = (walkId) => {
       ${completionPhotosHtml(walk.photoUrls, walk.photoUrl, 'Walk photo')}
     ` : !isCompleted && canComplete ? `
       <div style="margin-top:16px;">
-        <label class="detail-label" style="display:block;margin-bottom:6px;">How'd it go? <span style="font-weight:400;color:#7A7A7A;">(sent to the owner as a text)</span></label>
+        <label class="detail-label" style="display:block;margin-bottom:6px;">How'd it go? <span style="font-weight:400;color:#7A7A7A;">(sent to the owner)</span></label>
         <textarea id="completeNotes" rows="2" placeholder="e.g. Scout had a great walk today, lots of tail wags!" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;"></textarea>
         <label class="detail-label" style="display:block;margin-top:10px;margin-bottom:6px;">Photos <span style="font-weight:400;color:#7A7A7A;">(up to 3)</span></label>
         <input type="file" id="completePhoto" accept="image/*" multiple style="width:100%;">

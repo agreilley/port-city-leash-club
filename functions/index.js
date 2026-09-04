@@ -1535,8 +1535,18 @@ exports.chargeWalkTip = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request)
     throw new HttpsError('already-exists', 'This one has already been tipped.');
   }
 
+  // 'overnight' (a whole reservation, record.data === the overnights doc
+  // itself) is the only tippable kind besides 'walk' now — tipping is a
+  // single reservation-wide action (portal-walk-history.html), not
+  // per-visit, so there's no more 'visit' case reaching this function in
+  // practice. record.data.id would be undefined for 'overnight' (the doc's
+  // own id lives on record.ref, not inside its data), which is exactly why
+  // this needs its own branch rather than falling through to the old
+  // visit-shaped key below.
   const idempotencyKey = record.kind === 'walk'
     ? `tip:walk:${record.ref.id}`
+    : record.kind === 'overnight'
+    ? `tip:overnight:${record.ref.id}`
     : `tip:visit:${record.ref.id}:${record.data.id}`;
   const stripe = stripeClient(STRIPE_SECRET_KEY.value());
   const result = await runTipCharge(stripe, record.memberId, idempotencyKey, amountCents);
@@ -6228,7 +6238,11 @@ exports.linkInquiryToMember = onCall(async (request) => {
 //    Picks email (via Gmail) or sms (via Twilio) based on `channel`.
 // ─────────────────────────────────────────────────────────────────────────
 exports.sendMemberMessage = onCall({
-  secrets: [TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET],
+  // TWILIO_* removed — sms is archived below (commented out), and
+  // admin/dashboard.html's reply channel dropdown no longer offers "Text".
+  // Re-add TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_PHONE_NUMBER here if
+  // that block is ever restored.
+  secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET],
 }, async (request) => {
   await assertIsAdmin(request.auth);
   const { memberId, channel, body, subject } = request.data || {};
@@ -6250,6 +6264,12 @@ exports.sendMemberMessage = onCall({
     return { success: true, messageId };
   }
 
+  // sms is ARCHIVED — no Twilio account/number set up yet. Original
+  // implementation kept below, commented out, to restore easily (along
+  // with the "Text" option in admin/dashboard.html's reply channel
+  // dropdown and this function's TWILIO_* secrets above) once Twilio is
+  // configured.
+  /*
   if (channel === 'sms') {
     if (!member.phone) throw new HttpsError('failed-precondition', 'This member has no phone number on file.');
     if (!twilioConfigured()) throw new HttpsError('failed-precondition', 'Texting isn\'t set up yet — Twilio credentials haven\'t been added.');
@@ -6261,15 +6281,22 @@ exports.sendMemberMessage = onCall({
     });
     return { success: true, messageId };
   }
+  */
 
-  throw new HttpsError('invalid-argument', 'channel must be "email" or "sms".');
+  throw new HttpsError('invalid-argument', 'channel must be "email".');
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// 8. Inbound texts from members. This URL is configured in the Twilio
-//    phone number's messaging settings ("A message comes in" webhook) —
-//    see TODO.md for the exact URL and setup steps.
-// ─────────────────────────────────────────────────────────────────────────
+// 8. Inbound texts from members. ARCHIVED along with the rest of SMS — no
+//    Twilio account/number set up yet, so nothing points at this URL right
+//    now. Commented out rather than deleted so it deploys away cleanly
+//    (firebase deploy will offer to delete the currently-deployed instance
+//    of this function the next time it runs against this file — that's
+//    expected) and restores easily: uncomment this whole block, re-add
+//    TWILIO_AUTH_TOKEN as a secret, and point the Twilio number's "A
+//    message comes in" webhook at this URL again (see TODO.md for the
+//    exact URL and setup steps) once Twilio is configured.
+/*
 exports.twilioInboundWebhook = onRequest({ secrets: [TWILIO_AUTH_TOKEN] }, async (req, res) => {
   const twilioLib = require('twilio');
 
@@ -6309,6 +6336,7 @@ exports.twilioInboundWebhook = onRequest({ secrets: [TWILIO_AUTH_TOKEN] }, async
   res.set('Content-Type', 'text/xml');
   res.send('<Response></Response>');
 });
+*/
 
 // ─────────────────────────────────────────────────────────────────────────
 // 9. Automated walk-completion text — fires the moment a walker marks a
@@ -6321,7 +6349,10 @@ exports.twilioInboundWebhook = onRequest({ secrets: [TWILIO_AUTH_TOKEN] }, async
 // ─────────────────────────────────────────────────────────────────────────
 exports.onWalkCompleted = onDocumentUpdated({
   document: 'walks/{walkId}',
-  secrets: [TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, RESEND_API_KEY],
+  // TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_PHONE_NUMBER removed —
+  // SMS is archived below (commented out). Re-add them if that block is
+  // ever restored.
+  secrets: [RESEND_API_KEY],
 }, async (event) => {
   const before = event.data.before.data() || {};
   const after = event.data.after.data() || {};
@@ -6366,10 +6397,23 @@ exports.onWalkCompleted = onDocumentUpdated({
   const dogName = member.dogName || (Array.isArray(member.dogs) && member.dogs[0]?.name) || 'Your dog';
   const walkLink = `${BUSINESS_PORTAL_ORIGIN}/portal-walk-history?walk=${event.params.walkId}`;
 
-  // ── SMS — no-ops (member.phone check) if there's nothing to text. Left
-  // exactly as it was: still the only channel that stays silent while
-  // Twilio is unconfigured (pending_credentials log, no throw).
-  if (member.phone) {
+  // Gated on the walker actually having left a note or photo — a plain
+  // "mark complete" with neither has nothing worth telling the member
+  // about. Computed once, up here, so BOTH channels below share the exact
+  // same guard — this used to only gate the email, which meant a
+  // no-note/no-photo walk still sent (or logged, while Twilio is
+  // unconfigured) a "your dog had a great walk, see notes and photos"
+  // text pointing at a card with neither, every single time.
+  const hasUpdate = !!(after.notes || (Array.isArray(after.photoUrls) && after.photoUrls.length));
+
+  // ── SMS — ARCHIVED. No Twilio account/number set up; email (below)
+  // covers this notification instead. Original implementation kept here,
+  // commented out, to restore easily once Twilio is configured — also
+  // re-add TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_PHONE_NUMBER to this
+  // function's `secrets` array (removed below) and restore the dogName/
+  // walkLink-based body text if this whole comment block is reinstated.
+  /*
+  if (member.phone && hasUpdate) {
     // Links out to the walk's card in the portal (Care History) instead of
     // attaching the photo as MMS media — one message works whether or not
     // there's a photo, notes of any length are readable in full at the link
@@ -6407,17 +6451,14 @@ exports.onWalkCompleted = onDocumentUpdated({
       }
     }
   }
+  */
 
   // ── Email — sent regardless of phone presence or Twilio configuration,
   // same posture as onOvernightVisitCompleted's own email branch. Recurring
   // walks previously had NO working notification channel at all (SMS
   // silently no-ops without live Twilio credentials, and there was no
-  // email equivalent) — this closes that gap.
-  //
-  // Gated on the walker actually having left a note or photo — a plain
-  // "mark complete" with neither has nothing worth emailing about, and
-  // would otherwise send an empty "here's an update" for every single walk.
-  const hasUpdate = !!(after.notes || (Array.isArray(after.photoUrls) && after.photoUrls.length));
+  // email equivalent) — this closes that gap. Same hasUpdate guard as SMS
+  // above (computed once, near the top of this function).
   if (member.email && hasUpdate) {
     try {
       const { WALK_TIME_SLOT_LABELS } = await import('./time-slots.js');
@@ -6545,7 +6586,10 @@ exports.onOvernightCompleted = onDocumentUpdated({
 // ─────────────────────────────────────────────────────────────────────────
 exports.onOvernightVisitCompleted = onDocumentUpdated({
   document: 'overnights/{overnightId}',
-  secrets: [TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, RESEND_API_KEY],
+  // TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_PHONE_NUMBER removed —
+  // SMS is archived below (commented out). Re-add them if that block is
+  // ever restored.
+  secrets: [RESEND_API_KEY],
 }, async (event) => {
   const before = event.data.before.data() || {};
   const after = event.data.after.data() || {};
@@ -6571,14 +6615,20 @@ exports.onOvernightVisitCompleted = onDocumentUpdated({
   for (const visit of newlyCompleted) {
     const portalUrl = `${BUSINESS_PORTAL_ORIGIN}/portal-walk-history?overnight=${overnightId}&visit=${visit.id}`;
 
-    // ── SMS — mirrors onWalkCompleted's structure exactly: member-phone
-    // guard, twilioConfigured() check, pending_credentials fallback,
-    // conversations log write on every outcome. Generic body text (no pet
-    // name interpolated) so the 160-char budget is fixed and provably safe
-    // regardless of pet name length — unlike the walk link, an
-    // ?overnight=&visit= link alone leaves very little room (see this
-    // trigger's own char-count note in the commit report).
-    if (member.phone) {
+    // Gated on the walker actually having left a note or photo for THIS
+    // visit — same rule as onWalkCompleted's hasUpdate guard, and (as of
+    // this fix) applied to BOTH channels below, not just email. Checked
+    // per-visit (not per-doc) since newlyCompleted can contain several
+    // visits in one write, each with its own note/photo.
+    const hasUpdate = !!(visit.note || (Array.isArray(visit.photoUrls) && visit.photoUrls.length));
+
+    // ── SMS — ARCHIVED. No Twilio account/number set up; email (below)
+    // covers this notification instead. Original implementation kept here,
+    // commented out, to restore easily once Twilio is configured — also
+    // re-add TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_PHONE_NUMBER to
+    // this function's `secrets` array (removed above).
+    /*
+    if (member.phone && hasUpdate) {
       const body = `Today's visit is complete. Notes and photos: ${portalUrl}`;
       if (!twilioConfigured()) {
         await logConversationMessage(after.memberId, {
@@ -6602,17 +6652,13 @@ exports.onOvernightVisitCompleted = onDocumentUpdated({
         }
       }
     }
+    */
 
     // ── Email — sent regardless of phone presence or Twilio configuration,
     // unlike SMS above. idempotencyKey is per-visit (overnightId + visitId),
     // not per-doc, so completing a second visit on the same reservation
     // later is a fresh send, not deduped against the first visit's email.
-    // Gated on the walker actually having left a note or photo for THIS
-    // visit — same rule and reasoning as onWalkCompleted's hasUpdate guard
-    // above; a plain "mark complete" with neither has nothing worth
-    // emailing about. Checked per-visit (not per-doc) since newlyCompleted
-    // can contain several visits in one write, each with its own note/photo.
-    const hasUpdate = !!(visit.note || (Array.isArray(visit.photoUrls) && visit.photoUrls.length));
+    // Same hasUpdate guard as SMS above.
     if (member.email && hasUpdate) {
       try {
         await sendEmail({
