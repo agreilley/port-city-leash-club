@@ -1412,6 +1412,15 @@ window.openUpdatePaymentModal = async () => {
   if (cardElement) { try { cardElement.unmount(); } catch (e) {} }
   const elements = stripeClient.elements();
   cardElement = elements.create('card', {
+    // Card number + expiry + CVC + ZIP all share one row in this classic
+    // Element, and never wrap — at the 16px font size below (required to
+    // stop iOS Safari's auto-zoom-on-focus), that's wider than a phone's
+    // portrait viewport, so the ZIP field runs off the edge with no visible
+    // scroll affordance ("rotate to landscape to see it"). ZIP isn't used
+    // anywhere downstream (no AVS check, nothing reads it), so dropping it
+    // from the form costs nothing and is the one field narrow enough to
+    // reclaim the width that matters.
+    hidePostalCode: true,
     style: {
       base: {
         fontFamily: "'DM Sans', sans-serif",
