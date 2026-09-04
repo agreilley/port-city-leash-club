@@ -57,18 +57,29 @@
   .event-fact-label { font-size: 12px; color: var(--text-light); letter-spacing: 0.04em; text-transform: uppercase; }
   .event-fact-value { font-size: 15px; font-weight: 500; color: var(--navy); text-align: right; }
 
-  /* SECTIONS */
-  main { padding: 72px 48px 90px; }
-  .section { max-width: 1100px; margin: 0 auto 64px; }
+  /* SECTIONS — full-bleed alternating bands, homepage-style, with a
+     max-width inner wrapper for content. */
+  main { padding: 0; }
+  .band { padding: 72px 48px; }
+  .band-sand { background: var(--sand-light); }
+  .band-form { padding-bottom: 90px; }
+  .section { max-width: 1100px; margin: 0 auto; }
   .section h2 { font-family: 'Cormorant Garamond', serif; font-size: 34px; font-weight: 300; color: var(--navy); margin-bottom: 24px; }
-  .includes-list { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 32px; }
-  .includes-list li { display: flex; align-items: flex-start; gap: 12px; font-size: 15px; color: var(--text-mid); line-height: 1.6; }
-  .includes-list li::before { content: '✓'; color: var(--seafoam); font-weight: 500; flex-shrink: 0; }
 
-  .schedule-list { display: flex; flex-direction: column; }
-  .schedule-item { display: grid; grid-template-columns: 200px 1fr; gap: 24px; padding: 22px 0; border-top: 1px solid rgba(0,0,0,0.07); }
-  .schedule-item:first-child { border-top: none; }
-  .schedule-time { font-size: 13px; color: var(--seafoam); font-weight: 500; letter-spacing: 0.02em; }
+  .includes-list { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 24px 32px; }
+  .includes-list li { display: flex; align-items: flex-start; gap: 16px; font-size: 15px; color: var(--text-mid); line-height: 1.6; }
+  .includes-icon { flex-shrink: 0; margin-top: 2px; }
+  .includes-text { padding-top: 3px; }
+
+  /* Schedule timeline — one continuous line behind the dots (::before on
+     the list), each dot's fill matching the band background so it reads
+     as a hollow ring "notching" the line rather than a filled marker. */
+  .schedule-list { position: relative; }
+  .schedule-list::before { content: ''; position: absolute; top: 6px; bottom: 6px; left: 11px; width: 1px; background: rgba(13,27,42,0.15); }
+  .schedule-item { display: grid; grid-template-columns: 24px 1fr; gap: 20px; position: relative; padding-bottom: 36px; }
+  .schedule-item:last-child { padding-bottom: 0; }
+  .schedule-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--sand-light); border: 2px solid var(--seafoam); margin-top: 3px; position: relative; }
+  .schedule-time { font-size: 13px; color: var(--seafoam); font-weight: 500; letter-spacing: 0.02em; margin-bottom: 4px; }
   .schedule-title { font-size: 17px; font-weight: 500; color: var(--navy); margin-bottom: 6px; }
   .schedule-text { font-size: 14px; color: var(--text-mid); line-height: 1.7; }
 
@@ -154,9 +165,8 @@
     .page-hero { padding: 48px 20px; }
     .hero-inner { grid-template-columns: 1fr !important; gap: 32px; }
     h1 { font-size: 38px; }
-    main { padding: 48px 20px 64px; }
-    .section { margin-bottom: 48px; }
-    .schedule-item { grid-template-columns: 1fr; gap: 6px; }
+    .band { padding: 48px 20px; }
+    .band-form { padding-bottom: 64px; }
     .form-shell { grid-template-columns: 1fr !important; margin: 0 !important; }
     .sidebar { position: static; }
     .form-card { padding: 24px 20px; max-width: 100%; min-width: 0; }
@@ -222,57 +232,102 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
 <main>
   <!-- Ticket Includes -->
-  <div class="section">
-    <h2>Your Ticket Includes</h2>
-    <ul class="includes-list">
-      <li>Beginner-friendly mat Pilates class led by Empower Method</li>
-      <li>Pilates mat provided by Empower Method</li>
-      <li>Puppies from paws4people during and after class</li>
-      <li>Complimentary coffee from Azalea Station</li>
-      <li>Time to meet the dogs and learn more about paws4people</li>
-    </ul>
+  <div class="band">
+    <div class="section">
+      <h2>Your Ticket Includes</h2>
+      <ul class="includes-list">
+        <li>
+          <svg class="includes-icon" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="#8FA8A2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="14" cy="6" r="3"/>
+            <path d="M14 9v9"/>
+            <path d="M14 11l-5-4M14 11l5-4"/>
+            <path d="M14 18l-4 6M14 18l4 6"/>
+          </svg>
+          <span class="includes-text">Beginner-friendly mat Pilates class led by Empower Method</span>
+        </li>
+        <li>
+          <svg class="includes-icon" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="#8FA8A2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="4" y="10" width="20" height="8" rx="3"/>
+            <path d="M4 14h20"/>
+          </svg>
+          <span class="includes-text">Pilates mat provided by Empower Method</span>
+        </li>
+        <li>
+          <svg class="includes-icon" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="#8FA8A2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <ellipse cx="14" cy="18" rx="6" ry="5"/>
+            <circle cx="7" cy="10" r="2.3"/>
+            <circle cx="12.5" cy="6" r="2.3"/>
+            <circle cx="15.5" cy="6" r="2.3"/>
+            <circle cx="21" cy="10" r="2.3"/>
+          </svg>
+          <span class="includes-text">Puppies from paws4people during and after class</span>
+        </li>
+        <li>
+          <svg class="includes-icon" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="#8FA8A2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 10h14v7a5 5 0 01-5 5h-4a5 5 0 01-5-5v-7z"/>
+            <path d="M20 12h1.5a3 3 0 010 6H20"/>
+            <path d="M10.5 4c0 1.4 1.4 1.4 1.4 2.8M14.5 4c0 1.4 1.4 1.4 1.4 2.8"/>
+          </svg>
+          <span class="includes-text">Complimentary coffee from Azalea Station</span>
+        </li>
+        <li>
+          <svg class="includes-icon" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="#8FA8A2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 23s-9-5.5-9-12a5 5 0 019-3 5 5 0 019 3c0 6.5-9 12-9 12z"/>
+          </svg>
+          <span class="includes-text">Time to meet the dogs and learn more about paws4people</span>
+        </li>
+      </ul>
+    </div>
   </div>
 
   <!-- Schedule -->
-  <div class="section">
-    <h2>Schedule</h2>
-    <div class="schedule-list">
-      <div class="schedule-item">
-        <div class="schedule-time">9:00&ndash;9:15 AM</div>
-        <div>
-          <div class="schedule-title">Check In + Get Settled</div>
-          <div class="schedule-text">Check in, find your spot, and get ready for class.</div>
+  <div class="band band-sand">
+    <div class="section">
+      <h2>Schedule</h2>
+      <div class="schedule-list">
+        <div class="schedule-item">
+          <div class="schedule-dot"></div>
+          <div>
+            <div class="schedule-time">9:00&ndash;9:15 AM</div>
+            <div class="schedule-title">Check In + Get Settled</div>
+            <div class="schedule-text">Check in, find your spot, and get ready for class.</div>
+          </div>
         </div>
-      </div>
-      <div class="schedule-item">
-        <div class="schedule-time">9:15&ndash;10:00 AM</div>
-        <div>
-          <div class="schedule-title">Puppies &amp; Pilates</div>
-          <div class="schedule-text">Enjoy a beginner-friendly mat Pilates class led by Empower Method, with some four-legged guests from paws4people joining us along the way.</div>
+        <div class="schedule-item">
+          <div class="schedule-dot"></div>
+          <div>
+            <div class="schedule-time">9:15&ndash;10:00 AM</div>
+            <div class="schedule-title">Puppies &amp; Pilates</div>
+            <div class="schedule-text">Enjoy a beginner-friendly mat Pilates class led by Empower Method, with some four-legged guests from paws4people joining us along the way.</div>
+          </div>
         </div>
-      </div>
-      <div class="schedule-item">
-        <div class="schedule-time">10:00&ndash;11:00 AM</div>
-        <div>
-          <div class="schedule-title">Puppies + Coffee</div>
-          <div class="schedule-text">Grab a complimentary coffee, mingle, spend some time with the dogs, and learn more about paws4people and the work they do.</div>
+        <div class="schedule-item">
+          <div class="schedule-dot"></div>
+          <div>
+            <div class="schedule-time">10:00&ndash;11:00 AM</div>
+            <div class="schedule-title">Puppies + Coffee</div>
+            <div class="schedule-text">Grab a complimentary coffee, mingle, spend some time with the dogs, and learn more about paws4people and the work they do.</div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
   <!-- Dog policy -->
-  <div class="section">
-    <div class="policy-callout">
-      <div class="policy-callout-icon">🐾</div>
-      <div>
-        <div class="policy-callout-title">This event features paws4people dogs only</div>
-        <div class="policy-callout-text">For the comfort and safety of our paws4people guests, please leave your own dog at home &mdash; only dogs from paws4people will be present at Puppies &amp; Pilates.</div>
+  <div class="band">
+    <div class="section">
+      <div class="policy-callout">
+        <div class="policy-callout-icon">🐾</div>
+        <div>
+          <div class="policy-callout-title">This event features paws4people dogs only</div>
+          <div class="policy-callout-text">For the comfort and safety of our paws4people guests, please leave your own dog at home &mdash; only dogs from paws4people will be present at Puppies &amp; Pilates.</div>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- Ticket Form -->
+  <div class="band band-sand band-form">
   <div class="form-intro" style="max-width:1100px;margin:0 auto 40px;">
     <h2>Get Your Tickets</h2>
     <p>$35 per person. Space is limited to 30 guests, so grab your spot before it fills up.</p>
@@ -349,6 +404,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         <p>Email us at <a href="mailto:hello@portcityleashclub.com" style="color:var(--seafoam-light);">hello@portcityleashclub.com</a> and we'll get back to you within 24 hours.</p>
       </div>
     </div>
+  </div>
   </div>
 </main>
 
