@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="apple-touch-icon" href="images/favicon.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="icon" type="image/png" href="images/favicon.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Puppies & Pilates | Port City Leash Club</title>
+<meta name="description" content="Join Port City Leash Club, Empower Method, and Alcove Beer Garden for a morning of Pilates, puppies from paws4people, and coffee. Saturday, October 10, 9-11 AM. $35 per person.">
+<link rel="canonical" href="https://www.portcityleashclub.com/puppies-and-pilates">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.portcityleashclub.com/puppies-and-pilates">
+<meta property="og:site_name" content="Port City Leash Club">
+<meta property="og:title" content="Puppies & Pilates | Benefiting paws4people">
+<meta property="og:description" content="A morning of Pilates, puppies from paws4people, and coffee. Saturday, October 10, 9-11 AM at Alcove Beer Garden. $35 per person.">
+<meta property="og:image" content="https://www.portcityleashclub.com/images/og-image.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Puppies & Pilates | Benefiting paws4people">
+<meta name="twitter:description" content="A morning of Pilates, puppies from paws4people, and coffee. Saturday, October 10, 9-11 AM at Alcove Beer Garden. $35 per person.">
+<meta name="twitter:image" content="https://www.portcityleashclub.com/images/og-image.jpg">
+<script src="https://js.stripe.com/v3/"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow-x: hidden; max-width: 100%; }
+  :root {
+    --navy: #0D1B2A; --navy-mid: #1C2F42;
+    --seafoam: #8FA8A2; --seafoam-light: #C5D5D1;
+    --sand: #E9E1D3; --sand-light: #F4F0EA;
+    --warm-white: #FAFAF8; --text-dark: #1A1A1A;
+    --text-mid: #4A4A4A; --text-light: #7A7A7A;
+    --rust: #C17B6F; --rust-dark: #A36358;
+  }
+  body { font-family: 'DM Sans', sans-serif; background: var(--warm-white); color: var(--text-dark); line-height: 1.6; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: var(--warm-white); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 0 48px; display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .nav-logo { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--navy); line-height: 1.3; text-decoration: none; }
+  .nav-links { display: flex; align-items: center; gap: 32px; list-style: none; }
+  .nav-links a:not(.btn-nav) { font-size: 13px; color: var(--text-mid); text-decoration: none; letter-spacing: 0.04em; }
+  .btn-nav { background: var(--rust); color: white !important; border: none; border-radius: 4px; padding: 10px 20px; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; text-decoration: none; display: inline-block; transition: background 0.2s; }
+  .btn-nav:hover { background: var(--rust-dark); }
+
+  /* HERO */
+  .page-hero { background: var(--sand-light); padding: 80px 48px 72px; border-bottom: 1px solid rgba(0,0,0,0.06); }
+  .hero-inner { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
+  .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 16px; }
+  h1 { font-family: 'Cormorant Garamond', serif; font-size: 48px; font-weight: 300; line-height: 1.04; color: var(--navy); margin-bottom: 14px; }
+  .presented-by { font-size: 14px; color: var(--navy); font-weight: 500; margin-bottom: 6px; }
+  .benefiting { font-size: 13px; color: var(--rust); font-weight: 500; letter-spacing: 0.02em; margin-bottom: 20px; }
+  .hero-sub { font-size: 16px; color: var(--text-mid); line-height: 1.8; margin-bottom: 16px; }
+  .event-facts { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 28px 32px; display: flex; flex-direction: column; gap: 0; }
+  .event-fact { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 16px 0; border-top: 1px solid rgba(0,0,0,0.07); }
+  .event-fact:first-child { border-top: none; padding-top: 0; }
+  .event-fact-label { font-size: 12px; color: var(--text-light); letter-spacing: 0.04em; text-transform: uppercase; }
+  .event-fact-value { font-size: 15px; font-weight: 500; color: var(--navy); text-align: right; }
+
+  /* SECTIONS */
+  main { padding: 72px 48px 90px; }
+  .section { max-width: 1100px; margin: 0 auto 64px; }
+  .section h2 { font-family: 'Cormorant Garamond', serif; font-size: 34px; font-weight: 300; color: var(--navy); margin-bottom: 24px; }
+  .includes-list { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 32px; }
+  .includes-list li { display: flex; align-items: flex-start; gap: 12px; font-size: 15px; color: var(--text-mid); line-height: 1.6; }
+  .includes-list li::before { content: '✓'; color: var(--seafoam); font-weight: 500; flex-shrink: 0; }
+
+  .schedule-list { display: flex; flex-direction: column; }
+  .schedule-item { display: grid; grid-template-columns: 200px 1fr; gap: 24px; padding: 22px 0; border-top: 1px solid rgba(0,0,0,0.07); }
+  .schedule-item:first-child { border-top: none; }
+  .schedule-time { font-size: 13px; color: var(--seafoam); font-weight: 500; letter-spacing: 0.02em; }
+  .schedule-title { font-size: 17px; font-weight: 500; color: var(--navy); margin-bottom: 6px; }
+  .schedule-text { font-size: 14px; color: var(--text-mid); line-height: 1.7; }
+
+  .policy-callout { background: var(--sand); border-radius: 10px; padding: 24px 28px; display: flex; gap: 16px; align-items: flex-start; }
+  .policy-callout-icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
+  .policy-callout-title { font-size: 15px; font-weight: 500; color: var(--navy); margin-bottom: 4px; }
+  .policy-callout-text { font-size: 14px; color: var(--text-mid); line-height: 1.7; }
+
+  /* TICKET FORM */
+  .form-shell { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 320px; gap: 32px; align-items: start; }
+  .form-intro { margin-bottom: 32px; }
+  .form-intro h2 { font-family: 'Cormorant Garamond', serif; font-size: 40px; font-weight: 300; color: var(--navy); margin-bottom: 10px; }
+  .form-intro p { font-size: 15px; color: var(--text-mid); line-height: 1.7; max-width: 540px; }
+  .capacity-note { display: inline-block; margin-top: 12px; font-size: 12px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--rust); }
+
+  .form-card { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 40px; }
+  .form-section { border-top: 1px solid rgba(0,0,0,0.07); padding-top: 28px; margin-top: 28px; }
+  .form-section:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+  .section-label { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 18px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field.full { grid-column: 1 / -1; }
+  label { font-size: 12px; font-weight: 500; color: var(--navy); letter-spacing: 0.02em; }
+  input, select { border: 1px solid rgba(0,0,0,0.14); background: var(--warm-white); border-radius: 4px; padding: 11px 13px; font-size: 14px; font-family: 'DM Sans', sans-serif; color: var(--text-dark); width: 100%; transition: border-color 0.15s, box-shadow 0.15s; }
+  input:focus, select:focus { outline: none; border-color: var(--seafoam); box-shadow: 0 0 0 3px rgba(143,168,162,0.16); }
+  .honeypot-field { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+  #cardElementMount { border: 1px solid rgba(0,0,0,0.14); background: var(--warm-white); border-radius: 4px; padding: 13px; }
+  #card-errors { font-size: 12px; color: var(--rust-dark); margin-top: 6px; min-height: 16px; }
+
+  .order-total { display: flex; justify-content: space-between; align-items: baseline; padding: 16px 0; border-top: 1px solid rgba(0,0,0,0.07); margin-top: 20px; }
+  .order-total-label { font-size: 14px; color: var(--text-mid); }
+  .order-total-value { font-family: 'Cormorant Garamond', serif; font-size: 30px; font-weight: 400; color: var(--navy); }
+
+  .form-actions { display: flex; align-items: center; justify-content: flex-end; gap: 20px; margin-top: 24px; }
+  .btn-submit { background: var(--rust); color: white; border: none; border-radius: 4px; padding: 14px 32px; font-size: 15px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: background 0.2s, transform 0.1s; white-space: nowrap; width: 100%; }
+  .btn-submit:hover { background: var(--rust-dark); }
+  .btn-submit:active { transform: scale(0.98); }
+  .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .ticket-success { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 48px 40px; text-align: center; display: none; }
+  .ticket-success-icon { font-size: 40px; margin-bottom: 16px; }
+  .ticket-success h3 { font-family: 'Cormorant Garamond', serif; font-size: 30px; font-weight: 400; color: var(--navy); margin-bottom: 12px; }
+  .ticket-success p { font-size: 15px; color: var(--text-mid); line-height: 1.7; max-width: 420px; margin: 0 auto; }
+
+  /* SIDEBAR */
+  .sidebar { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 88px; }
+  .sidebar-card { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 28px; }
+  .sidebar-card h3 { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 300; color: var(--navy); margin-bottom: 12px; }
+  .sidebar-card p { font-size: 13px; color: var(--text-mid); line-height: 1.7; }
+  .navy-card { background: var(--navy); color: white; border-radius: 10px; padding: 28px; }
+  .navy-card h3 { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 300; margin-bottom: 10px; }
+  .navy-card p { font-size: 13px; color: rgba(255,255,255,0.65); line-height: 1.7; }
+
+  /* FOOTER */
+  footer { background: var(--navy); border-top: 1px solid rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); padding: 48px; display: flex; justify-content: space-between; align-items: center; }
+  .footer-brand { font-family: 'Cormorant Garamond', serif; font-size: 18px; font-weight: 400; color: white; line-height: 1.4; letter-spacing: 0; text-transform: none; }
+  .footer-sub { font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+  .footer-links { display: flex; gap: 32px; list-style: none; }
+  .footer-links a { font-size: 13px; color: rgba(255,255,255,0.5); text-decoration: none; transition: color 0.2s; }
+  .footer-links a:hover { color: white; }
+
+  @media (max-width: 1000px) {
+    .form-shell { grid-template-columns: 1fr; }
+    .sidebar { position: static; }
+    .hero-inner { grid-template-columns: 1fr; }
+    .includes-list { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 768px) {
+    nav { padding: 0 20px; height: 56px; }
+    .nav-links { display: none; flex-direction: column; position: fixed; top: 56px; left: 0; right: 0; background: var(--warm-white); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 16px 20px 24px; gap: 0; z-index: 99; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    .nav-links.open { display: flex; }
+    .nav-links li { padding: 12px 0; border-bottom: 1px solid rgba(0,0,0,0.06); }
+    .nav-links li:last-child { border-bottom: none; padding-top: 16px; }
+    .nav-links a:not(.btn-nav) { font-size: 15px; }
+    .btn-nav { display: block; text-align: center; padding: 12px; width: 100%; }
+    .hamburger { display: flex; flex-direction: column; gap: 5px; cursor: pointer; padding: 8px; }
+    .hamburger span { display: block; width: 22px; height: 2px; background: var(--navy); border-radius: 2px; transition: all 0.2s; }
+    .hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+    .hamburger.open span:nth-child(2) { opacity: 0; }
+    .hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+    .page-hero { padding: 48px 20px; }
+    .hero-inner { grid-template-columns: 1fr !important; gap: 32px; }
+    h1 { font-size: 38px; }
+    main { padding: 48px 20px 64px; }
+    .section { margin-bottom: 48px; }
+    .schedule-item { grid-template-columns: 1fr; gap: 6px; }
+    .form-shell { grid-template-columns: 1fr !important; margin: 0 !important; }
+    .sidebar { position: static; }
+    .form-card { padding: 24px 20px; max-width: 100%; min-width: 0; }
+    .form-grid { grid-template-columns: 1fr; }
+    .field { min-width: 0; }
+    .form-intro h2 { font-size: 30px; }
+    * { max-width: 100%; }
+    footer { flex-direction: column; gap: 28px; padding: 40px 20px; align-items: flex-start; }
+    .footer-links { flex-wrap: wrap; gap: 16px; }
+  }
+</style>
+<script src="/js/meta-pixel.js" defer></script>
+<script src="/js/attribution.js" defer></script>
+<script src="/js/ga4.js" defer></script>
+</head>
+<body>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
+/></noscript>
+
+<nav>
+  <a class="nav-logo" href="/" style="text-decoration:none;display:flex;align-items:center;"><img src="images/logo-horizontal.png" alt="Port City Leash Club" style="height:72px;width:auto;"></a>
+  <ul class="nav-links" id="navLinks">
+    <li><a href="/faq">FAQ</a></li>
+    <li><a href="/portal-login">Login</a></li>
+    <li><a class="btn-nav" href="/membership-request">Join The Leash Club</a></li>
+  </ul>
+  <div class="hamburger" id="hamburger" onclick="toggleNav()" style="display:none;">
+    <span></span><span></span><span></span>
+  </div>
+</nav>
+
+<!-- Hero -->
+<div class="page-hero">
+  <div class="hero-inner">
+    <div>
+      <div class="eyebrow">An Event Benefiting paws4people</div>
+      <h1>Puppies &amp; Pilates</h1>
+      <div class="presented-by">Port City Leash Club &times; Empower Method &times; Alcove Beer Garden</div>
+      <div class="benefiting">Benefiting paws4people</div>
+      <p class="hero-sub">Join us for a morning of Pilates, puppies, and coffee, all benefiting paws4people! Puppies from paws4people will join us during the Pilates class and stick around afterward for plenty of time to mingle and play. Empower Method will lead a beginner-friendly mat Pilates class, with mats provided, followed by complimentary coffee from Azalea Station.</p>
+    </div>
+    <div class="event-facts">
+      <div class="event-fact">
+        <span class="event-fact-label">When</span>
+        <span class="event-fact-value">Saturday, October 10<br>9&ndash;11 AM</span>
+      </div>
+      <div class="event-fact">
+        <span class="event-fact-label">Where</span>
+        <span class="event-fact-value">Alcove Beer Garden</span>
+      </div>
+      <div class="event-fact">
+        <span class="event-fact-label">Price</span>
+        <span class="event-fact-value">$35 per person</span>
+      </div>
+      <div class="event-fact">
+        <span class="event-fact-label">Capacity</span>
+        <span class="event-fact-value">Limited to 30 guests</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<main>
+  <!-- Ticket Includes -->
+  <div class="section">
+    <h2>Your Ticket Includes</h2>
+    <ul class="includes-list">
+      <li>Beginner-friendly mat Pilates class led by Empower Method</li>
+      <li>Pilates mat provided by Empower Method</li>
+      <li>Puppies from paws4people during and after class</li>
+      <li>Complimentary coffee from Azalea Station</li>
+      <li>Time to meet the dogs and learn more about paws4people</li>
+    </ul>
+  </div>
+
+  <!-- Schedule -->
+  <div class="section">
+    <h2>Schedule</h2>
+    <div class="schedule-list">
+      <div class="schedule-item">
+        <div class="schedule-time">9:00&ndash;9:15 AM</div>
+        <div>
+          <div class="schedule-title">Check In + Get Settled</div>
+          <div class="schedule-text">Check in, find your spot, and get ready for class.</div>
+        </div>
+      </div>
+      <div class="schedule-item">
+        <div class="schedule-time">9:15&ndash;10:00 AM</div>
+        <div>
+          <div class="schedule-title">Puppies &amp; Pilates</div>
+          <div class="schedule-text">Enjoy a beginner-friendly mat Pilates class led by Empower Method, with some four-legged guests from paws4people joining us along the way.</div>
+        </div>
+      </div>
+      <div class="schedule-item">
+        <div class="schedule-time">10:00&ndash;11:00 AM</div>
+        <div>
+          <div class="schedule-title">Puppies + Coffee</div>
+          <div class="schedule-text">Grab a complimentary coffee, mingle, spend some time with the dogs, and learn more about paws4people and the work they do.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dog policy -->
+  <div class="section">
+    <div class="policy-callout">
+      <div class="policy-callout-icon">🐾</div>
+      <div>
+        <div class="policy-callout-title">This event features paws4people dogs only</div>
+        <div class="policy-callout-text">For the comfort and safety of our paws4people guests, please leave your own dog at home &mdash; only dogs from paws4people will be present at Puppies &amp; Pilates.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ticket Form -->
+  <div class="form-intro" style="max-width:1100px;margin:0 auto 40px;">
+    <h2>Get Your Tickets</h2>
+    <p>$35 per person. Space is limited to 30 guests, so grab your spot before it fills up.</p>
+    <span class="capacity-note">Limited to 30 guests</span>
+  </div>
+  <div class="form-shell">
+    <div>
+      <form class="form-card" id="ticketForm" onsubmit="submitTicketForm(event)">
+        <div data-status-container></div>
+
+        <div class="honeypot-field" aria-hidden="true">
+          <label for="website">Website</label>
+          <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+        </div>
+
+        <div class="form-section">
+          <div class="section-label">Your Info</div>
+          <div class="form-grid">
+            <div class="field"><label>Full name</label><input type="text" name="name" placeholder="Full name" required></div>
+            <div class="field"><label>Email</label><input type="email" name="email" placeholder="you@email.com" required></div>
+            <div class="field"><label>Phone <span style="color:var(--text-light);font-weight:400;">(optional)</span></label><input type="tel" name="phone" placeholder="(000) 000-0000"></div>
+            <div class="field">
+              <label>Number of tickets</label>
+              <select id="qty" name="quantity">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+                <option value="9">9</option>
+                <option value="10">10</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-label">Payment</div>
+          <div class="field full">
+            <label>Card details</label>
+            <div id="cardElementMount"></div>
+            <div id="card-errors"></div>
+          </div>
+        </div>
+
+        <div class="order-total">
+          <span class="order-total-label"><span id="qtyDisplay">1</span> ticket(s) &times; $35</span>
+          <span class="order-total-value">$<span id="totalDisplay">35</span></span>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-submit" id="submitBtn">Get Tickets</button>
+        </div>
+      </form>
+
+      <div class="ticket-success" id="ticketSuccess">
+        <div class="ticket-success-icon">🐶</div>
+        <h3>You're in!</h3>
+        <p id="ticketSuccessText">Your <span data-qty>1</span> ticket(s) are confirmed. Check your email for your confirmation and all the details &mdash; we can't wait to see you on October 10.</p>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-card">
+        <h3>Please note</h3>
+        <p>Only paws4people dogs will be at this event &mdash; please leave your own pup at home. Mats are provided, so just bring yourself and a water bottle.</p>
+      </div>
+      <div class="navy-card">
+        <h3>Questions?</h3>
+        <p>Email us at <a href="mailto:hello@portcityleashclub.com" style="color:var(--seafoam-light);">hello@portcityleashclub.com</a> and we'll get back to you within 24 hours.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div>
+    <div class="footer-brand">Port City Leash Club</div>
+    <div class="footer-sub">Wilmington, NC · portcityleashclub.com</div>
+    <div class="footer-sub" style="margin-top:4px;">hello@portcityleashclub.com</div>
+  </div>
+  <ul class="footer-links">
+    <li><a href="/#services">Services</a></li>
+    <li><a href="/#membership">Membership</a></li>
+    <li><a href="/faq">FAQ</a></li>
+    <li><a href="/careers">Careers</a></li>
+    <li><a href="/contact">Contact</a></li>
+  </ul>
+</footer>
+
+<script>
+  const TICKET_PRICE = 35;
+
+  function updateTotal() {
+    const qty = parseInt(document.getElementById('qty').value, 10) || 1;
+    document.getElementById('qtyDisplay').textContent = qty;
+    document.getElementById('totalDisplay').textContent = qty * TICKET_PRICE;
+  }
+  document.getElementById('qty').addEventListener('change', updateTotal);
+
+  let stripeClient, cardElement;
+
+  function mountCard() {
+    if (typeof Stripe === 'undefined') {
+      window._showError && window._showError("The payment form couldn't load. Please refresh the page and try again.");
+      return;
+    }
+    stripeClient = Stripe('pk_live_51Ts2njBYaaTA3vAvPIQWwppe0dXFMS1WxXJ67VR79b281wouy4dv0ePgcHT6oiZGKDjMnTj7n0vTuk3yBlDfuEQF006JgayvNW');
+    const elements = stripeClient.elements();
+    cardElement = elements.create('card', {
+      hidePostalCode: true,
+      style: {
+        base: {
+          fontFamily: "'DM Sans', sans-serif",
+          fontSize: '16px', // >=16px avoids iOS Safari auto-zoom on field focus
+          color: '#0D1B2A',
+          '::placeholder': { color: '#B0B0B0' },
+        },
+      },
+    });
+    cardElement.mount('#cardElementMount');
+    cardElement.on('change', (event) => {
+      const el = document.getElementById('card-errors');
+      if (el) el.textContent = event.error ? event.error.message : '';
+    });
+  }
+  mountCard();
+
+  function showTicketSuccess(quantity, options) {
+    document.getElementById('ticketForm').style.display = 'none';
+    const successEl = document.getElementById('ticketSuccess');
+    successEl.querySelectorAll('[data-qty]').forEach(el => { el.textContent = quantity; });
+    if (options && options.emailPending) {
+      document.getElementById('ticketSuccessText').textContent =
+        `Your card was charged for ${quantity} ticket(s) — you're all set for October 10. We had trouble sending your confirmation email just now; if it doesn't arrive shortly, email hello@portcityleashclub.com and we'll resend it.`;
+    }
+    successEl.style.display = 'block';
+    successEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  async function submitTicketForm(e) {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    const name = document.querySelector('input[name=name]').value.trim();
+    const email = document.querySelector('input[name=email]').value.trim();
+    const phone = document.querySelector('input[name=phone]').value.trim();
+    const quantity = parseInt(document.getElementById('qty').value, 10);
+    const website = document.getElementById('website').value;
+
+    if (!name || !email) {
+      window._showError('Please fill in your name and email.');
+      return;
+    }
+    if (!stripeClient || !cardElement) {
+      window._showError("The payment form isn't ready yet. Please refresh the page and try again.");
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Processing…';
+
+    let ticketId = null;
+    try {
+      const { data } = await window._createEventTicketPaymentIntent({ name, email, phone, quantity, website });
+      ticketId = data.ticketId;
+
+      const result = await stripeClient.confirmCardPayment(data.clientSecret, {
+        payment_method: { card: cardElement, billing_details: { name, email } },
+      });
+
+      if (result.error) {
+        // Card declined (or similar) — release the hold so it doesn't eat
+        // into the 30-ticket cap while the buyer retries with another card.
+        window._releaseEventTicketHold({ ticketId }).catch(() => {});
+        throw new Error(result.error.message || 'Your card was declined. Please try a different card.');
+      }
+
+      // The charge succeeded at this point. Anything below must never be
+      // presented as "something went wrong, try again" — that risks a
+      // second charge for an already-paid ticket.
+      try {
+        const confirmResult = await window._confirmEventTicket({ ticketId });
+        if (!confirmResult.data.ok) throw new Error('not confirmed');
+        showTicketSuccess(quantity, {});
+      } catch (confirmErr) {
+        console.error('confirmEventTicket failed after successful charge:', confirmErr);
+        showTicketSuccess(quantity, { emailPending: true });
+      }
+    } catch (err) {
+      console.error(err);
+      window._showError(err.message || 'Something went wrong. Please try again, or email hello@portcityleashclub.com.');
+      btn.disabled = false;
+      btn.textContent = 'Get Tickets';
+    }
+  }
+</script>
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+  import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+  import { showSuccess, showError } from '/js/status.js';
+  const firebaseConfig = {
+    apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
+    authDomain: "port-city-leash-club-827ab.firebaseapp.com",
+    projectId: "port-city-leash-club-827ab",
+    storageBucket: "port-city-leash-club-827ab.firebasestorage.app",
+    messagingSenderId: "649385306352",
+    appId: "1:649385306352:web:8e8a6fcbe8a7eff29dfa35"
+  };
+  const app = initializeApp(firebaseConfig);
+  const functions = getFunctions(app);
+  window._createEventTicketPaymentIntent = httpsCallable(functions, 'createEventTicketPaymentIntent');
+  window._confirmEventTicket = httpsCallable(functions, 'confirmEventTicket');
+  window._releaseEventTicketHold = httpsCallable(functions, 'releaseEventTicketHold');
+  window._showSuccess = showSuccess;
+  window._showError = showError;
+</script>
+<script>
+  function toggleNav() {
+    const nav = document.getElementById("navLinks");
+    const burger = document.getElementById("hamburger");
+    nav.classList.toggle("open");
+    burger.classList.toggle("open");
+  }
+  function checkNav() {
+    const burger = document.getElementById("hamburger");
+    const nav = document.getElementById("navLinks");
+    if (window.innerWidth <= 768) {
+      burger.style.display = "flex";
+      nav.style.display = "";
+    } else {
+      burger.style.display = "none";
+      nav.style.display = "";
+      nav.classList.remove("open");
+    }
+  }
+  window.addEventListener("resize", checkNav);
+  checkNav();
+  document.querySelectorAll(".nav-links a").forEach(a => a.addEventListener("click", () => {
+    document.getElementById("navLinks").classList.remove("open");
+    document.getElementById("hamburger").classList.remove("open");
+  }));
+</script>
+</body>
+</html>

@@ -7640,6 +7640,179 @@ exports.generateEmailCaptureCode = onCall({ secrets: [RESEND_API_KEY] }, async (
 // Exposed directly, same reasoning as runGenerateReferralCode above.
 exports.runGenerateEmailCaptureCode = runGenerateEmailCaptureCode;
 
+// ---------------------------------------------------------------------------
+// Puppies & Pilates (Sat Oct 10, 2026) — one-off ticketed event benefiting
+// paws4people. This is a real-time $35/ticket purchase, not card-on-file
+// storage, so it's a deliberate, narrowly-scoped exception to "no card
+// capture on public forms" (see the payment-model comment at the top of
+// this file): the card is charged once, immediately, for an already-priced
+// purchase, and never stored for later use — nothing like the signup-time
+// card capture that comment was written to rule out.
+//
+// Capacity (30 tickets total) is enforced with a Firestore counter doc
+// (events/{eventId}), incremented — "reserved" — inside the same
+// transaction that creates the pending ticket doc, before the Stripe
+// PaymentIntent is created. It's only ever decremented by
+// releaseEventTicketHold (the client calls this from its own
+// confirmCardPayment catch block on a declined card — the common case) or
+// by this function's own rollback if PaymentIntent creation itself fails.
+// A buyer who reserves a seat and then simply abandons the tab (no
+// decline, no success) leaves that seat held with no automatic expiry —
+// accepted at this event's scale (30 seats, ~5-week window), the same
+// tradeoff already made for the meet & greet booking race elsewhere in
+// this file (see that function's own comment). Alison can hand-adjust
+// events/{eventId}.ticketsReserved in the Firestore console if it ever
+// actually matters.
+const PUPPIES_PILATES_EVENT_ID = 'puppies-pilates-2026-10-10';
+const PUPPIES_PILATES_PRICE_CENTS = 3500;
+const PUPPIES_PILATES_CAPACITY = 30;
+const PUPPIES_PILATES_MAX_QTY_PER_ORDER = 10;
+
+function eventRef(eventId) {
+  return db.collection('events').doc(eventId);
+}
+function eventTicketRef(eventId, ticketId) {
+  return eventRef(eventId).collection('tickets').doc(ticketId);
+}
+
+async function releaseEventTicketHoldInternal(eventId, ticketId) {
+  const ticketRef = eventTicketRef(eventId, ticketId);
+  await db.runTransaction(async (tx) => {
+    const ticketSnap = await tx.get(ticketRef);
+    // Already released, or already paid (never release a paid ticket) — a
+    // no-op either way, so a retried or late release call is always safe.
+    if (!ticketSnap.exists || ticketSnap.data().status !== 'pending') return;
+    const quantity = ticketSnap.data().quantity || 0;
+    const evRef = eventRef(eventId);
+    const evSnap = await tx.get(evRef);
+    const reserved = evSnap.exists ? (evSnap.data().ticketsReserved || 0) : 0;
+    tx.set(evRef, { ticketsReserved: Math.max(0, reserved - quantity) }, { merge: true });
+    tx.set(ticketRef, { status: 'released' }, { merge: true });
+  });
+}
+
+// createEventTicketPaymentIntent: deliberately unauthenticated — this is a
+// public ticket sale, same caller shape as runGenerateReferralCode/
+// runGenerateEmailCaptureCode above. Every field is validated and
+// length-capped here rather than trusted from the client, and the charge
+// amount is always quantity * the hardcoded price above — never a
+// client-supplied amount.
+exports.createEventTicketPaymentIntent = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  const payload = request.data || {};
+  assertHoneypotEmpty(payload);
+
+  const name = typeof payload.name === 'string' ? payload.name.trim().slice(0, 100) : '';
+  if (!name) throw new HttpsError('invalid-argument', 'Please enter your name.');
+
+  const email = typeof payload.email === 'string' ? payload.email.trim().slice(0, 320) : '';
+  if (!email || !email.includes('@')) throw new HttpsError('invalid-argument', 'A valid email address is required.');
+
+  const phone = typeof payload.phone === 'string' ? payload.phone.trim().slice(0, 30) : '';
+
+  const quantity = Number(payload.quantity);
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > PUPPIES_PILATES_MAX_QTY_PER_ORDER) {
+    throw new HttpsError('invalid-argument', `Please select between 1 and ${PUPPIES_PILATES_MAX_QTY_PER_ORDER} tickets.`);
+  }
+
+  const amountCents = quantity * PUPPIES_PILATES_PRICE_CENTS;
+  const ticketRef = eventRef(PUPPIES_PILATES_EVENT_ID).collection('tickets').doc();
+
+  // Reserve capacity and create the pending ticket doc in one transaction —
+  // the counter and the ticket claiming part of it must never disagree.
+  await db.runTransaction(async (tx) => {
+    const evRef = eventRef(PUPPIES_PILATES_EVENT_ID);
+    const evSnap = await tx.get(evRef);
+    const reserved = evSnap.exists ? (evSnap.data().ticketsReserved || 0) : 0;
+    if (reserved + quantity > PUPPIES_PILATES_CAPACITY) {
+      const remaining = Math.max(0, PUPPIES_PILATES_CAPACITY - reserved);
+      throw new HttpsError('resource-exhausted', remaining === 0
+        ? 'Puppies & Pilates is sold out.'
+        : `Only ${remaining} ticket${remaining === 1 ? '' : 's'} left — please lower your quantity.`);
+    }
+    tx.set(evRef, { ticketsReserved: reserved + quantity }, { merge: true });
+    tx.set(ticketRef, {
+      name, email, phone: phone || null, quantity, amountCents,
+      status: 'pending',
+      paymentIntentId: null,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  try {
+    const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountCents,
+      currency: 'usd',
+      receipt_email: email,
+      description: `Puppies & Pilates ticket${quantity === 1 ? '' : 's'} x${quantity}`,
+      metadata: { eventId: PUPPIES_PILATES_EVENT_ID, ticketId: ticketRef.id, quantity: String(quantity) },
+    });
+    await ticketRef.set({ paymentIntentId: paymentIntent.id }, { merge: true });
+    return { clientSecret: paymentIntent.client_secret, ticketId: ticketRef.id };
+  } catch (e) {
+    // Stripe itself failed here (not a card decline — that happens
+    // client-side, later, against the PaymentIntent this would have
+    // created) — release the seats reserved above so a Stripe-API-level
+    // failure never silently eats capacity.
+    await releaseEventTicketHoldInternal(PUPPIES_PILATES_EVENT_ID, ticketRef.id).catch(() => {});
+    console.error('createEventTicketPaymentIntent: Stripe error:', e.message);
+    throw new HttpsError('internal', "Couldn't start checkout. Please try again.");
+  }
+});
+
+// releaseEventTicketHold: called from the client's confirmCardPayment catch
+// block when a card is declined — frees the reserved seats immediately so
+// a declined card doesn't eat into the 30-ticket cap while the buyer
+// retries with a different card. Unauthenticated, like
+// createEventTicketPaymentIntent — the ticketId itself is the caller's
+// only proof of the reservation, no different from any other unauthenticated
+// form in this file.
+exports.releaseEventTicketHold = onCall(async (request) => {
+  const ticketId = typeof request.data?.ticketId === 'string' ? request.data.ticketId : '';
+  if (!ticketId) throw new HttpsError('invalid-argument', 'Missing ticketId.');
+  await releaseEventTicketHoldInternal(PUPPIES_PILATES_EVENT_ID, ticketId);
+  return { ok: true };
+});
+
+// confirmEventTicket: called by the client immediately after
+// stripe.confirmCardPayment resolves without an error. Re-verifies the
+// PaymentIntent's status directly with Stripe before marking the ticket
+// paid and sending the confirmation email — never trusts the client's own
+// report that the charge succeeded, same posture as confirmCardOnFile
+// verifying its SetupIntent server-side above.
+exports.confirmEventTicket = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  const ticketId = typeof request.data?.ticketId === 'string' ? request.data.ticketId : '';
+  if (!ticketId) throw new HttpsError('invalid-argument', 'Missing ticketId.');
+
+  const ticketRef = eventTicketRef(PUPPIES_PILATES_EVENT_ID, ticketId);
+  const ticketSnap = await ticketRef.get();
+  if (!ticketSnap.exists) throw new HttpsError('not-found', 'Ticket not found.');
+  const ticket = ticketSnap.data();
+
+  // Already confirmed (e.g. the client retried this call after a dropped
+  // response) — return success without re-charging or re-emailing.
+  if (ticket.status === 'paid') return { ok: true };
+  if (!ticket.paymentIntentId) throw new HttpsError('failed-precondition', 'This ticket has no payment attached yet.');
+
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+  const paymentIntent = await stripe.paymentIntents.retrieve(ticket.paymentIntentId);
+  if (paymentIntent.status !== 'succeeded') {
+    return { ok: false, status: paymentIntent.status };
+  }
+
+  await ticketRef.set({ status: 'paid', paidAt: FieldValue.serverTimestamp() }, { merge: true });
+
+  const emailResult = await sendEmail({
+    to: ticket.email,
+    template: 'event-ticket-confirmed',
+    data: { name: ticket.name, quantity: ticket.quantity, amountCents: ticket.amountCents },
+    idempotencyKey: `event-ticket-confirmed:${ticketId}`,
+  });
+  if (!emailResult.ok) console.error(`confirmEventTicket: confirmation email failed for ${ticketId}:`, emailResult.error);
+
+  return { ok: true };
+});
+
 const FRIENDS_FAMILY_DEFAULT_MAX_REDEMPTIONS = 1;
 const FRIENDS_FAMILY_DISCOUNT_PERCENT = 40;
 
