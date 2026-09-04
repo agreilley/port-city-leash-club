@@ -279,6 +279,7 @@
     }
     .record-badge.walk { background: rgba(26, 92, 48, 0.12); color: #1A5C30; }
     .record-badge.visit { background: rgba(193, 123, 111, 0.15); color: #C17B6F; }
+    .record-badge.reservation { background: rgba(143, 168, 162, 0.2); color: #5c7570; }
 
     /* Deep-link target (?walk=... or ?overnight=...&visit=...) — a
        temporary highlight so a member arriving from a text/email link can
@@ -636,7 +637,7 @@
           (r.feedback.comment ? '<div class="report-text" style="margin-top:6px;margin-bottom:0;">' + esc(r.feedback.comment) + '</div>' : '') +
           '</div>';
       }
-      return '<div class="care-label">Rate this ' + (r.type === 'walk' ? 'walk' : 'visit') + '</div>' +
+      return '<div class="care-label">Rate this ' + (r.type === 'walk' ? 'walk' : r.type === 'reservation' ? 'stay' : 'visit') + '</div>' +
         '<div class="star-picker" data-element-id="' + r.elementId + '">' +
         [1, 2, 3, 4, 5].map(n => '<span class="star" data-value="' + n + '" onclick="setStarRating(\'' + r.elementId + '\',' + n + ')">☆</span>').join('') +
         '</div>' +
@@ -724,12 +725,17 @@
           '<div class="report-date">' + dateStr + '</div>' +
           '</div>' +
           '<div class="report-content">' +
-          (r.note ? '<div class="report-text">' + esc(r.note) + '</div>' : '<div class="report-text" style="color:#aaa;font-style:italic;">' + esc(r.noNoteText) + '</div>') +
+          (r.note ? '<div class="report-text">' + esc(r.note) + '</div>' : (r.noNoteText ? '<div class="report-text" style="color:#aaa;font-style:italic;">' + esc(r.noNoteText) + '</div>' : '')) +
           photoHtml +
           '<div class="report-meta" style="margin-top:12px;font-size:13px;color:#7A7A7A;">' + esc(r.metaLine) + '</div>' +
           '<div class="care-actions">' +
-          '<div class="care-block" id="feedback-' + r.elementId + '">' + feedbackBlockHtml(r) + '</div>' +
-          '<div class="care-block" id="tip-' + r.elementId + '">' + tipBlockHtml(r) + '</div>' +
+          // Individual visit cards keep their tip prompt but drop the rating
+          // prompt — that lives once on the reservation-level card instead
+          // (see reservationRecords above). The reservation card itself is
+          // the mirror image: rating only, no tip (tipping stays tied to a
+          // specific day, not the stay as a whole).
+          (r.type !== 'visit' ? '<div class="care-block" id="feedback-' + r.elementId + '">' + feedbackBlockHtml(r) + '</div>' : '') +
+          (r.type !== 'reservation' ? '<div class="care-block" id="tip-' + r.elementId + '">' + tipBlockHtml(r) + '</div>' : '') +
           '</div>' +
           '</div>' +
           '</div>';
@@ -962,8 +968,12 @@ onAuthStateChanged(auth, async (user) => {
     // Each overnights doc can carry many individually-completed visits
     // (generateOvernightVisits, functions/index.js) — flatMap so every
     // completed visit becomes its own card, not one card per reservation.
-    const visitRecords = overnightsSnap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
+    // These stay per-visit for NOTES/PHOTOS/TIPS (a member still sees and
+    // can tip each individual day) — only the rating/feedback prompt moves
+    // to the reservation level below, so a 7-visit stay doesn't ask for 7
+    // separate ratings.
+    const overnightsData = overnightsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const visitRecords = overnightsData
       .flatMap(o => {
         const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
         const serviceLabel = isCheckin ? 'Drop-In Visit' : 'Overnight Stay';
@@ -986,13 +996,47 @@ onAuthStateChanged(auth, async (user) => {
             walkId: null,
             overnightId: o.id,
             visitId: v.id,
-            feedback: v.feedback || null,
+            feedback: null, // per-visit rating removed — see reservationRecords below
             tip: v.tip || null,
             tipBase: base,
           }));
       });
 
-    allRecords = [...walkRecords, ...visitRecords];
+    // One card per fully-completed RESERVATION (status flips to 'completed'
+    // automatically once its last visit is marked done — see completeVisit,
+    // walker/dashboard.html), carrying the single reservation-wide rating
+    // prompt. No tip here — tipping stays attached to the individual visit
+    // cards above, where a member is tipping for a specific day, not the
+    // stay as a whole.
+    const reservationRecords = overnightsData
+      .filter(o => o.status === 'completed')
+      .map(o => {
+        const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
+        const serviceLabel = isCheckin ? 'Drop-In Visits' : 'Overnight Stay';
+        const completedCount = (Array.isArray(o.visits) ? o.visits : []).filter(v => v.status === 'completed').length;
+        return {
+          type: 'reservation',
+          elementId: 'record-overnight-' + o.id,
+          sortDate: toJsDate(o.completedAt || o.endDate),
+          avatar: isCheckin ? '📍' : '🌙',
+          walkerName: o.walkerName || 'Your Walker',
+          subLabel: completedCount + ' visit' + (completedCount === 1 ? '' : 's') + ' completed',
+          badgeLabel: serviceLabel,
+          note: '',
+          noNoteText: '',
+          photoUrls: [],
+          metaLine: serviceLabel + ' — see individual visits above for notes and photos',
+          recordType: 'overnight',
+          walkId: null,
+          overnightId: o.id,
+          visitId: null,
+          feedback: o.feedback || null,
+          tip: null,
+          tipBase: 0,
+        };
+      });
+
+    allRecords = [...walkRecords, ...visitRecords, ...reservationRecords];
     renderRecords('all');
   } catch(e) {
     console.error('care history load:', e.message);

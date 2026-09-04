@@ -2361,7 +2361,33 @@ function computeAllReviews() {
       };
     });
 
-  const visitReviews = allOvernights.flatMap(o => {
+  // One review per whole RESERVATION now, not per individual visit — a
+  // multi-day stay asking for a rating after every visit trained members to
+  // ignore the prompt (see submitWalkFeedback's 'overnight' branch,
+  // functions/index.js). feedback lives on the overnights doc itself.
+  const reservationReviews = allOvernights
+    .filter(o => o.feedback)
+    .map(o => {
+      const member = allMembers.find(m => m.id === o.memberId);
+      const checkin = isCheckinType(o.serviceType);
+      return {
+        type: checkin ? 'dropin' : 'overnight',
+        typeLabel: checkin ? 'Drop-In' : 'Overnight',
+        date: o.completedAt || o.endDate,
+        memberName: member?.name || o.memberName || '–',
+        dogNames: memberDogNames(member) || o.dogName || '–',
+        walkerName: o.walkerName || allWalkers.find(x => x.id === o.walkerId)?.name || '–',
+        rating: o.feedback.rating,
+        comment: o.feedback.comment,
+        submittedAt: o.feedback.submittedAt,
+      };
+    });
+
+  // Legacy per-visit feedback, from before this change — kept so nothing a
+  // member already submitted disappears from this list. New feedback is
+  // never written here (see submitWalkFeedback's 'visit' branch is now tip-
+  // only), so this only ever shrinks as old data ages out, never grows.
+  const legacyVisitReviews = allOvernights.flatMap(o => {
     const member = allMembers.find(m => m.id === o.memberId);
     const checkin = isCheckinType(o.serviceType);
     return (Array.isArray(o.visits) ? o.visits : [])
@@ -2379,7 +2405,7 @@ function computeAllReviews() {
       }));
   });
 
-  return [...walkReviews, ...visitReviews].sort((a, b) => {
+  return [...walkReviews, ...reservationReviews, ...legacyVisitReviews].sort((a, b) => {
     const da = a.submittedAt?.toDate?.() || new Date(a.submittedAt || 0);
     const db_ = b.submittedAt?.toDate?.() || new Date(b.submittedAt || 0);
     return db_ - da;

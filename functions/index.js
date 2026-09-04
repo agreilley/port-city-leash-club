@@ -1424,15 +1424,37 @@ async function resolveOwnedCompletedRecord(uid, { recordType, walkId, overnightI
     if (visit.status !== 'completed') throw new HttpsError('failed-precondition', 'This visit is not completed yet.');
     return { kind: 'visit', ref, data: visit, memberId: overnight.memberId };
   }
-  throw new HttpsError('invalid-argument', 'recordType must be "walk" or "visit".');
+  // 'overnight' is the whole RESERVATION, not one visit inside it — used
+  // only for feedback (submitWalkFeedback), never for tips. A multi-day
+  // stay can carry a dozen individually-completed visits; asking a member
+  // to rate every one of them separately trains them to ignore the prompt.
+  // One rating per reservation, submitted once the whole thing hits
+  // status: 'completed' (set automatically the moment its last visit is
+  // marked done — see completeVisit, walker/dashboard.html), covers what
+  // the member actually experienced as one continuous stay. Per-visit
+  // TIPS are a separate, deliberately-kept-granular concept (recordType
+  // 'visit' above) — a member tipping for one especially great day is a
+  // real, different thing from rating the stay overall.
+  if (recordType === 'overnight') {
+    if (!overnightId) throw new HttpsError('invalid-argument', 'overnightId is required.');
+    const ref = db.collection('overnights').doc(overnightId);
+    const snap = await ref.get();
+    const overnight = snap.data();
+    if (!overnight) throw new HttpsError('not-found', 'Reservation not found.');
+    if (overnight.memberId !== uid) throw new HttpsError('permission-denied', 'That reservation does not belong to you.');
+    if (overnight.status !== 'completed') throw new HttpsError('failed-precondition', 'This reservation is not completed yet.');
+    return { kind: 'overnight', ref, data: overnight, memberId: overnight.memberId };
+  }
+  throw new HttpsError('invalid-argument', 'recordType must be "walk", "visit", or "overnight".');
 }
 
 // Merges `patch` onto the resolved record — a top-level field set for a
-// walk doc, or a replace-in-place of the matching visits[] element inside a
-// transaction for a visit (re-read fresh each retry, same pattern as
-// completeVisit's own visits-array update in walker/dashboard.html).
+// walk doc or a whole-reservation overnight doc, or a replace-in-place of
+// the matching visits[] element inside a transaction for a single visit
+// (re-read fresh each retry, same pattern as completeVisit's own
+// visits-array update in walker/dashboard.html).
 async function writeOwnedRecordPatch(record, patch) {
-  if (record.kind === 'walk') {
+  if (record.kind === 'walk' || record.kind === 'overnight') {
     await record.ref.set(patch, { merge: true });
     return;
   }
