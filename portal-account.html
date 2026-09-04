@@ -1574,7 +1574,7 @@ window.openUpdatePaymentModal = async () => {
   const fieldErrEl = document.getElementById('card-errors');
   if (fieldErrEl) fieldErrEl.textContent = '';
   const saveBtn = document.getElementById('saveCardBtn');
-  if (saveBtn) saveBtn.disabled = false;
+  if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Card'; }
   // 'Add a Card' only with POSITIVE confirmation there's no card
   // (currentCard === null) — not on falsy-in-general, which used to also
   // match currentCard === undefined (unknown, e.g. a failed load) and
@@ -1629,6 +1629,7 @@ document.getElementById('saveCardBtn')?.addEventListener('click', async () => {
   clearCardModalError();
   const btn = document.getElementById('saveCardBtn');
   btn.disabled = true;
+  btn.textContent = 'Saving…';
   try {
     const createIntent = httpsCallable(functions, 'createAuthenticatedSetupIntent');
     const { data } = await createIntent();
@@ -1638,6 +1639,7 @@ document.getElementById('saveCardBtn')?.addEventListener('click', async () => {
     if (result.error) {
       showCardModalError(result.error.message || 'Could not save your card. Please try again.');
       btn.disabled = false;
+      btn.textContent = 'Save Card';
       return;
     }
     const confirmOnFile = httpsCallable(functions, 'confirmCardOnFile');
@@ -1648,6 +1650,7 @@ document.getElementById('saveCardBtn')?.addEventListener('click', async () => {
   } catch (e) {
     showCardModalError(e.message || 'Could not save your card. Please try again.');
     btn.disabled = false;
+    btn.textContent = 'Save Card';
   }
 });
 
