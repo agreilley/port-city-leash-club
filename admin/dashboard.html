@@ -84,6 +84,16 @@
   .walk-chip.overnight  { background: #E8F4F0; color: #2D7A5E; }
   .walk-chip.checkin { background: #E4E9EE; color: var(--navy-mid); }
   .walk-chip.completed { background: var(--sand); color: var(--text-light); }
+  .walk-chip.walktype { background: var(--green-light); color: var(--green); cursor: default; }
+
+  /* ── REVIEWS ── */
+  /* Placed before the mobile .stats-row media query below (same specificity,
+     source order decides) so mobile still collapses to 2 columns like every
+     other stats-row on the page — only the desktop column count differs. */
+  .stats-row-3 { grid-template-columns: repeat(3, 1fr); }
+  .review-stars { letter-spacing: 1px; font-size: 14px; white-space: nowrap; }
+  .review-stars .filled { color: var(--rust); }
+  .review-stars .empty { color: rgba(0,0,0,0.15); }
 
   /* ── CALENDAR LEGEND ── */
   .calendar-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
@@ -113,8 +123,8 @@
 
   /* ── REQUESTS ── */
   .request-filters { display: flex; gap: 8px; margin-bottom: 20px; }
-  .request-filter, .request-status-filter, .conversation-filter, .conversation-category-filter, .referral-filter, .emaillog-filter { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
-  .request-filter.active, .request-status-filter.active, .conversation-filter.active, .conversation-category-filter.active, .referral-filter.active, .emaillog-filter.active { background: var(--navy); color: white; border-color: var(--navy); }
+  .request-filter, .request-status-filter, .conversation-filter, .conversation-category-filter, .referral-filter, .emaillog-filter, .review-filter { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
+  .request-filter.active, .request-status-filter.active, .conversation-filter.active, .conversation-category-filter.active, .referral-filter.active, .emaillog-filter.active, .review-filter.active { background: var(--navy); color: white; border-color: var(--navy); }
   .list-row { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 20px; margin-bottom: 12px; cursor: pointer; transition: box-shadow 0.15s; }
   .list-row:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
   .list-row.unread { border-left: 3px solid var(--rust); }
@@ -354,6 +364,10 @@
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M1 5.5l7 4 7-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     Requests
     <span class="badge" id="requestsBadge" style="display:none;">0</span>
+  </a>
+  <a class="nav-item" data-view="reviews" onclick="switchView('reviews')">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1.5l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.3l-3.8 2 .7-4.3-3.1-3 4.3-.6L8 1.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+    Reviews
   </a>
   <a class="nav-item" data-view="referrals" onclick="switchView('referrals')">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1 8.5l3-3 2 2 5-5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 2.5h3v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M1 12.5h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -622,6 +636,43 @@
         <button class="request-status-filter" id="requestsNeedsAttentionFilter" onclick="filterRequestStatus('needs_attention', this)" style="display:none;">Needs Attention</button>
       </div>
       <div id="requestsList"><div class="loading-spinner">Loading...</div></div>
+    </div>
+
+    <!-- REVIEWS VIEW (read-only — ratings/comments come from members via
+         submitWalkFeedback, functions/index.js; stored directly on the
+         walks/{id} doc or inside overnights/{id}.visits[], never their own
+         collection. Computed live from allWalks/allOvernights/allMembers,
+         already subscribed globally, same as every other tab here — no
+         separate load-once fetch needed.) -->
+    <div class="view" id="view-reviews">
+      <p style="font-size:13px;color:var(--text-light);margin:0 20px 12px;">Star ratings and comments members leave on completed walks, drop-ins, and overnights.</p>
+      <div class="stats-row stats-row-3" style="margin:0 20px 20px;">
+        <div class="stat-card"><div class="stat-label">Total Reviews</div><div class="stat-value" id="stat-reviews-total">–</div><div class="stat-sub">All time</div></div>
+        <div class="stat-card"><div class="stat-label">Average Rating</div><div class="stat-value" id="stat-reviews-avg">–</div><div class="stat-sub">out of 5</div></div>
+        <div class="stat-card"><div class="stat-label">3 Stars or Under</div><div class="stat-value" id="stat-reviews-low" style="color:var(--rust);">–</div><div class="stat-sub">May need follow-up</div></div>
+      </div>
+      <div class="request-filters">
+        <button class="review-filter active" onclick="filterReviewsRating('all', this)">All Ratings</button>
+        <button class="review-filter" onclick="filterReviewsRating('5', this)">★★★★★</button>
+        <button class="review-filter" onclick="filterReviewsRating('4', this)">★★★★</button>
+        <button class="review-filter" onclick="filterReviewsRating('3', this)">★★★</button>
+        <button class="review-filter" onclick="filterReviewsRating('2', this)">★★</button>
+        <button class="review-filter" onclick="filterReviewsRating('1', this)">★</button>
+      </div>
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">Reviews</div>
+          <input class="table-search" type="text" placeholder="Search member, dog, walker..." oninput="filterReviewsSearch(this.value)">
+        </div>
+        <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th>Date</th><th>Type</th><th>Member</th><th>Dog</th><th>Walker</th><th>Rating</th><th>Comment</th>
+          </tr></thead>
+          <tbody id="reviewsTable"><tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
+        </table>
+        </div>
+      </div>
     </div>
 
     <!-- REFERRAL CODES VIEW (read-only reporting — no writes, matches the
@@ -1113,6 +1164,8 @@ let calendarYear = new Date().getFullYear();
 let calendarMonth = new Date().getMonth();
 let currentRequestFilter = 'all';
 let currentStatusFilter = 'pending';
+let currentReviewRatingFilter = 'all';
+let currentReviewSearch = '';
 let allOvernights = [];
 let allPayouts = [];
 // Referral Codes view — loaded once on first tab visit (see switchView),
@@ -1312,6 +1365,7 @@ function subscribeWalks() {
     renderCalendarDays();
     updateStats();
     renderPayoutsView();
+    renderReviewsView();
   });
 }
 
@@ -1320,6 +1374,7 @@ function subscribeOvernights() {
     allOvernights = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderCalendarDays();
     renderPayoutsView();
+    renderReviewsView();
   });
 }
 
@@ -1957,6 +2012,7 @@ function renderAll() {
   renderCalendarDays();
   renderWalkersTable();
   renderMembersTable();
+  renderReviewsView();
 }
 
 // ── STATS ────────────────────────────────────────────────────────────────────
@@ -2262,6 +2318,120 @@ function renderMembersTable(filter = '') {
 }
 
 window.filterMembers = (val) => renderMembersTable(val);
+
+// ── REVIEWS ──────────────────────────────────────────────────────────────────
+// Member-submitted star rating + comment on a completed walk or overnight/
+// check-in visit (portal-walk-history.html's Care History cards, via the
+// submitWalkFeedback cloud function). There's no reviews collection — a
+// walk's review lives as a `feedback` field directly on that walks/{id} doc,
+// and a visit's review lives on its entry inside overnights/{id}.visits[].
+// This flattens both into one list, computed live off allWalks/allOvernights/
+// allMembers/allWalkers — all already subscribed globally — rather than a
+// separate fetch.
+function fmtFeedbackDate(d) {
+  if (!d) return '–';
+  try {
+    const dt = d?.toDate ? d.toDate() : new Date(d);
+    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch { return '–'; }
+}
+
+function starsHtml(rating) {
+  const r = Math.max(0, Math.min(5, Number(rating) || 0));
+  let out = `<span class="review-stars" aria-label="${r} out of 5 stars">`;
+  for (let i = 1; i <= 5; i++) out += `<span class="${i <= r ? 'filled' : 'empty'}">★</span>`;
+  return out + '</span>';
+}
+
+function computeAllReviews() {
+  const walkReviews = allWalks
+    .filter(w => w.feedback)
+    .map(w => {
+      const member = allMembers.find(m => m.id === w.memberId);
+      return {
+        type: 'walk',
+        typeLabel: 'Walk',
+        date: w.date,
+        memberName: member?.name || '–',
+        dogNames: memberDogNames(member) || '–',
+        walkerName: w.walkerName || allWalkers.find(x => x.id === w.walkerId)?.name || '–',
+        rating: w.feedback.rating,
+        comment: w.feedback.comment,
+        submittedAt: w.feedback.submittedAt,
+      };
+    });
+
+  const visitReviews = allOvernights.flatMap(o => {
+    const member = allMembers.find(m => m.id === o.memberId);
+    const checkin = isCheckinType(o.serviceType);
+    return (Array.isArray(o.visits) ? o.visits : [])
+      .filter(v => v.feedback)
+      .map(v => ({
+        type: checkin ? 'dropin' : 'overnight',
+        typeLabel: checkin ? 'Drop-In' : 'Overnight',
+        date: v.date,
+        memberName: member?.name || o.memberName || '–',
+        dogNames: memberDogNames(member) || o.dogName || '–',
+        walkerName: v.walkerName || allWalkers.find(x => x.id === o.walkerId)?.name || '–',
+        rating: v.feedback.rating,
+        comment: v.feedback.comment,
+        submittedAt: v.feedback.submittedAt,
+      }));
+  });
+
+  return [...walkReviews, ...visitReviews].sort((a, b) => {
+    const da = a.submittedAt?.toDate?.() || new Date(a.submittedAt || 0);
+    const db_ = b.submittedAt?.toDate?.() || new Date(b.submittedAt || 0);
+    return db_ - da;
+  });
+}
+
+const REVIEW_TYPE_CLASS = { walk: 'walktype', dropin: 'checkin', overnight: 'overnight' };
+
+function renderReviewsView() {
+  const tbody = document.getElementById('reviewsTable');
+  if (!tbody) return; // view not in the DOM yet on first call during init
+
+  const reviews = computeAllReviews();
+
+  document.getElementById('stat-reviews-total').textContent = reviews.length;
+  document.getElementById('stat-reviews-avg').textContent = reviews.length
+    ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)
+    : '–';
+  document.getElementById('stat-reviews-low').textContent = reviews.filter(r => r.rating <= 3).length;
+
+  const q = currentReviewSearch.trim().toLowerCase();
+  const filtered = reviews
+    .filter(r => currentReviewRatingFilter === 'all' || r.rating === Number(currentReviewRatingFilter))
+    .filter(r => !q || r.memberName.toLowerCase().includes(q) || r.dogNames.toLowerCase().includes(q) || r.walkerName.toLowerCase().includes(q));
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:24px;">${reviews.length ? 'No reviews match this filter.' : 'No reviews yet.'}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(r => `<tr>
+    <td data-label="Date">${fmtFeedbackDate(r.date)}<br><span style="font-size:11px;color:var(--text-light);">Reviewed ${fmtFeedbackDate(r.submittedAt)}</span></td>
+    <td data-label="Type"><span class="walk-chip ${REVIEW_TYPE_CLASS[r.type]}" style="display:inline-block;cursor:default;">${escapeHtml(r.typeLabel)}</span></td>
+    <td data-label="Member">${escapeHtml(r.memberName)}</td>
+    <td data-label="Dog">${escapeHtml(r.dogNames)}</td>
+    <td data-label="Walker">${escapeHtml(r.walkerName)}</td>
+    <td data-label="Rating">${starsHtml(r.rating)}</td>
+    <td data-label="Comment" style="max-width:320px;white-space:normal;">${r.comment ? escapeHtml(r.comment) : '<span style="color:var(--text-light);">—</span>'}</td>
+  </tr>`).join('');
+}
+
+window.filterReviewsRating = (val, btn) => {
+  currentReviewRatingFilter = val;
+  document.querySelectorAll('.review-filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderReviewsView();
+};
+
+window.filterReviewsSearch = (val) => {
+  currentReviewSearch = val;
+  renderReviewsView();
+};
 
 // ── REQUESTS ─────────────────────────────────────────────────────────────────
 function renderRequests() {
@@ -6909,7 +7079,7 @@ window.avSelectDate = avSelectDate;
 
 
 
-const viewTitles = { overview: 'Overview', calendar: 'Walk Calendar', walkers: 'Walkers', payouts: 'Payouts', members: 'Members', availability: 'Meet & Greet Availability', requests: 'Requests', referrals: 'Referral Codes', conversations: 'Messages', emaillog: 'Email Log' };
+const viewTitles = { overview: 'Overview', calendar: 'Walk Calendar', walkers: 'Walkers', payouts: 'Payouts', members: 'Members', availability: 'Meet & Greet Availability', requests: 'Requests', reviews: 'Reviews', referrals: 'Referral Codes', conversations: 'Messages', emaillog: 'Email Log' };
 window.toggleSidebar = (force) => {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebarOverlay');
