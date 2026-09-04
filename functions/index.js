@@ -1537,6 +1537,23 @@ exports.chargeScheduledReservations = onSchedule({
         attemptField: 'chargeAttempt',
       });
       await candidate.ref.set({ chargePending: false }, { merge: true });
+
+      // A prior run through this same loop may have already flagged the
+      // member for reservation_charge_failed (e.g. no card on file yet) —
+      // if THIS run's retry just succeeded (a card was since added), that
+      // flag is now stale and must be cleared here, the same way
+      // retryReservationCharge's own success path already does. Without
+      // this, a reservation that self-resolves via the automatic 15-minute
+      // sweep leaves a permanent false-positive "Reservation charge failed"
+      // badge on the member with no matching chargePending doc left to
+      // retry against — nothing else ever clears it.
+      if (freshData.memberId) {
+        const billing = billingRef(freshData.memberId);
+        const billingSnap = await billing.get();
+        if (billingSnap.data()?.needsReviewReason === 'reservation_charge_failed') {
+          await billing.set({ needsReview: false, needsReviewReason: null }, { merge: true }).catch(() => {});
+        }
+      }
     } catch (e) {
       console.error(
         `chargeScheduledReservations: charge failed for overnights/${candidate.id} `
