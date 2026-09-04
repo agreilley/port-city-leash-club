@@ -3948,7 +3948,19 @@ window.openRequestItem = async (id) => {
 
   document.getElementById('requestModalTitle').textContent = title;
 
-  const isUnresolvedServiceRequest = item.type === 'service_request' && item.status !== 'confirmed' && item.status !== 'declined';
+  // Requires memberId — before the account exists, the only action
+  // available is Create Account (needsAccountCreation below), which never
+  // reads any of this review form's fields (it only creates the account off
+  // the ORIGINAL submitted startDate/endDate/service — see
+  // completeMeetGreetAndCreateAccount, functions/index.js). Rendering the
+  // editable Start/End Date, Visit Schedule, and add-on fields at that stage
+  // invited admin to "fix" a date here, watch it visually update, click
+  // Create Account, and have the edit silently discarded — including in the
+  // portal-access welcome email's Dates line, which reads straight off the
+  // untouched submission doc. Falls through to the static read-only field
+  // list (below) instead, same as a confirmed/declined request already
+  // does, so nothing on screen implies an edit here will stick.
+  const isUnresolvedServiceRequest = item.type === 'service_request' && !!item.memberId && item.status !== 'confirmed' && item.status !== 'declined';
   const isUnresolvedOvernight = (item.type === 'overnight_request' || item.service === 'overnight' || item.service === 'checkin') && item.status !== 'confirmed' && item.status !== 'declined';
   const isUnresolvedWalkExtension = item.type === 'walk_extension' && item.status !== 'confirmed' && item.status !== 'declined';
 
