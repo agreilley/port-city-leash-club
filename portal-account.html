@@ -291,6 +291,75 @@
       background: rgba(193, 123, 111, 0.08);
     }
 
+    /* Auto-charge note — same visual language as cardRemoveBlockedNote's
+       inline style (rust left-border callout), pulled into a real class
+       since this one has no conditional logic, just always-on copy. */
+    .auto-charge-note {
+      background: #F4F0EA;
+      border: 1px solid rgba(13,27,42,0.08);
+      border-left: 4px solid #8FA8A2;
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #0D1B2A;
+    }
+
+    /* Payment History — same row/status pattern as portal-referrals.html's
+       .referral-row, reused here under this page's own class names so a
+       member sees one consistent "list of records" look across the portal. */
+    .payment-section-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #0D1B2A;
+      margin: 24px 0 8px;
+    }
+    .payment-section-label:first-child { margin-top: 0; }
+    .payment-list {
+      background: white;
+      border: 1px solid #E5E0D8;
+      border-radius: 8px;
+      padding: 4px 16px;
+    }
+    .payment-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 0;
+      border-top: 0.5px solid #eee;
+      font-size: 13px;
+    }
+    .payment-row:first-child { border-top: none; }
+    .payment-desc { color: #0D1B2A; font-weight: 500; flex: 1; }
+    .payment-date { color: #888; white-space: nowrap; }
+    .payment-amount { color: #0D1B2A; font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .payment-status {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+    .payment-status.status-paid { background: rgba(143,168,162,0.15); color: #5c7570; }
+    .payment-status.status-pending { background: rgba(193,123,111,0.15); color: #A36358; }
+    .payment-status.status-failed { background: rgba(193,123,111,0.9); color: white; }
+    .payment-empty { font-size: 13px; color: #888; padding: 12px 0; }
+    .inline-retry {
+      background: none;
+      border: none;
+      padding: 0;
+      margin-left: 4px;
+      color: #C17B6F;
+      font-weight: 600;
+      text-decoration: underline;
+      cursor: pointer;
+      font: inherit;
+    }
+
     @media (max-width: 768px) {
       .field-row {
         grid-template-columns: 1fr;
@@ -305,6 +374,9 @@
       .section-card {
         padding: 20px;
       }
+
+      .payment-row { flex-wrap: wrap; }
+      .payment-date { order: 3; width: 100%; }
     }
   
   /* ── PORTAL MOBILE ─────────────────────────────────────────────────────── */
@@ -524,6 +596,11 @@
       <div class="section-card">
         <h2 class="section-title">Billing & Payment</h2>
 
+        <!-- Always shown, not conditional on card state — the point is to
+             set expectations before a member ever wonders "did that go
+             through" or looks for a pay-now button that doesn't exist. -->
+        <div class="auto-charge-note">Once your card is on file, everything is charged automatically — your monthly membership, pet-sitting reservations, walk extensions, and any tips you leave. There's no extra step, no invoice to pay, and nothing else you need to do.</div>
+
         <div class="field-row">
           <div class="field-group">
             <label class="field-label">Payment Method</label>
@@ -543,6 +620,24 @@
           <button class="btn btn-secondary" id="addCardBtn" style="display:none;" onclick="openUpdatePaymentModal()">Add a Card</button>
           <button class="btn btn-secondary" id="updateCardBtn" style="display:none;" onclick="openUpdatePaymentModal()">Update Card</button>
           <button class="btn btn-secondary" id="removeCardBtn" style="display:none;" onclick="removeCardOnFileClicked()">Remove Card</button>
+        </div>
+      </div>
+
+      <!-- Payment History — upcoming charges (subscription preview from
+           Stripe + any confirmed-but-not-yet-charged reservation, read
+           straight from Firestore) and past payments (Stripe invoices +
+           PaymentIntents, via getPaymentHistory). See loadPaymentHistory(). -->
+      <div class="section-card">
+        <h2 class="section-title">Payment History</h2>
+
+        <div id="upcomingPaymentsBlock" style="display:none;">
+          <div class="payment-section-label">Upcoming</div>
+          <div class="payment-list" id="upcomingPaymentsList"></div>
+        </div>
+
+        <div class="payment-section-label">Previous Payments</div>
+        <div class="payment-list" id="paymentHistoryList">
+          <div class="payment-empty">Loading…</div>
         </div>
       </div>
 
@@ -844,6 +939,7 @@ async function loadPageData() {
   // the HTML. refreshCardOnFile() (below, near the card modal JS) fills
   // this in once the call resolves.
   refreshCardOnFile();
+  loadPaymentHistory();
   // Membership info
   const isTravelOnly = memberData.tier === 'Travel';
   if (el('membershipTier')) el('membershipTier').textContent = isTravelOnly ? 'Pet Sitting (no walk membership)' : (memberData.tier || 'Member');
@@ -1362,6 +1458,93 @@ async function refreshCardOnFile() {
     renderCardLoadFailed();
   }
 }
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtMoney = cents => `$${(cents / 100).toFixed(2)}`;
+// Both invoice/PaymentIntent timestamps (Stripe, unix seconds) and Firestore
+// Timestamps (chargeScheduledFor) pass through here — normalized to millis
+// before the same Date/toLocaleDateString call handles either source.
+const fmtPaymentDate = ts => {
+  if (!ts) return '–';
+  const d = ts.toDate ? ts.toDate() : new Date(ts * 1000);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+// Upcoming pet-sitting reservation charges — same query/permission as
+// checkPendingReservationCharge above (a member can already read their own
+// overnights docs directly), just keeping the amount/date/service-type
+// instead of collapsing straight to a boolean.
+async function loadUpcomingReservationCharges() {
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'overnights'),
+      where('memberId', '==', userId),
+      where('chargePending', '==', true)
+    ));
+    return snap.docs.map(d => {
+      const o = d.data();
+      const isCheckin = o.serviceType === 'checkin' || o.serviceType === 'drop-in-visit';
+      return {
+        description: isCheckin ? 'Drop-In Visits' : 'Overnight Stay',
+        amountCents: o.confirmedTotalCents || 0,
+        date: o.chargeScheduledFor,
+      };
+    });
+  } catch (e) {
+    console.error('loadUpcomingReservationCharges:', e.message);
+    return [];
+  }
+}
+
+function renderUpcomingPayments(items) {
+  const block = document.getElementById('upcomingPaymentsBlock');
+  const list = document.getElementById('upcomingPaymentsList');
+  if (!block || !list) return;
+  if (!items.length) { block.style.display = 'none'; return; }
+  block.style.display = 'block';
+  list.innerHTML = items.map(p => `<div class="payment-row">
+    <div class="payment-desc">${esc(p.description)}</div>
+    <div class="payment-date">${esc(fmtPaymentDate(p.date))}</div>
+    <div class="payment-amount">${esc(fmtMoney(p.amountCents))}</div>
+  </div>`).join('');
+}
+
+function renderPaymentHistory(payments) {
+  const list = document.getElementById('paymentHistoryList');
+  if (!list) return;
+  if (!payments.length) { list.innerHTML = '<div class="payment-empty">No payments yet.</div>'; return; }
+  const STATUS_LABELS = { paid: 'Paid', pending: 'Pending', failed: 'Failed' };
+  list.innerHTML = payments.map(p => `<div class="payment-row">
+    <div class="payment-desc">${esc(p.description)}</div>
+    <div class="payment-date">${esc(fmtPaymentDate(p.date))}</div>
+    <div class="payment-amount">${esc(fmtMoney(p.amountCents))}</div>
+    <div class="payment-status status-${esc(p.status)}">${esc(STATUS_LABELS[p.status] || p.status)}</div>
+  </div>`).join('');
+}
+
+async function loadPaymentHistory() {
+  const list = document.getElementById('paymentHistoryList');
+  try {
+    const [historyResult, upcomingReservations] = await Promise.all([
+      httpsCallable(functions, 'getPaymentHistory')(),
+      loadUpcomingReservationCharges(),
+    ]);
+    const { payments, upcomingSubscription } = historyResult.data;
+    const upcoming = [...upcomingReservations];
+    if (upcomingSubscription) upcoming.push(upcomingSubscription);
+    upcoming.sort((a, b) => {
+      const da = a.date?.toDate ? a.date.toDate().getTime() : (a.date || 0) * 1000;
+      const db_ = b.date?.toDate ? b.date.toDate().getTime() : (b.date || 0) * 1000;
+      return da - db_;
+    });
+    renderUpcomingPayments(upcoming);
+    renderPaymentHistory(payments);
+  } catch (e) {
+    console.error('loadPaymentHistory:', e.message);
+    if (list) list.innerHTML = '<div class="payment-empty">Couldn\'t load your payment history right now. <button type="button" class="inline-retry" onclick="loadPaymentHistory()">Retry</button></div>';
+  }
+}
+window.loadPaymentHistory = loadPaymentHistory;
 
 window.removeCardOnFileClicked = async () => {
   if (!userId || !currentCard) return;

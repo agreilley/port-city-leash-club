@@ -557,6 +557,87 @@ exports.adminGetCardOnFile = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
   return resolveCardOnFile(memberId, stripe);
 });
 
+// getPaymentHistory: self-scoped list of the caller's own past payments and
+// (for a Member-tier subscriber) their next upcoming membership charge —
+// read live from Stripe, same auth boundary as getCardOnFile above
+// (request.auth.uid only, never a client-supplied id).
+//
+// Deliberately does NOT include upcoming pet-sitting reservation charges —
+// portal-account.html already reads those directly from Firestore
+// (firestore.rules lets a member read their own overnights docs; see
+// checkPendingReservationCharge's identical query there), so duplicating
+// that lookup here would just create a second source of truth for the same
+// chargePending/chargeScheduledFor/confirmedTotalCents fields. This
+// function covers only what a member CANNOT read directly: the Stripe-side
+// record of what was actually charged (both the recurring subscription,
+// which has NO Firestore record of individual invoices at all, and every
+// one-time PaymentIntent — reservations, tips, walk extensions, current-
+// month catch-up billing), plus Stripe's own preview of the next
+// subscription invoice.
+//
+// Every one-time charge in this codebase (chargeCustomerCard, runTipCharge,
+// runChargeCurrentMonthWalks) already sets a clean, human-readable
+// `description` on the PaymentIntent at charge time — trusted directly here
+// rather than re-deriving one from whichever Firestore doc it came from.
+//
+// Retried charge attempts reuse the SAME PaymentIntent object (chargeKey-
+// based idempotency, see chargeCustomerCard's own comment) rather than
+// creating a new one per attempt, so a reservation that failed twice before
+// succeeding still shows as exactly one row here, not three.
+exports.getPaymentHistory = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
+  const uid = request.auth.uid;
+
+  const billingSnap = await billingRef(uid).get();
+  const stripeCustomerId = billingSnap.data()?.stripeCustomerId;
+  if (!stripeCustomerId) return { payments: [], upcomingSubscription: null };
+
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+
+  const [invoicesResp, paymentIntentsResp, upcomingInvoice] = await Promise.all([
+    stripe.invoices.list({ customer: stripeCustomerId, limit: 24 }),
+    stripe.paymentIntents.list({ customer: stripeCustomerId, limit: 24 }),
+    // Throws when there's no active subscription to preview (Travel-tier
+    // members, or a canceled one) — that's an expected, normal case here,
+    // not an error worth surfacing.
+    stripe.invoices.retrieveUpcoming({ customer: stripeCustomerId }).catch(() => null),
+  ]);
+
+  // Subscription invoices — only states that represent a real, decided
+  // outcome (a still-open draft invoice isn't payment history yet).
+  const invoicePayments = invoicesResp.data
+    .filter((inv) => ['paid', 'uncollectible', 'void'].includes(inv.status))
+    .map((inv) => ({
+      id: inv.id,
+      date: inv.status_transitions?.paid_at || inv.created,
+      amountCents: inv.amount_paid || inv.amount_due || 0,
+      status: inv.status === 'paid' ? 'paid' : 'failed',
+      description: 'Monthly Membership',
+    }));
+
+  // One-time charges (reservations, tips, walk extensions, current-month
+  // catch-up). $0 PaymentIntents never exist here (chargeCustomerCard skips
+  // creating one when a referral credit fully covers a charge), so no
+  // filter needed for that case.
+  const oneTimePayments = paymentIntentsResp.data.map((pi) => ({
+    id: pi.id,
+    date: pi.created,
+    amountCents: pi.amount,
+    status: pi.status === 'succeeded' ? 'paid' : (pi.status === 'processing' ? 'pending' : 'failed'),
+    description: pi.description || 'Port City Leash Club charge',
+  }));
+
+  const payments = [...invoicePayments, ...oneTimePayments].sort((a, b) => b.date - a.date);
+
+  const upcomingSubscription = upcomingInvoice ? {
+    description: 'Monthly Membership',
+    amountCents: upcomingInvoice.amount_due,
+    date: upcomingInvoice.next_payment_attempt || upcomingInvoice.period_end,
+  } : null;
+
+  return { payments, upcomingSubscription };
+});
+
 // removeCardOnFile: detaches the caller's own saved card(s) from Stripe and
 // clears cardOnFile on their own billing doc.
 //
