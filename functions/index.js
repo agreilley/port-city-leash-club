@@ -467,21 +467,23 @@ exports.confirmCardOnFile = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (requ
 //      boolean. Every charge function in this file reads that flag —
 //      letting it drift from what Stripe actually has attached is worse
 //      than a stale read.
-exports.getCardOnFile = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
-  const uid = request.auth.uid;
-
+// Shared by getCardOnFile (self-service, below) and adminGetCardOnFile
+// (admin-service, further down) — both need the exact same "ask Stripe,
+// then self-heal Firestore" logic for a given uid, just resolved from a
+// different source (the caller's own auth vs. an admin-supplied memberId).
+// Keeping one copy means the self-healing behavior described below can
+// never drift between the two call sites.
+async function resolveCardOnFile(uid, stripe) {
   const billing = billingRef(uid);
   const billingSnap = await billing.get();
   const billingData = billingSnap.data();
   const stripeCustomerId = billingData?.stripeCustomerId;
   if (!stripeCustomerId) return { card: null };
 
-  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
   const paymentMethods = await stripe.paymentMethods.list({ customer: stripeCustomerId, type: 'card' });
 
   if (paymentMethods.data.length > 1) {
-    console.error(`getCardOnFile: Stripe customer ${stripeCustomerId} (member ${uid}) has ${paymentMethods.data.length} attached cards — expected at most 1.`);
+    console.error(`resolveCardOnFile: Stripe customer ${stripeCustomerId} (member ${uid}) has ${paymentMethods.data.length} attached cards — expected at most 1.`);
     await billing.set({
       needsReview: true,
       needsReviewReason: 'multiple_payment_methods_attached',
@@ -520,6 +522,39 @@ exports.getCardOnFile = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request)
       expYear: pm.card.exp_year,
     },
   };
+}
+
+// getCardOnFile: live read of the caller's own saved card, straight from
+// Stripe — nothing beyond the existing cardOnFile boolean is ever stored in
+// Firestore. Returns { card: null } when there's no card on file (no
+// customer yet, or a customer with nothing attached) rather than throwing,
+// since that's an expected, normal state for the account page's empty
+// state — not an error.
+//
+// Auth boundary: uid is request.auth.uid alone, same as
+// createAuthenticatedSetupIntent/confirmCardOnFile above — a caller can
+// only ever resolve their OWN billing doc's stripeCustomerId, never
+// anyone else's. adminGetCardOnFile (below) is the admin-service
+// counterpart for looking up a different member's card.
+exports.getCardOnFile = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+  return resolveCardOnFile(request.auth.uid, stripe);
+});
+
+// adminGetCardOnFile: admin-only lookup of ANY member's card-on-file
+// status, for the Member Detail page's "Card on File" indicator
+// (admin/dashboard.html) — getCardOnFile above can only ever resolve the
+// caller's own billing doc, so admin needed its own entry point rather
+// than a memberId parameter bolted onto that one, which would have turned
+// a member-safe self-lookup into an admin-only-in-practice function with
+// two very different trust boundaries tangled into one auth check.
+exports.adminGetCardOnFile = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { memberId } = request.data || {};
+  if (!memberId) throw new HttpsError('invalid-argument', 'memberId is required.');
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+  return resolveCardOnFile(memberId, stripe);
 });
 
 // removeCardOnFile: detaches the caller's own saved card(s) from Stripe and

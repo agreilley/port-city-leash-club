@@ -6018,6 +6018,27 @@ window.openMemberDetail = async (id) => {
   const billingSnap = await getDoc(doc(db, 'members', id, 'private', 'billing'));
   const billing = billingSnap.exists() ? billingSnap.data() : {};
 
+  // Live from Stripe, not the (self-healing but potentially stale)
+  // billing.cardOnFile flag — this is the one place admin can actually
+  // answer "did the card go through" without leaving for the Stripe
+  // dashboard. adminGetCardOnFile mirrors the member portal's own
+  // getCardOnFile, just admin-authorized to check ANY member (see that
+  // function's own comment, functions/index.js). Failure here (Stripe
+  // hiccup, no customer yet) shouldn't block the rest of the modal from
+  // rendering — shown as "Couldn't check" rather than thrown.
+  let cardOnFileHTML = '<span style="color:var(--text-light);">–</span>';
+  try {
+    const adminGetCardOnFile = httpsCallable(fns, 'adminGetCardOnFile');
+    const res = await adminGetCardOnFile({ memberId: id });
+    const card = res.data?.card;
+    cardOnFileHTML = card
+      ? `<span class="status-badge active">On File</span> <span style="color:var(--text-mid);">${escapeHtml(card.brand)} •••• ${escapeHtml(card.last4)}, exp ${String(card.expMonth).padStart(2, '0')}/${String(card.expYear).slice(-2)}</span>`
+      : '<span class="status-badge unassigned">No Card</span>';
+  } catch (e) {
+    console.error('adminGetCardOnFile failed for', id, ':', e.message);
+    cardOnFileHTML = '<span style="color:var(--text-light);" title="' + escapeHtml(e.message) + '">Couldn\'t check</span>';
+  }
+
   function fmtDate(val) {
     if (!val) return '–';
     try {
@@ -6046,6 +6067,7 @@ window.openMemberDetail = async (id) => {
     { label: 'Time Slot', value: WALK_TIME_SLOT_LABELS[member.defaultTimeSlot] || member.defaultTimeSlot || '–' },
     { label: 'Assigned Walker', value: walker?.name || 'Unassigned' },
     { label: 'Stripe Customer ID', value: billing.stripeCustomerId || '–' },
+    { label: 'Card on File', value: '', html: cardOnFileHTML },
     { label: 'Stripe Subscription ID', value: billing.stripeSubscriptionId || '–' },
     { label: 'Billing Status', value: billing.billingStatus || '–', html: renderBillingBadge(billing) },
     { label: 'Member Since', value: fmtDate(member.createdAt) },
