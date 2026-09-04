@@ -65,7 +65,7 @@
   .section { max-width: 1100px; margin: 0 auto; }
   .section h2 { font-family: 'Cormorant Garamond', serif; font-size: 34px; font-weight: 300; color: var(--navy); margin-bottom: 24px; }
 
-  .includes-list { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 32px; }
+  .includes-list { list-style: none; display: flex; flex-direction: column; gap: 14px; }
   .includes-list li { display: flex; align-items: flex-start; gap: 12px; font-size: 15px; color: var(--text-mid); line-height: 1.6; }
   .includes-list li::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--seafoam); flex-shrink: 0; margin-top: 8px; }
 
@@ -143,7 +143,6 @@
     .form-shell { grid-template-columns: 1fr; }
     .sidebar { position: static; }
     .hero-inner { grid-template-columns: 1fr; }
-    .includes-list { grid-template-columns: 1fr; }
   }
   @media (max-width: 768px) {
     nav { padding: 0 20px; height: 56px; }
@@ -231,7 +230,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         <li>Beginner-friendly mat Pilates class led by Empower Method, with mats provided</li>
         <li>Puppies from paws4people during and after class</li>
         <li>Complimentary coffee from Azalea Station</li>
-        <li>Time to meet the dogs and learn more about paws4people</li>
       </ul>
       <div class="policy-callout" style="margin-top:32px;">
         <div class="policy-callout-icon">🐾</div>
