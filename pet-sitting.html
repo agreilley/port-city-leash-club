@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="apple-touch-icon" href="images/favicon.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="icon" type="image/png" href="images/favicon.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pet Sitting in Wilmington, NC | Port City Leash Club</title>
+<meta name="description" content="Overnight pet sitting and drop-in visits in Wilmington, NC from an insured, background-checked, Pet First Aid certified team. Request your reservation today.">
+<link rel="canonical" href="https://www.portcityleashclub.com/pet-sitting">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.portcityleashclub.com/pet-sitting">
+<meta property="og:site_name" content="Port City Leash Club">
+<meta property="og:title" content="Pet sitting in Wilmington, NC">
+<meta property="og:description" content="Overnight pet sitting and drop-in visits in Wilmington, NC from an insured, background-checked, Pet First Aid certified team. Request your reservation today.">
+<meta property="og:image" content="https://www.portcityleashclub.com/images/og-image.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Pet sitting in Wilmington, NC">
+<meta name="twitter:description" content="Overnight pet sitting and drop-in visits in Wilmington, NC from an insured, background-checked, Pet First Aid certified team. Request your reservation today.">
+<meta name="twitter:image" content="https://www.portcityleashclub.com/images/og-image.jpg">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow-x: hidden; max-width: 100%; }
+  :root {
+    --navy: #0D1B2A; --navy-mid: #1C2F42;
+    --seafoam: #8FA8A2; --seafoam-light: #C5D5D1;
+    --sand: #E9E1D3; --sand-light: #F4F0EA;
+    --warm-white: #FAFAF8; --text-dark: #1A1A1A;
+    --text-mid: #4A4A4A; --text-light: #7A7A7A;
+    --rust: #C17B6F;
+  }
+  body { font-family: 'DM Sans', sans-serif; background: var(--warm-white); color: var(--text-dark); line-height: 1.6; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: var(--warm-white); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 0 48px; display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .nav-logo { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--navy); line-height: 1.3; }
+  .nav-links { display: flex; align-items: center; gap: 32px; list-style: none; }
+  .nav-links a { font-size: 13px; color: var(--text-mid); text-decoration: none; letter-spacing: 0.04em; }
+  .btn-nav { background: var(--rust); color: white !important; border: none; border-radius: 4px; padding: 10px 20px; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; }
+
+  /* HERO */
+  .hero { padding: 80px 48px; display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 48px; align-items: center; max-width: 1100px; margin: 0 auto; }
+  .hero-eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 20px; }
+  .hero-headline { font-family: 'Cormorant Garamond', serif; font-size: 64px; font-weight: 300; line-height: 1.05; color: var(--navy); margin-bottom: 24px; }
+  .hero-sub { font-size: 16px; color: var(--text-mid); line-height: 1.7; margin-bottom: 36px; max-width: 380px; }
+  .hero-ctas { display: flex; align-items: center; gap: 24px; }
+  .btn-primary { background: var(--rust); color: white; border: none; border-radius: 4px; padding: 14px 28px; font-size: 14px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; }
+  .btn-ghost { font-size: 14px; color: var(--text-mid); background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+  .hero-visual { background: var(--sand); border-radius: 8px; height: 396px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
+  .hero-visual-inner { width: 120px; height: 120px; border: 1px solid rgba(13,27,42,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative; }
+  .hero-dot { width: 6px; height: 6px; background: var(--rust); border-radius: 50%; position: absolute; top: 16px; right: 28px; }
+  .hero-visual-label { font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--navy); opacity: 0.5; font-weight: 500; }
+
+  /* STATS */
+  .stats-bar { background: var(--navy-mid); padding: 36px 48px; display: flex; justify-content: center; gap: 80px; align-items: center; }
+  .stat { text-align: center; display: flex; flex-direction: column; align-items: center; }
+  .stat-number { font-family: 'Cormorant Garamond', serif; font-size: 36px; font-weight: 400; color: white; line-height: 1; }
+  .stat-label { font-size: 10px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam-light); margin-top: 6px; }
+
+  /* SHARED */
+  section { padding: 80px 48px; }
+  .section-inner { max-width: 1100px; margin: 0 auto; }
+  .section-eyebrow { font-size: 13px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 12px; }
+  .section-headline { font-family: 'Cormorant Garamond', serif; font-size: 42px; font-weight: 300; color: var(--navy); line-height: 1.1; margin-bottom: 16px; }
+  .section-sub { font-size: 15px; color: var(--text-mid); max-width: 620px; line-height: 1.7; margin-bottom: 48px; }
+
+  /* PET SITTING SERVICES CARDS */
+  .sitting-cards-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .sitting-card { display: flex; flex-direction: column; justify-content: space-between; background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 32px; text-decoration: none; color: inherit; transition: box-shadow 0.2s, transform 0.2s; min-height: 220px; }
+  .sitting-card:hover { box-shadow: 0 8px 24px rgba(13,27,42,0.08); transform: translateY(-2px); }
+  .sitting-card-title { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 400; color: var(--navy); margin-bottom: 10px; }
+  .sitting-card-desc { font-size: 14px; color: var(--text-mid); line-height: 1.6; }
+  .sitting-card-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 20px; margin-top: 20px; border-top: 1px solid rgba(0,0,0,0.08); }
+  .sitting-card-price { font-family: 'Cormorant Garamond', serif; font-size: 34px; font-weight: 400; color: var(--navy); }
+  .sitting-card-cta { font-size: 13px; color: white; background: var(--rust); font-weight: 500; padding: 8px 16px; border-radius: 20px; white-space: nowrap; }
+
+  .steps-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 48px; }
+  .step-inline { padding: 22px; background: white; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06); }
+  .step-inline .step-num { font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 300; color: var(--seafoam-light); line-height: 1; margin-bottom: 10px; }
+  .step-inline .step-text { font-size: 13px; color: var(--text-mid); line-height: 1.7; }
+  .step-inline.pre-animate { opacity: 0; transform: translateY(24px); }
+  .step-inline.animate-in { opacity: 1; transform: translateY(0); transition: opacity 0.6s ease, transform 0.6s ease; }
+  @media (prefers-reduced-motion: reduce) {
+    .step-inline.pre-animate { opacity: 1; transform: none; }
+    .step-inline.animate-in { transition: none; }
+  }
+  .step-title { font-size: 16px; font-weight: 500; color: var(--navy); margin-bottom: 10px; }
+
+  a.btn-primary, a.btn-nav { display: inline-block; text-align: center; text-decoration: none; color: white !important; }
+
+  /* HOVER STATES */
+  .btn-primary { transition: background 0.2s, transform 0.1s; }
+  .btn-primary:hover { background: #A36358; }
+  .btn-primary:active { transform: scale(0.97); }
+  .btn-nav { transition: background 0.2s, transform 0.1s; }
+  .btn-nav:hover { background: #A36358; }
+  .btn-ghost { transition: color 0.2s; }
+  .btn-ghost:hover { color: var(--navy); }
+
+  /* WHY US */
+  .why-card { padding: 32px 28px; background: white; border: 1px solid rgba(0,0,0,0.06); border-radius: 8px; }
+  .why-title { font-size: 17px; font-weight: 500; color: var(--navy); margin-bottom: 10px; }
+  .why-text { font-size: 14px; color: var(--text-mid); line-height: 1.7; }
+  .why-cards { display: flex; flex-direction: column; gap: 18px; justify-content: center; }
+
+  /* TESTIMONIALS — .carousel-dot and .carousel-arrow (plus its hover/active
+     rules below) are reused verbatim from index.html's unused carousel CSS
+     (index.html:227-234). .carousel-track/.carousel-card are NOT reused
+     as-is: index.html defines them as a JS display:none/.active toggle
+     (one card shown at a time, nothing else), which can't do a scroll-snap
+     track, native touch swipe, or two cards visible at once — so those two
+     are redefined here as a horizontally scrolling flex track instead,
+     keeping the reusable visual properties (padding/background/border/
+     radius) from the original .carousel-card. */
+  .testimonial-carousel { position: relative; max-width: 900px; margin: 40px auto 0; }
+  .carousel-track { display: flex; gap: 24px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+  .carousel-track::-webkit-scrollbar { display: none; }
+  .carousel-card { flex: 0 0 calc(50% - 12px); scroll-snap-align: start; padding: 40px; background: white; border: 1px solid rgba(0,0,0,0.06); border-radius: 8px; display: flex; flex-direction: column; }
+  .testimonial-quote { font-size: 14px; color: var(--text-mid); line-height: 1.7; flex: 1; }
+  .testimonial-attribution { font-size: 13px; font-weight: 500; color: var(--navy); margin-top: 20px; }
+  .carousel-controls { display: flex; align-items: center; justify-content: center; gap: 20px; margin-top: 24px; }
+  .carousel-dots { display: flex; gap: 8px; }
+  .carousel-arrow[disabled] { opacity: 0.35; cursor: default; }
+  .carousel-arrow:hover[disabled] { background: none; color: var(--navy); border-color: rgba(0,0,0,0.12); }
+  .carousel-arrow:focus-visible, .carousel-dot:focus-visible { outline: 2px solid var(--rust); outline-offset: 2px; }
+
+  /* Reused verbatim from index.html:223-224,231-234 */
+  .carousel-arrow { transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.1s; }
+  .carousel-arrow:active { transform: scale(0.93); }
+  .carousel-dot { width:8px; height:8px; border-radius:50%; background:var(--seafoam-light); cursor:pointer; border: none; transition:background 0.2s; }
+  .carousel-dot.active { background:var(--navy); }
+  .carousel-arrow { background:none; border:1px solid rgba(0,0,0,0.12); border-radius:50%; width:36px; height:36px; font-size:16px; cursor:pointer; color:var(--navy); display:flex; align-items:center; justify-content:center; transition:all 0.2s; font-family:inherit; }
+  .carousel-arrow:hover { background:var(--navy); color:white; border-color:var(--navy); }
+
+  /* CTA */
+  .cta-section { background: var(--navy); text-align: center; padding: 100px 48px; }
+  .cta-section .section-eyebrow { color: var(--seafoam); }
+  .cta-section .section-headline { color: white; font-size: 56px; max-width: 600px; margin: 0 auto 16px; }
+  .cta-section .section-sub { color: rgba(255,255,255,0.6); text-align: center; margin: 0 auto 40px; }
+
+  footer { background: var(--navy); border-top: 1px solid rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); padding: 48px; display: flex; justify-content: space-between; align-items: center; }
+  .footer-brand { font-family: 'Cormorant Garamond', serif; font-size: 18px; font-weight: 400; color: white; line-height: 1.4; letter-spacing: 0; text-transform: none; }
+  .footer-sub { font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+  .footer-links { display: flex; gap: 32px; list-style: none; }
+  .footer-links a { font-size: 13px; color: rgba(255,255,255,0.5); text-decoration: none; }
+
+  html { scroll-behavior: smooth; }
+  .founder-section { background: var(--sand-light); }
+  .founder-layout { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 48px; align-items: stretch; }
+  .founder-photo { border-radius: 8px; overflow: hidden; aspect-ratio: 1 / 1; align-self: center; background: var(--sand); border:1px solid rgba(0,0,0,0.06); }
+  .founder-copy { background: white; border:1px solid rgba(0,0,0,0.06); border-radius:8px; padding: 44px 42px; display: flex; flex-direction: column; justify-content: center; position: relative; }
+  .founder-quote-mark { font-family: 'Cormorant Garamond', serif; font-size: 140px; line-height: 1; color: var(--rust); position: absolute; top: -46px; left: 42px; }
+  .founder-copy p { font-size: 15px; color: var(--text-mid); line-height: 1.8; margin-bottom: 18px; }
+  .founder-copy p strong { font-weight: 500; color: var(--navy); }
+  .founder-signature { margin-top: 28px; }
+  .founder-name { font-family:'Cormorant Garamond', serif; font-style: italic; font-size: 24px; color: var(--navy); line-height:1.1; }
+  .founder-title { font-size: 12px; color: var(--text-light); letter-spacing:0.1em; text-transform:uppercase; margin-top: 6px; }
+  .faq-section { background: var(--warm-white); }
+  .faq-list { max-width: 820px; margin: 40px auto 0; display:flex; flex-direction:column; gap:12px; }
+  .faq-item { background:white; border:1px solid rgba(0,0,0,0.08); border-radius:8px; overflow:hidden; }
+  .faq-question { width:100%; background:white; border:0; padding:20px 24px; display:flex; justify-content:space-between; align-items:center; text-align:left; font-family:'DM Sans', sans-serif; font-size:15px; font-weight:500; color:var(--navy); cursor:pointer; }
+  .faq-icon { color: var(--seafoam); font-size: 20px; line-height: 1; }
+  .faq-answer { display:none; padding:0 24px 22px; font-size:14px; color:var(--text-mid); line-height:1.7; }
+  .faq-item.open .faq-answer { display:block; }
+  .faq-item.open .faq-icon { transform: rotate(45deg); }
+  @media (max-width: 820px) {
+    .founder-layout { grid-template-columns: 1fr; }
+    .founder-copy { padding: 32px 24px; }
+    .founder-quote-mark { font-size: 110px; top: -34px; left: 24px; }
+    .nav-links { gap: 16px; flex-wrap: wrap; justify-content: flex-end; }
+  }
+
+  /* ── MOBILE ──────────────────────────────────────────────────────────── */
+  @media (max-width: 768px) {
+    /* Nav */
+    nav { padding: 0 20px; height: 56px; }
+    .nav-links { display: none; flex-direction: column; position: fixed; top: 56px; left: 0; right: 0; background: var(--warm-white); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 16px 20px 24px; gap: 0; z-index: 99; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    .nav-links.open { display: flex; }
+    .nav-links li { padding: 12px 0; border-bottom: 1px solid rgba(0,0,0,0.06); }
+    .nav-links li:last-child { border-bottom: none; padding-top: 16px; }
+    .nav-links a:not(.btn-nav) { font-size: 15px; }
+    .btn-nav { display: block; text-align: center; padding: 12px; width: 100%; }
+    .hamburger { display: flex; flex-direction: column; gap: 5px; cursor: pointer; padding: 8px; }
+    .hamburger span { display: block; width: 22px; height: 2px; background: var(--navy); border-radius: 2px; transition: all 0.2s; }
+    .hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+    .hamburger.open span:nth-child(2) { opacity: 0; }
+    .hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+    /* Hero */
+    .hero { grid-template-columns: 1fr; gap: 24px; padding: 40px 20px; }
+    .hero-headline { font-size: 52px; }
+    .hero-headline br { display: none; }
+    .hero-visual { height: 286px !important; }
+    .hero-ctas { flex-direction: column; gap: 10px; }
+    .hero-ctas a { text-align: center; }
+
+    /* Trust signals */
+    .stats-bar { gap: 16px !important; padding: 32px 16px !important; }
+
+    /* Sections */
+    section { padding: 48px 20px; }
+
+    /* Pet Sitting Services: stack cards on mobile */
+    .sitting-cards-grid { grid-template-columns: 1fr !important; gap: 16px; }
+    .steps-row { grid-template-columns: 1fr !important; gap: 16px; }
+
+    /* Testimonials: one card per view, swipe instead of arrows */
+    .carousel-card { flex-basis: 100%; }
+    .carousel-controls .carousel-arrow { display: none; }
+
+    /* Founder */
+    .founder-layout { grid-template-columns: 1fr; }
+    .founder-photo { order: -1; }
+    .founder-copy { padding: 28px 20px; order: 1; }
+    .founder-quote-mark { font-size: 90px; top: -28px; left: 20px; }
+    .founder-layout { display: flex; flex-direction: column; }
+
+    /* Footer */
+    footer { flex-direction: column; gap: 28px; padding: 40px 20px; align-items: flex-start; }
+    .footer-links { flex-wrap: wrap; gap: 16px; }
+
+    /* Misc */
+    .section-headline { font-size: 32px; }
+    .cta-section .section-headline { font-size: 40px; }
+    .sitting-card-title { font-size: 22px; }
+    .sitting-card-price { font-size: 28px; }
+    * { max-width: 100%; }
+    .hero { padding: 40px 20px; }
+    section { padding: 48px 20px; overflow: hidden; }
+    .cta-section { padding: 48px 20px; }
+  }
+
+  @media (max-width: 480px) {
+    .hero-headline { font-size: 42px; }
+    .section-headline { font-size: 28px; }
+    .cta-section .section-headline { font-size: 34px; }
+    .sitting-card-title { font-size: 20px; }
+    .sitting-card-price { font-size: 26px; }
+  }
+</style>
+<script src="/js/meta-pixel.js" defer></script>
+<script src="/js/attribution.js" defer></script>
+<script src="/js/ga4.js" defer></script>
+</head>
+<body>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
+/></noscript>
+
+<!-- NAV -->
+<nav>
+  <a href="/" style="text-decoration:none;display:flex;align-items:center;"><img src="images/logo-horizontal.png" alt="Port City Leash Club" style="height:72px;width:auto;"></a>
+  <ul class="nav-links" id="navLinks">
+    <li><a href="/faq">FAQ</a></li>
+    <li><a href="/portal-login">Login</a></li>
+    <li><a class="btn-nav" href="/membership-request" data-cta="nav">Join The Leash Club</a></li>
+  </ul>
+  <div class="hamburger" id="hamburger" onclick="toggleNav()" style="display:none;">
+    <span></span><span></span><span></span>
+  </div>
+</nav>
+
+<!-- 1. HERO -->
+<div style="max-width:1196px;margin:0 auto;">
+  <div class="hero">
+    <div>
+      <p class="hero-eyebrow">Pet sitting · Wilmington, NC</p>
+      <h1 class="hero-headline">Your pets stay <br>in the home <br>they know.</h1>
+      <p class="hero-sub">Overnight stays and drop-in visits from a small local team your pets get to know. Insured, background checked, and pet first aid certified.</p>
+      <div class="hero-ctas">
+        <a class="btn-primary" href="/service-request" data-cta="hero">Request pet sitting</a>
+      </div>
+    </div>
+    <div class="hero-visual" style="border-radius:8px;overflow:hidden;height:360px;">
+      <picture>
+        <source srcset="images/lifestyle.webp" type="image/webp">
+        <img src="images/lifestyle.jpeg" alt="A dog on a leash walking the shoreline at Wrightsville Beach, with ocean waves and a pier in the background." style="width:100%;height:100%;object-fit:cover;object-position:center center;">
+      </picture>
+    </div>
+  </div>
+</div>
+
+<!-- TRUST SIGNALS -->
+<div class="stats-bar" style="gap:0;justify-content:space-around;">
+  <div class="stat">
+    <svg width="31" height="31" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin:0 auto 10px;display:block;">
+      <circle cx="14" cy="9" r="4" stroke="#C5D5D1" stroke-width="1.5"/>
+      <path d="M7 23c.8-4 3.5-6 7-6s6.2 2 7 6" stroke="#C5D5D1" stroke-width="1.5" stroke-linecap="round"/>
+      <path d="M20 6l2 2 4-4" stroke="#C5D5D1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="stat-label">Background Checked Team</div>
+  </div>
+  <div class="stat">
+    <svg width="31" height="31" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin:0 auto 10px;display:block;">
+      <path d="M14 3L5 7v7c0 5.8 3.8 10 9 12 5.2-2 9-6.2 9-12V7l-9-4z" stroke="#C5D5D1" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="M10 14l3 3 5-6" stroke="#C5D5D1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="stat-label">Fully Insured</div>
+  </div>
+  <div class="stat">
+    <svg width="31" height="31" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin:0 auto 10px;display:block;">
+      <rect x="6" y="5" width="16" height="18" rx="2" stroke="#C5D5D1" stroke-width="1.5"/>
+      <path d="M14 10v8M10 14h8" stroke="#C5D5D1" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    <div class="stat-label">Pet First Aid Certified</div>
+  </div>
+  <div class="stat">
+    <svg width="31" height="31" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin:0 auto 10px;display:block;">
+      <rect x="6" y="5" width="16" height="18" rx="2" stroke="#C5D5D1" stroke-width="1.5"/>
+      <path d="M10 3v4M18 3v4M6 11h16" stroke="#C5D5D1" stroke-width="1.5" stroke-linecap="round"/>
+      <path d="M10 16l2 2 5-5" stroke="#C5D5D1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="stat-label">Consistent Walkers</div>
+  </div>
+</div>
+
+<!-- 2. SERVICES -->
+<section id="services" style="background: var(--warm-white);">
+  <div class="section-inner">
+    <p class="section-eyebrow">Pet sitting services</p>
+    <h2 class="section-headline">Two ways we care for your pets</h2>
+
+    <div class="sitting-cards-grid" style="margin-top:40px;">
+
+      <a href="/service-request?service=drop-in-visit" class="sitting-card" data-cta="services_dropin">
+        <div>
+          <div class="sitting-card-title">Drop-in visit</div>
+          <div class="sitting-card-desc">A 20-minute check-in while you're away. Feeding, fresh water, playtime, and a photo update every time. Most pet owners reserve three to four visits a day.</div>
+        </div>
+        <div class="sitting-card-footer">
+          <div class="sitting-card-price" id="price-dropin"></div>
+          <div class="sitting-card-cta">Reserve &rsaquo;</div>
+        </div>
+      </a>
+
+      <a href="/service-request?service=overnight-stay" class="sitting-card" data-cta="services_overnight">
+        <div>
+          <div class="sitting-card-title">Overnight stay</div>
+          <div class="sitting-card-desc">Around-the-clock care in your home. Evening settling, overnight supervision, and daytime check-ins built around the routine your pets already know.</div>
+        </div>
+        <div class="sitting-card-footer">
+          <div class="sitting-card-price" id="price-overnight"></div>
+          <div class="sitting-card-cta">Reserve &rsaquo;</div>
+        </div>
+      </a>
+
+    </div>
+
+    <p style="text-align:center;font-size:13px;color:var(--text-light);margin-top:24px;">Medication administration (+$<span id="fee-medication"></span>) and additional pets (+$<span id="fee-extrapet"></span>) are available as add-ons.</p>
+
+  </div>
+</section>
+
+
+<!-- 3. WHY US -->
+<section style="background: var(--warm-white);">
+  <div class="section-inner">
+    <p class="section-eyebrow">Why Port City Leash Club</p>
+    <h2 class="section-headline">Care that doesn't feel like a stranger in your house</h2>
+
+    <div class="why-cards" style="max-width:700px;margin:40px auto 0;">
+      <div class="why-card">
+        <div class="why-title">A team, not an app</div>
+        <div class="why-text">You'll meet your sitter before the first visit. The same people care for your pets each time, so they are never left with someone they don't know.</div>
+      </div>
+
+      <div class="why-card">
+        <div class="why-title">Their routine, kept</div>
+        <div class="why-text">We follow the schedule your pets already have. Meals, medication, walks, and bedtime happen the way they happen when you're home.</div>
+      </div>
+
+      <div class="why-card">
+        <div class="why-title">You'll know how it's going</div>
+        <div class="why-text">A photo update after every visit, so you can see how they're doing without having to ask.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- 4. TESTIMONIALS -->
+<section style="background: var(--warm-white);">
+  <div class="section-inner">
+    <p class="section-eyebrow">What clients say</p>
+    <h2 class="section-headline">Trusted with pets who don't trust easily</h2>
+
+    <div class="testimonial-carousel">
+      <div class="carousel-track" id="testimonialTrack">
+
+        <div class="carousel-card" role="group" aria-roledescription="slide" aria-label="Testimonial 1 of 4">
+          <p class="testimonial-quote">"Murphy had a blast while we were gone! She is usually anxious around new people, but the Port City Leash Club team was patient with her and made sure she got the extra attention she needed. We got photos and updates after every visit and will be using Port City Leash Club for our upcoming trips."</p>
+          <p class="testimonial-attribution">— Hannah</p>
+        </div>
+
+        <div class="carousel-card" role="group" aria-roledescription="slide" aria-label="Testimonial 2 of 4">
+          <p class="testimonial-quote">"Kyleigh did a great job! My dog was excited to see her for every visit. She took the time to walk around the neighborhood and let her sniff all of her favorite spots. Kyleigh sent detailed updates and a photo after each visit, which allowed me to relax while I was away."</p>
+          <p class="testimonial-attribution">— Ally</p>
+        </div>
+
+        <div class="carousel-card" role="group" aria-roledescription="slide" aria-label="Testimonial 3 of 4">
+          <p class="testimonial-quote">"I was grateful for the great care of our lab, from the daily pics, to communication, and service. As someone who has always had the same dog walkers, it was such a great relief to entrust our dog with Port City Leash Club! Thank you!"</p>
+          <p class="testimonial-attribution">— Alex</p>
+        </div>
+
+        <div class="carousel-card" role="group" aria-roledescription="slide" aria-label="Testimonial 4 of 4">
+          <p class="testimonial-quote">"I am super careful of who I allow to walk and watch my dog, he's literally a part of my heart. However PC Leash made me feel like they actually care throughout. It was an easy process for booking and I'm super stoked to add them to my busy routine. Pup gets super excited when they come too. Couldn't recommend more!"</p>
+          <p class="testimonial-attribution">— James</p>
+        </div>
+
+      </div>
+
+      <div class="carousel-controls">
+        <button type="button" class="carousel-arrow" id="testimonialPrev" aria-label="Previous testimonial">&lsaquo;</button>
+        <div class="carousel-dots" id="testimonialDots"></div>
+        <button type="button" class="carousel-arrow" id="testimonialNext" aria-label="Next testimonial">&rsaquo;</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- 5. HOW IT WORKS -->
+<section style="background: var(--sand-light);">
+  <div class="section-inner">
+    <p class="section-eyebrow">Getting started</p>
+    <h2 class="section-headline" style="margin-bottom:40px;">How pet sitting works</h2>
+
+    <div class="steps-row">
+      <div class="step-inline">
+        <div class="step-num">01</div>
+        <div class="step-title">Tell us your dates</div>
+        <div class="step-text">Share your travel dates, your pets, and what their days look like.</div>
+      </div>
+      <div class="step-inline">
+        <div class="step-num">02</div>
+        <div class="step-title">Meet your sitter</div>
+        <div class="step-text">We'll set up a free meet and greet before your first reservation.</div>
+      </div>
+      <div class="step-inline">
+        <div class="step-num">03</div>
+        <div class="step-title">Confirm your reservation</div>
+        <div class="step-text">We'll confirm availability within 24 hours and send you everything you need.</div>
+      </div>
+      <div class="step-inline">
+        <div class="step-num">04</div>
+        <div class="step-title">Travel</div>
+        <div class="step-text">We'll be there. You'll get a photo after every visit.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- MEET THE FOUNDER -->
+<section class="founder-section">
+  <div class="section-inner">
+    <p class="section-eyebrow" style="margin-bottom:24px;">Meet the Founder</p>
+    <div class="founder-layout">
+      <div class="founder-copy">
+        <div class="founder-quote-mark">&ldquo;</div>
+        <p>If you've ever left home wondering whether your dog is truly okay, <strong>I built this for you.</strong></p>
+        <p>I started my first pet sitting business when I was 12, worked as a dog walker in college, and have always believed great pet care is about more than feeding schedules and walks. It's about trust.</p>
+        <p>By combining a lifelong love of animals with years of experience building businesses, my goal is simple: to create the most trusted pet care experience in Wilmington, built on reliability, communication, and genuine relationships.</p>
+        <div class="founder-signature">
+          <div class="founder-name">Alison Gamble</div>
+          <div class="founder-title">Founder, Port City Leash Club</div>
+        </div>
+      </div>
+      <div class="founder-photo" style="padding:0;">
+        <img src="images/founder.jpeg" alt="Alison Gamble, Founder of Port City Leash Club" style="width:100%;height:100%;object-fit:cover;object-position:center top;border-radius:8px;">
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- FAQ -->
+<section class="faq-section">
+  <div class="section-inner">
+    <p class="section-eyebrow">Common questions</p>
+    <h2 class="section-headline">Pet sitting FAQs</h2>
+
+    <div class="faq-list">
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">What's the difference between a drop-in visit and an overnight stay?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p><strong>Drop-in visits</strong> are 20-minute check-ins while you're away: feeding, playtime, and a photo update. Most pet owners reserve 3-4 per day.</p>
+          <p><strong>Overnight stays</strong> are around-the-clock care, including evening settling, overnight supervision, and daytime check-ins tailored to your dog's routine.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">Do you offer services for non-members?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Yes. Single walks are available to non-members at $30 per walk. Pet sitting services (drop-ins and overnights) are also available without a membership. You can request a service on our website.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">Are your walkers insured?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Yes. Port City Leash Club carries full pet care liability insurance covering all walks and services. Every walker operates under this coverage, so you and your dog are always protected.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">Who are the walkers?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Our walkers are carefully selected, locally based dog lovers. Every walker on our team is background-checked, pet first aid certified, and personally trained before their first walk.</p>
+          <p>We don't use a large rotating pool of strangers. Our team is small, trusted, and held to a consistent standard of care.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">Do you serve my neighborhood?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Use the <a href="/#map" style="color:var(--rust);">address checker</a> on our homepage to confirm your address is within our service area.</p>
+          <p>If you're outside our current area, you can sign up to be notified when we expand, we're growing quickly.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- FINAL CTA -->
+<section class="cta-section">
+  <div class="section-inner">
+    <h2 class="section-headline">Ready to plan your trip?</h2>
+    <p class="section-sub">Tell us your dates and we'll confirm availability within 24 hours.</p>
+    <div style="text-align:center;">
+      <a class="btn-primary" href="/service-request" data-cta="final_cta">Request pet sitting</a>
+    </div>
+  </div>
+</section>
+
+
+<footer>
+  <div>
+    <div class="footer-brand">Port City Leash Club</div>
+    <div class="footer-sub">Wilmington, NC · portcityleashclub.com</div>
+    <div class="footer-sub" style="margin-top:4px;">hello@portcityleashclub.com</div>
+  </div>
+  <ul class="footer-links">
+    <li><a href="#services">Services</a></li>
+    <li><a href="#membership">Membership</a></li>
+    <li><a href="/faq">FAQ</a></li>
+    <li><a href="/careers">Careers</a></li>
+    <li><a href="/contact">Contact</a></li>
+  </ul>
+</footer>
+
+<script>
+  // Hamburger nav — verbatim from index.html.
+  function toggleNav() {
+    const nav = document.getElementById('navLinks');
+    const burger = document.getElementById('hamburger');
+    nav.classList.toggle('open');
+    burger.classList.toggle('open');
+  }
+  // Show hamburger only on mobile
+  function checkNav() {
+    const burger = document.getElementById('hamburger');
+    const nav = document.getElementById('navLinks');
+    if (window.innerWidth <= 768) {
+      burger.style.display = 'flex';
+      nav.style.display = '';  // Let CSS handle via .open class
+    } else {
+      burger.style.display = 'none';
+      nav.style.display = '';
+      nav.classList.remove('open');
+    }
+  }
+  window.addEventListener('resize', checkNav);
+  checkNav();
+  // Close nav when a link is clicked
+  document.querySelectorAll('.nav-links a').forEach(a => a.addEventListener('click', () => {
+    document.getElementById('navLinks').classList.remove('open');
+    document.getElementById('hamburger').classList.remove('open');
+  }));
+</script>
+<script>
+  // FAQ accordion — toggleFaq() copied verbatim from faq.html (closes any
+  // other open item, unlike index.html's own simpler multi-open listener).
+  function toggleFaq(btn) {
+    const item = btn.closest('.faq-item');
+    const isOpen = item.classList.contains('open');
+    document.querySelectorAll('.faq-item.open').forEach(i => i.classList.remove('open'));
+    if (!isOpen) item.classList.add('open');
+  }
+</script>
+<script>
+  // Testimonials carousel — CSS scroll-snap track (native touch swipe,
+  // no library). Arrow clicks and dot clicks both just move
+  // track.scrollLeft, and a scroll listener keeps the dots and arrow
+  // disabled-state in sync with wherever the visitor (or a swipe) left the
+  // track — the same "advancement is visitor-driven" model either input
+  // method goes through.
+  //
+  // Dots are page-based, not card-based: 2 cards are visible at once above
+  // the 768px breakpoint (matching .carousel-card's own flex-basis rule),
+  // so only every-other card offset is actually a reachable scroll
+  // position there (index 1 and 3 sit mid-pair, never a resting place) —
+  // one dot per card would leave a dot that can never become active. Below
+  // 768px only one card is visible, so every card offset IS reachable and
+  // pageSize collapses to 1 (one dot per card, same as before). Rebuilt on
+  // matchMedia change so crossing the breakpoint updates the dot count.
+  (function () {
+    const track = document.getElementById('testimonialTrack');
+    const dotsWrap = document.getElementById('testimonialDots');
+    const prevBtn = document.getElementById('testimonialPrev');
+    const nextBtn = document.getElementById('testimonialNext');
+    if (!track || !dotsWrap || !prevBtn || !nextBtn) return;
+
+    const cards = Array.from(track.children);
+    // Same breakpoint as the .carousel-card mobile override above.
+    const mobileQuery = window.matchMedia('(max-width: 768px)');
+    let pageStarts = []; // card index each page starts at
+    let dots = [];
+
+    function pageSize() {
+      return mobileQuery.matches ? 1 : 2;
+    }
+
+    function scrollToCard(cardIndex) {
+      track.scrollTo({ left: cards[cardIndex].offsetLeft - cards[0].offsetLeft, behavior: 'smooth' });
+    }
+
+    function buildDots() {
+      const size = pageSize();
+      pageStarts = [];
+      for (let i = 0; i < cards.length; i += size) pageStarts.push(i);
+
+      dotsWrap.innerHTML = '';
+      const mobile = mobileQuery.matches;
+      dots = pageStarts.map((startIdx, p) => {
+        const dot = document.createElement('button');
+        dot.type = 'button';
+        dot.className = 'carousel-dot';
+        dot.setAttribute('aria-label', mobile
+          ? 'Go to testimonial ' + (startIdx + 1) + ' of ' + cards.length
+          : 'Go to page ' + (p + 1) + ' of ' + pageStarts.length);
+        dot.addEventListener('click', () => scrollToCard(startIdx));
+        dotsWrap.appendChild(dot);
+        return dot;
+      });
+    }
+
+    // Shared by update() (to highlight the active dot) and the arrow
+    // handlers below (to know which page to move to) — one page/position
+    // mapping for both controls, so they can't drift apart.
+    function currentPageIndex() {
+      const pos = track.scrollLeft;
+      let closest = 0;
+      let closestDist = Infinity;
+      pageStarts.forEach((startIdx, p) => {
+        const dist = Math.abs((cards[startIdx].offsetLeft - cards[0].offsetLeft) - pos);
+        if (dist < closestDist) { closestDist = dist; closest = p; }
+      });
+      return closest;
+    }
+
+    function goToPage(p) {
+      const clamped = Math.max(0, Math.min(p, pageStarts.length - 1));
+      scrollToCard(pageStarts[clamped]);
+    }
+
+    function update() {
+      const pos = track.scrollLeft;
+      const maxScroll = track.scrollWidth - track.clientWidth;
+      const page = currentPageIndex();
+      dots.forEach((dot, i) => dot.classList.toggle('active', i === page));
+      prevBtn.disabled = pos <= 1;
+      nextBtn.disabled = pos >= maxScroll - 1;
+    }
+
+    // Step by a full page (pageSize() cards — 2 on desktop, 1 on mobile),
+    // landing exactly on the next/previous page start, same as a dot
+    // click — never a sub-page position the dots can't represent.
+    prevBtn.addEventListener('click', () => goToPage(currentPageIndex() - 1));
+    nextBtn.addEventListener('click', () => goToPage(currentPageIndex() + 1));
+
+    let ticking = false;
+    track.addEventListener('scroll', () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => { update(); ticking = false; });
+    });
+    window.addEventListener('resize', update);
+
+    function rebuild() {
+      buildDots();
+      update();
+    }
+    mobileQuery.addEventListener('change', rebuild);
+    rebuild();
+  })();
+</script>
+<script>
+  // Scroll-triggered stagger for the "How pet sitting works" steps — same
+  // reveal behavior as index.html's "How The Leash Club Works" steps.
+  const steps = document.querySelectorAll('.step-inline');
+  if (steps.length && 'IntersectionObserver' in window) {
+    steps.forEach(step => step.classList.add('pre-animate'));
+    let stepsRevealed = false;
+    function revealSteps() {
+      if (stepsRevealed) return;
+      stepsRevealed = true;
+      steps.forEach((step, i) => {
+        setTimeout(() => step.classList.add('animate-in'), i * 150);
+      });
+    }
+    const stepObserver = new IntersectionObserver((entries) => {
+      if (entries.some(entry => entry.isIntersecting)) {
+        revealSteps();
+        stepObserver.disconnect();
+      }
+    }, { threshold: 0.15, rootMargin: '0px 0px -50px 0px' });
+    steps.forEach(step => stepObserver.observe(step));
+    setTimeout(revealSteps, 4000);
+  }
+</script>
+<script>
+  // ga4.js's built-in cta_click delegate only matches anchors linking to
+  // /membership-request (see js/ga4.js's own comment) — every CTA on this
+  // landing page links to /service-request instead, so fire cta_click
+  // manually here using the same window.pclcTrackGA helper ga4.js exposes.
+  // ga4.js itself is not modified.
+  document.addEventListener('click', function (e) {
+    const link = e.target.closest && e.target.closest('a[href*="/service-request"]');
+    if (!link) return;
+    window.pclcTrackGA && window.pclcTrackGA('cta_click', { cta_location: link.getAttribute('data-cta') || 'unlabeled' });
+  });
+</script>
+<script type="module">
+  import { SERVICE_PRICES, MEDICATION_FEE, EXTRA_PET_FEE } from './pricing.js';
+  document.getElementById('price-dropin').textContent = '$' + SERVICE_PRICES['drop-in-visit'].price;
+  document.getElementById('price-overnight').textContent = '$' + SERVICE_PRICES['overnight-stay'].price;
+  document.getElementById('fee-medication').textContent = MEDICATION_FEE;
+  document.getElementById('fee-extrapet').textContent = EXTRA_PET_FEE;
+</script>
+</body>
+</html>
