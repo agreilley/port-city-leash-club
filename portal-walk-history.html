@@ -683,10 +683,10 @@
         return '<div class="care-tip-done">Tipped $' + (Number.isInteger(amt) ? amt : amt.toFixed(2)) + ' — thank you!</div>';
       }
       const presetPcts = [15, 20, 25];
-      const presets = presetPcts.map(pct => Math.max(1, Math.round((r.tipBase || 0) * pct / 100)));
+      const presets = presetPcts.map(pct => Math.max(1, Math.round((r.tipBase || 0) * pct) / 100));
       return '<div class="care-label">Add a tip</div>' +
         '<div class="tip-options">' +
-        presets.map((amt, i) => '<button class="care-btn tip-btn" onclick="submitCareTip(\'' + r.elementId + '\',' + amt + ')">' + presetPcts[i] + '% · $' + amt + '</button>').join('') +
+        presets.map((amt, i) => '<button class="care-btn tip-btn" onclick="submitCareTip(\'' + r.elementId + '\',' + amt + ')">' + presetPcts[i] + '% · $' + (Number.isInteger(amt) ? amt : amt.toFixed(2)) + '</button>').join('') +
         '<span class="tip-other"><input type="number" min="1" step="1" id="tip-custom-' + r.elementId + '" placeholder="Other $">' +
         '<button class="care-btn care-btn-primary" onclick="submitCareTipCustom(\'' + r.elementId + '\')">Send</button></span>' +
         '</div>' +
