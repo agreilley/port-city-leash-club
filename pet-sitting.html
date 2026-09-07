@@ -88,12 +88,6 @@
   .btn-ghost { transition: color 0.2s; }
   .btn-ghost:hover { color: var(--navy); }
 
-  /* WHY US */
-  .why-card { padding: 32px 28px; background: white; border: 1px solid rgba(0,0,0,0.06); border-radius: 8px; }
-  .why-title { font-size: 17px; font-weight: 500; color: var(--navy); margin-bottom: 10px; }
-  .why-text { font-size: 14px; color: var(--text-mid); line-height: 1.7; }
-  .why-cards { display: flex; flex-direction: column; gap: 18px; justify-content: center; }
-
   /* TESTIMONIALS — .carousel-dot and .carousel-arrow (plus its hover/active
      rules below) are reused verbatim from index.html's unused carousel CSS
      (index.html:227-234). .carousel-track/.carousel-card are NOT reused
@@ -322,37 +316,11 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 </section>
 
 
-<!-- 3. WHY US -->
-<section style="background: var(--warm-white);">
-  <div class="section-inner">
-    <p class="section-eyebrow">Why Port City Leash Club</p>
-    <h2 class="section-headline">Care that doesn't feel like a stranger in your house</h2>
-
-    <div class="why-cards" style="max-width:700px;margin:40px auto 0;">
-      <div class="why-card">
-        <div class="why-title">A team, not an app</div>
-        <div class="why-text">You'll meet your sitter before the first visit. The same people care for your pets each time, so they are never left with someone they don't know.</div>
-      </div>
-
-      <div class="why-card">
-        <div class="why-title">Their routine, kept</div>
-        <div class="why-text">We follow the schedule your pets already have. Meals, medication, walks, and bedtime happen the way they happen when you're home.</div>
-      </div>
-
-      <div class="why-card">
-        <div class="why-title">You'll know how it's going</div>
-        <div class="why-text">A photo update after every visit, so you can see how they're doing without having to ask.</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-
-<!-- 4. TESTIMONIALS -->
+<!-- 3. TESTIMONIALS -->
 <section style="background: var(--sand-light);">
   <div class="section-inner">
-    <p class="section-eyebrow">What clients say</p>
-    <h2 class="section-headline">Trusted with pets who don't trust easily</h2>
+    <p class="section-eyebrow">Client reviews</p>
+    <h2 class="section-headline">Trusted by Wilmington pet owners</h2>
 
     <div class="testimonial-carousel">
       <div class="carousel-track" id="testimonialTrack">
@@ -396,6 +364,16 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     <h2 class="section-headline">Pet sitting FAQs</h2>
 
     <div class="faq-list">
+
+      <div class="faq-item">
+        <button class="faq-question" onclick="toggleFaq(this)">
+          <span class="faq-q-text">How are you different from a pet sitting app?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>You'll meet a member of our team before the first visit, and the same small group of sitters cares for your pets each time, so they are never left with a stranger. We follow the routine your pets already have, so meals, medication, walks, and bedtime happen the way they happen when you're home. And you'll get a photo update after every visit, so you can see how they're doing without having to ask.</p>
+        </div>
+      </div>
 
       <div class="faq-item">
         <button class="faq-question" onclick="toggleFaq(this)">
