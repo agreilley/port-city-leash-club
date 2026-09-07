@@ -1153,9 +1153,15 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
       await window._addDoc(window._collection(window._db, 'submissions'), data);
       window.pclcTrack('Lead');
+      if (window.pclcTrackGA) window.pclcTrackGA('form_submit');
 
-      showSuccess('Request submitted! We\'ll be in touch within 24 hours.');
-      form.reset();
+      // Redirect to the confirmation page rather than showing an in-page
+      // success banner — Google Ads tracks conversions by URL, and the
+      // short delay lets the pixel request above actually go out first.
+      setTimeout(function () {
+        window.location.href = '/request-received?type=service';
+      }, 400);
+      return;
     } catch (e) {
       console.error(e);
       showError('Something went wrong. Please email hello@portcityleashclub.com');

@@ -648,14 +648,12 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       window.pclcTrack('Lead');
       if (window.pclcTrackGA) window.pclcTrackGA('form_submit');
 
-      window._showSuccess('Request submitted! We\'ll be in touch within 24 hours.');
-      // form.reset() alone isn't enough — it won't undo the JS-driven
-      // .selected highlighting on day/time cards, won't collapse
-      // extra dog cards back to one, and can't reset the meet-greet
-      // calendar widget's internal state. Reload for a guaranteed-clean form,
-      // but only AFTER the success banner's full ~6s visible window so the
-      // confirmation is fully readable first (was 3000ms, which truncated it).
-      setTimeout(() => window.location.reload(), 6500);
+      // Redirect to the confirmation page rather than showing an in-page
+      // success banner — Google Ads tracks conversions by URL, and the
+      // short delay lets the GA4/pixel calls above actually go out first.
+      setTimeout(function () {
+        window.location.href = '/request-received?type=membership';
+      }, 400);
       return;
     } catch(e) {
       console.error(e);
