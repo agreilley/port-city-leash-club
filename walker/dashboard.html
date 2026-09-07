@@ -474,7 +474,23 @@ async function uploadCompletionPhotos(fileList, storagePathPrefix) {
     }
     const path = `${storagePathPrefix}/${Date.now()}_${i}_${file.name}`;
     const fileRef = storageRef(storage, path);
-    await uploadBytes(fileRef, file);
+    try {
+      await uploadBytes(fileRef, file);
+    } catch (err) {
+      // A walker's tab can sit backgrounded for the length of a whole walk
+      // (screen locked in their pocket), which can leave a stale ID token
+      // attached to the next request — Storage rejects it as
+      // storage/unauthorized even though the walker is genuinely signed in.
+      // One forced token refresh + retry clears this without surfacing a
+      // confusing "access denied" error for what's really just an expired
+      // token.
+      if (err?.code === 'storage/unauthorized' && auth.currentUser) {
+        await auth.currentUser.getIdToken(true);
+        await uploadBytes(fileRef, file);
+      } else {
+        throw err;
+      }
+    }
     urls.push(await getDownloadURL(fileRef));
   }
   return urls;
@@ -485,6 +501,12 @@ async function uploadCompletionPhotos(fileList, storagePathPrefix) {
 // multi-photo support existed — those records were never migrated to
 // `photoUrls`, so this is what keeps their one photo displaying rather than
 // silently disappearing.
+// Shared by the "Add a photo" controls on already-completed walks/visits,
+// which cap at MAX_COMPLETION_PHOTOS same as the initial completion upload.
+function walkPhotoCount(entry) {
+  return Array.isArray(entry.photoUrls) && entry.photoUrls.length ? entry.photoUrls.length : (entry.photoUrl ? 1 : 0);
+}
+
 function completionPhotosHtml(photoUrls, legacyPhotoUrl, altText) {
   const urls = Array.isArray(photoUrls) && photoUrls.length ? photoUrls : (legacyPhotoUrl ? [legacyPhotoUrl] : []);
   if (!urls.length) return '';
@@ -827,6 +849,14 @@ window.openVisitCompleteForm = (overnightId, visitId) => {
     ${isCompleted ? `
       <div class="detail-row"><span class="detail-label">Note</span><span class="detail-value">${escapeHtml(visit.note) || 'None'}</span></div>
       ${completionPhotosHtml(visit.photoUrls, visit.photoUrl, 'Visit photo')}
+      ${walkPhotoCount(visit) < MAX_COMPLETION_PHOTOS ? `
+        <div style="margin-top:12px;">
+          <label class="detail-label" style="display:block;margin-bottom:6px;">Add a photo</label>
+          <input type="file" id="addVisitPhotoInput" accept="image/*" multiple style="width:100%;">
+          <div id="addVisitPhotoError" style="color:#C17B6F;font-size:13px;margin-top:6px;display:none;"></div>
+          <button class="btn-complete" id="addVisitPhotoBtn" style="margin-top:8px;" onclick="addVisitPhoto('${overnightId}', '${visitId}')">Add Photo</button>
+        </div>
+      ` : ''}
     ` : canComplete ? `
       <div style="margin-top:16px;">
         <label class="detail-label" style="display:block;margin-bottom:6px;">How'd it go? <span style="font-weight:400;color:#7A7A7A;">(sent to the owner)</span></label>
@@ -904,6 +934,38 @@ window.completeVisit = async (overnightId, visitId) => {
     errEl.style.display = 'block';
     btn.disabled = false;
     btn.textContent = 'Mark as Completed';
+  }
+};
+
+// Visit counterpart to addWalkPhoto — same recovery path, but visits live
+// as array entries inside the overnights doc rather than their own doc, so
+// this rewrites the whole `visits` array like completeVisit does.
+window.addVisitPhoto = async (overnightId, visitId) => {
+  const btn = document.getElementById('addVisitPhotoBtn');
+  const errEl = document.getElementById('addVisitPhotoError');
+  const fileInput = document.getElementById('addVisitPhotoInput');
+  if (!fileInput?.files?.length) { errEl.textContent = 'Choose a photo first.'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Uploading…';
+  errEl.style.display = 'none';
+
+  try {
+    const o = myOvernights.find(x => x.id === overnightId);
+    const visit = o?.visits?.find(v => v.id === visitId);
+    const existing = Array.isArray(visit?.photoUrls) ? visit.photoUrls : (visit?.photoUrl ? [visit.photoUrl] : []);
+    const remaining = MAX_COMPLETION_PHOTOS - existing.length;
+    const newUrls = await uploadCompletionPhotos(Array.from(fileInput.files).slice(0, remaining), `overnight-photos/${overnightId}/${visitId}`);
+    const photoUrls = [...existing, ...newUrls];
+    const visits = (o?.visits || []).map(v => v.id === visitId ? { ...v, photoUrls } : v);
+    await updateDoc(doc(db, 'overnights', overnightId), { visits });
+    if (o) o.visits = visits;
+    openVisitCompleteForm(overnightId, visitId);
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Add Photo';
   }
 };
 
@@ -1253,6 +1315,14 @@ window.openWalkDetail = (walkId) => {
     ${isCompleted ? `
       <div class="detail-row"><span class="detail-label">Walk Notes</span><span class="detail-value">${escapeHtml(walk.notes) || 'None'}</span></div>
       ${completionPhotosHtml(walk.photoUrls, walk.photoUrl, 'Walk photo')}
+      ${walkPhotoCount(walk) < MAX_COMPLETION_PHOTOS ? `
+        <div style="margin-top:12px;">
+          <label class="detail-label" style="display:block;margin-bottom:6px;">Add a photo</label>
+          <input type="file" id="addWalkPhotoInput" accept="image/*" multiple style="width:100%;">
+          <div id="addWalkPhotoError" style="color:#C17B6F;font-size:13px;margin-top:6px;display:none;"></div>
+          <button class="btn-complete" id="addWalkPhotoBtn" style="margin-top:8px;" onclick="addWalkPhoto('${walkId}')">Add Photo</button>
+        </div>
+      ` : ''}
     ` : !isCompleted && canComplete ? `
       <div style="margin-top:16px;">
         <label class="detail-label" style="display:block;margin-bottom:6px;">How'd it go? <span style="font-weight:400;color:#7A7A7A;">(sent to the owner)</span></label>
@@ -1342,6 +1412,40 @@ window.completeWalk = async (walkId) => {
     errEl.style.display = 'block';
     btn.disabled = false;
     btn.textContent = 'Mark as Completed';
+  }
+};
+
+// Lets a walker attach a photo to a walk that's already been marked
+// completed — recovery path for exactly the failure that motivated this:
+// a walk-photo upload can fail (e.g. a stale auth token) after the rest of
+// completeWalk() already succeeded, and there was previously no way back in
+// to add the photo once status was 'completed'. Merges onto whatever
+// photos exist rather than replacing them, since a partial upload
+// (1 of 3 photos went through before the failure) is possible.
+window.addWalkPhoto = async (walkId) => {
+  const btn = document.getElementById('addWalkPhotoBtn');
+  const errEl = document.getElementById('addWalkPhotoError');
+  const fileInput = document.getElementById('addWalkPhotoInput');
+  if (!fileInput?.files?.length) { errEl.textContent = 'Choose a photo first.'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Uploading…';
+  errEl.style.display = 'none';
+
+  try {
+    const walk = myWalks.find(w => w.id === walkId);
+    const existing = Array.isArray(walk?.photoUrls) ? walk.photoUrls : (walk?.photoUrl ? [walk.photoUrl] : []);
+    const remaining = MAX_COMPLETION_PHOTOS - existing.length;
+    const newUrls = await uploadCompletionPhotos(Array.from(fileInput.files).slice(0, remaining), `walk-photos/${walkId}`);
+    const photoUrls = [...existing, ...newUrls];
+    await updateDoc(doc(db, 'walks', walkId), { photoUrls });
+    if (walk) walk.photoUrls = photoUrls;
+    openWalkDetail(walkId);
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Add Photo';
   }
 };
 
