@@ -50,6 +50,18 @@
   .btn-primary { background: var(--rust); color: white; border: none; border-radius: 4px; padding: 14px 28px; font-size: 14px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; }
   .btn-ghost { font-size: 14px; color: var(--text-mid); background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
   .hero-visual { background: var(--sand); border-radius: 8px; height: 396px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
+  /* .hero-visual is a column flex container, so align-items:center above
+     only stretches children on the cross (horizontal) axis — the picture/
+     img filling it never gets a real height from that, only an auto height
+     derived from the image's own aspect ratio. That auto height coincidentally
+     exceeds the fixed 360/286px hero-visual height at wide container widths
+     (overflow:hidden then quietly crops it, looking like normal cover
+     cropping) but falls short at narrower ones, exposing this sand
+     background as a visible band above and below the photo. Forcing the
+     picture itself to 100% of the flex item's height (a definite value,
+     since .hero-visual's own height is fixed) makes the image's height:100%
+     resolve against that instead, at every width. */
+  .hero-visual picture { display: block; width: 100%; height: 100%; }
   .hero-visual-inner { width: 120px; height: 120px; border: 1px solid rgba(13,27,42,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative; }
   .hero-dot { width: 6px; height: 6px; background: var(--rust); border-radius: 50%; position: absolute; top: 16px; right: 28px; }
   .hero-visual-label { font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--navy); opacity: 0.5; font-weight: 500; }
