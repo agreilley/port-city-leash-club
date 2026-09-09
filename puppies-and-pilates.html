@@ -56,6 +56,8 @@
   .partner-logos-label { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-light); }
   .partner-logos-row { display: flex; align-items: center; justify-content: center; gap: 40px; flex-wrap: wrap; }
   .partner-logo { height: 44px; width: auto; object-fit: contain; }
+  .partner-logo-link { display: flex; transition: opacity 0.2s; }
+  .partner-logo-link:hover { opacity: 0.7; }
   .event-fact { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 16px 0; border-top: 1px solid rgba(0,0,0,0.07); }
   .event-fact:first-child { border-top: none; padding-top: 0; }
   .event-fact-label { font-size: 12px; color: var(--text-light); letter-spacing: 0.04em; text-transform: uppercase; }
@@ -229,9 +231,15 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   <div class="partner-logos">
     <span class="partner-logos-label">In Partnership With</span>
     <div class="partner-logos-row">
-      <img class="partner-logo" src="images/partners/empower-method.png" alt="Empower Method">
-      <img class="partner-logo" src="images/partners/alcove-beer-garden.png" alt="Alcove Beer Garden">
-      <img class="partner-logo" src="images/partners/paws4people.png" alt="paws4people">
+      <a class="partner-logo-link" href="https://www.empowermethodstudio.com/" target="_blank" rel="noopener">
+        <img class="partner-logo" src="images/partners/empower-method.png" alt="Empower Method">
+      </a>
+      <a class="partner-logo-link" href="https://www.alcovebeergarden.com/" target="_blank" rel="noopener">
+        <img class="partner-logo" src="images/partners/alcove-beer-garden.png" alt="Alcove Beer Garden">
+      </a>
+      <a class="partner-logo-link" href="https://paws4people.org/" target="_blank" rel="noopener">
+        <img class="partner-logo" src="images/partners/paws4people.png" alt="paws4people">
+      </a>
     </div>
   </div>
 </div>
