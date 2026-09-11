@@ -652,5 +652,23 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow write: if false;
     }
+
+    // events/{eventId} holds the ticketsReserved capacity counter for a
+    // ticketed event (see PUPPIES_PILATES_CAPACITY / createEventTicketPaymentIntent
+    // in functions/index.js); events/{eventId}/tickets holds one doc per
+    // order (name/email/phone/quantity/status). Every write goes through
+    // the Admin SDK inside those functions — same posture as emailLog
+    // above — so client writes stay closed. Read is admin-only: it's the
+    // guest list admin/dashboard.html's Puppies & Pilates view reads, and
+    // no non-admin case needs it.
+    match /events/{eventId} {
+      allow read: if isAdmin();
+      allow write: if false;
+
+      match /tickets/{ticketId} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+    }
   }
 }

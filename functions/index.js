@@ -7702,21 +7702,23 @@ exports.runGenerateEmailCaptureCode = runGenerateEmailCaptureCode;
 // Capacity (30 tickets total) is enforced with a Firestore counter doc
 // (events/{eventId}), incremented — "reserved" — inside the same
 // transaction that creates the pending ticket doc, before the Stripe
-// PaymentIntent is created. It's only ever decremented by
-// releaseEventTicketHold (the client calls this from its own
-// confirmCardPayment catch block on a declined card — the common case) or
-// by this function's own rollback if PaymentIntent creation itself fails.
-// A buyer who reserves a seat and then simply abandons the tab (no
-// decline, no success) leaves that seat held with no automatic expiry —
-// accepted at this event's scale (30 seats, ~5-week window), the same
-// tradeoff already made for the meet & greet booking race elsewhere in
-// this file (see that function's own comment). Alison can hand-adjust
-// events/{eventId}.ticketsReserved in the Firestore console if it ever
-// actually matters.
+// PaymentIntent is created. It's decremented by releaseEventTicketHold (the
+// client calls this from its own confirmCardPayment catch block on a
+// declined card — the common case), by this function's own rollback if
+// PaymentIntent creation itself fails, or — for a buyer who reserves a seat
+// and then simply abandons the tab (no decline, no success) — by
+// sweepExpiredEventTicketHolds below, which reclaims any hold older than
+// EVENT_TICKET_HOLD_TTL_MS the next time someone tries to buy. Alison can
+// still hand-adjust events/{eventId}.ticketsReserved in the Firestore
+// console for anything that TTL doesn't cover.
 const PUPPIES_PILATES_EVENT_ID = 'puppies-pilates-2026-10-10';
 const PUPPIES_PILATES_PRICE_CENTS = 3500;
 const PUPPIES_PILATES_CAPACITY = 30;
 const PUPPIES_PILATES_MAX_QTY_PER_ORDER = 10;
+// How long an unresolved hold (no decline, no success — the buyer just
+// closed the tab) is allowed to sit on a seat before createEventTicketPaymentIntent
+// is allowed to reclaim it. See sweepExpiredEventTicketHolds below.
+const EVENT_TICKET_HOLD_TTL_MS = 10 * 60 * 1000;
 
 function eventRef(eventId) {
   return db.collection('events').doc(eventId);
@@ -7725,7 +7727,7 @@ function eventTicketRef(eventId, ticketId) {
   return eventRef(eventId).collection('tickets').doc(ticketId);
 }
 
-async function releaseEventTicketHoldInternal(eventId, ticketId) {
+async function releaseEventTicketHoldInternal(eventId, ticketId, releasedStatus = 'released') {
   const ticketRef = eventTicketRef(eventId, ticketId);
   await db.runTransaction(async (tx) => {
     const ticketSnap = await tx.get(ticketRef);
@@ -7737,8 +7739,36 @@ async function releaseEventTicketHoldInternal(eventId, ticketId) {
     const evSnap = await tx.get(evRef);
     const reserved = evSnap.exists ? (evSnap.data().ticketsReserved || 0) : 0;
     tx.set(evRef, { ticketsReserved: Math.max(0, reserved - quantity) }, { merge: true });
-    tx.set(ticketRef, { status: 'released' }, { merge: true });
+    tx.set(ticketRef, { status: releasedStatus }, { merge: true });
   });
+}
+
+// Reclaims any hold older than EVENT_TICKET_HOLD_TTL_MS — the abandoned-tab
+// gap the comment above (on Capacity) accepted at launch. Run right before
+// a new reservation checks capacity, not on a schedule: nothing else reads
+// ticketsReserved live, so there's nothing to keep tidy between purchase
+// attempts, and this event never has more than PUPPIES_PILATES_CAPACITY
+// pending docs outstanding — small enough to filter by createdAt in memory
+// rather than provision a composite (status + createdAt) index for it.
+//
+// A charge that actually succeeds right at the TTL boundary (buyer was just
+// slow, not gone) could in theory get swept here a moment before
+// confirmEventTicket marks it paid, freeing a seat that's really taken. At
+// 10 minutes of slack for a card entry that normally takes well under a
+// minute, on a 30-seat event, that's accepted the same way the unlimited-
+// hold gap it replaces was.
+async function sweepExpiredEventTicketHolds(eventId) {
+  const cutoffMs = Date.now() - EVENT_TICKET_HOLD_TTL_MS;
+  const pendingSnap = await eventRef(eventId).collection('tickets').where('status', '==', 'pending').get();
+  const stale = pendingSnap.docs.filter((doc) => {
+    const createdAt = doc.data().createdAt;
+    return createdAt && createdAt.toMillis() <= cutoffMs;
+  });
+  for (const doc of stale) {
+    await releaseEventTicketHoldInternal(eventId, doc.id, 'expired').catch((e) => {
+      console.error(`sweepExpiredEventTicketHolds: failed to release ${doc.id}:`, e.message);
+    });
+  }
 }
 
 // createEventTicketPaymentIntent: deliberately unauthenticated — this is a
@@ -7766,6 +7796,8 @@ exports.createEventTicketPaymentIntent = onCall({ secrets: [STRIPE_SECRET_KEY] }
 
   const amountCents = quantity * PUPPIES_PILATES_PRICE_CENTS;
   const ticketRef = eventRef(PUPPIES_PILATES_EVENT_ID).collection('tickets').doc();
+
+  await sweepExpiredEventTicketHolds(PUPPIES_PILATES_EVENT_ID);
 
   // Reserve capacity and create the pending ticket doc in one transaction —
   // the counter and the ticket claiming part of it must never disagree.
@@ -7830,7 +7862,7 @@ exports.releaseEventTicketHold = onCall(async (request) => {
 // paid and sending the confirmation email — never trusts the client's own
 // report that the charge succeeded, same posture as confirmCardOnFile
 // verifying its SetupIntent server-side above.
-exports.confirmEventTicket = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+exports.confirmEventTicket = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KEY] }, async (request) => {
   const ticketId = typeof request.data?.ticketId === 'string' ? request.data.ticketId : '';
   if (!ticketId) throw new HttpsError('invalid-argument', 'Missing ticketId.');
 
