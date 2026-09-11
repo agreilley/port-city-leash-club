@@ -7895,6 +7895,38 @@ exports.confirmEventTicket = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KE
   return { ok: true };
 });
 
+// resendEventTicketConfirmation: admin-only recovery path for a paid ticket
+// whose confirmation email never actually sent. confirmEventTicket itself
+// won't retry — it early-returns { ok: true } as soon as ticket.status is
+// already 'paid' — so a send that failed once (the RESEND_API_KEY-missing
+// window this ticket type shipped with, 2026-09-04 through the fix here,
+// is the known case) stays failed forever without a separate path back to
+// sendEmail. Reuses the same idempotencyKey confirmEventTicket used, so
+// sendEmail's own "don't re-send a succeeded send" guard still applies —
+// this can only ever retry a send that's missing or previously failed.
+// Called from admin/dashboard.html's Puppies & Pilates guest list.
+exports.resendEventTicketConfirmation = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+  await assertIsAdmin(request.auth);
+
+  const ticketId = typeof request.data?.ticketId === 'string' ? request.data.ticketId : '';
+  if (!ticketId) throw new HttpsError('invalid-argument', 'Missing ticketId.');
+
+  const ticketRef = eventTicketRef(PUPPIES_PILATES_EVENT_ID, ticketId);
+  const ticketSnap = await ticketRef.get();
+  if (!ticketSnap.exists) throw new HttpsError('not-found', 'Ticket not found.');
+  const ticket = ticketSnap.data();
+  if (ticket.status !== 'paid') throw new HttpsError('failed-precondition', 'This ticket is not paid, so there\'s nothing to confirm.');
+
+  const emailResult = await sendEmail({
+    to: ticket.email,
+    template: 'event-ticket-confirmed',
+    data: { name: ticket.name, quantity: ticket.quantity, amountCents: ticket.amountCents },
+    idempotencyKey: `event-ticket-confirmed:${ticketId}`,
+  });
+  if (!emailResult.ok) throw new HttpsError('internal', emailResult.error || 'Send failed.');
+  return { ok: true };
+});
+
 const FRIENDS_FAMILY_DEFAULT_MAX_REDEMPTIONS = 1;
 const FRIENDS_FAMILY_DISCOUNT_PERCENT = 40;
 

@@ -740,8 +740,9 @@
             <th>Paid</th>
             <th>Status</th>
             <th>Purchased</th>
+            <th></th>
           </tr></thead>
-          <tbody id="eventTicketsTable"><tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
+          <tbody id="eventTicketsTable"><tr><td colspan="8" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
         </table>
         </div>
       </div>
@@ -3159,7 +3160,7 @@ let currentEventTicketSearch = '';
 
 async function loadEventTickets() {
   const tbody = document.getElementById('eventTicketsTable');
-  if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr>`;
+  if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr>`;
   try {
     const snap = await getDocs(collection(db, 'events', PUPPIES_PILATES_EVENT_ID, 'tickets'));
     allEventTickets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -3167,7 +3168,7 @@ async function loadEventTickets() {
     renderEventTicketsTable();
   } catch (e) {
     console.error('Failed to load event tickets:', e.message);
-    if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:24px;">Couldn't load the guest list right now.</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-light);padding:24px;">Couldn't load the guest list right now.</td></tr>`;
   }
 }
 
@@ -3212,7 +3213,7 @@ function renderEventTicketsTable() {
 
   const rows = filteredEventTickets();
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:24px;">No tickets match.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-light);padding:24px;">No tickets match.</td></tr>`;
     return;
   }
   tbody.innerHTML = rows.map(t => `
@@ -3224,9 +3225,30 @@ function renderEventTicketsTable() {
       <td>${typeof t.amountCents === 'number' ? `$${(t.amountCents / 100).toFixed(2)}` : '–'}</td>
       <td><span class="status-badge ${eventTicketStatusBadgeClass(t.status)}">${escapeHtml(EVENT_TICKET_STATUS_LABELS[t.status] || capitalize(t.status))}</span></td>
       <td>${fmtEventTicketDate(t.createdAt)}</td>
+      <td>${t.status === 'paid' ? `<button class="btn-secondary" style="white-space:nowrap;padding:4px 10px;font-size:12px;" onclick="resendEventTicketEmail('${escapeHtml(t.id)}', this)">Resend Email</button>` : ''}</td>
     </tr>
   `).join('');
 }
+
+// Recovers a paid ticket whose confirmation email never actually went out
+// (the RESEND_API_KEY-missing window this event shipped with — see
+// resendEventTicketConfirmation in functions/index.js). confirmEventTicket
+// itself won't retry a ticket that's already 'paid', so this is the only
+// way to get that email moving again short of the Firestore console.
+window.resendEventTicketEmail = async (ticketId, btn) => {
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    const resend = httpsCallable(fns, 'resendEventTicketConfirmation');
+    await resend({ ticketId });
+    btn.textContent = 'Sent';
+  } catch (e) {
+    alert(`Couldn't resend: ${e.message}`);
+    btn.textContent = original;
+    btn.disabled = false;
+  }
+};
 
 window.filterEventTicketStatus = (status, btn) => {
   currentEventTicketStatusFilter = status;
