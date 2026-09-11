@@ -7007,6 +7007,52 @@ exports.markPaid = onCall({}, async (request) => {
 });
 exports.runMarkPaid = runMarkPaid;
 
+// Reverses an accidental "Generate": releases every walk/overnight this
+// payout claimed back to unclaimed (clears payoutId) and marks the payment
+// 'voided', so the underlying work reappears in the Generate table on the
+// next pass instead of being stuck attached to a payout nobody wants. Only
+// valid from 'pending' — a 'paid' payout represents money that's already
+// gone out; voiding it would hide that rather than undo it.
+async function runVoidWalkerPayout(adminUid, { paymentId } = {}) {
+  if (!paymentId) throw new HttpsError('invalid-argument', 'paymentId is required.');
+
+  const paymentRef = db.collection('walkerPayments').doc(paymentId);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(paymentRef);
+    if (!snap.exists) throw new HttpsError('not-found', 'Payment record not found.');
+    const payment = snap.data();
+    if (payment.status !== 'pending') {
+      throw new HttpsError('failed-precondition', `This payment is '${payment.status}' — only a pending payout can be voided.`);
+    }
+
+    const itemRefs = (payment.items || []).map(item => db.collection(item.refCollection).doc(item.refId));
+    const itemSnaps = await Promise.all(itemRefs.map(ref => tx.get(ref)));
+
+    tx.update(paymentRef, {
+      status: 'voided',
+      voidedAt: FieldValue.serverTimestamp(),
+      voidedBy: adminUid,
+    });
+    // Only clear the claim if it's still pointing at THIS payment — an item
+    // that's somehow already been reassigned elsewhere (shouldn't happen,
+    // but this is money) is left untouched rather than stolen from whatever
+    // claimed it.
+    itemSnaps.forEach((itemSnap, i) => {
+      if (itemSnap.exists && itemSnap.data().payoutId === paymentId) {
+        tx.update(itemRefs[i], { payoutId: FieldValue.delete() });
+      }
+    });
+
+    return { status: 'voided', paymentId };
+  });
+}
+
+exports.voidWalkerPayout = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+  return runVoidWalkerPayout(request.auth.uid, request.data || {});
+});
+exports.runVoidWalkerPayout = runVoidWalkerPayout;
+
 // ─────────────────────────────────────────────────────────────────────────
 // 10. Email notification for every new request (membership request, service
 //    request, application, contact form, reschedule, pause, tier change,
