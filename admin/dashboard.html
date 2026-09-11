@@ -1551,13 +1551,18 @@ window.openPayoutReviewModal = async (paymentId) => {
 
   const itemRows = (p.items || []).map(item => `
     <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(0,0,0,0.06);font-size:13px;">
-      <span>${escapeHtml(item.type)} · ${fmtPayoutDate(item.date)}${item.extraPet ? ' · +pet' : ''}${item.medication ? ' · +med' : ''}</span>
+      <span>${escapeHtml(item.type)} · ${fmtPayoutDate(item.date)}${item.extraPet ? ' · +pet' : ''}${item.medication ? ' · +med' : ''}${item.tipAmount ? ` · <span style="color:var(--green);">+$${item.tipAmount} tip</span>` : ''}</span>
       <span style="font-weight:500;">$${item.amount}</span>
     </div>`).join('');
 
+  const tipsTotal = p.counts?.tips?.total || 0;
   const isPending = p.status === 'pending';
   document.getElementById('payoutReviewContent').innerHTML = `
     <div style="margin-bottom:16px;">${itemRows || '<div style="color:var(--text-light);font-size:13px;">No items.</div>'}</div>
+    ${tipsTotal ? `
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-light);padding-top:8px;">
+      <span>Includes tips (${p.counts.tips.count})</span><span>$${tipsTotal}</span>
+    </div>` : ''}
     <div style="display:flex;justify-content:space-between;font-weight:600;font-size:15px;padding-top:8px;border-top:2px solid rgba(0,0,0,0.1);">
       <span>Total</span><span>$${p.total}</span>
     </div>
