@@ -8,7 +8,7 @@
 
 const {
   escapeHtml, pluralNoun, renderBlockHtml, renderBlockText,
-  SIGNOFF_NAME, renderSignoffHtml, wrapHtml, wrapText,
+  TEAM_SIGNOFF, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
 function formatDollars(cents) {
@@ -42,12 +42,12 @@ function html(data) {
     ${block}
     <p style="margin:20px 0 0;">A few things to know before Saturday:</p>
     <ul style="margin:12px 0 0;padding-left:20px;">
-      <li style="margin-bottom:8px;">Doors open at 9:00 AM for check-in &mdash; class starts at 9:15.</li>
+      <li style="margin-bottom:8px;">Doors open at 9:00 AM for check-in. Class starts at 9:15.</li>
       <li style="margin-bottom:8px;">Pilates mats are provided by Empower Method, so there's no need to bring your own.</li>
-      <li style="margin-bottom:0;">For the comfort and safety of our paws4people guests, we ask that you leave your own dog at home &mdash; only paws4people dogs will be at the event.</li>
+      <li style="margin-bottom:0;">For the comfort and safety of our paws4people guests, we ask that you leave your own dog at home. Only paws4people dogs will be at the event.</li>
     </ul>
     <p style="margin:20px 0 0;">Questions in the meantime? Just reply here and it'll come straight to us.</p>
-    ${renderSignoffHtml(SIGNOFF_NAME)}
+    ${renderSignoffHtml(TEAM_SIGNOFF)}
   `;
 
   return wrapHtml({
@@ -75,13 +75,13 @@ function text(data) {
     }),
     '',
     'A few things to know before Saturday:',
-    '- Doors open at 9:00 AM for check-in — class starts at 9:15.',
+    '- Doors open at 9:00 AM for check-in. Class starts at 9:15.',
     "- Pilates mats are provided by Empower Method, so there's no need to bring your own.",
-    '- For the comfort and safety of our paws4people guests, we ask that you leave your own dog at home — only paws4people dogs will be at the event.',
+    '- For the comfort and safety of our paws4people guests, we ask that you leave your own dog at home. Only paws4people dogs will be at the event.',
     '',
     "Questions in the meantime? Just reply here and it'll come straight to us.",
     '',
-    SIGNOFF_NAME,
+    TEAM_SIGNOFF,
   ];
   return wrapText({ bodyText: lines.join('\n') });
 }
