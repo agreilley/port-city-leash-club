@@ -6768,17 +6768,20 @@ function walkItemFromSnap(snap) {
 
 // Same, for a claimed overnights/{id} doc — reads entirely from the
 // stamped `payout` (see onOvernightCompleted). payout is stamped ONCE for
-// the whole reservation (this doc's own top-level status), but a tip is
-// collected per completed VISIT inside it (portal-walk-history.html shows
-// one Care History card per visit) — so this sums every visit's tip into
-// the one payout item this reservation contributes. A tip added to a visit
-// AFTER this reservation's payout has already been generated and claimed
-// (payoutId set) is not retroactively picked up by a later payout run —
-// same "claimed once" model every other item here already has.
+// the whole reservation (this doc's own top-level status). A tip is a
+// single reservation-wide charge now — chargeWalkTip's 'overnight' case
+// patches the reservation doc's own top-level `tip` field, not a visits[]
+// entry (see chargeWalkTip/resolveOwnedCompletedRecord) — but visits[]
+// tips are still summed too, for any older record that predates that
+// change, so nothing paid under the previous model goes uncounted. A tip
+// added AFTER this reservation's payout has already been generated and
+// claimed (payoutId set) is not retroactively picked up by a later payout
+// run — same "claimed once" model every other item here already has.
 function overnightItemFromSnap(snap) {
   const o = snap.data();
-  const tipAmount = (Array.isArray(o.visits) ? o.visits : [])
+  const visitTips = (Array.isArray(o.visits) ? o.visits : [])
     .reduce((sum, v) => sum + chargedTipAmount(v.tip), 0);
+  const tipAmount = visitTips + chargedTipAmount(o.tip);
   return {
     type: o.payout.rateKey === 'checkin' ? 'checkin' : 'overnight',
     refCollection: 'overnights', refId: snap.id, date: o.startDate,
@@ -6810,8 +6813,9 @@ function buildPayoutCounts(walkSnaps, overnightSnaps) {
     counts[o.payout.rateKey].total += o.payout.baseTotal;
     if (o.payout.extraPetTotal) { counts.extraPet.count++; counts.extraPet.total += o.payout.extraPetTotal; }
     if (o.payout.medicationTotal) { counts.medication.count++; counts.medication.total += o.payout.medicationTotal; }
-    const tipAmount = (Array.isArray(o.visits) ? o.visits : [])
+    const visitTips = (Array.isArray(o.visits) ? o.visits : [])
       .reduce((sum, v) => sum + chargedTipAmount(v.tip), 0);
+    const tipAmount = visitTips + chargedTipAmount(o.tip);
     if (tipAmount) { counts.tips.count++; counts.tips.total += tipAmount; }
   });
   return counts;

@@ -1579,7 +1579,14 @@ function renderEarnings() {
   function tipAmount(tip) { return tip?.chargeStatus === 'charged' ? tip.amountCents / 100 : 0; }
   let tipTotal = 0, tipCount = 0;
   completedWalks.forEach(w => { const t = tipAmount(w.tip); if (t) { tipTotal += t; tipCount++; } });
-  completedOvernights.forEach(o => (o.visits || []).forEach(v => { const t = tipAmount(v.tip); if (t) { tipTotal += t; tipCount++; } }));
+  completedOvernights.forEach(o => {
+    // A reservation's tip is a single top-level charge now (chargeWalkTip's
+    // 'overnight' case), not per-visit — but visits[] is still checked too,
+    // for any older record that predates that change.
+    const t = tipAmount(o.tip);
+    if (t) { tipTotal += t; tipCount++; }
+    (o.visits || []).forEach(v => { const vt = tipAmount(v.tip); if (vt) { tipTotal += vt; tipCount++; } });
+  });
 
   function fmtPeriod(p) {
     const s = p.periodStart?.toDate?.() || new Date(p.periodStart);
