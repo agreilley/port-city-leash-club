@@ -1527,7 +1527,7 @@ window.submitScheduleRequest = async () => {
 };
 
 // ── EARNINGS ─────────────────────────────────────────────────────────────────
-// "This Week" is the only live-recalculated figure left here — an
+// "Upcoming Payout" is the only live-recalculated figure left here — an
 // explicitly-labeled estimate of work not yet paid. Everything claiming to
 // be an actual dollar amount owed/paid (Total Paid, Payment History) comes
 // from walkerPayments records instead, never from calculateEarnings() over
@@ -1540,25 +1540,30 @@ function renderEarnings() {
   const completedWalks = myWalks.filter(w => w.status === 'completed');
   const completedOvernights = myOvernights.filter(o => o.status === 'completed');
 
-  const now = new Date();
-  const dayOfWeek = now.getDay(); // 0=Sun
-  const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-  const thisWeekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayOffset);
-  const thisWeekEnd = new Date(thisWeekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+  // Only chargeStatus: 'charged' counts, same rule the payout generator
+  // itself uses. A reservation's tip is a single top-level charge now
+  // (chargeWalkTip's 'overnight' case), not per-visit — but visits[] is
+  // still checked too, for any older record that predates that change.
+  function tipAmount(tip) { return tip?.chargeStatus === 'charged' ? tip.amountCents / 100 : 0; }
+  function overnightTipAmount(o) {
+    return tipAmount(o.tip) + (o.visits || []).reduce((sum, v) => sum + tipAmount(v.tip), 0);
+  }
 
-  function dateStr(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
-  function walksInRange(start, end) {
-    const startStr = dateStr(start), endStr = dateStr(end);
-    return completedWalks.filter(w => { const ds = walkDateStr(w.date); return ds >= startStr && ds < endStr; });
-  }
-  function overnightsInRange(start, end) {
-    const startStr = dateStr(start), endStr = dateStr(end);
-    return completedOvernights.filter(o => {
-      const d = o.startDate?.toDate?.() || new Date(o.startDate);
-      return dateStr(d) >= startStr && dateStr(d) < endStr;
-    });
-  }
-  const thisWeek = calculateEarnings(walksInRange(thisWeekStart, thisWeekEnd), overnightsInRange(thisWeekStart, thisWeekEnd));
+  // Upcoming Payout: every completed item that's still unclaimed (no
+  // payoutId), regardless of when it happened — NOT "this calendar week."
+  // Admin doesn't necessarily run Generate every single week, so a
+  // date-window estimate would either go blank the moment this week's work
+  // hadn't been done yet, or fail to surface real backlog sitting from a
+  // prior week — exactly the gap a walker shouldn't have to notice on
+  // their own. Unclaimed status is the same signal the admin's own
+  // Generate button reads (computeUnclaimedPreview in admin/dashboard.html),
+  // so this can't disagree with what clicking Generate would produce.
+  const unclaimedWalks = completedWalks.filter(w => !w.payoutId);
+  const unclaimedOvernights = completedOvernights.filter(o => !o.payoutId);
+  const upcomingPayout = calculateEarnings(unclaimedWalks, unclaimedOvernights);
+  upcomingPayout.total += unclaimedWalks.reduce((sum, w) => sum + tipAmount(w.tip), 0)
+    + unclaimedOvernights.reduce((sum, o) => sum + overnightTipAmount(o), 0);
+
   function countLabel(period) {
     const count = period.walkCount + period.overnightCount;
     const noun = period.overnightCount ? 'item' : 'walk';
@@ -1574,15 +1579,10 @@ function renderEarnings() {
   // Total Tips: read live off this walker's own completed walks/visits, NOT
   // from myPayouts — a charged tip should show up here the moment it's
   // charged, not only once a payout batch has claimed it (payouts can lag
-  // days/weeks behind). Only chargeStatus: 'charged' counts, same rule the
-  // payout generator itself uses.
-  function tipAmount(tip) { return tip?.chargeStatus === 'charged' ? tip.amountCents / 100 : 0; }
+  // days/weeks behind).
   let tipTotal = 0, tipCount = 0;
   completedWalks.forEach(w => { const t = tipAmount(w.tip); if (t) { tipTotal += t; tipCount++; } });
   completedOvernights.forEach(o => {
-    // A reservation's tip is a single top-level charge now (chargeWalkTip's
-    // 'overnight' case), not per-visit — but visits[] is still checked too,
-    // for any older record that predates that change.
     const t = tipAmount(o.tip);
     if (t) { tipTotal += t; tipCount++; }
     (o.visits || []).forEach(v => { const vt = tipAmount(v.tip); if (vt) { tipTotal += vt; tipCount++; } });
@@ -1640,9 +1640,9 @@ function renderEarnings() {
   container.innerHTML = `
     <div class="stats-row" style="margin-bottom:24px;">
       <div class="stat-card">
-        <div class="stat-label">This Week (Estimate)</div>
-        <div class="stat-value" style="color:var(--rust);"><span style="font-family:'DM Sans',sans-serif;">$</span>${thisWeek.total}</div>
-        <div class="stat-sub">${countLabel(thisWeek)} · not yet paid</div>
+        <div class="stat-label">Upcoming Payout (Estimate)</div>
+        <div class="stat-value" style="color:var(--rust);"><span style="font-family:'DM Sans',sans-serif;">$</span>${upcomingPayout.total}</div>
+        <div class="stat-sub">${countLabel(upcomingPayout)} · not yet generated</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Total Paid (All Time)</div>
