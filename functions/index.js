@@ -4774,6 +4774,17 @@ exports.completeMeetGreetAndCreateAccount = onCall({
     idempotencyKey: `portal-access:${uid}`,
   });
 
+  // A brand-new membership account never has a card yet, so this can't
+  // actually start billing here — but it's what flags admin about the
+  // wait instead of leaving it silent until the member happens to add one
+  // (see finalizeSubmissionIfReady's isMembership branch, which is the
+  // only place that write happens). service_request skips this: it has no
+  // dates yet (datesConfirmedAt is only set later, at markDatesConfirmed),
+  // so finalizeSubmissionIfReady would just no-op for it here.
+  if (isMembership) {
+    await finalizeSubmissionIfReady(submissionId);
+  }
+
   return {
     success: true,
     memberId: uid,
@@ -5462,17 +5473,34 @@ async function finalizeSubmissionIfReady(submissionId, { viaExplicitRetry = fals
   const isMembership = sub.type === 'membership_request';
   const datesReady = isMembership || !!sub.datesConfirmedAt;
   // Membership genuinely cannot proceed without a card — Stripe subscription
-  // creation requires a payment method attached, so this stays a hard,
-  // silent wait (portal-account.html's own "waiting on a card" notice covers
-  // that case). A one-time service/overnight booking has no such technical
-  // requirement: the charge (immediate, via runServiceOrOvernightCharge, or
-  // scheduled 24h out) already tolerates failing without undoing the
-  // booking. A missing card here used to block the ENTIRE confirmation —
-  // no reservation, no email, no way to notice or retry — rather than just
-  // the eventual charge. It no longer blocks anything; the missing card is
+  // creation requires a payment method attached, so this stays a hard wait
+  // until the member adds one (portal-account.html's own "waiting on a
+  // card" notice covers that case for the member). It's flagged for admin
+  // too, same as the service/overnight "no card" case below — without this,
+  // a stalled membership request was invisible until someone happened to
+  // open the Requests view; there was no email and no badge. Never
+  // overwrites an existing, still-unresolved needsReview reason, same
+  // posture as every other needsReview write in this file.
+  if (isMembership && !cardOnFile) {
+    if (!billingData.needsReview) {
+      try {
+        await billingRef(sub.memberId).set({
+          needsReview: true, needsReviewReason: 'no_card_on_file',
+        }, { merge: true });
+      } catch (e) {
+        console.error(`finalizeSubmissionIfReady: failed to flag no_card_on_file for ${sub.memberId}:`, e.message);
+      }
+    }
+    return { ready: false };
+  }
+  // A one-time service/overnight booking has no such technical requirement:
+  // the charge (immediate, via runServiceOrOvernightCharge, or scheduled
+  // 24h out) already tolerates failing without undoing the booking. A
+  // missing card here used to block the ENTIRE confirmation — no
+  // reservation, no email, no way to notice or retry — rather than just the
+  // eventual charge. It no longer blocks anything; the missing card is
   // flagged for admin instead (see the needsReview write below), and the
   // confirmation email says a card is still needed.
-  if (isMembership && !cardOnFile) return { ready: false };
   if (!datesReady) return { ready: false };
 
   const claimed = await db.runTransaction(async (tx) => {
