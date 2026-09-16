@@ -800,7 +800,13 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     { name: 'downtown',     center: { lat: 34.2372, lng: -77.9456 },   radiusMi: 1.0 }, // Thalian Hall, 310 Chestnut St
     { name: 'porters-neck', center: { lat: 34.2942, lng: -77.7694 },   radiusMi: 3.0 }, // Porters Neck CDP centroid
     { name: 'landfall',     center: { lat: 34.245244, lng: -77.806513 }, radiusMi: 3.0 }, // Country Club of Landfall (800 Sun Runner Pl)
-    { name: 'uncw',         center: { lat: 34.224675, lng: -77.867843 }, radiusMi: 3.0 }  // UNC Wilmington (601 College Rd)
+    { name: 'uncw',         center: { lat: 34.224675, lng: -77.867843 }, radiusMi: 3.0 }, // UNC Wilmington (601 College Rd)
+    // Bridges the US-17 corridor between porters-neck's northern edge and
+    // Hampstead — centered on 13821 US-17 (at Washington Acres Rd), which
+    // sits ~2.2mi past porters-neck's 3mi edge along the highway. 2.5mi
+    // comfortably overlaps both porters-neck's edge and the Hampstead area
+    // to its north, so there's no seam along the corridor.
+    { name: 'scotts-hill',  center: { lat: 34.3577556, lng: -77.7212881 }, radiusMi: 2.5 }
   ];
 
   // Same public Firestore project/key the waitlist write below uses — pulled
