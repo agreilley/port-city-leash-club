@@ -22,8 +22,8 @@
 // }
 
 const {
-  escapeHtml, NAVY, SAND, TEAM_SIGNOFF,
-  renderButtonHtml, renderSignoffHtml, wrapHtml, wrapText,
+  escapeHtml, NAVY, TEAM_SIGNOFF,
+  renderButtonHtml, renderSignoffHtml, renderCodeBlockHtml, renderCodeBlockText, wrapHtml, wrapText,
 } = require('./_layout');
 
 const GET_STARTED_URL = 'https://portcityleashclub.com';
@@ -55,27 +55,6 @@ function greetingLine(firstName) {
   return firstName ? `Thanks for signing up, ${firstName}.` : 'Thanks for signing up!';
 }
 
-// One-off "big centered code" box, not folded into _layout's renderBlockHtml
-// (label/value rows, left-aligned) since this template is the only caller —
-// promote it to a shared helper if a second template ever needs the same
-// treatment.
-function codeBlockHtml(code) {
-  return `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:${SAND};border-radius:4px;margin:28px 0;">
-      <tr>
-        <td align="center" style="padding:28px 24px;">
-          <p style="margin:0 0 12px;font-family:'DM Sans', Helvetica, Arial, sans-serif;font-size:12px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:${NAVY};">Your code</p>
-          <p style="margin:0;font-family:'DM Sans', Helvetica, Arial, sans-serif;font-size:32px;font-weight:700;letter-spacing:0.1em;color:${NAVY};">${escapeHtml(code)}</p>
-        </td>
-      </tr>
-    </table>
-  `;
-}
-
-function codeBlockText(code) {
-  return ['YOUR CODE', '', code].join('\n');
-}
-
 function subject(data) {
   return `Your ${formatDollars(data.amountCents)} welcome credit`;
 }
@@ -87,7 +66,7 @@ function html(data) {
   const body = `
     <p style="margin:0 0 20px;font-family:'Cormorant Garamond', Georgia, 'Times New Roman', serif;font-weight:400;font-size:28px;line-height:1.25;color:${NAVY};">Your ${amount} credit is ready.</p>
     <p style="margin:0 0 20px;">${escapeHtml(greetingLine(data.firstName))} Here's your code, ready whenever you are.</p>
-    ${codeBlockHtml(data.code)}
+    ${renderCodeBlockHtml(data.code)}
     <p style="margin:20px 0 0;">Use this code when you sign up for a membership or book pet sitting, and you'll get ${amount} toward your first charge, up to half the charge amount.${expiryClause}</p>
     ${renderButtonHtml({ href: GET_STARTED_URL, label: 'Get Started' })}
     <p style="margin:20px 0 0;">Questions? Just reply to this email.</p>
@@ -109,7 +88,7 @@ function text(data) {
     '',
     `${greetingLine(data.firstName)} Here's your code, ready whenever you are.`,
     '',
-    codeBlockText(data.code),
+    renderCodeBlockText(data.code),
     '',
     `Use this code when you sign up for a membership or book pet sitting, and you'll get ${amount} toward your first charge, up to half the charge amount.${expiryClause}`,
     '',

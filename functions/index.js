@@ -3706,7 +3706,8 @@ async function resolveNewMemberReferralDiscount(memberId, billingData, memberDat
   // since all three non-member_referral sources share this exact
   // reuse-prevention behavior; only member_referral is the deliberate
   // exception.
-  const isSingleUseCode = codeData.source === 'apartment' || codeData.source === 'agent' || codeData.source === 'email_capture';
+  const isSingleUseCode = codeData.source === 'apartment' || codeData.source === 'agent'
+    || codeData.source === 'email_capture' || codeData.source === 'waitlist_accept';
 
   // redeemedByMemberId is set once a single-use code's first successful
   // discount/credit lands; a SECOND, different member reaching this point
@@ -8006,6 +8007,135 @@ exports.generateFriendsFamilyCode = onCall({}, async (request) => {
 });
 // Exposed directly, same reasoning as runGenerateReferralCode above.
 exports.runGenerateFriendsFamilyCode = runGenerateFriendsFamilyCode;
+
+const WAITLIST_AREA_AMOUNT_CENTS = 2000; // $20
+const WAITLIST_AREA_EXPIRY_MS = EMAIL_CAPTURE_EXPIRY_MS; // 90 days, same window as the homepage email-capture offer
+const WAITLIST_AREA_RADIUS_MI = 1;
+
+// Admin action on a 'waitlist' submission (index.html's "Notify me" capture
+// on the homepage coverage checker) whose address fell outside the service
+// area. One click: (1) adds a new radius zone centered on the address, so
+// the homepage checker (and anything else that ever reads coverageZones)
+// now serves it and everything within a mile, (2) issues the same $20
+// credit the email-capture offer grants, and (3) emails the person that
+// coverage was expanded to reach them.
+//
+// Not wrapped in a transaction — coverageZones/referralCodes/submissions
+// are three separate writes, same non-atomic multi-step shape every other
+// admin action in this file already has (e.g. declineServiceRequest's
+// cleanup + email). areaAcceptedAt is written LAST and is what gates
+// re-entry (checked below), so a failure partway through always surfaces as
+// a retryable error, never a silent double-grant — the worst a retry can do
+// is leave one extra, harmless duplicate coverageZones doc if the first
+// attempt got that far before failing later.
+//
+// Coordinates: the waitlist doc's own lat/lng (set at submit time by
+// index.html's coverage checker) are used when present. Some entries have
+// null lat/lng (address typed but never resolved through the picker, or
+// edited after checking) — for those, admin supplies lat/lng directly
+// (dashboard.html prompts for them, same lightweight prompt() pattern as
+// promptGenerateFriendsFamilyCode) rather than this function attempting any
+// geocoding of its own — there's no Maps/geocoding usage anywhere in
+// functions/ today, and standing one up for a rare admin action isn't worth
+// a new secret + ongoing cost.
+async function runAcceptWaitlistArea(payload, auth) {
+  await assertIsAdmin(auth);
+  const { submissionId, lat: latOverride, lng: lngOverride } = payload || {};
+  if (!submissionId || typeof submissionId !== 'string') {
+    throw new HttpsError('invalid-argument', 'submissionId is required.');
+  }
+
+  const subRef = db.collection('submissions').doc(submissionId);
+  const subSnap = await subRef.get();
+  const sub = subSnap.data();
+  if (!sub) throw new HttpsError('not-found', 'Submission not found.');
+  if (sub.type !== 'waitlist') {
+    throw new HttpsError('failed-precondition', `Expected a waitlist entry, got ${sub.type}.`);
+  }
+  if (sub.areaAcceptedAt) {
+    throw new HttpsError('already-exists', "This waitlist entry's area was already accepted.");
+  }
+  if (!sub.email) {
+    throw new HttpsError('failed-precondition', 'This waitlist entry has no email on file.');
+  }
+
+  // Prefer an explicit admin-supplied override (for an entry with no
+  // resolved coordinates) over the doc's own lat/lng — never a silent blend
+  // of the two.
+  const lat = typeof latOverride === 'number' ? latOverride : sub.lat;
+  const lng = typeof lngOverride === 'number' ? lngOverride : sub.lng;
+  if (typeof lat !== 'number' || typeof lng !== 'number' || Number.isNaN(lat) || Number.isNaN(lng)) {
+    throw new HttpsError('invalid-argument', 'This entry has no coordinates on file — supply lat/lng to accept it.');
+  }
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    throw new HttpsError('invalid-argument', 'lat/lng out of range.');
+  }
+
+  await db.collection('coverageZones').add({
+    center: { lat, lng },
+    radiusMi: WAITLIST_AREA_RADIUS_MI,
+    source: 'waitlist_accept',
+    submissionId,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  const submittedEmail = sub.email;
+  const submittedEmailNormalized = normalizeEmail(submittedEmail);
+  const expiresAt = Timestamp.fromMillis(Date.now() + WAITLIST_AREA_EXPIRY_MS);
+
+  const code = await createReferralCodeDoc({
+    source: 'waitlist_accept',
+    building: null,
+    agent: null,
+    brokerage: null,
+    submittedName: null,
+    submittedPhone: null,
+    submittedEmail,
+    submittedEmailNormalized,
+    notes: sub.address || null,
+    referrerId: null,
+    referrerName: null,
+    attribution: null,
+    amountCents: WAITLIST_AREA_AMOUNT_CENTS,
+    expiresAt,
+    createdAt: FieldValue.serverTimestamp(),
+    status: 'active',
+    creditIssued: false,
+  });
+
+  // Fire-and-forget, same contract as every other sendEmail() caller — see
+  // runGenerateReferralCode's own comment above. A failed send never blocks
+  // the coverage expansion or code (both already committed above) from
+  // taking effect.
+  const emailResult = await sendEmail({
+    to: submittedEmail,
+    template: 'waitlist-area-accepted',
+    data: {
+      address: sub.address || null,
+      code,
+      amountCents: WAITLIST_AREA_AMOUNT_CENTS,
+      expiresAt: expiresAt.toDate(),
+    },
+    idempotencyKey: `waitlist-area-accepted:${submissionId}`,
+  });
+  if (!emailResult.ok) console.error(`runAcceptWaitlistArea: waitlist-area-accepted failed for submission ${submissionId}:`, emailResult.error);
+
+  // Written last — see this function's header comment on why that ordering
+  // is what makes a partial failure retryable instead of a silent
+  // double-grant.
+  await subRef.update({
+    areaAcceptedAt: FieldValue.serverTimestamp(),
+    referralCode: code,
+    inArea: true,
+    read: true,
+  });
+
+  return { code };
+}
+
+exports.acceptWaitlistArea = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+  return runAcceptWaitlistArea(request.data || {}, request.auth);
+});
 
 // Member portal "Refer a Friend" tab: an existing member's own evergreen
 // referral code, generated once and reused thereafter. Unlike

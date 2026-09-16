@@ -197,6 +197,27 @@ function renderBlockText({ eyebrow, heading, rows }) {
   return lines.join('\n');
 }
 
+// One-off "big centered code" box — shared by every template that hands
+// someone a referral code to redeem later (referral-code-delivery,
+// waitlist-area-accepted). Promoted here once a second template needed it;
+// referral-code-delivery's own header used to carry this before the move.
+function renderCodeBlockHtml(code) {
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:${SAND};border-radius:4px;margin:28px 0;">
+      <tr>
+        <td align="center" style="padding:28px 24px;">
+          <p style="margin:0 0 12px;font-family:${BODY_FONT};font-size:12px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:${NAVY};">Your code</p>
+          <p style="margin:0;font-family:${BODY_FONT};font-size:32px;font-weight:700;letter-spacing:0.1em;color:${NAVY};">${escapeHtml(code)}</p>
+        </td>
+      </tr>
+    </table>
+  `;
+}
+
+function renderCodeBlockText(code) {
+  return ['YOUR CODE', '', code].join('\n');
+}
+
 // Bulletproof-ish table button — no <button>/box-shadow/gradients, just a
 // solid-color table cell with padding, which survives Outlook's Word
 // rendering engine as well as every modern client.
@@ -295,5 +316,6 @@ module.exports = {
   escapeHtml, formatCalendarDate, formatMeetGreetDate, formatMeetGreetSlot, formatWalkTimeSlot, formatDateRange,
   joinNames, meetClosingLine, pluralNoun, possessive, spellSmallNumber,
   renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml,
+  renderCodeBlockHtml, renderCodeBlockText,
   wrapHtml, wrapText,
 };

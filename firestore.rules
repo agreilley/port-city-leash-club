@@ -558,6 +558,21 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Admin-added radius zones layered on top of index.html's hardcoded
+    // SIMPLE_ZIPS/RADIUS_ZONES (see acceptWaitlistArea, functions/index.js) —
+    // the "accept their area" waitlist action writes here so a coverage
+    // expansion takes effect without a code deploy. Public read: index.html's
+    // coverage checker is itself unauthenticated, so it fetches this
+    // collection the same way it fetches nothing else today (no other
+    // config collection exists) — read: if isAdmin() would just make the
+    // checker fail open/closed inconsistently for anonymous visitors.
+    // allow write: if false — created only via the Admin SDK inside
+    // acceptWaitlistArea, same posture as referralCodes below.
+    match /coverageZones/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     match /overnights/{id} {
       allow read, write: if isAdmin();
       allow read: if request.auth != null && resource.data.memberId == request.auth.uid;

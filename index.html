@@ -791,12 +791,57 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   // Landfall (28405 stretches west past the airport through Kings Grant,
   // Blue Clay Farms, and Northchase). A point is served if it falls within
   // ANY zone's radius. Add new zones to this list.
+  //
+  // This array is also extended at runtime, below, with zones an admin has
+  // added via the "Accept their area" waitlist action (coverageZones
+  // collection) — a plain .push() works since RADIUS_ZONES being `const`
+  // only pins the binding, not the array's contents.
   const RADIUS_ZONES = [
     { name: 'downtown',     center: { lat: 34.2372, lng: -77.9456 },   radiusMi: 1.0 }, // Thalian Hall, 310 Chestnut St
     { name: 'porters-neck', center: { lat: 34.2942, lng: -77.7694 },   radiusMi: 3.0 }, // Porters Neck CDP centroid
     { name: 'landfall',     center: { lat: 34.245244, lng: -77.806513 }, radiusMi: 3.0 }, // Country Club of Landfall (800 Sun Runner Pl)
     { name: 'uncw',         center: { lat: 34.224675, lng: -77.867843 }, radiusMi: 3.0 }  // UNC Wilmington (601 College Rd)
   ];
+
+  // Same public Firestore project/key the waitlist write below uses — pulled
+  // up here so both can share it rather than each hardcoding its own copy.
+  const FIRESTORE_PROJECT_BASE = 'https://firestore.googleapis.com/v1/projects/'
+    + 'port-city-leash-club-827ab/databases/(default)/documents';
+  const FIRESTORE_WEB_KEY = 'AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM';
+
+  // Admin-added coverage zones (acceptWaitlistArea, functions/index.js) live
+  // in Firestore rather than in this file, so a waitlist "accept" takes
+  // effect without a code deploy. Fetched once, unauthenticated (rules:
+  // coverageZones allow read: if true), and merged into RADIUS_ZONES before
+  // most visitors will have finished typing an address — a check that lands
+  // in the narrow window before this resolves simply doesn't see the newest
+  // zone yet, same as it wouldn't have before this existed.
+  (async function loadDynamicCoverageZones() {
+    try {
+      const resp = await fetch(`${FIRESTORE_PROJECT_BASE}/coverageZones?key=${FIRESTORE_WEB_KEY}`);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const num = (v) => {
+        if (!v) return null;
+        if (typeof v.doubleValue === 'number') return v.doubleValue;
+        if (v.integerValue != null) return Number(v.integerValue);
+        return null;
+      };
+      (data.documents || []).forEach((doc, i) => {
+        const f = doc.fields || {};
+        const centerFields = f.center && f.center.mapValue && f.center.mapValue.fields;
+        const lat = centerFields && num(centerFields.lat);
+        const lng = centerFields && num(centerFields.lng);
+        const radiusMi = num(f.radiusMi);
+        if (typeof lat === 'number' && typeof lng === 'number' && typeof radiusMi === 'number') {
+          RADIUS_ZONES.push({ name: `admin-added-${i}`, center: { lat, lng }, radiusMi });
+        }
+      });
+    } catch (err) {
+      // Non-fatal — the hardcoded zones above still work either way.
+      console.error('Failed to load admin-added coverage zones:', err);
+    }
+  })();
 
   // Haversine great-circle distance between two points, in miles.
   function milesBetween(lat1, lng1, lat2, lng2) {
@@ -1075,11 +1120,10 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
   // ── Waitlist capture (Notify me) ──────────────────────────────────────────
   // Persisted via a direct Firestore REST write — no SDK, so the homepage stays
-  // light. Same public Firebase web key as the other pages; the create is
-  // unauthenticated and gated server-side by firestore.rules (validWaitlist).
-  const WAITLIST_URL = 'https://firestore.googleapis.com/v1/projects/'
-    + 'port-city-leash-club-827ab/databases/(default)/documents/submissions'
-    + '?key=AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM';
+  // light. Same public Firebase web key as the other pages (FIRESTORE_PROJECT_BASE/
+  // FIRESTORE_WEB_KEY, defined above); the create is unauthenticated and gated
+  // server-side by firestore.rules (validWaitlist).
+  const WAITLIST_URL = `${FIRESTORE_PROJECT_BASE}/submissions?key=${FIRESTORE_WEB_KEY}`;
   const notifyError = document.getElementById('notify-error');
 
   // Firestore REST typed-JSON body. zip/lat/lng/inArea are null when the address

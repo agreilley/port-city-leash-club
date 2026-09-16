@@ -372,6 +372,20 @@ const RENDERS = [
       expiresAt: new Date(2026, 10, 20),
     },
   },
+
+  // ── waitlist-area-accepted ──────────────────────────────────────────────
+  {
+    template: 'waitlist-area-accepted',
+    variant: 'default',
+    label: 'Waitlist "Accept their area" ($20, 90-day expiry)',
+    petCount: 0,
+    data: {
+      address: '214 Wooster St, Wilmington, NC 28401',
+      code: 'PCLC-9K3R2P',
+      amountCents: 2000,
+      expiresAt: new Date(2026, 11, 15),
+    },
+  },
 ];
 
 // ── render ────────────────────────────────────────────────────────────────

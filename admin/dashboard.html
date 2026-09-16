@@ -2782,7 +2782,7 @@ async function loadReferralCodes(isRefresh) {
   }
 }
 
-const REFERRAL_SOURCE_LABELS = { apartment: 'Apartment', agent: 'Agent', member_referral: 'Member Referral', email_capture: 'Email Capture', friends_family: 'Friends & Family' };
+const REFERRAL_SOURCE_LABELS = { apartment: 'Apartment', agent: 'Agent', member_referral: 'Member Referral', email_capture: 'Email Capture', friends_family: 'Friends & Family', waitlist_accept: 'Waitlist Area Accepted' };
 const REFERRAL_REDEMPTION_STATUS_LABELS = { invited: 'Invited', flagged_review: 'Flagged for Review', credit_applied: 'Credit Applied' };
 
 function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : '–'; }
@@ -2797,6 +2797,7 @@ function referralCodeLabel(c) {
   if (c.source === 'agent') return [c.agent, c.brokerage].filter(Boolean).join(' — ') || '–';
   if (c.source === 'email_capture') return c.submittedEmail || '–';
   if (c.source === 'friends_family') return c.notes || 'Friends & Family';
+  if (c.source === 'waitlist_accept') return c.submittedEmail || '–';
   return c.referrerName ? `Referred by ${c.referrerName}` : '–';
 }
 
@@ -4122,15 +4123,21 @@ window.openRequestItem = async (id) => {
     // submit time (e.g. edited after checking) — distinct from a checked
     // "outside area" result, so this doesn't collapse both into the same
     // display.
-    const inAreaDisplay = item.inArea === true ? 'Yes'
+    const inAreaDisplay = item.areaAcceptedAt ? 'Yes — area accepted'
+      : item.inArea === true ? 'Yes'
       : item.inArea === false ? 'No — outside service area'
       : 'Not checked';
     fields = [
       { label: 'Email', value: item.email || '–' },
       { label: 'Address', value: item.address || '–' },
       { label: 'Zip', value: item.zip || '–' },
+      { label: 'Coordinates', value: (typeof item.lat === 'number' && typeof item.lng === 'number') ? `${item.lat}, ${item.lng}` : '–' },
       { label: 'In Service Area', value: inAreaDisplay },
       { label: 'Signed Up', value: fmtDate(item.createdAt) },
+      ...(item.areaAcceptedAt ? [
+        { label: 'Area Accepted', value: fmtDate(item.areaAcceptedAt) },
+        { label: 'Referral Code Sent', value: item.referralCode || '–' },
+      ] : []),
     ];
   } else {
     // Generic — show all fields, formatted
@@ -4506,6 +4513,14 @@ window.openRequestItem = async (id) => {
       await updateDoc(doc(db, 'submissions', item.id), { status: 'handled', read: true });
       closeModal('requestModal');
     };
+  } else if (item.type === 'waitlist' && !item.areaAcceptedAt && item.inArea !== true) {
+    // "Accept their area" — expands coverage to a 1mi radius around this
+    // entry's address (acceptWaitlistArea, functions/index.js), then emails
+    // the person a $20 code. inArea !== true guards against a hand-edited
+    // doc that's somehow already served — the homepage notify-me flow only
+    // ever writes here when inArea is false or unresolved (null).
+    actionBtn.textContent = 'Accept Their Area'; actionBtn.style.display = 'block';
+    actionBtn.onclick = () => acceptWaitlistArea(item.id, item);
   } else if (item.type === 'walk_extension_reassignment' && item.status === 'pending') {
     // status:'pending' here means updateWalkSchedule couldn't fully resolve
     // this on its own (a move or a Stripe credit failed) — see
@@ -5442,6 +5457,53 @@ window.declineMembershipRequest = async (submissionId) => {
 
 // confirmOvernight removed — replaced by confirmRequestDates above,
 // which handles both service_request and overnight_request.
+
+// "Accept their area" on a waitlist entry — see acceptWaitlistArea's own
+// header comment (functions/index.js) for the full three-step effect
+// (coverage zone + $20 code + email). Coordinates: most waitlist entries
+// already have lat/lng from index.html's coverage checker; for the ones
+// that don't (address typed but never resolved, or edited after checking),
+// admin is prompted for them directly rather than this flow attempting any
+// geocoding of its own — same lightweight prompt() posture as
+// promptGenerateFriendsFamilyCode above, for the same low-frequency-
+// admin-action reason.
+window.acceptWaitlistArea = async (submissionId, item) => {
+  const addressLabel = item.address || 'this address';
+  if (!confirm(`Expand coverage to include ${addressLabel} (and everywhere within 1 mile), and email ${item.email || 'this person'} a $20 referral code?\n\nThis can't be undone.`)) return;
+
+  const hasCoords = typeof item.lat === 'number' && typeof item.lng === 'number';
+  let lat, lng;
+  if (!hasCoords) {
+    const latStr = prompt(`No coordinates on file for "${addressLabel}". Look it up on a map and enter its latitude:`, '');
+    if (latStr === null) return; // cancelled
+    const lngStr = prompt('Now its longitude:', '');
+    if (lngStr === null) return; // cancelled
+    lat = parseFloat(latStr);
+    lng = parseFloat(lngStr);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      alert('Enter valid decimal latitude/longitude values.');
+      return;
+    }
+  }
+
+  const actionBtn = document.getElementById('requestActionBtn');
+  actionBtn.disabled = true; actionBtn.textContent = 'Accepting…';
+  try {
+    const fn = httpsCallable(fns, 'acceptWaitlistArea');
+    const res = await fn(hasCoords ? { submissionId } : { submissionId, lat, lng });
+
+    closeModal('requestModal');
+    const msg = document.createElement('div');
+    msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#C17B6F;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
+    msg.textContent = `Area accepted — code ${res.data.code} emailed to ${item.email || 'the member'}`;
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 4000);
+    loadReferralCodes(true);
+  } catch (e) {
+    actionBtn.disabled = false; actionBtn.textContent = 'Accept Their Area';
+    alert(`Couldn't accept this area: ${e.message}`);
+  }
+};
 
 window.declineOvernightRequest = async (submissionId, item) => {
   const btn = document.getElementById('requestDeclineBtn');
