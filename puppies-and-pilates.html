@@ -481,7 +481,11 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       if (result.error) {
         // Card declined (or similar) — release the hold so it doesn't eat
         // into the 30-ticket cap while the buyer retries with another card.
-        window._releaseEventTicketHold({ ticketId }).catch(() => {});
+        window._releaseEventTicketHold({
+          ticketId,
+          reason: 'card_declined',
+          detail: (result.error.code || result.error.message || '').slice(0, 200),
+        }).catch(() => {});
         throw new Error(result.error.message || 'Your card was declined. Please try a different card.');
       }
 

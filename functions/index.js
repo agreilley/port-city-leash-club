@@ -7756,7 +7756,12 @@ function eventTicketRef(eventId, ticketId) {
   return eventRef(eventId).collection('tickets').doc(ticketId);
 }
 
-async function releaseEventTicketHoldInternal(eventId, ticketId, releasedStatus = 'released') {
+// reason/detail distinguish *why* a ticket was released — "released" alone
+// is ambiguous between a card decline (customer-side, expected) and our own
+// Stripe API call failing (server-side, worth watching for a pattern) —
+// both otherwise land as the same status with no way to tell them apart
+// from the dashboard.
+async function releaseEventTicketHoldInternal(eventId, ticketId, releasedStatus = 'released', reason = null, detail = null) {
   const ticketRef = eventTicketRef(eventId, ticketId);
   await db.runTransaction(async (tx) => {
     const ticketSnap = await tx.get(ticketRef);
@@ -7768,7 +7773,7 @@ async function releaseEventTicketHoldInternal(eventId, ticketId, releasedStatus 
     const evSnap = await tx.get(evRef);
     const reserved = evSnap.exists ? (evSnap.data().ticketsReserved || 0) : 0;
     tx.set(evRef, { ticketsReserved: Math.max(0, reserved - quantity) }, { merge: true });
-    tx.set(ticketRef, { status: releasedStatus }, { merge: true });
+    tx.set(ticketRef, { status: releasedStatus, releaseReason: reason, releaseDetail: detail || null }, { merge: true });
   });
 }
 
@@ -7794,7 +7799,7 @@ async function sweepExpiredEventTicketHolds(eventId) {
     return createdAt && createdAt.toMillis() <= cutoffMs;
   });
   for (const doc of stale) {
-    await releaseEventTicketHoldInternal(eventId, doc.id, 'expired').catch((e) => {
+    await releaseEventTicketHoldInternal(eventId, doc.id, 'expired', 'ttl_expired').catch((e) => {
       console.error(`sweepExpiredEventTicketHolds: failed to release ${doc.id}:`, e.message);
     });
   }
@@ -7865,7 +7870,7 @@ exports.createEventTicketPaymentIntent = onCall({ secrets: [STRIPE_SECRET_KEY] }
     // client-side, later, against the PaymentIntent this would have
     // created) — release the seats reserved above so a Stripe-API-level
     // failure never silently eats capacity.
-    await releaseEventTicketHoldInternal(PUPPIES_PILATES_EVENT_ID, ticketRef.id).catch(() => {});
+    await releaseEventTicketHoldInternal(PUPPIES_PILATES_EVENT_ID, ticketRef.id, 'released', 'stripe_api_error', e.message ? String(e.message).slice(0, 200) : null).catch(() => {});
     console.error('createEventTicketPaymentIntent: Stripe error:', e.message);
     throw new HttpsError('internal', "Couldn't start checkout. Please try again.");
   }
@@ -7881,7 +7886,9 @@ exports.createEventTicketPaymentIntent = onCall({ secrets: [STRIPE_SECRET_KEY] }
 exports.releaseEventTicketHold = onCall(async (request) => {
   const ticketId = typeof request.data?.ticketId === 'string' ? request.data.ticketId : '';
   if (!ticketId) throw new HttpsError('invalid-argument', 'Missing ticketId.');
-  await releaseEventTicketHoldInternal(PUPPIES_PILATES_EVENT_ID, ticketId);
+  const reason = typeof request.data?.reason === 'string' ? request.data.reason.slice(0, 50) : 'card_declined';
+  const detail = typeof request.data?.detail === 'string' ? request.data.detail.slice(0, 200) : null;
+  await releaseEventTicketHoldInternal(PUPPIES_PILATES_EVENT_ID, ticketId, 'released', reason, detail);
   return { ok: true };
 });
 

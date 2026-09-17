@@ -3182,6 +3182,11 @@ function fmtEventTicketDate(ts) {
 }
 
 const EVENT_TICKET_STATUS_LABELS = { paid: 'Paid', pending: 'Pending', released: 'Released', expired: 'Expired' };
+const EVENT_TICKET_RELEASE_REASON_LABELS = {
+  card_declined: 'Card declined',
+  stripe_api_error: 'Checkout error (our side)',
+  ttl_expired: 'Abandoned (timed out)',
+};
 
 function eventTicketStatusBadgeClass(status) {
   if (status === 'paid') return 'active';
@@ -3224,7 +3229,7 @@ function renderEventTicketsTable() {
       <td>${escapeHtml(t.phone || '–')}</td>
       <td>${t.quantity || 0}</td>
       <td>${typeof t.amountCents === 'number' ? `$${(t.amountCents / 100).toFixed(2)}` : '–'}</td>
-      <td><span class="status-badge ${eventTicketStatusBadgeClass(t.status)}">${escapeHtml(EVENT_TICKET_STATUS_LABELS[t.status] || capitalize(t.status))}</span></td>
+      <td><span class="status-badge ${eventTicketStatusBadgeClass(t.status)}">${escapeHtml(EVENT_TICKET_STATUS_LABELS[t.status] || capitalize(t.status))}</span>${t.releaseReason ? `<div style="font-size:11px;color:var(--text-light);margin-top:2px;">${escapeHtml(EVENT_TICKET_RELEASE_REASON_LABELS[t.releaseReason] || t.releaseReason)}${t.releaseDetail ? `: ${escapeHtml(t.releaseDetail)}` : ''}</div>` : ''}</td>
       <td>${fmtEventTicketDate(t.createdAt)}</td>
       <td>${t.status === 'paid' ? `<button class="btn-secondary" style="white-space:nowrap;padding:4px 10px;font-size:12px;" onclick="resendEventTicketEmail('${escapeHtml(t.id)}', this)">Resend Email</button>` : ''}</td>
     </tr>
