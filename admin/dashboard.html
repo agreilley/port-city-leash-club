@@ -3961,7 +3961,13 @@ window.openRequestItem = async (id) => {
       { label: 'Service', value: serviceInfo?.name || item.service || '–' },
       { label: 'Start Date', value: fmtDate(item.startDate) },
       { label: 'End Date', value: fmtDate(item.endDate) },
-      { label: 'Visits/Day', value: item.visitsPerDay || '–' },
+      // Visits/Day only feeds pricing for drop-in visits (see
+      // calculateServiceTotal in pricing.js) — showing it for other service
+      // types (e.g. Overnight Stay, priced flat per night) implies it
+      // factored into the estimated total when it didn't.
+      ...(resolveServiceKey(item.service) === 'drop-in-visit'
+        ? [{ label: 'Visits/Day', value: item.visitsPerDay || '–' }]
+        : []),
       { label: 'Multiple Pets', value: item.extraPet ? 'Yes' : 'No' },
       { label: 'Medication Admin', value: item.medication ? 'Yes' : 'No' },
       { label: 'Meet Greet Date/Time', value: item.meetGreetDateTime || '–' },
