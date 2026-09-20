@@ -66,6 +66,19 @@
   .hero-dot { width: 6px; height: 6px; background: var(--rust); border-radius: 50%; position: absolute; top: 16px; right: 28px; }
   .hero-visual-label { font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--navy); opacity: 0.5; font-weight: 500; }
 
+  /* $20 OFFER (in hero) — deliberately smaller text/inputs than the
+     hero-ctas button above it, so it reads as secondary to "Request Pet
+     Sitting" rather than a second competing hero CTA. Same
+     generateEmailCaptureCode-backed form as index.html's "Stay In Touch",
+     just compact. */
+  .hero-offer { margin-top: 24px; max-width: 400px; }
+  .hero-offer-label { font-size: 13px; color: var(--text-mid); margin-bottom: 8px; }
+  .hero-offer-form { display: flex; gap: 8px; flex-wrap: wrap; }
+  .hero-offer-form input[type="email"] { flex: 1 1 200px; min-width: 0; border: 1px solid rgba(13,27,42,0.14); background: white; border-radius: 4px; padding: 10px 14px; font-size: 13px; font-family: 'DM Sans', sans-serif; color: var(--text-dark); }
+  .hero-offer-form input[type="email"]::placeholder { color: var(--text-light); }
+  .hero-offer-form input[type="email"]:focus { outline: none; border-color: var(--seafoam); box-shadow: 0 0 0 3px rgba(143,168,162,0.25); }
+  .hero-offer-form .btn-primary { white-space: nowrap; }
+
   /* STATS */
   .stats-bar { background: var(--navy-mid); padding: 36px 48px; display: flex; justify-content: center; gap: 80px; align-items: center; }
   .stat { text-align: center; display: flex; flex-direction: column; align-items: center; }
@@ -88,24 +101,6 @@
   .sitting-card-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 20px; margin-top: 20px; border-top: 1px solid rgba(0,0,0,0.08); }
   .sitting-card-price { font-family: 'Cormorant Garamond', serif; font-size: 34px; font-weight: 400; color: var(--navy); }
   .sitting-card-cta { font-size: 13px; color: white; background: var(--rust); font-weight: 500; padding: 8px 16px; border-radius: 20px; white-space: nowrap; }
-
-  /* $20 OFFER — deliberately its own smaller headline/max-width (not
-     .section-headline/.section-inner) so it reads as secondary to the
-     Reserve cards above rather than as another full-weight page section. */
-  /* warm-white, not sand-light: Testimonials right after this is sand-light,
-     and matching backgrounds there erased the seam between the two sections
-     (they read as one continuous block). warm-white matches Services above
-     instead, so the color change now lands at the Testimonials boundary,
-     where it's needed. */
-  .offer-section { background: var(--warm-white); padding: 56px 48px; }
-  .offer-card { max-width: 560px; margin: 0 auto; text-align: center; }
-  .offer-headline { font-family: 'Cormorant Garamond', serif; font-weight: 400; font-size: 30px; color: var(--navy); margin-bottom: 12px; }
-  .offer-body { font-size: 15px; color: var(--text-mid); line-height: 1.7; margin: 0 auto 28px; max-width: 440px; }
-  .offer-form { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-  .offer-form input[type="email"] { flex: 1 1 260px; min-width: 0; border: 1px solid rgba(13,27,42,0.14); background: white; border-radius: 4px; padding: 14px 16px; font-size: 14px; font-family: 'DM Sans', sans-serif; color: var(--text-dark); }
-  .offer-form input[type="email"]::placeholder { color: var(--text-light); }
-  .offer-form input[type="email"]:focus { outline: none; border-color: var(--seafoam); box-shadow: 0 0 0 3px rgba(143,168,162,0.25); }
-  .offer-form .btn-primary { white-space: nowrap; }
 
   a.btn-primary, a.btn-nav { display: inline-block; text-align: center; text-decoration: none; color: white !important; }
 
@@ -207,11 +202,6 @@
     /* Pet Sitting Services: stack cards on mobile */
     .sitting-cards-grid { grid-template-columns: 1fr !important; gap: 16px; }
 
-    /* $20 offer: smaller headline, tighter padding, same scale step as
-       .section-headline's own mobile override below */
-    .offer-section { padding: 40px 20px; }
-    .offer-headline { font-size: 24px; }
-
     /* Testimonials: one card per view, swipe instead of arrows */
     .carousel-card { flex-basis: 100%; }
     .carousel-controls .carousel-arrow { display: none; }
@@ -237,7 +227,6 @@
     .cta-section .section-headline { font-size: 34px; }
     .sitting-card-title { font-size: 20px; }
     .sitting-card-price { font-size: 26px; }
-    .offer-headline { font-size: 22px; }
   }
 </style>
 <script src="/js/meta-pixel.js" defer></script>
@@ -270,7 +259,33 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       <h1 class="hero-headline">Your pets stay home, with all the comforts they know.</h1>
       <p class="hero-sub">Overnight stays and drop-in visits from a small local team your pets get to know. Insured, background checked, and pet first aid certified.</p>
       <div class="hero-ctas">
-        <a class="btn-primary" href="/service-request" data-cta="hero">Request pet sitting</a>
+        <a class="btn-primary" href="/service-request" data-cta="hero">Request Pet Sitting</a>
+      </div>
+
+      <!-- $20 OFFER — moved into the hero so it's immediately visible without
+           a scroll/redirect; same generateEmailCaptureCode callable and
+           email-delivery flow as index.html's "Stay In Touch" form (see the
+           module script near the end of this file), with its own dedicated
+           generate_lead/Lead events (no cta_click — this is a form, not a
+           link, so its own success events already cover it, same as this
+           form did in its previous location). Deliberately compact/muted
+           relative to the primary button above it, per "secondary to the
+           Reserve CTA" — a real input+button is unmistakably interactive on
+           its own, so no extra affordance styling is needed. -->
+      <div class="hero-offer">
+        <p class="hero-offer-label">New clients: $20 off your first booking</p>
+        <div data-status-container></div>
+        <form id="petSittingOfferForm" class="hero-offer-form" onsubmit="submitPetSittingOffer(event)">
+          <!-- Honeypot — same pattern as index.html's $20 form; real visitors
+               never see or fill this field. Checked server-side in
+               runGenerateEmailCaptureCode (functions/index.js). -->
+          <div style="position:absolute;left:-9999px;top:-9999px;" aria-hidden="true">
+            <label for="petSittingOfferWebsite">Leave this field blank</label>
+            <input type="text" id="petSittingOfferWebsite" name="website" tabindex="-1" autocomplete="off">
+          </div>
+          <input type="email" id="petSittingOfferEmail" name="email" placeholder="you@email.com" required>
+          <button type="submit" class="btn-primary" style="font-size:13px;padding:10px 18px;">Send My Code</button>
+        </form>
       </div>
     </div>
     <div class="hero-visual" style="border-radius:8px;overflow:hidden;height:360px;">
@@ -350,33 +365,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
     <p style="text-align:center;font-size:13px;color:var(--text-light);margin-top:24px;">Medication administration (+$<span id="fee-medication"></span>) and additional pets (+$<span id="fee-extrapet"></span>) are available as add-ons.</p>
 
-  </div>
-</section>
-
-
-<!-- $20 OFFER — secondary to the Reserve cards above; same code-generation
-     callable (generateEmailCaptureCode) and email-delivery flow as the
-     homepage's "Stay In Touch" form (index.html), just wired up with its
-     own success/error UI and its own dedicated generate_lead/Lead
-     conversion events (see the scripts near the end of this file). -->
-<section class="offer-section">
-  <div class="offer-card">
-    <h2 class="offer-headline">$20 off your first booking</h2>
-    <p class="offer-body">New to Port City Leash Club? Enter your email and we'll send you $20 off your first pet sitting booking.</p>
-
-    <div data-status-container></div>
-
-    <form id="petSittingOfferForm" class="offer-form" onsubmit="submitPetSittingOffer(event)">
-      <!-- Honeypot — same pattern as index.html's $20 form; real visitors
-           never see or fill this field. Checked server-side in
-           runGenerateEmailCaptureCode (functions/index.js). -->
-      <div style="position:absolute;left:-9999px;top:-9999px;" aria-hidden="true">
-        <label for="petSittingOfferWebsite">Leave this field blank</label>
-        <input type="text" id="petSittingOfferWebsite" name="website" tabindex="-1" autocomplete="off">
-      </div>
-      <input type="email" id="petSittingOfferEmail" name="email" placeholder="you@email.com" required>
-      <button type="submit" class="btn-primary" style="font-size:15px;padding:14px 28px;">Send My Code</button>
-    </form>
   </div>
 </section>
 
@@ -494,7 +482,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     <h2 class="section-headline">Ready to plan your trip?</h2>
     <p class="section-sub">Tell us your dates and we'll confirm availability within 24 hours.</p>
     <div style="text-align:center;">
-      <a class="btn-primary" href="/service-request" data-cta="final_cta">Request pet sitting</a>
+      <a class="btn-primary" href="/service-request" data-cta="final_cta">Request Pet Sitting</a>
     </div>
   </div>
 </section>
