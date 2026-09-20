@@ -1295,6 +1295,12 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       // form_submit). data-cta on the button itself keeps one source of
       // truth for the label between the markup and this call.
       window.pclcTrackGA && window.pclcTrackGA('cta_click', { cta_location: btn.getAttribute('data-cta') || 'unlabeled' });
+      // Dedicated conversion events for this lead magnet, fired at the same
+      // confirmed-success point as cta_click above (never on click, never on
+      // a failed callable — both are gated by this try block already having
+      // awaited _generateEmailCaptureCode without throwing).
+      window.pclcTrackGA && window.pclcTrackGA('generate_lead', { lead_type: '20_off_code' });
+      window.pclcTrack && window.pclcTrack('Lead', { lead_type: '20_off_code' });
       window._showSuccess('Thanks! Check your email for your code.');
       form.reset();
       btn.textContent = originalLabel; btn.disabled = false;

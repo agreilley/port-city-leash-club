@@ -1,20 +1,27 @@
 // ga4.js — GA4 loader + funnel event instrumentation for Port City Leash Club.
 //
 // Single source of truth for the Measurement ID: loaded via one identical
-// <script src="/js/ga4.js" defer> tag on the same 8 public marketing/form
-// pages as js/meta-pixel.js and js/attribution.js — never on portal-*,
-// walker/*, admin/*, or dev/* pages.
+// <script src="/js/ga4.js" defer> tag on 11 public marketing/form pages
+// (index, pet-sitting, service-request, membership-request,
+// request-received, contact, careers, faq, walker-screening,
+// puppies-and-pilates, welcomehome) — never on portal-*, walker/*, admin/*,
+// or dev/* pages. js/meta-pixel.js now loads on this same 11-page set too;
+// js/attribution.js loads on all of them except request-received.html.
 //
 // Wires the funnel generically (feature-detected by element presence, not
-// by page), so pages need at most one extra call — form_submit, which has
-// to fire at an async operation's success point this file can't observe on
-// its own — rather than any page carrying its own GA4 config:
+// by page), so pages need at most a couple of extra calls — form_submit and
+// generate_lead, which have to fire at an async operation's success point
+// this file can't observe on its own — rather than any page carrying its
+// own GA4 config:
 //   - section_view  {section: "membership_tiers"} — IntersectionObserver on
 //     #membership, fires once. Only index.html has that element.
 //   - cta_click     {cta_location: <data-cta value>} — delegated click
 //     listener, any anchor whose href contains "/membership-request",
 //     wherever one exists. Attached on every page so a future CTA added
-//     elsewhere is covered without touching this file again.
+//     elsewhere is covered without touching this file again. pet-sitting.html
+//     runs its own equivalent delegated listener for /service-request links
+//     (its CTAs don't point at /membership-request), which also fires a Meta
+//     ViewContent for the two Reserve cards specifically — see that file.
 //   - form_start    (no params) — delegated focusin on #membershipForm,
 //     fires once per page load. Deliberately NOT GA4 Enhanced Measurement's
 //     auto-collected form_start/form_submit: every submit handler in this
@@ -22,9 +29,15 @@
 //     which Enhanced Measurement's form_submit cannot see — form_start is
 //     kept custom too so both halves of the funnel share one triggering
 //     model instead of two different ones.
-//   - form_submit   (no params) — NOT wired here. membership-request.html
-//     calls window.pclcTrackGA('form_submit') itself, at the same success
-//     point window.pclcTrack('Lead') already fires from.
+//   - form_submit   {form_type: "service_request"|"membership_request"} —
+//     NOT wired here. service-request.html and membership-request.html each
+//     call window.pclcTrackGA('form_submit', {form_type}) themselves, at the
+//     same success point window.pclcTrack('Lead', {lead_type}) already
+//     fires from.
+//   - generate_lead {lead_type: "20_off_code"} — NOT wired here either.
+//     index.html's $20-offer form calls this itself, at the same success
+//     point as the cta_click below and window.pclcTrack('Lead') in
+//     meta-pixel.js.
 //
 // Expected data-cta values (index.html) — an anchor added later without one
 // of these is silently uncounted, so keep this list in sync with the markup:
@@ -33,10 +46,11 @@
 // stay_in_touch_form (the email-capture form's submit button) is NOT in
 // this list — it's a <button>, not an anchor to /membership-request, so the
 // delegated listener below never sees it. index.html's own submit handler
-// fires cta_click for it manually at the success point instead.
+// fires cta_click (and generate_lead) for it manually at the success point
+// instead.
 //
 // No PII in any event parameter, ever — every param here is a fixed string
-// describing a UI location, never user input.
+// describing a UI location or lead/form type, never user input.
 (function () {
   var MEASUREMENT_ID = 'G-PS9J4ZDHKE';
   var ADS_ID = 'AW-18417285970';

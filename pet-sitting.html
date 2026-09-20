@@ -623,6 +623,15 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     const link = e.target.closest && e.target.closest('a[href*="/service-request"]');
     if (!link) return;
     window.pclcTrackGA && window.pclcTrackGA('cta_click', { cta_location: link.getAttribute('data-cta') || 'unlabeled' });
+
+    // Meta ViewContent (not Lead — a Reserve click is interest, not a lead)
+    // for an actual Reserve click. Only the two service cards carry a
+    // `service` query param; the generic "Request pet sitting" CTAs on this
+    // page (hero, final_cta) don't, so this never fires for those.
+    const service = new URL(link.href, window.location.origin).searchParams.get('service');
+    if (service) {
+      window.pclcTrack && window.pclcTrack('ViewContent', { content_name: service });
+    }
   });
 </script>
 <script type="module">

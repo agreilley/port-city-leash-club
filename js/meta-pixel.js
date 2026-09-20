@@ -1,6 +1,13 @@
 // Meta (Facebook) Pixel — Port City Leash Club
-// Loaded on public marketing pages only. Not present on any
+// Loaded on public marketing pages only (the same 11-page set js/ga4.js
+// documents, including request-received.html, for consistent PageView
+// coverage across the confirmation step). Not present on any
 // authenticated portal/admin/walker/dev page.
+//
+// request-received.html deliberately fires no Lead call of its own — the
+// real Lead already fires from service-request.html/membership-request.html
+// right before the redirect there, and firing a second one here would
+// double-count every submission.
 !function(f,b,e,v,n,t,s)
 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
 n.callMethod.apply(n,arguments):n.queue.push(arguments)};
