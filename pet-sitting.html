@@ -66,18 +66,25 @@
   .hero-dot { width: 6px; height: 6px; background: var(--rust); border-radius: 50%; position: absolute; top: 16px; right: 28px; }
   .hero-visual-label { font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--navy); opacity: 0.5; font-weight: 500; }
 
-  /* $20 OFFER (in hero) — deliberately smaller text/inputs than the
-     hero-ctas button above it, so it reads as secondary to "Request Pet
-     Sitting" rather than a second competing hero CTA. Same
-     generateEmailCaptureCode-backed form as index.html's "Stay In Touch",
-     just compact. */
-  .hero-offer { margin-top: 24px; max-width: 400px; }
-  .hero-offer-label { font-size: 13px; color: var(--text-mid); margin-bottom: 8px; }
-  .hero-offer-form { display: flex; gap: 8px; flex-wrap: wrap; }
-  .hero-offer-form input[type="email"] { flex: 1 1 200px; min-width: 0; border: 1px solid rgba(13,27,42,0.14); background: white; border-radius: 4px; padding: 10px 14px; font-size: 13px; font-family: 'DM Sans', sans-serif; color: var(--text-dark); }
+  /* $20 OFFER — its own contained card below the hero grid (full width),
+     styled as a distinct module rather than more hero-stack content. The
+     outlined button keeps "Request Pet Sitting" the single strongest
+     visual element in the hero. Same generateEmailCaptureCode-backed form
+     as index.html's "Stay In Touch". */
+  /* margin (not just padding) here — the card sits directly in the
+     1196px-wide hero wrapper, which has no side gutter of its own (.hero
+     supplies its own via padding); without a matching margin the card's
+     sand background would run edge-to-edge and its rounded corners would
+     never actually be visible. 48px roughly matches .hero's own side
+     padding at these widths (see mobile override for the 768px step). */
+  .hero-offer-card { background: var(--sand); border-radius: 8px; padding: 32px 40px; margin: 32px 48px 0; text-align: center; }
+  .hero-offer-label { font-size: 15px; font-weight: 500; color: var(--navy); margin-bottom: 14px; }
+  .hero-offer-form { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; max-width: 460px; margin: 0 auto; }
+  .hero-offer-form input[type="email"] { flex: 1 1 240px; min-width: 0; border: 1px solid rgba(13,27,42,0.14); background: white; border-radius: 4px; padding: 14px 16px; font-size: 14px; font-family: 'DM Sans', sans-serif; color: var(--text-dark); }
   .hero-offer-form input[type="email"]::placeholder { color: var(--text-light); }
   .hero-offer-form input[type="email"]:focus { outline: none; border-color: var(--seafoam); box-shadow: 0 0 0 3px rgba(143,168,162,0.25); }
-  .hero-offer-form .btn-primary { white-space: nowrap; }
+  .btn-outline { background: white; color: var(--rust); border: 1.5px solid var(--rust); border-radius: 4px; padding: 14px 28px; font-size: 14px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; transition: background 0.2s, color 0.2s; }
+  .btn-outline:hover { background: var(--rust); color: white; }
 
   /* STATS */
   .stats-bar { background: var(--navy-mid); padding: 36px 48px; display: flex; justify-content: center; gap: 80px; align-items: center; }
@@ -192,6 +199,7 @@
     .hero-visual { height: 286px !important; }
     .hero-ctas { flex-direction: column; gap: 10px; }
     .hero-ctas a { text-align: center; }
+    .hero-offer-card { padding: 24px 20px; margin: 24px 20px 0; }
 
     /* Trust signals */
     .stats-bar { gap: 16px !important; padding: 32px 16px !important; }
@@ -261,32 +269,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       <div class="hero-ctas">
         <a class="btn-primary" href="/service-request" data-cta="hero">Request Pet Sitting</a>
       </div>
-
-      <!-- $20 OFFER — moved into the hero so it's immediately visible without
-           a scroll/redirect; same generateEmailCaptureCode callable and
-           email-delivery flow as index.html's "Stay In Touch" form (see the
-           module script near the end of this file), with its own dedicated
-           generate_lead/Lead events (no cta_click — this is a form, not a
-           link, so its own success events already cover it, same as this
-           form did in its previous location). Deliberately compact/muted
-           relative to the primary button above it, per "secondary to the
-           Reserve CTA" — a real input+button is unmistakably interactive on
-           its own, so no extra affordance styling is needed. -->
-      <div class="hero-offer">
-        <p class="hero-offer-label">New clients: $20 off your first booking</p>
-        <div data-status-container></div>
-        <form id="petSittingOfferForm" class="hero-offer-form" onsubmit="submitPetSittingOffer(event)">
-          <!-- Honeypot — same pattern as index.html's $20 form; real visitors
-               never see or fill this field. Checked server-side in
-               runGenerateEmailCaptureCode (functions/index.js). -->
-          <div style="position:absolute;left:-9999px;top:-9999px;" aria-hidden="true">
-            <label for="petSittingOfferWebsite">Leave this field blank</label>
-            <input type="text" id="petSittingOfferWebsite" name="website" tabindex="-1" autocomplete="off">
-          </div>
-          <input type="email" id="petSittingOfferEmail" name="email" placeholder="you@email.com" required>
-          <button type="submit" class="btn-primary" style="font-size:13px;padding:10px 18px;">Send My Code</button>
-        </form>
-      </div>
     </div>
     <div class="hero-visual" style="border-radius:8px;overflow:hidden;height:360px;">
       <picture>
@@ -294,6 +276,32 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         <img src="images/pet-sitting-hero.jpg" alt="A beagle sleeping soundly on a couch, head resting against a throw pillow." style="width:100%;height:100%;object-fit:cover;object-position:center center;">
       </picture>
     </div>
+  </div>
+
+  <!-- $20 OFFER — full-width, below the two-column hero grid (this sits
+       after .hero closes in DOM order, so it lands after the photo on
+       mobile too, once the grid collapses to a single column). Same
+       generateEmailCaptureCode callable and email-delivery flow as
+       index.html's "Stay In Touch" form (see the module script near the end
+       of this file), with its own dedicated generate_lead/Lead events (no
+       cta_click — this is a form, not a link, so its own success events
+       already cover it). "Request Pet Sitting" above stays the only filled
+       button in the hero; this one is deliberately outlined so it reads as
+       a secondary, contained module rather than a second competing CTA. -->
+  <div class="hero-offer-card">
+    <p class="hero-offer-label">New clients: $20 off your first reservation</p>
+    <div data-status-container></div>
+    <form id="petSittingOfferForm" class="hero-offer-form" onsubmit="submitPetSittingOffer(event)">
+      <!-- Honeypot — same pattern as index.html's $20 form; real visitors
+           never see or fill this field. Checked server-side in
+           runGenerateEmailCaptureCode (functions/index.js). -->
+      <div style="position:absolute;left:-9999px;top:-9999px;" aria-hidden="true">
+        <label for="petSittingOfferWebsite">Leave this field blank</label>
+        <input type="text" id="petSittingOfferWebsite" name="website" tabindex="-1" autocomplete="off">
+      </div>
+      <input type="email" id="petSittingOfferEmail" name="email" placeholder="you@email.com" required>
+      <button type="submit" class="btn-outline">Send My Code</button>
+    </form>
   </div>
 </div>
 
