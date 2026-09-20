@@ -92,7 +92,12 @@
   /* $20 OFFER — deliberately its own smaller headline/max-width (not
      .section-headline/.section-inner) so it reads as secondary to the
      Reserve cards above rather than as another full-weight page section. */
-  .offer-section { background: var(--sand-light); padding: 56px 48px; }
+  /* warm-white, not sand-light: Testimonials right after this is sand-light,
+     and matching backgrounds there erased the seam between the two sections
+     (they read as one continuous block). warm-white matches Services above
+     instead, so the color change now lands at the Testimonials boundary,
+     where it's needed. */
+  .offer-section { background: var(--warm-white); padding: 56px 48px; }
   .offer-card { max-width: 560px; margin: 0 auto; text-align: center; }
   .offer-headline { font-family: 'Cormorant Garamond', serif; font-weight: 400; font-size: 30px; color: var(--navy); margin-bottom: 12px; }
   .offer-body { font-size: 15px; color: var(--text-mid); line-height: 1.7; margin: 0 auto 28px; max-width: 440px; }
