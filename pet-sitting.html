@@ -89,6 +89,19 @@
   .sitting-card-price { font-family: 'Cormorant Garamond', serif; font-size: 34px; font-weight: 400; color: var(--navy); }
   .sitting-card-cta { font-size: 13px; color: white; background: var(--rust); font-weight: 500; padding: 8px 16px; border-radius: 20px; white-space: nowrap; }
 
+  /* $20 OFFER — deliberately its own smaller headline/max-width (not
+     .section-headline/.section-inner) so it reads as secondary to the
+     Reserve cards above rather than as another full-weight page section. */
+  .offer-section { background: var(--sand-light); padding: 56px 48px; }
+  .offer-card { max-width: 560px; margin: 0 auto; text-align: center; }
+  .offer-headline { font-family: 'Cormorant Garamond', serif; font-weight: 400; font-size: 30px; color: var(--navy); margin-bottom: 12px; }
+  .offer-body { font-size: 15px; color: var(--text-mid); line-height: 1.7; margin: 0 auto 28px; max-width: 440px; }
+  .offer-form { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .offer-form input[type="email"] { flex: 1 1 260px; min-width: 0; border: 1px solid rgba(13,27,42,0.14); background: white; border-radius: 4px; padding: 14px 16px; font-size: 14px; font-family: 'DM Sans', sans-serif; color: var(--text-dark); }
+  .offer-form input[type="email"]::placeholder { color: var(--text-light); }
+  .offer-form input[type="email"]:focus { outline: none; border-color: var(--seafoam); box-shadow: 0 0 0 3px rgba(143,168,162,0.25); }
+  .offer-form .btn-primary { white-space: nowrap; }
+
   a.btn-primary, a.btn-nav { display: inline-block; text-align: center; text-decoration: none; color: white !important; }
 
   /* HOVER STATES */
@@ -189,6 +202,11 @@
     /* Pet Sitting Services: stack cards on mobile */
     .sitting-cards-grid { grid-template-columns: 1fr !important; gap: 16px; }
 
+    /* $20 offer: smaller headline, tighter padding, same scale step as
+       .section-headline's own mobile override below */
+    .offer-section { padding: 40px 20px; }
+    .offer-headline { font-size: 24px; }
+
     /* Testimonials: one card per view, swipe instead of arrows */
     .carousel-card { flex-basis: 100%; }
     .carousel-controls .carousel-arrow { display: none; }
@@ -214,6 +232,7 @@
     .cta-section .section-headline { font-size: 34px; }
     .sitting-card-title { font-size: 20px; }
     .sitting-card-price { font-size: 26px; }
+    .offer-headline { font-size: 22px; }
   }
 </style>
 <script src="/js/meta-pixel.js" defer></script>
@@ -314,7 +333,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       <a href="/service-request?service=overnight-stay" class="sitting-card" data-cta="services_overnight">
         <div>
           <div class="sitting-card-title">Overnight stay</div>
-          <div class="sitting-card-desc">Around-the-clock care in your home. Evening settling, overnight supervision, and daytime check-ins built around the routine your pets already know.</div>
+          <div class="sitting-card-desc">Overnight care in your home, with daytime check-ins built around the routine your pets already know.</div>
         </div>
         <div class="sitting-card-footer">
           <div class="sitting-card-price" id="price-overnight"></div>
@@ -326,6 +345,33 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
     <p style="text-align:center;font-size:13px;color:var(--text-light);margin-top:24px;">Medication administration (+$<span id="fee-medication"></span>) and additional pets (+$<span id="fee-extrapet"></span>) are available as add-ons.</p>
 
+  </div>
+</section>
+
+
+<!-- $20 OFFER — secondary to the Reserve cards above; same code-generation
+     callable (generateEmailCaptureCode) and email-delivery flow as the
+     homepage's "Stay In Touch" form (index.html), just wired up with its
+     own success/error UI and its own dedicated generate_lead/Lead
+     conversion events (see the scripts near the end of this file). -->
+<section class="offer-section">
+  <div class="offer-card">
+    <h2 class="offer-headline">$20 off your first booking</h2>
+    <p class="offer-body">New to Port City Leash Club? Enter your email and we'll send you $20 off your first pet sitting booking.</p>
+
+    <div data-status-container></div>
+
+    <form id="petSittingOfferForm" class="offer-form" onsubmit="submitPetSittingOffer(event)">
+      <!-- Honeypot — same pattern as index.html's $20 form; real visitors
+           never see or fill this field. Checked server-side in
+           runGenerateEmailCaptureCode (functions/index.js). -->
+      <div style="position:absolute;left:-9999px;top:-9999px;" aria-hidden="true">
+        <label for="petSittingOfferWebsite">Leave this field blank</label>
+        <input type="text" id="petSittingOfferWebsite" name="website" tabindex="-1" autocomplete="off">
+      </div>
+      <input type="email" id="petSittingOfferEmail" name="email" placeholder="you@email.com" required>
+      <button type="submit" class="btn-primary" style="font-size:15px;padding:14px 28px;">Send My Code</button>
+    </form>
   </div>
 </section>
 
@@ -396,7 +442,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         </button>
         <div class="faq-answer">
           <p><strong>Drop-in visits</strong> are 20-minute check-ins while you're away: feeding, playtime, and a photo update. Most pet owners reserve 3-4 per day.</p>
-          <p><strong>Overnight stays</strong> are around-the-clock care, including evening settling, overnight supervision, and daytime check-ins tailored to your dog's routine.</p>
+          <p><strong>Overnight stays</strong> include evening settling, overnight supervision, and daytime check-ins tailored to your dog's routine.</p>
         </div>
       </div>
 
@@ -640,6 +686,76 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   document.getElementById('price-overnight').textContent = '$' + SERVICE_PRICES['overnight-stay'].price;
   document.getElementById('fee-medication').textContent = MEDICATION_FEE;
   document.getElementById('fee-extrapet').textContent = EXTRA_PET_FEE;
+</script>
+<script>
+  // $20 offer form — same generateEmailCaptureCode callable and email
+  // delivery as index.html's "Stay In Touch" form (see the module script
+  // below), just its own success/error UI and its own dedicated
+  // generate_lead/Lead events. Deliberately does NOT fire the legacy
+  // cta_click{cta_location:'stay_in_touch_form'} index.html's form also
+  // fires — that event only exists there for backward compatibility with
+  // dashboards built before generate_lead existed, and this form never had
+  // that history, so generate_lead/Lead alone is the complete, correct
+  // signal for it.
+  async function submitPetSittingOffer(e) {
+    e.preventDefault();
+    const form = e.target;
+    const btn = form.querySelector('button[type=submit]');
+    const originalLabel = btn.textContent;
+    btn.textContent = 'Submitting...'; btn.disabled = true;
+    try {
+      if (!window._generateEmailCaptureCode) {
+        throw new Error('Firebase not ready');
+      }
+      const rawAttribution = window.pclcReadAttribution ? window.pclcReadAttribution() : null;
+      const attribution = rawAttribution ? {
+        utmSource: rawAttribution.utmSource,
+        utmMedium: rawAttribution.utmMedium,
+        utmCampaign: rawAttribution.utmCampaign,
+        utmContent: rawAttribution.utmContent,
+        referrer: rawAttribution.referrer,
+        landingPage: rawAttribution.landingPage,
+        capturedAt: rawAttribution.capturedAt,
+      } : null;
+
+      const payload = {
+        email: document.getElementById('petSittingOfferEmail')?.value || '',
+        website: document.getElementById('petSittingOfferWebsite')?.value || '',
+        attribution,
+      };
+
+      await window._generateEmailCaptureCode(payload);
+      window.pclcTrackGA && window.pclcTrackGA('generate_lead', { lead_type: '20_off_code' });
+      window.pclcTrack && window.pclcTrack('Lead', { lead_type: '20_off_code' });
+      window._showSuccess('Thanks! Check your email for your code.');
+      form.reset();
+      btn.textContent = originalLabel; btn.disabled = false;
+    } catch (err) {
+      console.error(err);
+      window._showError(
+        window._httpsErrorMessage(err, 'Something went wrong submitting the form. Please try again, or email hello@portcityleashclub.com directly.')
+      );
+      btn.textContent = originalLabel; btn.disabled = false;
+    }
+  }
+</script>
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+  import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+  import { showSuccess, showError, httpsErrorMessage } from '/js/status.js';
+  const firebaseConfig = {
+    apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
+    authDomain: "port-city-leash-club-827ab.firebaseapp.com",
+    projectId: "port-city-leash-club-827ab",
+    storageBucket: "port-city-leash-club-827ab.firebasestorage.app",
+    messagingSenderId: "649385306352",
+    appId: "1:649385306352:web:8e8a6fcbe8a7eff29dfa35"
+  };
+  const app = initializeApp(firebaseConfig);
+  window._generateEmailCaptureCode = httpsCallable(getFunctions(app), 'generateEmailCaptureCode');
+  window._showSuccess = showSuccess;  // bridge ES module -> classic submit handler
+  window._showError = showError;
+  window._httpsErrorMessage = httpsErrorMessage;
 </script>
 </body>
 </html>
