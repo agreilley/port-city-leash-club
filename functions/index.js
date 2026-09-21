@@ -5194,7 +5194,23 @@ async function runServiceOrOvernightCharge(sub, submissionId, memberId, reviewed
 
   if (isCheckin || isOvernightRequest) {
     await subRef.set({ paymentStatus: 'scheduled' }, { merge: true });
-    return { paymentStatus: 'scheduled', chargeScheduledFor: null };
+    // The real chargeScheduledFor was already computed and persisted onto
+    // the overnights doc by runServiceOrOvernightBookingDoc, which runs
+    // before this — read it back rather than hardcoding null, so
+    // sendServiceOrOvernightConfirmationEmail's "Your card will be charged
+    // on <date>" line isn't blank. Same submissionId-lookup pattern as
+    // reservationAlreadyDeclinedFor above.
+    let chargeScheduledFor = null;
+    try {
+      const overnightSnap = await db.collection('overnights')
+        .where('submissionId', '==', submissionId)
+        .limit(1)
+        .get();
+      if (!overnightSnap.empty) chargeScheduledFor = overnightSnap.docs[0].data().chargeScheduledFor || null;
+    } catch (e) {
+      console.error(`runServiceOrOvernightCharge: failed to read back chargeScheduledFor for ${submissionId}:`, e.message);
+    }
+    return { paymentStatus: 'scheduled', chargeScheduledFor };
   }
 
   // Immediate charge — walk, or overnight-stay via the public form.
@@ -7137,6 +7153,14 @@ function parseMeetGreetDateTime(value) {
 // isn't optional, so this failure must never take it down too.
 
 async function dispatchSubmissionEmail(sub, submissionId) {
+  // An admin-initiated reservation (admin/dashboard.html's "+ New
+  // Reservation") seeds this doc with no dates yet — they're filled in and
+  // confirmed in the same sitting, at which point the member gets the real
+  // portal-reservation-confirmed email (sendServiceOrOvernightConfirmationEmail).
+  // Sending the "received" email here too would tell the member their
+  // request was received with a blank Dates line, which is never true for
+  // this path.
+  if (sub.adminCreated) return;
   switch (sub.type) {
     case 'membership_request':
       await sendMembershipRequestReceivedEmail(sub, submissionId);
