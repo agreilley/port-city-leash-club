@@ -410,6 +410,7 @@
     </div>
     <div class="topbar-actions" id="topbarActions">
       <button class="btn-secondary" onclick="openAddWalkModal()">+ Schedule Walk</button>
+      <button class="btn-secondary" onclick="openNewReservationModal()">+ New Reservation</button>
       <button class="btn-primary" onclick="openAddMemberModal()">+ Add Member</button>
     </div>
   </div>
@@ -930,6 +931,28 @@
     <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">
       <button class="btn-secondary" onclick="closeModal('addWalkModal')">Cancel</button>
       <button class="btn-primary" onclick="submitAddWalk()">Schedule Walk</button>
+    </div>
+  </div>
+</div>
+
+<!-- NEW RESERVATION MODAL -->
+<div class="modal-overlay" id="newReservationModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('newReservationModal')">×</button>
+    <div class="modal-title">New Reservation</div>
+    <div class="form-grid">
+      <div class="form-field"><label>Member</label><select id="nr-member"><option value="">Select member...</option></select></div>
+      <div class="form-field"><label>Reservation Type</label>
+        <select id="nr-type">
+          <option value="overnight">Overnight Stay</option>
+          <option value="checkin">Drop-In Visit</option>
+        </select>
+      </div>
+    </div>
+    <div id="nr-error" style="display:none;color:var(--rust);font-size:12px;margin-top:8px;"></div>
+    <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn-secondary" onclick="closeModal('newReservationModal')">Cancel</button>
+      <button class="btn-primary" onclick="submitNewReservation()">Continue</button>
     </div>
   </div>
 </div>
@@ -3694,6 +3717,54 @@ window.submitAddWalk = async () => {
   const walkDate = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
   await addDoc(collection(db, 'walks'), { memberId, date: Timestamp.fromDate(walkDate), timeSlot, walkerId, notes, status: 'scheduled', createdAt: serverTimestamp() });
   closeModal('addWalkModal');
+};
+
+window.openNewReservationModal = () => {
+  const memberSel = document.getElementById('nr-member');
+  memberSel.innerHTML = '<option value="">Select member...</option>' +
+    allMembers.filter(m => m.status === 'active').map(m => {
+      const dogs = memberDogNames(m);
+      return `<option value="${m.id}">${escapeHtml(m.name)}${dogs ? ' — ' + escapeHtml(dogs) : ''}</option>`;
+    }).join('');
+  document.getElementById('nr-type').value = 'overnight';
+  const errEl = document.getElementById('nr-error');
+  errEl.style.display = 'none'; errEl.textContent = '';
+  document.getElementById('newReservationModal').classList.add('open');
+};
+
+// Seeds a minimal `submissions` doc for the picked member/service and opens
+// it straight in the existing Inbox review screen (renderServiceRequestReview/
+// renderOvernightReview via openRequestItem) — that screen already lets the
+// admin fill in dates/visit schedule/add-ons and already falls back to the
+// member record for name/phone/address/dogs, so it's reused untouched rather
+// than duplicating its pricing/discount/visit-generation logic here.
+// type/service pairing matches what portal-request-extras.html itself writes
+// (see submitExtrasRequest there) so markDatesConfirmed (functions/index.js)
+// treats this exactly like a real member submission once confirmed.
+window.submitNewReservation = async () => {
+  const memberId = document.getElementById('nr-member').value;
+  const service = document.getElementById('nr-type').value; // 'overnight' | 'checkin'
+  const errEl = document.getElementById('nr-error');
+  if (!memberId) {
+    errEl.textContent = 'Please select a member.';
+    errEl.style.display = 'block';
+    return;
+  }
+  const member = allMembers.find(m => m.id === memberId);
+  const type = service === 'overnight' ? 'overnight_request' : 'service_request';
+  const data = {
+    type, memberId, memberName: member?.name || '', service,
+    status: 'pending', read: true, adminCreated: true, createdAt: serverTimestamp(),
+  };
+  const docRef = await addDoc(collection(db, 'submissions'), data);
+  // allRequests is fully rebuilt on the next `submissions` snapshot (see the
+  // onSnapshot near allRequests' declaration) — this local entry just lets
+  // openRequestItem find the doc immediately instead of waiting on that
+  // round trip; the snapshot replaces it with the authoritative copy shortly
+  // after, so there's no duplicate-entry risk.
+  allRequests.unshift({ id: docRef.id, ...data, createdAt: new Date() });
+  closeModal('newReservationModal');
+  openRequestItem(docRef.id);
 };
 
 // Enable/disable the request modal's primary action. Sets the `disabled`
@@ -7451,16 +7522,18 @@ window.switchView = (view) => {
   // Dynamic topbar action buttons — page-specific instead of always-visible
   const actions = document.getElementById('topbarActions');
   const btnSchedule = '<button class="btn-secondary" onclick="openAddWalkModal()">+ Schedule Walk</button>';
+  const btnNewReservation = '<button class="btn-secondary" onclick="openNewReservationModal()">+ New Reservation</button>';
   const btnMember = '<button class="btn-primary" onclick="openAddMemberModal()">+ Add Member</button>';
   const btnWalker = '<button class="btn-primary" onclick="openAddWalkerModal()">+ Add Walker</button>';
   const btnRefreshReferrals = '<button class="btn-secondary" onclick="loadReferralCodes(true)">Refresh</button>';
   const btnRefreshEmailLog = '<button class="btn-secondary" onclick="loadEmailLog(true)">Refresh</button>';
   const btnRefreshEventTickets = '<button class="btn-secondary" onclick="loadEventTickets()">Refresh</button>';
   const viewActions = {
-    overview: btnSchedule + btnMember,
-    calendar: btnSchedule,
+    overview: btnSchedule + btnNewReservation + btnMember,
+    calendar: btnSchedule + btnNewReservation,
     walkers: btnWalker,
-    members: btnMember,
+    members: btnNewReservation + btnMember,
+    requests: btnNewReservation,
     referrals: btnRefreshReferrals,
     events: btnRefreshEventTickets,
     emaillog: btnRefreshEmailLog,
