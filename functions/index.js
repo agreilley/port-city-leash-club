@@ -4671,6 +4671,7 @@ exports.completeMeetGreetAndCreateAccount = onCall({
         email: sub.email,
         phone: sub.phone || '',
         tier: 'Travel',
+        address: sub.address || '',
         dogs: sub.dogs || [],
         walksThisMonth: 0,
         status: 'active',
