@@ -502,15 +502,55 @@ service cloud.firestore {
       // with nothing to identify or contact the submitter. One extra read,
       // same cost as isAdmin()/isWalker() elsewhere in this file, and it
       // only ever blocks that case — a real member always has this doc.
+      //
+      // Extra one-off walk (added 2026-09-22): the same form can also send a
+      // single walk as type 'service_request'. Which walk keys a member may
+      // send depends on their tier — 'Member' books at the member rate
+      // (member-walk / member-extended-walk), anyone else ('Travel',
+      // pet-sitting-only) at the public one-time rate (standard-walk /
+      // extended-walk) — so the walk branch get()s the member doc for its
+      // tier (same doc exists() already reads; rules cache it, so it's
+      // still one billed read). The submitted key only drives the
+      // price admin sees preselected at review; the charge itself is still
+      // admin-confirmed. A walk is one day: startDate required, endDate
+      // null, no per-day visits and no pet-sitting add-ons, and a timeSlot
+      // from the same three buckets validService() allows. timeSlot is
+      // optional for overnight/check-in so the existing request shape
+      // (which never sends it) keeps passing.
+      function isMemberWalkKey(svc) {
+        return svc in ['member-walk', 'member-extended-walk'];
+      }
+      function isPublicWalkKey(svc) {
+        return svc in ['standard-walk', 'extended-walk'];
+      }
+      function validMemberWalkFields(tier) {
+        return request.resource.data.type == 'service_request'
+          && (tier == 'Member'
+              ? isMemberWalkKey(request.resource.data['service'])
+              : isPublicWalkKey(request.resource.data['service']))
+          && request.resource.data.startDate is timestamp
+          && request.resource.data.endDate == null
+          && request.resource.data.visitsPerDay == null
+          && request.resource.data.visitSchedule.size() == 0
+          && request.resource.data.addonExtraPet == false
+          && request.resource.data.addonMedication == false
+          && request.resource.data.timeSlot in ['morning', 'early-afternoon', 'late-afternoon'];
+      }
       function validMemberServiceRequest() {
+        let svc = request.resource.data['service'];
+        let isWalk = isMemberWalkKey(svc) || isPublicWalkKey(svc);
         return exists(/databases/$(database)/documents/members/$(request.auth.uid))
           && request.resource.data.keys().hasOnly(
-            ['type', 'memberId', 'memberName', 'service', 'startDate', 'endDate',
+            ['type', 'memberId', 'memberName', 'service', 'startDate', 'endDate', 'timeSlot',
              'visitsPerDay', 'visitSchedule', 'notes', 'addonExtraPet', 'addonMedication',
              'estimatedTotal', 'status', 'read', 'createdAt'])
           && request.resource.data.memberId == request.auth.uid
           && request.resource.data.memberName is string && request.resource.data.memberName.size() <= 200
-          && request.resource.data['service'] in ['overnight', 'checkin']
+          && (isWalk
+              ? validMemberWalkFields(get(/databases/$(database)/documents/members/$(request.auth.uid)).data.get('tier', null))
+              : (svc in ['overnight', 'checkin']
+                 && request.resource.data.get('timeSlot', null) == null
+                 && validMemberCareDates()))
           && request.resource.data.notes is string && request.resource.data.notes.size() <= 10000
           && request.resource.data.addonExtraPet is bool
           && request.resource.data.addonMedication is bool
@@ -520,7 +560,16 @@ service cloud.firestore {
           && request.resource.data.status == 'pending'
           && request.resource.data.read == false
           && request.resource.data.createdAt is timestamp
-          && (request.resource.data.startDate == null || request.resource.data.startDate is timestamp)
+          // Per-day override grid (portal-request-extras.html's
+          // syncReqVisitScheduleRows) — same shape/cap as validService()'s
+          // visitSchedule above; always [] for overnight and walks, since
+          // neither has a per-day-visits concept at all.
+          && request.resource.data.visitSchedule is list && request.resource.data.visitSchedule.size() <= 60;
+      }
+      // Overnight/check-in date range and visitsPerDay — unchanged from
+      // before walks were added, just split out of the main function.
+      function validMemberCareDates() {
+        return (request.resource.data.startDate == null || request.resource.data.startDate is timestamp)
           && (request.resource.data.endDate == null || request.resource.data.endDate is timestamp)
           && (request.resource.data.startDate == null || request.resource.data.endDate == null
               || (request.resource.data['service'] == 'checkin'
@@ -530,12 +579,7 @@ service cloud.firestore {
               ? (request.resource.data.visitsPerDay is number
                   && request.resource.data.visitsPerDay >= 1
                   && request.resource.data.visitsPerDay <= 6)
-              : request.resource.data.visitsPerDay == null)
-          // Per-day override grid (portal-request-extras.html's
-          // syncReqVisitScheduleRows) — same shape/cap as validService()'s
-          // visitSchedule above; always [] for overnight, since it has no
-          // per-day-visits concept at all.
-          && request.resource.data.visitSchedule is list && request.resource.data.visitSchedule.size() <= 60;
+              : request.resource.data.visitsPerDay == null);
       }
 
       allow create: if (request.auth != null

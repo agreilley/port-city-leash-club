@@ -5301,7 +5301,7 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
         const walkSnap = await tx.get(walkRef);
         if (walkSnap.exists) {
           const err = new Error('Walk already exists');
-          err.code = 'already-exists';
+          err.code = walkSnap.data().submissionId === submissionId ? 'already-exists' : 'date-taken';
           throw err;
         }
         tx.set(walkRef, {
@@ -5312,17 +5312,31 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
           notes: '',
           status: 'scheduled',
           createdAt: FieldValue.serverTimestamp(),
-          ...(serviceKey === 'extended-walk' ? {
+          // Marks this walk as created by THIS submission, so a retry can
+          // tell its own earlier write apart from a walk that was already
+          // on that date for some other reason (see date-taken below).
+          submissionId,
+          ...(serviceInfo.minutes === 45 ? {
             extended: true, extendedStatus: 'confirmed', duration: '45-minute walk',
           } : {}),
         });
       });
     } catch (e) {
-      // Hitting the existing doc IS success here (a retry of an
-      // already-created walk), same as confirmServiceRequest's own guard.
-      if (e.code !== 'already-exists') {
-        throw new HttpsError('internal', `The walk wasn't added to the schedule: ${e.message}`);
+      // Hitting a doc this same submission already wrote IS success (a
+      // retry of an already-created walk).
+      if (e.code === 'already-exists') return { docType: 'walk', docId: walkRef.id };
+      // Any OTHER walk on that date (typically a member's recurring walk)
+      // used to be treated as success too, which meant a member booking an
+      // extra walk on a day they already had one was charged for a walk
+      // that was never added. Walks are one doc per member per day, so
+      // there's no second slot to write it into: fail BEFORE any charge
+      // (markDatesConfirmed runs this ahead of finalize) so admin can pick
+      // another date or decline. portal-request-extras.html blocks these
+      // dates up front; this is the backstop for a walk added after submit.
+      if (e.code === 'date-taken') {
+        throw new HttpsError('failed-precondition', `This member already has a walk on ${startStr}. Pick a different date, or decline and suggest extending that walk instead.`);
       }
+      throw new HttpsError('internal', `The walk wasn't added to the schedule: ${e.message}`);
     }
     return { docType: 'walk', docId: walkRef.id };
   }
@@ -5552,7 +5566,7 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
     data = {
       firstName, dogNames: petNames,
       walkTypeLabel: serviceInfo?.name || 'Walk',
-      durationMinutes: serviceKey === 'extended-walk' ? 45 : 30,
+      durationMinutes: serviceInfo?.minutes || 30,
       walks: [{ dateStr: startDateStr, slot: reviewed.timeSlot }],
       needsCard, addCardUrl,
     };
@@ -7561,11 +7575,13 @@ async function sendServiceRequestReceivedEmail(sub, submissionId) {
   if (!result.ok) console.error(`onNewSubmission: service-request-received failed for ${submissionId}:`, result.error);
 }
 
-// Existing member's portal pet-sitting request (overnight_request, or a
-// service_request that already carries memberId). portal-request-extras.html
-// only ever offers Overnight Stay / Drop-In Visit — always pet sitting,
-// never a walk (portal walk requests are a separate submission type,
-// walk_extension, handled by sendPortalWalkRequestReceivedEmail). Neither
+// Existing member's portal request (overnight_request, or a service_request
+// that already carries memberId). portal-request-extras.html offers
+// Overnight Stay / Drop-In Visit, plus a single extra walk (service_request,
+// no endDate — the Dates row collapses to one day and the Length row is
+// omitted since unitCount comes out null). Extending an existing walk is a
+// separate submission type, walk_extension, handled by
+// sendPortalWalkRequestReceivedEmail. Neither
 // submission shape carries dogs[] or a name — both are resolved from the
 // member doc, which portal-request-extras.html doesn't duplicate onto the
 // submission itself.

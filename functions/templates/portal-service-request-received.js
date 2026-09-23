@@ -1,11 +1,12 @@
 // functions/templates/portal-service-request-received.js
 //
-// Sent when an EXISTING member submits a pet sitting request through the
-// portal (portal-request-extras.html) — overnight_request or service_request
-// with a memberId already on it. Always pet sitting: that page only offers
-// Overnight Stay and Drop-In Visit, never a walk (see
-// portal-walk-request-received for the walk-family equivalent, sourced from
-// walk_extension submissions instead). No meet and greet section, unlike
+// Sent when an EXISTING member submits a request through the portal
+// (portal-request-extras.html) — overnight_request or service_request with
+// a memberId already on it. Usually pet sitting (Overnight Stay / Drop-In
+// Visit); can also be a single extra walk, which has no endDateStr (Dates
+// shows one day) and a null unitCount (no Length row). Extending an
+// existing walk is different: see portal-walk-request-received, sourced
+// from walk_extension submissions. No meet and greet section, unlike
 // the public-form templates: an existing member has already had one.
 //
 // data: {

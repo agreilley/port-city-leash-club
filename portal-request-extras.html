@@ -172,7 +172,7 @@
   <div class="page-header">
     <div class="eyebrow" id="extraHelpEyebrow">Extra Help</div>
     <h1>Additional Care</h1>
-    <p>Book overnight stays and drop-in visits. We'll confirm availability within 24 hours.</p>
+    <p>Book overnight stays, drop-in visits, and extra walks. We'll confirm availability within 24 hours.</p>
   </div>
 
   <div class="form-shell">
@@ -192,6 +192,10 @@
             <select id="serviceSelect" name="service" onchange="updateServiceFields()">
               <option value="overnight">Overnight Stay · $115/night</option>
               <option value="checkin">Drop-In Visit · $25/visit</option>
+              <!-- Walk option text (and price) is filled in once the member's
+                   tier is known — see setWalkOptionLabels(). -->
+              <option value="walk">Extra Walk · 30 minutes</option>
+              <option value="walk-extended">Extra Walk · 45 minutes</option>
             </select>
           </div>
           <div class="field full" id="visitScheduleField" style="display:none;">
@@ -199,13 +203,18 @@
             <div id="visitScheduleRows"></div>
           </div>
           <div class="field">
-            <label>Start Date</label>
+            <label id="startDateLabel">Start Date</label>
             <input type="date" id="startDate" name="start-date" onchange="updateSummary()">
           </div>
           <div class="field" id="endDateField">
             <label>End Date</label>
             <input type="date" id="endDate" name="end-date" onchange="updateSummary()">
           </div>
+          <div class="field" id="timeSlotField" style="display:none;">
+            <label>Time of Day</label>
+            <select id="timeSlotSelect" name="time-slot" onchange="updateSummary()"></select>
+          </div>
+          <div class="field full" id="walkDateNote" style="display:none;font-size:13px;color:#C17B6F;line-height:1.5;"></div>
           <div class="field full" id="addonsField">
             <label>Add-ons</label>
             <div id="addonsGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -257,12 +266,73 @@
 </div><!-- end portal-container -->
 
 <script type="module">
-  import { calculateServiceTotal, calculateDropInScheduleTotal } from './pricing.js';
+  import { SERVICE_PRICES, calculateServiceTotal, calculateDropInScheduleTotal } from './pricing.js';
+  import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
   import { showSuccess, showError } from '/js/status.js';
 
   // Display names only — actual pricing lives in pricing.js (SERVICE_PRICES,
   // via the 'overnight'/'checkin' aliases), not duplicated here.
-  const SERVICE_NAMES = { overnight: 'Overnight Stay', checkin: 'Drop-In Visit' };
+  const SERVICE_NAMES = { overnight: 'Overnight Stay', checkin: 'Drop-In Visit', walk: 'Extra Walk', 'walk-extended': 'Extra Walk (45 min)' };
+
+  // ── Extra one-off walk ──
+  // The dropdown's 'walk'/'walk-extended' values are UI-only; the key
+  // actually submitted depends on tier. A full 'Member' pays the member
+  // rate (member-walk / member-extended-walk); a 'Travel' (pet-sitting-only)
+  // account pays the public one-time rate (standard-walk / extended-walk).
+  // firestore.rules' validMemberServiceRequest() enforces the same pairing.
+  // Filled in by the page-load script below once the member doc and their
+  // existing walks are loaded (onMemberLoaded).
+  let _memberTier = null;
+  let _walkDates = new Map(); // 'YYYY-MM-DD' -> status of the walk already on that day
+
+  const isWalkChoice = (v) => v === 'walk' || v === 'walk-extended';
+  function userError(message) {
+    const err = new Error(message);
+    err.userFacing = true;
+    return err;
+  }
+  function walkServiceKey(v) {
+    const extended = v === 'walk-extended';
+    return _memberTier === 'Member'
+      ? (extended ? 'member-extended-walk' : 'member-walk')
+      : (extended ? 'extended-walk' : 'standard-walk');
+  }
+
+  function setWalkOptionLabels() {
+    const sel = document.getElementById('serviceSelect');
+    for (const opt of sel.options) {
+      if (!isWalkChoice(opt.value)) continue;
+      const info = SERVICE_PRICES[walkServiceKey(opt.value)];
+      opt.textContent = `Extra Walk · ${info.minutes} minutes · $${info.price}`;
+    }
+  }
+
+  document.getElementById('timeSlotSelect').innerHTML = WALK_TIME_SLOTS
+    .map(k => `<option value="${k}">${WALK_TIME_SLOT_LABELS[k]} (${WALK_TIME_SLOT_RANGES[k]})</option>`).join('');
+
+  // Walks are stored one per member per day, so a date that already has a
+  // walk can't take a second one — the server refuses it at confirm time
+  // (runServiceOrOvernightBookingDoc). Caught here first so the member
+  // isn't left waiting on a request that can't be confirmed. Returns the
+  // message to show, or '' when the date is free.
+  function walkDateConflict(dateStr) {
+    if (!dateStr || !_walkDates.has(dateStr)) return '';
+    const label = new Date(`${dateStr}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    if (_walkDates.get(dateStr) === 'cancelled') {
+      return `${label} has a cancelled walk on file. Please pick another day, or <a href="portal-contact.html" style="color:inherit;">contact us</a> to reinstate it.`;
+    }
+    return `You already have a walk on ${label}. Please pick another day, or <a href="portal-extend-walk.html" style="color:inherit;">extend that walk to 45 minutes</a> instead.`;
+  }
+
+  window.onMemberLoaded = ({ tier, defaultTimeSlot, walkDates }) => {
+    _memberTier = tier || null;
+    _walkDates = walkDates;
+    if (defaultTimeSlot && WALK_TIME_SLOTS.includes(defaultTimeSlot)) {
+      document.getElementById('timeSlotSelect').value = defaultTimeSlot;
+    }
+    setWalkOptionLabels();
+    updateSummary();
+  };
 
   // Same per-day override grid as service-request.html's own
   // syncReqVisitScheduleRows — see that file's comment for why. Only shown
@@ -312,9 +382,19 @@
   function updateServiceFields() {
     const service = document.getElementById('serviceSelect').value;
     const isCheckin = service === 'checkin';
-    document.getElementById('endDateField').style.display  = 'flex';
-    document.getElementById('addonsField').style.display   = 'flex';
-    // Service spans full width for overnight, half width for check-in
+    const isWalk = isWalkChoice(service);
+    // A walk is a single day at a time of day — no end date, and the
+    // pet-sitting add-ons don't apply (pricing.js excludes them for walks).
+    document.getElementById('endDateField').style.display  = isWalk ? 'none' : 'flex';
+    document.getElementById('addonsField').style.display   = isWalk ? 'none' : 'flex';
+    document.getElementById('timeSlotField').style.display = isWalk ? 'flex' : 'none';
+    document.getElementById('startDateLabel').textContent  = isWalk ? 'Walk Date' : 'Start Date';
+    if (isWalk) {
+      document.getElementById('endDate').value = '';
+      document.getElementById('addonExtraPet').checked = false;
+      document.getElementById('addonMedication').checked = false;
+    }
+    // Service spans full width for overnight/walk, half width for check-in
     const sf = document.getElementById('serviceField');
     if (sf) sf.style.gridColumn = isCheckin ? '1' : '1 / -1';
     // Re-check the existing end date against the newly-selected service's
@@ -333,6 +413,24 @@
     const service = document.getElementById('serviceSelect').value;
     const name    = SERVICE_NAMES[service];
     const start   = document.getElementById('startDate').value;
+
+    const noteEl = document.getElementById('walkDateNote');
+    if (isWalkChoice(service)) {
+      document.getElementById('visitScheduleField').style.display = 'none';
+      _reqVisitSchedule = {};
+      const conflict = walkDateConflict(start);
+      noteEl.innerHTML = conflict;
+      noteEl.style.display = conflict ? 'block' : 'none';
+      const { total, breakdown } = calculateServiceTotal({ serviceKey: walkServiceKey(service) });
+      window._lastEstimatedTotal = total;
+      const slot = document.getElementById('timeSlotSelect').value;
+      document.getElementById('summaryPrice').textContent = '$' + total;
+      document.getElementById('summaryDetails').innerHTML =
+        `<div class="summary-line"><span>${breakdown[0].label.replace(/^(Member|Standard) /, '')}${start ? ' · ' + new Date(`${start}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}${slot ? ' · ' + WALK_TIME_SLOT_LABELS[slot] : ''}</span><strong>$${total}</strong></div>`;
+      return;
+    }
+    noteEl.style.display = 'none';
+
     const end     = document.getElementById('endDate').value;
     const isCheckin = service === 'checkin';
     const extraPet = document.getElementById('addonExtraPet')?.checked || false;
@@ -407,6 +505,16 @@
       const startStr  = document.getElementById('startDate')?.value || '';
       const endStr    = document.getElementById('endDate')?.value || '';
       const isOvernight = service === 'overnight';
+      const isWalk = isWalkChoice(service);
+
+      if (isWalk) {
+        // _memberTier is null only if the page-load script hasn't finished —
+        // submitting then would price a full Member at the public rate.
+        if (!_memberTier) throw userError('Still loading your account — please try again in a moment.');
+        if (!startStr) throw userError('Please choose a walk date.');
+        const conflict = walkDateConflict(startStr);
+        if (conflict) throw userError(conflict.replace(/<[^>]+>/g, ''));
+      }
 
       // Look up member name from Firestore for the submission's display
       // fields. No Stripe customer lookup here anymore — chargeCustomerCard
@@ -449,7 +557,26 @@
             return Math.min(6, Math.max(1, avg));
           })();
 
-      const data = {
+      const data = isWalk ? {
+        // Single walk — shape pinned by firestore.rules'
+        // validMemberWalkFields(): one date, a time slot, nothing pet-sitting.
+        type: 'service_request',
+        memberId:   user.uid,
+        memberName: memberName,
+        service:    walkServiceKey(service),
+        startDate:  localDateToTimestamp(startStr),
+        endDate:    null,
+        timeSlot:   document.getElementById('timeSlotSelect').value,
+        visitsPerDay: null,
+        visitSchedule: [],
+        notes:      document.querySelector('textarea[name=notes]')?.value || '',
+        addonExtraPet: false,
+        addonMedication: false,
+        estimatedTotal: window._lastEstimatedTotal || 0,
+        status: 'pending',
+        read:   false,
+        createdAt: serverTimestamp(),
+      } : {
         type: isOvernight ? 'overnight_request' : 'service_request',
         memberId:   user.uid,
         memberName: memberName,
@@ -473,7 +600,9 @@
       setTimeout(() => { window.location.href = 'portal-extras.html'; }, 6500);
     } catch(err) {
       console.error(err);
-      showError('Something went wrong submitting your request. Please try again, or contact us directly.');
+      // Walk-date/loading problems caught above carry a message meant for
+      // the member; anything else (network, rules) keeps the generic text.
+      showError(err.userFacing ? err.message : 'Something went wrong submitting your request. Please try again, or contact us directly.');
       btn.textContent = 'Request Services'; btn.disabled = false;
     }
   }
@@ -521,7 +650,7 @@
 <script type="module">
   import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
   import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-  import { initializeFirestore, memoryLocalCache } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+  import { initializeFirestore, memoryLocalCache, collection, query, where, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
   import { requireMemberDoc, showPortalLoadTimeout } from '/js/portal-guard.js';
 
   const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
@@ -608,6 +737,27 @@
     clearTimeout(authTimeoutId);
     if (!memberData) return;
     personalizeForMember(memberData);
+
+    // For the extra-walk option: tier picks the price, and every date that
+    // already has a walk doc is blocked (see walkDateConflict above). Same
+    // memberId query portal-extend-walk.html uses. Local date parts, not
+    // toISOString — walk dates are stored at noon UTC, which is the same
+    // calendar day in Eastern time but would shift if read as UTC midnight.
+    const walkDates = new Map();
+    try {
+      const snap = await getDocs(query(collection(db, 'walks'), where('memberId', '==', user.uid)));
+      snap.forEach(d => {
+        const w = d.data();
+        const dt = w.date?.toDate?.() || (w.date ? new Date(w.date) : null);
+        if (!dt || isNaN(dt)) return;
+        const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+        walkDates.set(key, w.status || 'scheduled');
+      });
+    } catch (e) {
+      // Not fatal — the server still refuses a taken date at confirm time.
+      console.error('Could not load existing walks for date blocking:', e);
+    }
+    window.onMemberLoaded?.({ tier: memberData.tier, defaultTimeSlot: memberData.defaultTimeSlot, walkDates });
   });
 </script>
 <script type="module" src="/js/portal-nav.js"></script>

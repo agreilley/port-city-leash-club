@@ -37,9 +37,22 @@ export const MEMBER_WALK_RATE = 27;
 // error); a required per-entry field on the one table every service is
 // already defined in can't be silently left out — a missing field throws at
 // load, not at charge time for one specific Friends & Family member.
+//
+// Walk entries also carry `minutes` (30 or 45) — the one place a walk key
+// says whether it's extended, so server-side walk-doc creation and the
+// confirmation email read it off the entry instead of matching key names.
+//
+// member-walk / member-extended-walk: an extra one-off walk booked from the
+// member portal (portal-request-extras.html) by a tier 'Member' account, at
+// MEMBER_WALK_RATE instead of the public one-time price. A 'Travel'-tier
+// (pet-sitting-only) account books the same walk as standard-walk /
+// extended-walk instead — firestore.rules' validMemberServiceRequest()
+// enforces which pair each tier may submit.
 export const SERVICE_PRICES = {
-  'standard-walk':  { name: 'Standard Walk',  price: STANDARD_WALK_PRICE,                        unit: 'walk',  travelDiscountEligible: false },
-  'extended-walk':  { name: 'Extended Walk',  price: STANDARD_WALK_PRICE + WALK_EXTENSION_PRICE, unit: 'walk',  travelDiscountEligible: false },
+  'standard-walk':  { name: 'Standard Walk',  price: STANDARD_WALK_PRICE,                        unit: 'walk',  minutes: 30, travelDiscountEligible: false },
+  'extended-walk':  { name: 'Extended Walk',  price: STANDARD_WALK_PRICE + WALK_EXTENSION_PRICE, unit: 'walk',  minutes: 45, travelDiscountEligible: false },
+  'member-walk':          { name: 'Member Walk',          price: MEMBER_WALK_RATE,                        unit: 'walk', minutes: 30, travelDiscountEligible: false },
+  'member-extended-walk': { name: 'Member Extended Walk', price: MEMBER_WALK_RATE + WALK_EXTENSION_PRICE, unit: 'walk', minutes: 45, travelDiscountEligible: false },
   'drop-in-visit':  { name: 'Drop-In Visit',  price: 25,  unit: 'night', travelDiscountEligible: true },
   'overnight-stay': { name: 'Overnight Stay', price: 115, unit: 'night', travelDiscountEligible: true },
 };
