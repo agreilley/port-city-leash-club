@@ -6384,6 +6384,28 @@ exports.twilioInboundWebhook = onRequest({ secrets: [TWILIO_AUTH_TOKEN] }, async
 });
 */
 
+// "Is there anything worth telling the member about?" — the single gate both
+// completion triggers below use, for the send itself AND for deciding whether
+// a later edit is the update that was never sent. Kept as two functions
+// because the field name differs by record type: a walk stores `notes`
+// (plural) on its own doc, a visit stores `note` (singular) inside the
+// overnights doc's `visits` array. That asymmetry is long-standing and load-
+// bearing in both the client and the email templates, so it is mirrored here
+// rather than reconciled.
+//
+// The walker portal mirrors this same rule client-side to decide whether to
+// promise "this will send the owner their update" (walker/dashboard.html) —
+// keep the two in step.
+function walkHasUpdate(walk) {
+  const w = walk || {};
+  return !!(w.notes || (Array.isArray(w.photoUrls) && w.photoUrls.length));
+}
+
+function visitHasUpdate(visit) {
+  const v = visit || {};
+  return !!(v.note || (Array.isArray(v.photoUrls) && v.photoUrls.length));
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // 9. Automated walk-completion text — fires the moment a walker marks a
 //    walk complete with a photo/note. No admin involvement, by design
@@ -6403,9 +6425,38 @@ exports.onWalkCompleted = onDocumentUpdated({
   const before = event.data.before.data() || {};
   const after = event.data.after.data() || {};
 
-  // Only fire on the actual scheduled -> completed transition, not on
-  // every subsequent edit to an already-completed walk.
-  if (before.status === 'completed' || after.status !== 'completed') return;
+  // Gated on the walker actually having left a note or photo — a plain
+  // "mark complete" with neither has nothing worth telling the member
+  // about. Computed once, up here, so BOTH channels below share the exact
+  // same guard — this used to only gate the email, which meant a
+  // no-note/no-photo walk still sent (or logged, while Twilio is
+  // unconfigured) a "your dog had a great walk, see notes and photos"
+  // text pointing at a card with neither, every single time.
+  const hasUpdate = walkHasUpdate(after);
+
+  // Two things can make this walk notifiable, and they are deliberately
+  // different guards:
+  //
+  //  - justCompleted: the real scheduled -> completed transition. This is
+  //    the only thing that may stamp payout.
+  //  - lateUpdate: the walk was ALREADY completed and a note or photo has
+  //    just been added to it. Completing with neither skips the member's
+  //    update email entirely (hasUpdate is false), and before this there
+  //    was no way to ever send it — a walker who lost her note to a failed
+  //    photo upload, or who added a photo afterwards, left the member with
+  //    permanent silence. Requiring !walkHasUpdate(before) is what keeps
+  //    this from re-firing on every later edit (a tip, an admin fixing a
+  //    typo) and on this function's own payout write.
+  //
+  // Re-sending is safe regardless: sendEmail dedupes on idempotencyKey and
+  // only a SUCCEEDED prior send blocks a re-send, so a genuinely-skipped
+  // email goes out while an already-sent one cannot go twice.
+  const justCompleted = before.status !== 'completed' && after.status === 'completed';
+  const lateUpdate = !justCompleted
+    && after.status === 'completed'
+    && hasUpdate
+    && !walkHasUpdate(before);
+  if (!justCompleted && !lateUpdate) return;
 
   // ── PAYOUT RATE-STAMPING ──────────────────────────────────────────────
   // Fixes what this walk is worth AT COMPLETION TIME, immune to
@@ -6420,10 +6471,14 @@ exports.onWalkCompleted = onDocumentUpdated({
   // member/phone/SMS logic below. The `after.payout` check is
   // defense-in-depth on top of the status-transition guard above: writing
   // `payout` back onto this same doc re-triggers this function, but that
-  // re-invocation sees before.status already 'completed' and returns at
-  // the guard above before ever reaching here — this check just makes that
-  // explicit rather than relying solely on the guard's timing.
-  if (!after.payout) {
+  // re-invocation is neither a completion transition nor a newly-added
+  // note/photo, so it returns at the guard above before ever reaching here
+  // — this check just makes that explicit rather than relying solely on
+  // the guard's timing.
+  // `justCompleted` (not just !after.payout): a lateUpdate reaches this
+  // point on an already-completed walk, and must never rate-stamp — the
+  // payout was fixed at completion time on purpose.
+  if (justCompleted && !after.payout) {
     const { calculateWalkPayout } = await import('./walker-pricing.js');
     await event.data.after.ref.update({
       payout: {
@@ -6442,15 +6497,6 @@ exports.onWalkCompleted = onDocumentUpdated({
 
   const dogName = member.dogName || (Array.isArray(member.dogs) && member.dogs[0]?.name) || 'Your dog';
   const walkLink = `${BUSINESS_PORTAL_ORIGIN}/portal-walk-history?walk=${event.params.walkId}`;
-
-  // Gated on the walker actually having left a note or photo — a plain
-  // "mark complete" with neither has nothing worth telling the member
-  // about. Computed once, up here, so BOTH channels below share the exact
-  // same guard — this used to only gate the email, which meant a
-  // no-note/no-photo walk still sent (or logged, while Twilio is
-  // unconfigured) a "your dog had a great walk, see notes and photos"
-  // text pointing at a card with neither, every single time.
-  const hasUpdate = !!(after.notes || (Array.isArray(after.photoUrls) && after.photoUrls.length));
 
   // ── SMS — ARCHIVED. No Twilio account/number set up; email (below)
   // covers this notification instead. Original implementation kept here,
@@ -6645,8 +6691,26 @@ exports.onOvernightVisitCompleted = onDocumentUpdated({
   if (!afterVisits.length) return;
 
   const beforeById = new Map((Array.isArray(before.visits) ? before.visits : []).map(v => [v.id, v]));
-  const newlyCompleted = afterVisits.filter(v => v.status === 'completed' && beforeById.get(v.id)?.status !== 'completed');
-  if (!newlyCompleted.length) return;
+
+  // A visit is notifiable either because it just completed, or because it
+  // was already completed and a note/photo has just been added to it —
+  // completing with neither skips the member's update email (visitHasUpdate
+  // is false), and before this there was no way to ever send it. See the
+  // matching comment in onWalkCompleted for why the "was there an update
+  // before?" half is what stops this re-firing on every later edit, and why
+  // a re-send can't double up (sendEmail's idempotencyKey only blocks
+  // sends that already SUCCEEDED).
+  //
+  // Filtered per-visit, not per-doc: one write can complete several visits,
+  // and a note added to visit B must not re-notify visit A.
+  const notifiable = afterVisits.filter(v => {
+    if (v.status !== 'completed') return false;
+    if (!visitHasUpdate(v)) return false;
+    const prior = beforeById.get(v.id);
+    if (prior?.status !== 'completed') return true;
+    return !visitHasUpdate(prior);
+  });
+  if (!notifiable.length) return;
 
   if (!after.memberId) return;
   const memberSnap = await db.collection('members').doc(after.memberId).get();
@@ -6658,15 +6722,13 @@ exports.onOvernightVisitCompleted = onDocumentUpdated({
   const serviceLabel = isCheckin ? 'Drop-In Visit' : 'Overnight Stay';
   const petNames = Array.isArray(member.dogs) ? member.dogs.map((d) => d && d.name).filter(Boolean) : (member.dogName ? [member.dogName] : []);
 
-  for (const visit of newlyCompleted) {
+  for (const visit of notifiable) {
     const portalUrl = `${BUSINESS_PORTAL_ORIGIN}/portal-walk-history?overnight=${overnightId}&visit=${visit.id}`;
 
-    // Gated on the walker actually having left a note or photo for THIS
-    // visit — same rule as onWalkCompleted's hasUpdate guard, and (as of
-    // this fix) applied to BOTH channels below, not just email. Checked
-    // per-visit (not per-doc) since newlyCompleted can contain several
-    // visits in one write, each with its own note/photo.
-    const hasUpdate = !!(visit.note || (Array.isArray(visit.photoUrls) && visit.photoUrls.length));
+    // Always true here — the `notifiable` filter above already required it.
+    // Kept as a named const so the archived SMS block below still reads
+    // correctly (and stays correct) if it is ever restored.
+    const hasUpdate = visitHasUpdate(visit);
 
     // ── SMS — ARCHIVED. No Twilio account/number set up; email (below)
     // covers this notification instead. Original implementation kept here,

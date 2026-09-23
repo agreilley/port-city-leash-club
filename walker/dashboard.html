@@ -534,6 +534,34 @@ function walkPhotoCount(entry) {
   return Array.isArray(entry.photoUrls) && entry.photoUrls.length ? entry.photoUrls.length : (entry.photoUrl ? 1 : 0);
 }
 
+// Mirrors the server-side gate in onWalkCompleted / onOvernightVisitCompleted
+// (functions/index.js walkHasUpdate/visitHasUpdate). Used here only for
+// microcopy: it decides whether the note box can honestly promise "this
+// sends the owner their update". With neither a note nor a photo on the
+// record, completion skipped the owner's email and adding either one now
+// sends it; once one exists the email has already gone and a later edit only
+// changes the portal record. Keep in step with the server.
+function completionNeedsUpdate(entry, noteValue) {
+  return !(noteValue || walkPhotoCount(entry));
+}
+
+// Note editor for an already-completed walk/visit. The note is the one part
+// of a completion with no recovery path until now: a failed photo upload
+// threw before the Firestore write, so a walker who retried after the error
+// lost whatever she had typed, and the completed record renders read-only.
+// Prefilled with the existing note so this doubles as a typo fix.
+function completionNoteEditorHtml(idPrefix, noteValue, willNotify, onclick) {
+  return `
+    <div style="margin-top:12px;">
+      <label class="detail-label" style="display:block;margin-bottom:6px;">${noteValue ? 'Edit note' : 'Add a note'}
+        <span style="font-weight:400;color:#7A7A7A;">${willNotify ? '(this sends the owner their update)' : '(the owner\'s update already went out — this updates their portal record)'}</span>
+      </label>
+      <textarea id="${idPrefix}Input" rows="2" placeholder="e.g. Great visit, ate well and went outside." style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${escapeHtml(noteValue || '')}</textarea>
+      <div id="${idPrefix}Error" style="color:#C17B6F;font-size:13px;margin-top:6px;display:none;"></div>
+      <button class="btn-complete" id="${idPrefix}Btn" style="margin-top:8px;" onclick="${onclick}">Save Note</button>
+    </div>`;
+}
+
 function completionPhotosHtml(photoUrls, legacyPhotoUrl, altText) {
   const urls = Array.isArray(photoUrls) && photoUrls.length ? photoUrls : (legacyPhotoUrl ? [legacyPhotoUrl] : []);
   if (!urls.length) return '';
@@ -876,6 +904,7 @@ window.openVisitCompleteForm = (overnightId, visitId) => {
     ${isCompleted ? `
       <div class="detail-row"><span class="detail-label">Note</span><span class="detail-value">${escapeHtml(visit.note) || 'None'}</span></div>
       ${completionPhotosHtml(visit.photoUrls, visit.photoUrl, 'Visit photo')}
+      ${completionNoteEditorHtml('addVisitNote', visit.note, completionNeedsUpdate(visit, visit.note), `saveVisitNote('${overnightId}', '${visitId}')`)}
       ${walkPhotoCount(visit) < MAX_COMPLETION_PHOTOS ? `
         <div style="margin-top:12px;">
           <label class="detail-label" style="display:block;margin-bottom:6px;">Add a photo</label>
@@ -993,6 +1022,42 @@ window.addVisitPhoto = async (overnightId, visitId) => {
     errEl.style.display = 'block';
     btn.disabled = false;
     btn.textContent = 'Add Photo';
+  }
+};
+
+// Note counterpart to addVisitPhoto. Writing the note is all this does — the
+// member's update email is the server's job: onOvernightVisitCompleted
+// (functions/index.js) treats a note added to an already-completed visit as
+// the update that was never sent and mails it then, so a visit completed
+// with neither note nor photo stops being permanently silent.
+window.saveVisitNote = async (overnightId, visitId) => {
+  const btn = document.getElementById('addVisitNoteBtn');
+  const errEl = document.getElementById('addVisitNoteError');
+  const input = document.getElementById('addVisitNoteInput');
+  const note = input?.value.trim() || '';
+
+  const o = myOvernights.find(x => x.id === overnightId);
+  const visit = o?.visits?.find(v => v.id === visitId);
+  // Saving an empty box over an already-empty note is a no-op write that
+  // would still re-render the modal as if something happened.
+  if (!note && !visit?.note) { errEl.textContent = 'Type a note first.'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  errEl.style.display = 'none';
+
+  try {
+    // Whole-array rewrite, same as completeVisit — a visit is an entry in
+    // the overnights doc's `visits` array, not a doc of its own.
+    const visits = (o?.visits || []).map(v => v.id === visitId ? { ...v, note } : v);
+    await updateDoc(doc(db, 'overnights', overnightId), { visits });
+    if (o) o.visits = visits;
+    openVisitCompleteForm(overnightId, visitId);
+  } catch (e) {
+    errEl.textContent = 'That note couldn\'t be saved — check your signal and try again.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Save Note';
   }
 };
 
@@ -1342,6 +1407,7 @@ window.openWalkDetail = (walkId) => {
     ${isCompleted ? `
       <div class="detail-row"><span class="detail-label">Walk Notes</span><span class="detail-value">${escapeHtml(walk.notes) || 'None'}</span></div>
       ${completionPhotosHtml(walk.photoUrls, walk.photoUrl, 'Walk photo')}
+      ${completionNoteEditorHtml('addWalkNote', walk.notes, completionNeedsUpdate(walk, walk.notes), `saveWalkNote('${walkId}')`)}
       ${walkPhotoCount(walk) < MAX_COMPLETION_PHOTOS ? `
         <div style="margin-top:12px;">
           <label class="detail-label" style="display:block;margin-bottom:6px;">Add a photo</label>
@@ -1473,6 +1539,34 @@ window.addWalkPhoto = async (walkId) => {
     errEl.style.display = 'block';
     btn.disabled = false;
     btn.textContent = 'Add Photo';
+  }
+};
+
+// Walk counterpart to saveVisitNote — see that function for why the server,
+// not this, sends the member's update. Walks store the note as `notes`
+// (plural) on their own doc; visits use `note` inside the visits array.
+window.saveWalkNote = async (walkId) => {
+  const btn = document.getElementById('addWalkNoteBtn');
+  const errEl = document.getElementById('addWalkNoteError');
+  const input = document.getElementById('addWalkNoteInput');
+  const notes = input?.value.trim() || '';
+
+  const walk = myWalks.find(w => w.id === walkId);
+  if (!notes && !walk?.notes) { errEl.textContent = 'Type a note first.'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  errEl.style.display = 'none';
+
+  try {
+    await updateDoc(doc(db, 'walks', walkId), { notes });
+    if (walk) walk.notes = notes;
+    openWalkDetail(walkId);
+  } catch (e) {
+    errEl.textContent = 'That note couldn\'t be saved — check your signal and try again.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Save Note';
   }
 };
 
