@@ -424,7 +424,15 @@ function escapeHtml(str) {
 const MAX_COMPLETION_PHOTOS = 3;
 const HEIC_PATTERN = /^image\/hei(c|f)/i;
 const HEIC_EXTENSION_PATTERN = /\.hei[cf]$/i;
-async function uploadCompletionPhotos(fileList, storagePathPrefix) {
+// `fileNamePrefix` distinguishes photos from different visits inside one
+// reservation's folder. It is deliberately part of the FILE NAME and not an
+// extra path segment: storage.rules matches
+// overnight-photos/{overnightId}/{fileName}, and a {fileName} wildcard
+// matches exactly one segment, so a visitId segment makes the path match no
+// rule at all and every upload is denied with storage/unauthorized. That
+// regression shipped 2026-09-02 and went unnoticed until 2026-09-22 — do not
+// turn a prefix back into a path segment without deepening the rule first.
+async function uploadCompletionPhotos(fileList, storagePathPrefix, fileNamePrefix = '') {
   const files = Array.from(fileList || []).slice(0, MAX_COMPLETION_PHOTOS);
   const urls = [];
   for (let i = 0; i < files.length; i++) {
@@ -472,7 +480,7 @@ async function uploadCompletionPhotos(fileList, storagePathPrefix) {
     if (file.size > 8 * 1024 * 1024) {
       throw new Error('Photo is too large — please use a smaller image (under 8MB).');
     }
-    const path = `${storagePathPrefix}/${Date.now()}_${i}_${file.name}`;
+    const path = `${storagePathPrefix}/${fileNamePrefix}${Date.now()}_${i}_${file.name}`;
     const fileRef = storageRef(storage, path);
     try {
       await uploadBytes(fileRef, file);
@@ -484,11 +492,30 @@ async function uploadCompletionPhotos(fileList, storagePathPrefix) {
       // One forced token refresh + retry clears this without surfacing a
       // confusing "access denied" error for what's really just an expired
       // token.
-      if (err?.code === 'storage/unauthorized' && auth.currentUser) {
-        await auth.currentUser.getIdToken(true);
-        await uploadBytes(fileRef, file);
+      //
+      // If the retry ALSO fails, the stale token wasn't the problem and the
+      // upload is being denied for real — which in practice has meant the
+      // Storage path not matching any rule (see the fileNamePrefix note
+      // above). Raw Firebase errors are re-thrown straight into the walker's
+      // face by the callers, and "User does not have permission to access
+      // 'overnight-photos/…'" reads as a login problem, which sent the
+      // 2026-09-02 path regression undiagnosed for three weeks. Translate
+      // instead, and keep the real error in the console for debugging.
+      const retryable = err?.code === 'storage/unauthorized' && auth.currentUser;
+      if (retryable) {
+        try {
+          await auth.currentUser.getIdToken(true);
+          await uploadBytes(fileRef, file);
+        } catch (retryErr) {
+          console.error('Photo upload failed after token refresh', { path, error: retryErr });
+          throw new Error('That photo couldn\'t be saved — it\'s not your login, it\'s a problem on our end. Please text Alison so she can look, and complete this without a photo for now.');
+        }
+      } else if (err?.code === 'storage/unauthorized') {
+        console.error('Photo upload denied with no signed-in user', { path, error: err });
+        throw new Error('You\'ve been signed out — please sign in again and retry the photo.');
       } else {
-        throw err;
+        console.error('Photo upload failed', { path, error: err });
+        throw new Error('That photo couldn\'t be uploaded — check your signal and try again.');
       }
     }
     urls.push(await getDownloadURL(fileRef));
@@ -890,7 +917,7 @@ window.completeVisit = async (overnightId, visitId) => {
   errEl.style.display = 'none';
 
   try {
-    const photoUrls = await uploadCompletionPhotos(fileInput?.files, `overnight-photos/${overnightId}/${visitId}`);
+    const photoUrls = await uploadCompletionPhotos(fileInput?.files, `overnight-photos/${overnightId}`, `${visitId}_`);
 
     const o = myOvernights.find(x => x.id === overnightId);
     // Timestamp.now() (a client-clock value), NOT serverTimestamp() — that
@@ -955,7 +982,7 @@ window.addVisitPhoto = async (overnightId, visitId) => {
     const visit = o?.visits?.find(v => v.id === visitId);
     const existing = Array.isArray(visit?.photoUrls) ? visit.photoUrls : (visit?.photoUrl ? [visit.photoUrl] : []);
     const remaining = MAX_COMPLETION_PHOTOS - existing.length;
-    const newUrls = await uploadCompletionPhotos(Array.from(fileInput.files).slice(0, remaining), `overnight-photos/${overnightId}/${visitId}`);
+    const newUrls = await uploadCompletionPhotos(Array.from(fileInput.files).slice(0, remaining), `overnight-photos/${overnightId}`, `${visitId}_`);
     const photoUrls = [...existing, ...newUrls];
     const visits = (o?.visits || []).map(v => v.id === visitId ? { ...v, photoUrls } : v);
     await updateDoc(doc(db, 'overnights', overnightId), { visits });
