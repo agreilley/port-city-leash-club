@@ -3867,18 +3867,21 @@ window.openRequestItem = async (id) => {
   const errNotice = document.getElementById('requestFinalizeErrorNotice');
   if (item.finalizeError && item.status !== 'declined') {
     errNotice.style.display = 'block';
-    // charge_failed IS retryable now — after 24h, Stripe's idempotency key
-    // for the original attempt expires and a retry becomes a genuine new
-    // charge (retryFinalizeSubmission enforces this server-side; see its
-    // own comment, functions/index.js). Before that, it isn't — retrying
-    // just replays the same cached failure or errors on a payment-method
-    // mismatch. The two real options are mutually exclusive, not sequential
-    // steps: charge manually in Stripe and dismiss, OR wait and retry here
-    // — never both, since retrying after a manual charge would charge the
-    // member twice. retryRequestFinalize adds an extra confirm() for this
-    // kind specifically, on top of the server's own 24h check, precisely
-    // for that scenario — the server has no way to know a manual Stripe
-    // charge happened, so the admin has to actively rule it out.
+    // charge_failed is retryable straight away. It used to require a 24-hour
+    // wait, because the Stripe idempotency key was constant per charge and
+    // anything sooner just replayed the cached decline; both charge paths now
+    // build a per-attempt key, so a retry is a genuine new attempt whenever
+    // it's made (retryFinalizeSubmission keeps only a short pacing rail — see
+    // MANUAL_CHARGE_RETRY_MIN_MINUTES, functions/index.js).
+    //
+    // What has NOT changed is that the two options are mutually exclusive
+    // rather than sequential: charge manually in Stripe and dismiss, OR retry
+    // here — never both, since retrying after a manual charge would charge the
+    // member twice. That risk is now HIGHER, not lower, precisely because the
+    // retry genuinely reaches the card where it used to no-op. retryRequestFinalize
+    // keeps its extra confirm() for this kind specifically — the server has no
+    // way to know a manual Stripe charge happened, so the admin has to rule it
+    // out.
     const isChargeFailed = item.finalizeErrorKind === 'charge_failed';
     // Two different sentences depending on what actually failed to charge:
     // service/overnight's immediate charge (runServiceOrOvernightCharge)
@@ -3892,7 +3895,7 @@ window.openRequestItem = async (id) => {
       ? `<div style="margin-top:6px;">${item.status === 'confirmed'
           ? 'The booking is confirmed but unpaid.'
           : "This request hasn't been confirmed yet — the charge failed before the membership could finish setting up."
-        } Two options, not both: charge manually in Stripe and dismiss — or wait 24 hours from the failed attempt and use Retry here for a genuine new attempt. Retrying after a manual charge would charge the member twice.</div>`
+        } Two options, not both: charge manually in Stripe and dismiss — or use Retry here, which now makes a real new charge attempt. Do not do both: retrying after a manual charge would charge the member twice.</div>`
       : '';
     // Two distinct actions — Retry means "run finalize again, as-is"
     // (retryFinalizeSubmission, functions/index.js); Dismiss means "I fixed
@@ -6773,8 +6776,19 @@ function renderVetEmergencyDetail(member) {
 // the member detail modal on success so the badge disappears immediately,
 // and updates memberBilling so the members-table badge clears without
 // waiting for the next onSnapshot tick.
+// The confirm() text differs for reservation_charge_failed because for that
+// one reason dismissing now does more than clear a badge — dismissBillingReview
+// also clears chargePending on the member's pending reservation(s), which
+// permanently stops the scheduled sweep and removes the Retry Charge button.
+// That is the correct reading of "I settled this in Stripe", but it is not
+// reversible in-app, so the dialog has to say so rather than let an admin
+// discover it later.
 window.dismissMemberBillingReview = async (memberId) => {
-  if (!confirm('Dismiss this review flag? Only do this once the underlying issue has actually been fixed.')) return;
+  const reason = memberBilling[memberId]?.needsReviewReason;
+  const message = reason === 'reservation_charge_failed'
+    ? 'Dismiss this review flag?\n\nOnly do this if you have already collected payment for this reservation (e.g. charged the card directly in Stripe).\n\nThis also cancels the scheduled charge for that reservation and removes the Retry Charge button, so nothing will try to charge it again. This cannot be undone from here.'
+    : 'Dismiss this review flag? Only do this once the underlying issue has actually been fixed.';
+  if (!confirm(message)) return;
   try {
     const dismissBillingReview = httpsCallable(fns, 'dismissBillingReview');
     await dismissBillingReview({ memberId });

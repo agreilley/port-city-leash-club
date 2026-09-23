@@ -1190,6 +1190,12 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
     };
   }
 
+  // Attempt ordinal for this exact chargeKey: 0 for a first attempt, then 1,
+  // 2, ... for each retry after a recorded failure. Feeds BOTH the Stripe
+  // idempotency key and the failureCount written on failure below, derived
+  // once here so those two can never disagree about which attempt this is.
+  const attemptNo = priorAttempt?.chargeKey === chargeKey ? (priorAttempt.failureCount || 0) : 0;
+
   // Friends & Family silent-failure guard. Travel service totals are
   // computed client-side in admin/dashboard.html (confirmRequestDates,
   // reviewRecalcOvernight) — this function has always trusted whatever
@@ -1326,25 +1332,45 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
         // Idempotency guard #2, at Stripe itself: a retry that gets past the
         // Firestore guard above (e.g. two clicks racing before the first
         // write lands) resolves to the same PaymentIntent rather than a
-        // second charge. Same pattern as chargeCurrentMonthWalks.
-        idempotencyKey: `charge-saved-card:${chargeKey}`,
+        // second charge.
+        //
+        // Scoped to the ATTEMPT, not just the chargeKey. A key held constant
+        // per chargeKey made every retry within 24h a silent no-op: Stripe
+        // caches the first response for a key — including a 402 decline —
+        // and replays it verbatim without ever touching the card. Diagnosed
+        // 2026-09-22 on a live reservation: six POSTs to /v1/payment_intents,
+        // one real decline and five replays, so an admin clicking "Retry
+        // Charge" kept getting the original "insufficient funds" back from a
+        // card that had since been funded. That directly contradicted guard
+        // #1 above, which deliberately never blocks on a prior 'failed'
+        // status precisely so a transient failure stays retryable.
+        //
+        // attemptNo still collapses a genuine RACE, which is all guard #2 was
+        // ever for: two concurrent calls both read the same priorAttempt, so
+        // they compute the same attemptNo and therefore the same key, and
+        // Stripe resolves them to one PaymentIntent. failureCount only
+        // advances once a failure is durably recorded, so it cannot diverge
+        // mid-race. A SEQUENTIAL retry — an admin clicking after seeing the
+        // failure — reads the incremented count and gets a fresh key, which
+        // is exactly the case that has to reach the card.
+        idempotencyKey: `charge-saved-card:${chargeKey}:${attemptNo}`,
       });
     } catch (e) {
       // Durable failure record, not a block — the guard above only ever
       // matches on status 'charged', so this same chargeKey stays retryable
       // rather than getting permanently wedged by one transient Stripe error.
       // failureCount tracks consecutive failures for this exact chargeKey —
-      // chargeScheduledReservations reads it to cap automatic retries (see
-      // MAX_SCHEDULED_CHARGE_ATTEMPTS below); chargeSavedCard's callers don't
-      // read it, it's just harmless metadata for them. Resets to 1 rather
-      // than carrying forward if priorAttempt belongs to a different
+      // it caps automatic retries and drives the idempotency key's attemptNo
+      // above; chargeSavedCard's callers don't read it, it's just harmless
+      // metadata for them. Derived from attemptNo so it resets to 1 rather
+      // than carrying forward when priorAttempt belongs to a different
       // chargeKey (e.g. confirmWalkExtension charging a different subset of
       // walks) — that's a distinct logical charge, not a retry of this one.
       await docRef.set({
         [attemptField]: {
           chargeKey, status: 'failed', amount: chargeAmountInDollars,
           reason: e.message, failedAt: FieldValue.serverTimestamp(),
-          failureCount: (priorAttempt?.chargeKey === chargeKey ? (priorAttempt.failureCount || 0) : 0) + 1,
+          failureCount: attemptNo + 1,
         },
       }, { merge: true }).catch(() => {});
       throw new HttpsError('internal', `Card charge failed: ${e.message}`);
@@ -1601,6 +1627,41 @@ exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (reques
 // card issue is sorted out.
 const MAX_SCHEDULED_CHARGE_ATTEMPTS = 4;
 
+// Hours to wait after a failed attempt before the sweep tries again, indexed
+// by how many failures this reservation has already recorded. Attempt 1 fires
+// immediately at chargeScheduledFor (index 0 is never consulted, since there
+// is no prior attempt to measure from); the three retries then land ~1, ~3 and
+// ~6 days out.
+//
+// Before this existed, the sweep simply retried on its next 15-minute tick, so
+// all four attempts burned inside ~45 minutes — four declines against a card
+// whose balance could not plausibly have changed in between. Card networks
+// discourage exactly that pattern, and for the overwhelmingly common decline
+// reasons here (insufficient_funds, expired card) nothing about the outcome
+// can differ until the member actually does something. Spacing the retries is
+// what gives them the chance to.
+const SCHEDULED_CHARGE_BACKOFF_HOURS = [0, 24, 48, 72];
+
+// Minimum gap between MANUAL charge retries — the admin-facing "Retry Charge"
+// (retryReservationCharge) and request "Retry" (retryFinalizeSubmission)
+// buttons. This replaced a 24-hour block whose entire purpose was that a
+// sooner retry could not possibly work: the Stripe idempotency key was
+// constant per charge, so anything inside 24h replayed the cached decline.
+// Both keys are now per-attempt, so a retry is a genuine new attempt at any
+// point and that block no longer has anything to protect.
+//
+// A short rail is still worth keeping, for the same reason the sweep backs
+// off: an immediate re-click after a decline is nearly always the same card in
+// the same state, and repeatedly re-presenting it is a pattern card networks
+// penalise. 15 minutes stops accidental hammering without getting in the way
+// of the case that matters — a member fixing their card and an admin retrying
+// — which realistically happens hours later, not seconds.
+//
+// This is NOT double-charge protection. That remains idempotency guard #1 in
+// Firestore (blocks a prior 'charged'), the per-attempt Stripe key (collapses
+// true races), and the dashboard's confirm() dialog naming the amount.
+const MANUAL_CHARGE_RETRY_MIN_MINUTES = 15;
+
 // Only these statuses are safe to charge — an allowlist, not a denylist, so
 // any future status this doc might carry (e.g. a cancellation status, if one
 // is ever added) fails safe by default instead of becoming chargeable by
@@ -1669,7 +1730,26 @@ exports.chargeScheduledReservations = onSchedule({
     const scheduledFor = data.chargeScheduledFor?.toDate ? data.chargeScheduledFor.toDate() : null;
     if (!scheduledFor || scheduledFor > now) continue;
     if (data.chargeAttempt?.status === 'charged') continue; // cheap skip before the fresh re-read below
-    if (data.chargeAttempt?.status === 'failed' && (data.chargeAttempt.failureCount || 0) >= MAX_SCHEDULED_CHARGE_ATTEMPTS) continue; // capped — needsReview already flagged, leave for manual resolution
+    // Legacy cap, kept so reservations that recorded failures before
+    // chargeRetry existed stay capped rather than becoming eligible again.
+    if (data.chargeAttempt?.status === 'failed' && (data.chargeAttempt.failureCount || 0) >= MAX_SCHEDULED_CHARGE_ATTEMPTS) continue;
+
+    // Retry pacing. chargeRetry is THIS sweep's own bookkeeping, deliberately
+    // separate from chargeAttempt: chargeCustomerCard only writes chargeAttempt
+    // once a Stripe call has actually failed, but the most common failure here
+    // never reaches Stripe at all — a member with no stripeCustomerId yet
+    // throws long before the PaymentIntent, leaving nothing written. Those
+    // reservations were retried every 15 minutes indefinitely, with no counter
+    // ever incrementing to cap them. Counting attempts here instead covers both
+    // kinds of failure with one number, so the cap and the backoff apply
+    // whether or not the card was ever actually reached.
+    const retryCount = data.chargeRetry?.count || 0;
+    if (retryCount >= MAX_SCHEDULED_CHARGE_ATTEMPTS) continue; // capped — needsReview already flagged, leave for manual resolution
+    const lastAttemptAt = data.chargeRetry?.lastAttemptAt?.toDate ? data.chargeRetry.lastAttemptAt.toDate() : null;
+    if (lastAttemptAt) {
+      const waitHours = SCHEDULED_CHARGE_BACKOFF_HOURS[Math.min(retryCount, SCHEDULED_CHARGE_BACKOFF_HOURS.length - 1)];
+      if (now.getTime() - lastAttemptAt.getTime() < waitHours * 60 * 60 * 1000) continue;
+    }
 
     // Fresh read immediately before charging — see comment above.
     const freshSnap = await candidate.ref.get();
@@ -1708,6 +1788,22 @@ exports.chargeScheduledReservations = onSchedule({
         + `(memberId=${freshData.memberId || 'unknown'}, amount=${(freshData.confirmedTotalCents || 0) / 100}):`,
         e.message
       );
+      // Record the attempt BEFORE anything that could itself throw, so a
+      // failure can never leave the counter un-advanced and put this doc back
+      // on a 15-minute loop. Written unconditionally, including for failures
+      // that never reached Stripe — that's the whole reason this lives here
+      // rather than being read off chargeAttempt. reason is for a human
+      // reading the doc; the cap and backoff only ever look at count and
+      // lastAttemptAt.
+      await candidate.ref.set({
+        chargeRetry: {
+          count: retryCount + 1,
+          lastAttemptAt: FieldValue.serverTimestamp(),
+          reason: e.message,
+        },
+      }, { merge: true }).catch(writeErr => {
+        console.error(`chargeScheduledReservations: failed to record chargeRetry for overnights/${candidate.id}:`, writeErr.message);
+      });
       if (freshData.memberId) {
         await billingRef(freshData.memberId).set({
           needsReview: true, needsReviewReason: 'reservation_charge_failed',
@@ -1746,6 +1842,22 @@ exports.retryReservationCharge = onCall({ secrets: [STRIPE_SECRET_KEY] }, async 
   }
   if (data.chargeAttempt?.status === 'charged') {
     throw new HttpsError('failed-precondition', 'This reservation was already charged.');
+  }
+  // Settled outside this system (dismissBillingReview, after an admin charged
+  // the card directly in Stripe). chargePending is already false so the button
+  // shouldn't render at all — this is the defensive half, since charging here
+  // would be charging a member who has already paid.
+  if (data.chargeAttempt?.status === 'resolved_externally') {
+    throw new HttpsError('failed-precondition', 'This reservation was already settled outside the app — it was marked resolved when its review flag was dismissed. Charging here would double-charge the member.');
+  }
+  // Pacing rail — see MANUAL_CHARGE_RETRY_MIN_MINUTES. This function
+  // previously had no gap at all: it was safe only by accident, because the
+  // constant idempotency key made a rapid re-click replay the cached decline
+  // instead of re-presenting the card. Now that a retry is a real attempt,
+  // the rail has to be explicit.
+  const lastFailedAt = data.chargeAttempt?.failedAt?.toDate ? data.chargeAttempt.failedAt.toDate() : null;
+  if (lastFailedAt && (Date.now() - lastFailedAt.getTime()) / (60 * 1000) < MANUAL_CHARGE_RETRY_MIN_MINUTES) {
+    throw new HttpsError('failed-precondition', `This charge failed less than ${MANUAL_CHARGE_RETRY_MIN_MINUTES} minutes ago. Give it a few minutes before retrying — if the card itself is the problem, it needs fixing first, since an immediate retry will just decline again.`);
   }
 
   const stripe = stripeClient(STRIPE_SECRET_KEY.value());
@@ -2060,16 +2172,69 @@ exports.dismissBillingReview = onCall({}, async (request) => {
     throw new HttpsError('not-found', 'Member record not found.');
   }
 
+  // Read the reason BEFORE clearing it — the reservation cleanup below keys
+  // off what was actually being dismissed, and the write immediately after
+  // wipes it.
+  const billing = billingRef(memberId);
+  const priorReason = (await billing.get()).data()?.needsReviewReason || null;
+
   // dismissedBy/dismissedAt: this flag means "a human manually verified the
   // underlying issue was fixed elsewhere" — worth knowing who and when,
   // same accountability reasoning as meetGreetCompletedAt on membership
   // requests. Last-write-wins across repeat dismissals, same as every other
   // single-attempt field in this file (e.g. lastChargeAttempt) — acceptable
   // since only the most recent dismissal is ever actionable.
-  await billingRef(memberId).set({
+  await billing.set({
     needsReview: false, needsReviewReason: null,
     dismissedBy: request.auth.uid, dismissedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
+
+  // Reservation cleanup, scoped to the ONE reason whose dismissal actually
+  // means "this charge is settled": reservation_charge_failed. Dismissing it
+  // is an admin saying they collected the money elsewhere — in practice, by
+  // charging the card directly in the Stripe Dashboard, since that is the
+  // only thing that works while the idempotency key is still live.
+  //
+  // Until now that left chargePending: true on the reservation forever.
+  // Two consequences, both real: the member could never have their card
+  // removed (nothing else ever clears the flag), and the Retry Charge button
+  // stayed rendered — so once the key expired, one click would charge a
+  // member who had already paid. Clearing it here is what makes dismissal
+  // mean the same thing to the data that it means to the admin.
+  //
+  // Recorded as a distinct chargeAttempt status ('resolved_externally', never
+  // 'charged') so this can't be mistaken later for a payment this system
+  // actually took — there is no PaymentIntent of ours behind it. chargePending
+  // is what the sweep and the button both read, so that is what stops them;
+  // the status is for whoever reads the doc afterward.
+  //
+  // Every pending reservation for this member, not just one: the dashboard
+  // only ever surfaces the first match, so a member with two failed
+  // reservations would otherwise leave the second silently armed.
+  if (priorReason === 'reservation_charge_failed') {
+    const pendingSnap = await db.collection('overnights')
+      .where('memberId', '==', memberId)
+      .where('chargePending', '==', true)
+      .get();
+    for (const resDoc of pendingSnap.docs) {
+      // Never touch one that genuinely charged — a sweep succeeding between
+      // the failure and this dismissal is unlikely but not impossible, and
+      // overwriting a real 'charged' record would lose the PaymentIntent id.
+      if (resDoc.data()?.chargeAttempt?.status === 'charged') continue;
+      await resDoc.ref.set({
+        chargePending: false,
+        chargeAttempt: {
+          ...(resDoc.data()?.chargeAttempt || {}),
+          status: 'resolved_externally',
+          resolvedBy: request.auth.uid,
+          resolvedAt: FieldValue.serverTimestamp(),
+        },
+      }, { merge: true }).catch(e => {
+        console.error(`dismissBillingReview: failed to clear chargePending on overnights/${resDoc.id}:`, e.message);
+      });
+    }
+  }
+
   return { success: true };
 });
 
@@ -2705,6 +2870,15 @@ async function runChargeCurrentMonthWalks(memberId) {
     };
   }
 
+  // Attempt ordinal for this member+period, mirroring chargeCustomerCard's
+  // attemptNo — see the idempotency-key comment further down for why a key
+  // that stays constant across retries makes every retry within 24h a no-op.
+  // Scoped to periodKey so a new billing month always restarts at 0 rather
+  // than inheriting last month's failures.
+  const monthAttemptNo = currentMonthCharge?.periodKey === periodKey
+    ? (currentMonthCharge.failureCount || 0)
+    : 0;
+
   // Earliest billable day is tomorrow — walks can't be scheduled into the
   // past, and nothing in this system is scheduled same-day (the meet & greet
   // calendar applies the same rule).
@@ -2810,13 +2984,26 @@ async function runChargeCurrentMonthWalks(memberId) {
       // Idempotency guard #2, at Stripe itself: a retry that gets past the
       // Firestore guard above (e.g. two clicks racing before the first write
       // lands) resolves to the same PaymentIntent rather than a second charge.
-      idempotencyKey: `current-month-walks:${memberId}:${periodKey}`,
+      //
+      // Scoped to the attempt, for exactly the reason chargeCustomerCard's
+      // key is — Stripe caches the first response for a key, including a
+      // decline, and replays it for 24h without touching the card, so a
+      // constant key turned every retry into a silent no-op. Guard #1 above
+      // remains the real double-charge protection (it blocks on a prior
+      // 'charged' for this period), and two RACING calls still read the same
+      // failureCount, so they still produce the same key and collapse to one
+      // PaymentIntent.
+      idempotencyKey: `current-month-walks:${memberId}:${periodKey}:${monthAttemptNo}`,
     });
   } catch (e) {
     await billing.set({
       currentMonthCharge: {
         periodKey, walkCount: days.length, amount: chargeAmountInCents / 100,
         status: 'failed', reason: e.message, failedAt: FieldValue.serverTimestamp(),
+        // Drives monthAttemptNo on the next retry. Counts only attempts that
+        // actually reached Stripe — the precondition throws above never write
+        // a currentMonthCharge record at all, so they can't inflate it.
+        failureCount: monthAttemptNo + 1,
       },
     }, { merge: true }).catch(() => {});
     // isChargeFailure marked HERE, at the one point in this function where a
@@ -5786,20 +5973,25 @@ async function recordFinalizeFailure(subRef, memberId, message, kind) {
 // callable, so the dashboard's own gating is not a security or correctness
 // boundary on its own. Covers TWO distinct Stripe idempotency keys, one per
 // type: service/overnight's charge (chargeCustomerCard) uses
-// `charge-saved-card:${submissionId}`; membership's monthly charge
-// (runChargeCurrentMonthWalks) uses `current-month-walks:${memberId}:${periodKey}`
-// — unrelated to any submissionId, since it bills the member's whole month,
-// not one request. Both expire ~24 hours after the failed attempt; before
-// that, a same-key retry can't do anything useful (replays the cached
-// failure, or errors on a parameter mismatch if the payment method
-// changed) — the check below rejects anything sooner, which is purely an
-// efficiency/clarity thing (no point letting an admin "retry" into a
-// guaranteed no-op).
+// `charge-saved-card:${chargeKey}:${attemptNo}`; membership's monthly charge
+// (runChargeCurrentMonthWalks) uses
+// `current-month-walks:${memberId}:${periodKey}:${monthAttemptNo}` —
+// unrelated to any submissionId, since it bills the member's whole month, not
+// one request.
 //
-// It is NOT what prevents a double-charge once 24h has passed — this
-// function has no way to know whether the admin already charged the
-// booking manually in Stripe in the meantime (that happens entirely
-// outside this codebase; nothing here observes it). That protection is the
+// Both keys are now scoped to the ATTEMPT. They used to be constant per
+// charge, which meant a retry inside Stripe's 24-hour key lifetime could only
+// replay the cached failure (or error on a parameter mismatch if the payment
+// method had changed) — so this check used to enforce a full 24-hour wait,
+// purely to stop an admin "retrying" into a guaranteed no-op. That reason is
+// gone: a retry now genuinely reaches the card. What remains is a short
+// pacing rail, MANUAL_CHARGE_RETRY_MIN_MINUTES.
+//
+// It has never been what prevents a double-charge, and that matters more now
+// than it did — this function has no way to know whether the admin already
+// charged the booking manually in Stripe in the meantime (that happens
+// entirely outside this codebase; nothing here observes it), and the retry
+// that used to no-op will now take real money. That protection is the
 // dashboard's confirm() dialog, shown before this is ever called, asking
 // the admin to actively confirm they haven't already charged manually.
 // See chargeCustomerCard's idempotencyKey comment for the underlying
@@ -5859,9 +6051,17 @@ exports.retryFinalizeSubmission = onCall({
       failedAtRaw = sub.lastChargeAttempt?.failedAt || null;
     }
     const failedAt = failedAtRaw?.toDate ? failedAtRaw.toDate() : null;
-    const hoursSinceFailure = failedAt ? (Date.now() - failedAt.getTime()) / (60 * 60 * 1000) : null;
-    if (hoursSinceFailure === null || hoursSinceFailure < 24) {
-      throw new HttpsError('failed-precondition', "This charge failed less than 24 hours ago — Stripe's idempotency key for it is still active, so retrying now would just replay the same failure, not a genuine new attempt. Charge manually in Stripe and dismiss, or wait until 24 hours have passed and retry here.");
+    const minutesSinceFailure = failedAt ? (Date.now() - failedAt.getTime()) / (60 * 1000) : null;
+    // A MISSING timestamp now passes, where it used to reject. That reversal
+    // is deliberate and follows from the key change: the old block existed
+    // because a retry inside 24h could only ever replay Stripe's cached
+    // decline, so "can't prove 24h elapsed" had to default to "don't bother."
+    // With a per-attempt key there is no replay window to be inside of, and
+    // the double-charge protections named on MANUAL_CHARGE_RETRY_MIN_MINUTES
+    // never depended on this timestamp. Rejecting on a missing one would now
+    // only wedge a legitimate retry for a reason that no longer exists.
+    if (minutesSinceFailure !== null && minutesSinceFailure < MANUAL_CHARGE_RETRY_MIN_MINUTES) {
+      throw new HttpsError('failed-precondition', `This charge failed less than ${MANUAL_CHARGE_RETRY_MIN_MINUTES} minutes ago. Give it a few minutes before retrying — if the card itself is the problem, it needs fixing first, since an immediate retry will just decline again.`);
     }
   }
 
