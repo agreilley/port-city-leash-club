@@ -2208,9 +2208,36 @@ function bookingDay(val) {
 // ones. Confirmed walks and overnights are untouched: this filters only the
 // dashed not-yet-scheduled chips, never anything actually scheduled.
 //
-// SAFE TO DELETE once the September demo data is cleared out — remove this
-// and the two `< TENTATIVE_CHIPS_FROM` guards in renderCalendarDays.
+// SAFE TO DELETE once the September demo data is cleared out — remove this,
+// TENTATIVE_CHIPS_ALWAYS_DOGS, tentativeShowsBeforeCutoff, and the two
+// `< TENTATIVE_CHIPS_FROM` guards in renderCalendarDays.
 const TENTATIVE_CHIPS_FROM = new Date(2026, 9, 1); // 1 Oct 2026, local midnight
+
+// Real clients whose bookings sit among the September demo data and must stay
+// visible — the cutoff above is a blunt date filter and would hide them too.
+// Lowercase; matching is exact on a trimmed, lowercased dog name, so "Bella"
+// never accidentally matches a "Bellamy".
+const TENTATIVE_CHIPS_ALWAYS_DOGS = ['archie', 'bella'];
+
+// Whether one submission is exempt from the September cutoff. Checks every dog
+// name the chip renderer might end up displaying — the submission's own dogs[],
+// the legacy single dogName, and the linked member's dogs — because a booking
+// can carry its pets in any of those depending on where it came from, and
+// missing one would silently hide a real booking.
+//
+// Applies to ALL tentative entries for these dogs, walks and overnights alike.
+// The cutoff exists to hide demo noise, and hiding a real client's reservation
+// would be exactly the silent gap tentative chips were built to prevent. To
+// restrict it to walks only, add a type/service test here.
+function tentativeShowsBeforeCutoff(r) {
+  const member = r.memberId ? allMembers.find(m => m.id === (r.memberId || '').trim()) : null;
+  const names = [
+    ...(Array.isArray(r.dogs) ? r.dogs.map(d => d && d.name) : []),
+    r.dogName,
+    ...getMemberDogs(member).map(d => d && d.name),
+  ];
+  return names.some(n => TENTATIVE_CHIPS_ALWAYS_DOGS.includes(String(n || '').trim().toLowerCase()));
+}
 
 function renderCalendarDays() {
   const container = document.getElementById('calendarDays');
@@ -2251,8 +2278,9 @@ function renderCalendarDays() {
     // Single-day bookings (a one-time walk) have no endDate at all.
     const e = bookingDay(r.endDate) || s;
     if (e < s) return;
+    const exempt = tentativeShowsBeforeCutoff(r); // resolved once, not per day
     for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
-      if (d < TENTATIVE_CHIPS_FROM) continue; // demo-data cutoff — see the constant
+      if (d < TENTATIVE_CHIPS_FROM && !exempt) continue; // demo-data cutoff — see the constant
       if (d.getFullYear() === calendarYear && d.getMonth() === calendarMonth) {
         (tentativeMap[d.getDate()] ||= []).push(r);
       }
@@ -2304,9 +2332,10 @@ function renderCalendarDays() {
     if (!dayNumbers.size) return;
     const end = new Date(start);
     end.setDate(end.getDate() + MEMBERSHIP_TENTATIVE_DAYS - 1);
+    const exempt = tentativeShowsBeforeCutoff(r); // resolved once, not per day
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       if (!dayNumbers.has(d.getDay())) continue;
-      if (d < TENTATIVE_CHIPS_FROM) continue; // demo-data cutoff — see the constant
+      if (d < TENTATIVE_CHIPS_FROM && !exempt) continue; // demo-data cutoff — see the constant
       if (d.getFullYear() === calendarYear && d.getMonth() === calendarMonth) {
         (tentativeMap[d.getDate()] ||= []).push(r);
       }
