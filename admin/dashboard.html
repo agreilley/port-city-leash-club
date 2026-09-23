@@ -2244,6 +2244,59 @@ function renderCalendarDays() {
     }
   });
 
+  // Pending MEMBERSHIP requests, into the same map. Kept as its own pass
+  // rather than folded into the loop above because the two have almost
+  // nothing in common: a service/overnight request is a dated range, while a
+  // membership is a recurring weekly schedule with a start and no end.
+  //
+  // That open-endedness is why membership was left out when tentative chips
+  // were first built — painting every requested weekday into every future
+  // month is clutter, not information. The horizon below is what makes it
+  // useful instead: four weeks from the requested start is enough to see the
+  // incoming recurring load and judge capacity, and then it stops.
+  //
+  // A start date already in the past is deliberately still drawn. It means a
+  // membership that should have begun and hasn't, which is worth seeing on
+  // the calendar rather than hiding.
+  const MEMBERSHIP_TENTATIVE_DAYS = 28;
+  const WEEKDAY_NUMBERS = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+  allRequests.forEach(r => {
+    if (r.type !== 'membership_request') return;
+    if (['declined', 'cancelled', 'confirmed'].includes(r.status)) return;
+    // Same must-be-dashed-or-solid-never-both rule the block above enforces
+    // with datesConfirmedAt. Membership has no equivalent field on the
+    // submission — the flag that means "real walks now exist" is
+    // initialWalksGenerated, and generateInitialWalks writes it to the MEMBER
+    // doc (functions/index.js), so it has to be resolved through memberId.
+    // Checked alongside the status test, not instead of it: a request sits at
+    // 'account_created' with a memberId for the whole window between the
+    // account being made and finalize actually generating walks, and during
+    // that window the days genuinely are still tentative.
+    const mMember = r.memberId ? allMembers.find(m => m.id === (r.memberId || '').trim()) : null;
+    if (mMember?.initialWalksGenerated) return;
+    const start = bookingDay(r.startDate);
+    if (!start) return;
+    // membership-request.html stores `days` as a comma-joined STRING
+    // ("Monday, Wednesday, Friday"), not the array a confirmed member's
+    // walkDays holds — hence the split here rather than reusing that shape.
+    // Unrecognised day names drop out rather than throwing, so a malformed
+    // value costs this one request's chips and nothing else on the calendar.
+    const dayNumbers = new Set(
+      String(r.days || '').split(',')
+        .map(d => WEEKDAY_NUMBERS[d.trim().toLowerCase()])
+        .filter(n => n !== undefined)
+    );
+    if (!dayNumbers.size) return;
+    const end = new Date(start);
+    end.setDate(end.getDate() + MEMBERSHIP_TENTATIVE_DAYS - 1);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      if (!dayNumbers.has(d.getDay())) continue;
+      if (d.getFullYear() === calendarYear && d.getMonth() === calendarMonth) {
+        (tentativeMap[d.getDate()] ||= []).push(r);
+      }
+    }
+  });
+
   // Build overnight map: day → overnight doc
   const overnightMap = {};
   allOvernights.filter(o => o.status !== 'cancelled').forEach(o => {
@@ -2299,8 +2352,13 @@ function renderCalendarDays() {
     // gets confirmed and the booking turned real.
     const tentativeChips = (tentativeMap[d] || []).map(r => {
       const tMember = r.memberId ? allMembers.find(m => m.id === (r.memberId || '').trim()) : null;
+      // A membership_request carries no `service` field at all, so it has to
+      // be identified by type — left to the lookups below it would fall
+      // through to the overnight variant and render green, reading as a
+      // pet-sitting booking. It's walks, so it takes the walk colour.
+      const isMembershipReq = r.type === 'membership_request';
       const key = resolveServiceKey(r.service);
-      const isWalkReq = SERVICE_PRICES[key]?.unit === 'walk';
+      const isWalkReq = isMembershipReq || SERVICE_PRICES[key]?.unit === 'walk';
       const isCheckinReq = key === 'drop-in-visit' || r.service === 'checkin';
       const variant = isWalkReq ? 't-walk' : isCheckinReq ? 't-checkin' : 't-overnight';
       // Same dog-name-first convention as the chips above. A net-new public
@@ -2309,11 +2367,18 @@ function renderCalendarDays() {
       // requester's own first name as the last resort.
       const tName = r.dogs?.[0]?.name || r.dogName || getMemberDogs(tMember)[0]?.name
         || (r.ownerName || r.memberName || tMember?.name || '').split(' ')[0] || 'Booking';
-      const serviceName = SERVICE_PRICES[key]?.name
-        || (r.service === 'overnight' ? 'Overnight Stay' : r.service === 'checkin' ? 'Drop-In Visit' : r.service)
-        || 'Service';
+      const serviceName = isMembershipReq
+        ? `${r.plan ? `${r.plan} membership` : 'Membership'}${r.timeWindow ? ` \u00b7 ${r.timeWindow}` : ''}`
+        : (SERVICE_PRICES[key]?.name
+          || (r.service === 'overnight' ? 'Overnight Stay' : r.service === 'checkin' ? 'Drop-In Visit' : r.service)
+          || 'Service');
       const label = escapeHtml(`${tName} \u00b7 Tentative`);
-      const title = escapeHtml(`${tName} \u00b7 ${serviceName} \u00b7 Not scheduled yet \u2014 awaiting meet & greet`);
+      // The membership wording says "membership hasn't started" rather than
+      // "not scheduled yet": the day itself is a projection from a recurring
+      // schedule, not a specific booking anyone has committed to a date.
+      const title = escapeHtml(isMembershipReq
+        ? `${tName} \u00b7 ${serviceName} \u00b7 Membership hasn't started \u2014 awaiting meet & greet${r.days ? ` \u00b7 ${r.days}` : ''}`
+        : `${tName} \u00b7 ${serviceName} \u00b7 Not scheduled yet \u2014 awaiting meet & greet`);
       return `<div class="walk-chip tentative ${variant}" onclick="openRequestItem('${r.id}')" title="${title}">${label}</div>`;
     }).join('');
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}${tentativeChips}</div>`;
