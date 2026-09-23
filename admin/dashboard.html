@@ -2198,6 +2198,20 @@ function bookingDay(val) {
   return isNaN(d) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
+// Tentative chips are suppressed before this date. Nothing to do with how the
+// feature works — it exists purely because September 2026 is full of demo
+// submissions that would otherwise paint the month solid, and deleting them
+// individually was not worth the effort.
+//
+// Applied PER DAY rather than per booking, so a real booking that straddles
+// the boundary still shows its October days and only loses its September
+// ones. Confirmed walks and overnights are untouched: this filters only the
+// dashed not-yet-scheduled chips, never anything actually scheduled.
+//
+// SAFE TO DELETE once the September demo data is cleared out — remove this
+// and the two `< TENTATIVE_CHIPS_FROM` guards in renderCalendarDays.
+const TENTATIVE_CHIPS_FROM = new Date(2026, 9, 1); // 1 Oct 2026, local midnight
+
 function renderCalendarDays() {
   const container = document.getElementById('calendarDays');
   const firstDay = new Date(calendarYear, calendarMonth, 1).getDay();
@@ -2238,6 +2252,7 @@ function renderCalendarDays() {
     const e = bookingDay(r.endDate) || s;
     if (e < s) return;
     for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+      if (d < TENTATIVE_CHIPS_FROM) continue; // demo-data cutoff — see the constant
       if (d.getFullYear() === calendarYear && d.getMonth() === calendarMonth) {
         (tentativeMap[d.getDate()] ||= []).push(r);
       }
@@ -2291,6 +2306,7 @@ function renderCalendarDays() {
     end.setDate(end.getDate() + MEMBERSHIP_TENTATIVE_DAYS - 1);
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       if (!dayNumbers.has(d.getDay())) continue;
+      if (d < TENTATIVE_CHIPS_FROM) continue; // demo-data cutoff — see the constant
       if (d.getFullYear() === calendarYear && d.getMonth() === calendarMonth) {
         (tentativeMap[d.getDate()] ||= []).push(r);
       }
