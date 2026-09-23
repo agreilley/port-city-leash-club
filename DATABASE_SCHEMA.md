@@ -338,7 +338,10 @@ Confirmed (paid, scheduled) overnight stays and check-in visits — created from
   dogName: string
   startDate: timestamp
   endDate: timestamp
-  serviceType: string               // e.g. "overnight" | "checkin"
+  serviceType: string               // "overnight" | "checkin" (portal-booked, portal-request-extras.html)
+                                    // "overnight-stay" | "drop-in-visit" (public form, service-request.html —
+                                    // these are SERVICE_PRICES keys). Every reader treats anything that is
+                                    // NOT "checkin"/"drop-in-visit" as an overnight — see isCheckinType.
   notes: string
   status: string                    // "confirmed" -> "completed" once the walker marks it done
   confirmedAt: timestamp

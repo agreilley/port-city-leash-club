@@ -4936,10 +4936,13 @@ exports.applyReferralCodeToMember = onCall({}, async (request) => {
 // from confirmServiceRequest/confirmOvernight (admin/dashboard.html):
 //   (a) service_request, walk            -> walks/{id} doc, charged immediately
 //   (b) service_request, drop-in-visit   -> overnights/{id} doc, charge deferred 24h (cron)
-//   (c) service_request, anything else   -> no doc, charged immediately
-//       (overnight-stay booked via the public form — an EXISTING asymmetry
-//       with drop-in-visit, not something introduced here; see the comment
-//       inside runServiceOrOvernightBookingDoc)
+//   (c) service_request, overnight-stay  -> overnights/{id} doc, charged immediately
+//       (the public form's overnight stay. It used to get NO doc at all,
+//       which is why a confirmed one was invisible on the admin calendar,
+//       on the walker dashboard, and in payouts — fixed 2026-09-22. Its
+//       charge timing is unchanged: immediate, NOT the 24h cron, which is
+//       why its doc alone carries chargePending: false. See the comment
+//       inside runServiceOrOvernightBookingDoc.)
 //   (d) overnight_request (any service)  -> overnights/{id} doc, charge deferred 24h (cron)
 // Pricing itself is NOT re-derived here — amountInDollars/visitSchedule
 // arrive via `reviewed`, already computed client-side by the admin's
@@ -5137,13 +5140,75 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
     return { docType: 'walk', docId: walkRef.id };
   }
 
-  if (isCheckin || isOvernightRequest) {
-    // 24-hour window before the card is touched, same as today — the
-    // member has a real chance to change plans. chargeScheduledReservations
-    // (unchanged) is what actually charges this once chargeScheduledFor
-    // passes; runServiceOrOvernightCharge below does nothing for this case
-    // beyond recording paymentStatus: 'scheduled'.
-    const chargeScheduledFor = Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
+  // Every non-walk booking gets an overnights doc, including an overnight
+  // stay booked through the PUBLIC service_request form. That one case used
+  // to fall through to a bare `docType: 'none'` with no doc written
+  // anywhere — faithfully matching confirmServiceRequest's old behavior,
+  // but the consequence was that confirming such a booking made it LESS
+  // visible, not more: it vanished from the admin calendar (which reads
+  // only walks + overnights), never reached a walker's dashboard, and
+  // generated no payout. Writing the doc puts it on the same footing as the
+  // identical stay booked through the member portal.
+  //
+  // What stays different is WHO charges it, and that difference is the
+  // reason this can't simply reuse the branch wholesale — see isCronCharged.
+  //
+  // Guarded on unit === 'night' (plus isOvernightRequest unconditionally,
+  // whose reviewed.service can legitimately be absent — see the serviceType
+  // line below, which already falls back for exactly that case) rather than
+  // a bare !isWalk. An unrecognized service key resolves to no serviceInfo
+  // at all, and that shape must keep returning docType 'none' exactly as it
+  // does today: silently writing it a reservation doc would put it on the
+  // calendar as an overnight and pay a walker the overnight rate for a
+  // service nobody priced.
+  if (isOvernightRequest || serviceInfo?.unit === 'night') {
+    // Charge ownership, and the only field-level difference between the two
+    // kinds of reservation this branch now writes:
+    //   - cron-charged (drop-in via either form, any overnight_request):
+    //     24-hour window before the card is touched, same as today — the
+    //     member has a real chance to change plans.
+    //     chargeScheduledReservations (unchanged) is what actually charges
+    //     it once chargeScheduledFor passes; runServiceOrOvernightCharge
+    //     does nothing for this case beyond recording
+    //     paymentStatus: 'scheduled'.
+    //   - public-form overnight stay: charged IMMEDIATELY by
+    //     runServiceOrOvernightCharge, exactly as it is today — this fix
+    //     deliberately does not move that customer's charge timing.
+    // So that second kind must never carry chargePending: true, or the cron
+    // would charge a card that was already charged minutes earlier. Every
+    // chargePending reader is an equality filter on `true`
+    // (chargeScheduledReservations' query, the card-removal guard in
+    // requestCardRemoval, portal-account.html's own notices), so writing
+    // false keeps the field's shape consistent while staying invisible to
+    // all of them.
+    const isCronCharged = isCheckin || isOvernightRequest;
+    const chargeScheduledFor = isCronCharged
+      ? Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000))
+      : null;
+
+    // markDatesConfirmed writes datesConfirmedAt only AFTER this function
+    // returns, so a failure in between leaves the door open for a retry to
+    // reach here a second time and .add() a duplicate reservation — which
+    // would double the walker's payout and put two chips on one calendar
+    // day. The walk branch above is immune (deterministic ${memberId}_${date}
+    // doc ID); a reservation has no natural key, so this checks submissionId
+    // instead. One submission is always at most one reservation, so finding
+    // an existing doc means this already ran — return it rather than adding
+    // another. Single equality filter, no composite index needed, same as
+    // runServiceOrOvernightCharge's own read-back of this field.
+    const existingSnap = await db.collection('overnights')
+      .where('submissionId', '==', submissionId)
+      .limit(1)
+      .get();
+    if (!existingSnap.empty) {
+      const existing = existingSnap.docs[0];
+      return {
+        docType: 'overnight',
+        docId: existing.id,
+        chargeScheduledFor: existing.data().chargeScheduledFor || null,
+      };
+    }
+
     const overnightRef = await db.collection('overnights').add({
       memberId,
       memberName,
@@ -5172,17 +5237,16 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
       // hands it this overnights doc, not the submission `reviewed` came from.
       travelDiscountApplied: !!reviewed.travelDiscountApplied,
       chargeScheduledFor,
-      chargePending: true,
+      chargePending: isCronCharged,
     });
     return { docType: 'overnight', docId: overnightRef.id, chargeScheduledFor };
   }
 
-  // Neither walk, check-in, nor overnight_request — e.g. an overnight-stay
-  // booked through the public service_request form. No supplementary doc
-  // is written, matching confirmServiceRequest's existing behavior exactly:
-  // only its isWalk and isCheckin branches ever write one; this third case
-  // gets neither a walks nor an overnights record, and is charged
-  // immediately below like a walk.
+  // A service_request whose service key resolves to neither a 'walk' nor a
+  // 'night' unit — i.e. nothing SERVICE_PRICES knows about. No booking doc,
+  // charged immediately below, same as today. This is now the ONLY case
+  // that reaches here: the overnight stay that used to land in this branch
+  // gets a real reservation doc above.
   return { docType: 'none' };
 }
 
