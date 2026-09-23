@@ -85,6 +85,16 @@
   .walk-chip.checkin { background: #E4E9EE; color: var(--navy-mid); }
   .walk-chip.completed { background: var(--sand); color: var(--text-light); }
   .walk-chip.walktype { background: var(--green-light); color: var(--green); cursor: default; }
+  /* Bookings that exist on real dates but aren't scheduled yet — the meet &
+     greet hasn't happened, so no walks/overnights doc exists (see the
+     tentative map in renderCalendarDays). Dashed and unfilled so a day that
+     holds both a confirmed chip and a tentative one never reads as two
+     equally-real commitments. Padding drops 1px to offset the border so
+     these sit at the same height as the solid chips beside them. */
+  .walk-chip.tentative { background: transparent; border: 1px dashed; padding: 1px 5px; }
+  .walk-chip.tentative.t-overnight { border-color: #2D7A5E; color: #2D7A5E; }
+  .walk-chip.tentative.t-checkin   { border-color: var(--navy-mid); color: var(--navy-mid); }
+  .walk-chip.tentative.t-walk      { border-color: #3730A3; color: #3730A3; }
 
   /* ── REVIEWS ── */
   /* Placed before the mobile .stats-row media query below (same specificity,
@@ -468,6 +478,7 @@
         <div class="legend-item"><div class="legend-dot" style="background:#FEE2E2;border:1px solid #991B1B;"></div> Unassigned</div>
         <div class="legend-item"><div class="legend-dot" style="background:#E8F4F0;border:1px solid #8FA8A2;"></div> Overnight</div>
         <div class="legend-item"><div class="legend-dot" style="background:#E4E9EE;border:1px solid #1C2F42;"></div> Drop-In Visit</div>
+        <div class="legend-item"><div class="legend-dot" style="background:transparent;border:1px dashed var(--text-mid);"></div> Tentative &mdash; awaiting meet &amp; greet</div>
       </div>
       <div class="calendar-header">
         <div class="calendar-nav">
@@ -2173,6 +2184,20 @@ function renderCalendar() {
   renderCalendarDays();
 }
 
+// Parses whatever a booking's startDate/endDate actually holds into a local
+// calendar day. Firestore Timestamps are already stamped at local noon by the
+// forms that write them (localDateToTimestamp in service-request.html /
+// portal-request-extras.html); a plain 'YYYY-MM-DD' string is parsed at local
+// noon here for the same reason openOvernightModal's fmtDate does — parsing it
+// bare makes it UTC midnight, which lands a day early everywhere west of UTC.
+function bookingDay(val) {
+  if (!val) return null;
+  const d = val.toDate ? val.toDate()
+    : typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val) ? new Date(`${val}T12:00:00`)
+    : new Date(val);
+  return isNaN(d) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
 function renderCalendarDays() {
   const container = document.getElementById('calendarDays');
   const firstDay = new Date(calendarYear, calendarMonth, 1).getDay();
@@ -2185,6 +2210,39 @@ function renderCalendarDays() {
   for (let i = firstDay - 1; i >= 0; i--) {
     html += `<div class="calendar-day other-month"><div class="day-num">${daysInPrev - i}</div></div>`;
   }
+
+  // Build tentative map: day → [submissions booked but not yet scheduled].
+  // A service/overnight request carries real dates from the moment it's
+  // submitted, but no walks/overnights doc exists until markDatesConfirmed
+  // runs (functions/index.js) — which for a net-new customer waits on a meet
+  // & greet that may be weeks out. Without these chips those dates are
+  // invisible here, so the calendar looks free on days that are effectively
+  // spoken for. datesConfirmedAt is stamped in the same call that writes the
+  // real doc, so gating on it is what guarantees a booking shows as either a
+  // dashed chip or a solid one, never both. An array per day, not a single
+  // doc like overnightMap — nothing dedupes these against each other, and
+  // silently dropping one would defeat the point.
+  const tentativeMap = {};
+  allRequests.forEach(r => {
+    if (r.type !== 'service_request' && r.type !== 'overnight_request') return;
+    if (r.datesConfirmedAt) return;
+    // status 'confirmed' is belt-and-braces alongside datesConfirmedAt: the
+    // two are written together today (finalizeSubmissionIfReady runs right
+    // after markDatesConfirmed), but a booking confirmed under the pre-
+    // migration confirmServiceRequest/confirmOvernight functions has the
+    // status and not the timestamp, and must not resurface as tentative.
+    if (['declined', 'cancelled', 'confirmed'].includes(r.status)) return;
+    const s = bookingDay(r.startDate);
+    if (!s) return;
+    // Single-day bookings (a one-time walk) have no endDate at all.
+    const e = bookingDay(r.endDate) || s;
+    if (e < s) return;
+    for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+      if (d.getFullYear() === calendarYear && d.getMonth() === calendarMonth) {
+        (tentativeMap[d.getDate()] ||= []).push(r);
+      }
+    }
+  });
 
   // Build overnight map: day → overnight doc
   const overnightMap = {};
@@ -2234,7 +2292,31 @@ function renderCalendarDays() {
           ? `<div class="walk-chip checkin" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Drop-In Visit">${oLabel}</div>`
           : `<div class="walk-chip overnight" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Overnight">${oLabel}</div>`)
       : '';
-    html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}</div>`;
+    // Rendered last, below the confirmed work for the day, so what's
+    // actually scheduled still reads first. Clicking opens the submission
+    // itself (openRequestItem) rather than a walk/overnight modal — there
+    // is no booking doc yet, and the submission is where the meet & greet
+    // gets confirmed and the booking turned real.
+    const tentativeChips = (tentativeMap[d] || []).map(r => {
+      const tMember = r.memberId ? allMembers.find(m => m.id === (r.memberId || '').trim()) : null;
+      const key = resolveServiceKey(r.service);
+      const isWalkReq = SERVICE_PRICES[key]?.unit === 'walk';
+      const isCheckinReq = key === 'drop-in-visit' || r.service === 'checkin';
+      const variant = isWalkReq ? 't-walk' : isCheckinReq ? 't-checkin' : 't-overnight';
+      // Same dog-name-first convention as the chips above. A net-new public
+      // request has no member doc to look up — its dogs are on the
+      // submission — so that's checked before the member lookup, with the
+      // requester's own first name as the last resort.
+      const tName = r.dogs?.[0]?.name || r.dogName || getMemberDogs(tMember)[0]?.name
+        || (r.ownerName || r.memberName || tMember?.name || '').split(' ')[0] || 'Booking';
+      const serviceName = SERVICE_PRICES[key]?.name
+        || (r.service === 'overnight' ? 'Overnight Stay' : r.service === 'checkin' ? 'Drop-In Visit' : r.service)
+        || 'Service';
+      const label = escapeHtml(`${tName} \u00b7 Tentative`);
+      const title = escapeHtml(`${tName} \u00b7 ${serviceName} \u00b7 Not scheduled yet \u2014 awaiting meet & greet`);
+      return `<div class="walk-chip tentative ${variant}" onclick="openRequestItem('${r.id}')" title="${title}">${label}</div>`;
+    }).join('');
+    html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}${tentativeChips}</div>`;
   }
 
   // Next month padding
