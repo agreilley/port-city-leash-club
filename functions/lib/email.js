@@ -56,6 +56,7 @@ const TEMPLATES = {
   'walk-completed': require('../templates/walk-completed'),
   'request-declined': require('../templates/request-declined'),
   'event-ticket-confirmed': require('../templates/event-ticket-confirmed'),
+  'monthly-schedule-reminder': require('../templates/monthly-schedule-reminder'),
 };
 
 const MAX_ATTEMPTS = 3;

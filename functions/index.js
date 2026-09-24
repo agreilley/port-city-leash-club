@@ -3255,6 +3255,74 @@ exports.generateMonthlyWalks = onSchedule({
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// Monthly schedule reminder: 9am ET on the 25th. Emails every subscribed
+// Member-tier member the walks they have scheduled NEXT month (already
+// created a month ahead by generateMonthlyWalks above), so they can move a
+// walk or change their days before the 1st, when syncMonthlyWalkQuantities
+// and the subscription invoice bill that month.
+//
+// Driven by the actual walk docs, not defaultWalkDays: a vacation hold
+// deletes the walks in its window (submitVacationHold), so a member on hold
+// for the whole month has none and is skipped, and one whose hold ends
+// mid-month is sent just the walks they really have. Paused members are
+// deliberately NOT filtered on status for the same reason.
+//
+// idempotencyKey is per member per month, so a retried or double-fired run
+// never sends anyone a second reminder for the same month.
+exports.sendMonthlyScheduleReminders = onSchedule({
+  schedule: '0 9 25 * *',
+  timeZone: 'America/New_York',
+  secrets: [RESEND_API_KEY],
+}, async () => {
+  const { year, monthIndex } = easternTodayParts();
+  const nextMonthIndex = monthIndex === 11 ? 0 : monthIndex + 1;
+  const nextYear = monthIndex === 11 ? year + 1 : year;
+  const periodKey = `${nextYear}-${String(nextMonthIndex + 1).padStart(2, '0')}`;
+  const monthLabel = new Date(Date.UTC(nextYear, nextMonthIndex, 15)).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
+
+  // Walks are stamped at noon UTC on their calendar date, so a UTC month
+  // window catches exactly that month's walks. One single-field range
+  // query for everyone, grouped in JS, rather than a query per member.
+  const walksSnap = await db.collection('walks')
+    .where('date', '>=', Timestamp.fromDate(new Date(Date.UTC(nextYear, nextMonthIndex, 1))))
+    .where('date', '<', Timestamp.fromDate(new Date(Date.UTC(nextYear, nextMonthIndex + 1, 1))))
+    .get();
+  const walksByMember = {};
+  walksSnap.docs.forEach((d) => {
+    const w = d.data();
+    if (w.status !== 'scheduled' || !w.memberId || !w.date?.toDate) return;
+    (walksByMember[w.memberId] ||= []).push({ dateStr: isoDateStr(w.date.toDate()), slot: w.timeSlot || null });
+  });
+
+  const membersSnap = await db.collection('members').where('hasActiveSubscription', '==', true).get();
+  let sent = 0, skipped = 0, failed = 0;
+  for (const memberDoc of membersSnap.docs) {
+    const member = memberDoc.data();
+    const walks = (walksByMember[memberDoc.id] || []).sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+    if (member.tier !== 'Member' || !member.email || !walks.length) { skipped++; continue; }
+
+    const result = await sendEmail({
+      to: member.email,
+      template: 'monthly-schedule-reminder',
+      data: {
+        firstName: (member.name || '').trim().split(/\s+/)[0] || 'there',
+        dogNames: (Array.isArray(member.dogs) ? member.dogs : []).map((d) => d && d.name).filter(Boolean),
+        monthLabel,
+        billingDateLabel: `${monthLabel} 1`,
+        walks,
+        calendarUrl: `${BUSINESS_PORTAL_ORIGIN}/portal-dashboard`,
+        rescheduleUrl: `${BUSINESS_PORTAL_ORIGIN}/portal-reschedule`,
+        scheduleUrl: `${BUSINESS_PORTAL_ORIGIN}/portal-account`,
+      },
+      idempotencyKey: `monthly-schedule-reminder:${memberDoc.id}:${periodKey}`,
+    });
+    if (result.ok) sent++;
+    else { failed++; console.error(`sendMonthlyScheduleReminders: ${memberDoc.id} failed: ${result.error}`); }
+  }
+  console.log(`sendMonthlyScheduleReminders ${periodKey}: sent ${sent}, skipped ${skipped}, failed ${failed}`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // 3d-backfill. One-time cutover helper for the rolling two-month window
 // above: generates NEXT month for every currently active, subscribed
 // member, using the exact same selection/generation logic
