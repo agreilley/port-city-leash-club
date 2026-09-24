@@ -964,7 +964,7 @@
     <div class="modal-title">Schedule a Walk</div>
     <div class="form-grid">
       <div class="form-field"><label>Member</label><select id="wm-member"><option value="">Select member...</option></select></div>
-      <div class="form-field"><label>Date</label><input type="date" id="wm-date"></div>
+      <div class="form-field"><label>Date</label><input type="date" id="wm-date" onchange="refreshAddWalkWalkerLabels()"></div>
       <div class="form-field"><label>Time Slot</label>
         <!-- Populated by populateTimeSlotSelects() from time-slots.js, not
              hardcoded here — see initDashboard(). -->
@@ -1850,6 +1850,7 @@ function subscribeWalkers() {
     // missing walkerId entirely (shouldn't happen going forward, but just
     // in case of older/manual records) are kept rather than dropped.
     allWalkers = all.filter(w => !w.walkerId || w.id === w.walkerId);
+    renderCalendarDays(); // chip ⚠ warnings read walker timeOff
     renderWalkersTable();
     renderAvailabilityGrid();
     populateWalkerSelect();
@@ -2277,6 +2278,77 @@ function bookingDay(val) {
   return isNaN(d) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
+// ── WALKER TIME OFF ─────────────────────────────────────────────────────────
+// walkers/{id}.timeOff: [{ start:'YYYY-MM-DD', end:'YYYY-MM-DD', note, addedAt }]
+// — whole days only, inclusive, plain date strings (no timezone to drift).
+// Written to BOTH of a walker's docs (friendly ID + Auth UID), same as
+// saveWalkerSchedule. Walkers can only read their own docs (firestore.rules),
+// so nobody sees anyone else's days off.
+function dateKey(val) {
+  const d = bookingDay(val);
+  return d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : null;
+}
+function walkerTimeOff(walker) {
+  return (Array.isArray(walker?.timeOff) ? walker.timeOff : []).filter(t => t && t.start && t.end);
+}
+function walkerOffOn(walker, val) {
+  const k = dateKey(val);
+  return !!k && walkerTimeOff(walker).some(t => t.start <= k && k <= t.end);
+}
+// Every day in [startVal, endVal] (inclusive) the walker is off, as date keys.
+function walkerOffDaysBetween(walker, startVal, endVal) {
+  const s = bookingDay(startVal), e = bookingDay(endVal) || s;
+  if (!s || !walkerTimeOff(walker).length) return [];
+  const out = [];
+  for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) if (walkerOffOn(walker, d)) out.push(dateKey(d));
+  return out;
+}
+// ['2026-10-03','2026-10-04','2026-10-05','2026-10-09'] -> "Oct 3–5, Oct 9"
+function fmtDateKeyRanges(keys) {
+  const sorted = [...new Set(keys)].sort();
+  const ranges = [];
+  sorted.forEach(k => {
+    const last = ranges[ranges.length - 1];
+    if (last) {
+      const next = bookingDay(last.end); next.setDate(next.getDate() + 1);
+      if (dateKey(next) === k) { last.end = k; return; }
+    }
+    ranges.push({ start: k, end: k });
+  });
+  const fmt = k => bookingDay(k).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return ranges.map(r => {
+    if (r.start === r.end) return fmt(r.start);
+    const a = bookingDay(r.start), b = bookingDay(r.end);
+    return a.getMonth() === b.getMonth() ? `${fmt(r.start)}–${b.getDate()}` : `${fmt(r.start)} – ${fmt(r.end)}`;
+  }).join(', ');
+}
+function fmtTimeOffEntry(t) {
+  const days = [];
+  for (let d = bookingDay(t.start); d && d <= bookingDay(t.end); d.setDate(d.getDate() + 1)) days.push(dateKey(d));
+  return fmtDateKeyRanges(days);
+}
+// Scheduled work assigned to this walker that falls on [startKey, endKey].
+function walkerTimeOffConflicts(walkerId, startKey, endKey) {
+  const inRange = k => k && startKey <= k && k <= endKey;
+  const walks = allWalks
+    .filter(w => (w.walkerId || '').trim() === walkerId && w.status !== 'completed' && w.status !== 'cancelled' && inRange(dateKey(w.date)))
+    .map(w => {
+      const m = allMembers.find(x => x.id === (w.memberId || '').trim());
+      return { kind: 'walk', id: w.id, day: dateKey(w.date), label: `${getMemberDogs(m)[0]?.name || m?.name || 'Walk'} · walk` };
+    });
+  const overnights = (allOvernights || [])
+    .filter(o => (o.walkerId || '').trim() === walkerId && o.status !== 'completed' && o.status !== 'cancelled')
+    .map(o => {
+      const s = dateKey(o.startDate), e = dateKey(o.endDate) || s;
+      if (!s || e < startKey || s > endKey) return null;
+      const m = allMembers.find(x => x.id === (o.memberId || '').trim());
+      const kindLabel = isCheckinType(o.serviceType) ? 'drop-in visits' : 'overnight';
+      return { kind: 'overnight', id: o.id, day: s < startKey ? startKey : s, label: `${o.dogName || getMemberDogs(m)[0]?.name || m?.name || 'Reservation'} · ${kindLabel}` };
+    })
+    .filter(Boolean);
+  return [...walks, ...overnights].sort((a, b) => a.day.localeCompare(b.day));
+}
+
 // Tentative chips are suppressed before this date. Nothing to do with how the
 // feature works — it exists purely because September 2026 is full of demo
 // submissions that would otherwise paint the month solid, and deleting them
@@ -2485,8 +2557,11 @@ function renderCalendarDays() {
       const walker = allWalkers.find(k => k.id === wkId);
       const cls = !wkId ? 'unassigned' : (w.status === 'completed' ? 'completed' : w.timeSlot);
       const dogName = getMemberDogs(member)[0]?.name || member?.name?.split(' ')[0] || 'Walk';
-      const label = escapeHtml(walker ? `${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`);
-      return `<div class="walk-chip ${cls}" onclick="openWalkModal('${w.id}')" title="${label}">${label}</div>`;
+      // ⚠ when the assigned walker has this day off (walker time off).
+      const off = walker && w.status !== 'completed' && walkerOffOn(walker, dateStr);
+      const label = escapeHtml(walker ? `${off ? '⚠ ' : ''}${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`);
+      const title = off ? `${label} · ${escapeHtml(walker.name.split(' ')[0])} is off this day` : label;
+      return `<div class="walk-chip ${cls}" onclick="openWalkModal('${w.id}')" title="${title}">${label}</div>`;
     }).join('');
     // Same dog-name-plus-walker convention as the walk chip above, not the
     // owner's name — the overnights doc stamps its own dogName at creation
@@ -2499,11 +2574,13 @@ function renderCalendarDays() {
     const oWkId = overnightMap[d] ? (overnightMap[d].walkerId || '').trim() : '';
     const oWalker = oWkId ? allWalkers.find(k => k.id === oWkId) : null;
     const oDogName = overnightMap[d]?.dogName || getMemberDogs(oMember)[0]?.name || oMember?.name?.split(' ')[0] || (oIsCheckin ? 'Drop-In Visit' : 'Overnight');
-    const oLabel = escapeHtml(oWalker ? `${oDogName} / ${oWalker.name.split(' ')[0]}` : `${oDogName} · Unassigned`);
+    const oOff = oWalker && overnightMap[d].status !== 'completed' && walkerOffOn(oWalker, dateStr);
+    const oLabel = escapeHtml(oWalker ? `${oOff ? '⚠ ' : ''}${oDogName} / ${oWalker.name.split(' ')[0]}` : `${oDogName} · Unassigned`);
+    const oOffNote = oOff ? ` · ${escapeHtml(oWalker.name.split(' ')[0])} is off this day` : '';
     const overnightChip = overnightMap[d]
       ? (oIsCheckin
-          ? `<div class="walk-chip checkin" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Drop-In Visit">${oLabel}</div>`
-          : `<div class="walk-chip overnight" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Overnight">${oLabel}</div>`)
+          ? `<div class="walk-chip checkin" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Drop-In Visit${oOffNote}">${oLabel}</div>`
+          : `<div class="walk-chip overnight" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Overnight${oOffNote}">${oLabel}</div>`)
       : '';
     // Rendered last, below the confirmed work for the day, so what's
     // actually scheduled still reads first. Clicking opens the submission
@@ -2550,8 +2627,9 @@ function renderCalendarDays() {
       const walker = wkId ? allWalkers.find(k => k.id === wkId) : null;
       const cls = !walker ? 'unassigned' : (m.defaultTimeSlot || '');
       const dogName = getMemberDogs(m)[0]?.name || m.name?.split(' ')[0] || 'Walk';
-      const label = escapeHtml(walker ? `${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`);
-      const title = escapeHtml(`${dogName} · Membership confirmed · walk is created once the card is saved`);
+      const off = walker && walkerOffOn(walker, dateStr);
+      const label = escapeHtml(walker ? `${off ? '⚠ ' : ''}${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`);
+      const title = escapeHtml(`${dogName} · Membership confirmed · walk is created once the card is saved${off ? ` · ${walker.name.split(' ')[0]} is off this day` : ''}`);
       return `<div class="walk-chip ${cls}" onclick="openMemberWalkerModal('${m.id}')" title="${title}">${label}</div>`;
     }).join('');
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}${projectedChips}${tentativeChips}</div>`;
@@ -3733,13 +3811,17 @@ window.openOvernightModal = (overnightId) => {
 
   const walkerSelect = `<select id="manualOvernightWalkerSelect" style="width:100%;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:9px;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:10px;">
     <option value="">Select a walker...</option>
-    ${_walkers.map(w => `<option value="${w.id}" ${w.id === (o.walkerId||'') ? 'selected' : ''}>${escapeHtml(w.name)}</option>`).join('')}
+    ${_walkers.map(w => { const off = walkerOffDaysBetween(w, o.startDate, o.endDate); return `<option value="${w.id}" ${w.id === (o.walkerId||'') ? 'selected' : ''}>${escapeHtml(w.name)}${off.length ? ` (off ${escapeHtml(fmtDateKeyRanges(off))})` : ''}</option>`; }).join('')}
   </select>`;
+  const assignedOff = walker ? walkerOffDaysBetween(walker, o.startDate, o.endDate) : [];
 
   const assignmentHTML = isAssigned ? `
     <div class="modal-label" style="margin-bottom:10px;">Assigned Walker</div>
     <div class="suggestion-card best" style="margin-bottom:16px;">
-      <div style="font-weight:500;font-size:14px;">${escapeHtml(walker?.name || '–')}</div>
+      <div>
+        <div style="font-weight:500;font-size:14px;">${escapeHtml(walker?.name || '–')}</div>
+        ${assignedOff.length ? `<div style="font-size:12px;color:#92400E;margin-top:2px;">⚠ Off ${escapeHtml(fmtDateKeyRanges(assignedOff))}</div>` : ''}
+      </div>
       <span style="font-size:11px;color:var(--green);font-weight:500;">Assigned ✓</span>
     </div>
     <div class="modal-label" style="margin-bottom:8px;">Change Walker</div>
@@ -3843,22 +3925,26 @@ window.openWalkModal = async (walkId) => {
     : walk.timeSlot;
   const isAssigned = !!(walk.walkerId || '').trim();
 
+  // A walker with time off this day is still listed, but sorted after
+  // everyone who isn't, with a warning — never silently dropped.
   const suggestions = _walkers.filter(w => w.status === 'active').map(w => {
     let score = 0;
+    const off = walkerOffOn(w, walk.date);
     const dayName = ['sun','mon','tue','wed','thu','fri','sat'][date.getDay()];
     if ((w.availability?.[dayName] || []).includes(walk.timeSlot)) score += 40;
     if (_walks.filter(wk => wk.walkerId === w.id).length < (w.weeklyTarget || 20)) score += 30;
     if ((w.zones || []).includes(member?.zone || '')) score += 20;
     score += Math.min(_walks.filter(wk => wk.walkerId === w.id && wk.memberId === walk.memberId).length * 5, 10);
-    return { ...w, score };
-  }).sort((a, b) => b.score - a.score);
+    return { ...w, score, off };
+  }).sort((a, b) => (a.off - b.off) || (b.score - a.score));
+  const OFF_WARN = '<div style="font-size:12px;color:#92400E;margin-top:2px;">⚠ Off this day</div>';
 
   // member/dog/walker names and walk.timeSlot/status/notes all ultimately
   // trace back to public-form or walker-app input — escaped throughout
   // this modal for the same reason as the requests modal/list earlier.
   const walkerSelect = `<select id="manualWalkerSelect" style="width:100%;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:9px;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:10px;">
     <option value="">Select a walker...</option>
-    ${_walkers.map(w => `<option value="${w.id}" ${w.id === (walk.walkerId||'') ? 'selected' : ''}>${escapeHtml(w.name)}</option>`).join('')}
+    ${_walkers.map(w => `<option value="${w.id}" ${w.id === (walk.walkerId||'') ? 'selected' : ''}>${escapeHtml(w.name)}${walkerOffOn(w, walk.date) ? ' (off)' : ''}</option>`).join('')}
   </select>`;
 
   const assignmentHTML = isAssigned ? `
@@ -3867,6 +3953,7 @@ window.openWalkModal = async (walkId) => {
       <div>
         <div style="font-weight:500;font-size:14px;">${escapeHtml(walker?.name || '–')}</div>
         <div style="font-size:12px;color:var(--text-light);">${escapeHtml((walker?.zones||[]).join(', ')||'Any')} · ${_walks.filter(wk=>wk.walkerId===walker?.id).length} walks this week</div>
+        ${walker && walkerOffOn(walker, walk.date) ? OFF_WARN : ''}
       </div>
       <span style="font-size:11px;color:var(--green);font-weight:500;">Assigned ✓</span>
     </div>
@@ -3878,12 +3965,13 @@ window.openWalkModal = async (walkId) => {
     </div>` : suggestions.length ? `
     <div class="modal-label" style="margin-bottom:10px;">Assignment Suggestions</div>
     ${suggestions.slice(0,3).map((w,i) => `
-      <div class="suggestion-card ${i===0?'best':''}" onclick="assignWalker('${walkId}', '${w.id}')">
+      <div class="suggestion-card ${i===0 && !w.off?'best':''}" onclick="assignWalker('${walkId}', '${w.id}')">
         <div>
           <div style="font-weight:500;font-size:14px;">${escapeHtml(w.name)}</div>
           <div style="font-size:12px;color:var(--text-light);">${escapeHtml((w.zones||[]).join(', ')||'Any')} · ${_walks.filter(wk=>wk.walkerId===w.id).length} walks</div>
+          ${w.off ? OFF_WARN : ''}
         </div>
-        <div class="suggestion-score ${i===0?'best':''}">${i===0?'Best fit':''} ${w.score}pts</div>
+        <div class="suggestion-score ${i===0 && !w.off?'best':''}">${i===0 && !w.off?'Best fit':''} ${w.score}pts</div>
       </div>`).join('')}
     <hr class="modal-divider">
     <div class="modal-label" style="margin-bottom:8px;">Or assign manually</div>
@@ -3939,6 +4027,24 @@ window.openMemberWalkerModal = (memberId) => {
   const currentId = (member.assignedWalkerId || '').trim();
   const current = allWalkers.find(w => w.id === currentId);
 
+  // The member's walk dates over the next 4 weeks (from their requested start
+  // if that's later than today) — same horizon as the calendar chips — so a
+  // walker's time off can be flagged against the dates they'd actually cover.
+  // Flagged, not demoted: this picks the default walker for EVERY walk, so a
+  // day or two off shouldn't rule someone out.
+  const DAY_INDEX = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+  const req = allRequests.find(r => r.type === 'membership_request' && (r.memberId || '').trim() === member.id);
+  const today = bookingDay(new Date());
+  const reqStart = bookingDay(req?.startDate);
+  const from = reqStart && reqStart > today ? reqStart : today;
+  const walkDates = [];
+  for (let i = 0; i < 28; i++) {
+    const d = new Date(from); d.setDate(d.getDate() + i);
+    if (memberDays.some(k => DAY_INDEX[k] === d.getDay())) walkDates.push(dateKey(d));
+  }
+  const offDates = w => walkDates.filter(k => walkerOffOn(w, k));
+  const offWarn = w => { const o = offDates(w); return o.length ? `<div style="font-size:12px;color:#92400E;margin-top:2px;">⚠ Off ${escapeHtml(fmtDateKeyRanges(o))}</div>` : ''; };
+
   // Same weights as openWalkModal; availability is scaled by how many of the
   // member's days the walker covers in that slot.
   const suggestions = allWalkers.filter(w => w.status === 'active').map(w => {
@@ -3952,7 +4058,7 @@ window.openMemberWalkerModal = (memberId) => {
 
   const walkerSelect = `<select id="memberWalkerSelect" style="width:100%;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:9px;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:10px;">
     <option value="">Select a walker...</option>
-    ${allWalkers.map(w => `<option value="${w.id}" ${w.id === currentId ? 'selected' : ''}>${escapeHtml(w.name)}</option>`).join('')}
+    ${allWalkers.map(w => { const o = offDates(w); return `<option value="${w.id}" ${w.id === currentId ? 'selected' : ''}>${escapeHtml(w.name)}${o.length ? ` (off ${escapeHtml(fmtDateKeyRanges(o))})` : ''}</option>`; }).join('')}
   </select>`;
 
   const assignmentHTML = current ? `
@@ -3961,6 +4067,7 @@ window.openMemberWalkerModal = (memberId) => {
       <div>
         <div style="font-weight:500;font-size:14px;">${escapeHtml(current.name)}</div>
         <div style="font-size:12px;color:var(--text-light);">${escapeHtml((current.zones||[]).join(', ')||'Any')}</div>
+        ${offWarn(current)}
       </div>
       <span style="font-size:11px;color:var(--green);font-weight:500;">Assigned ✓</span>
     </div>
@@ -3976,6 +4083,7 @@ window.openMemberWalkerModal = (memberId) => {
         <div>
           <div style="font-weight:500;font-size:14px;">${escapeHtml(w.name)}</div>
           <div style="font-size:12px;color:var(--text-light);">${escapeHtml((w.zones||[]).join(', ')||'Any')} · available ${w.covered} of ${memberDays.length} days</div>
+          ${offWarn(w)}
         </div>
         <div class="suggestion-score ${i===0?'best':''}">${i===0?'Best fit':''} ${w.score}pts</div>
       </div>`).join('')}
@@ -6313,8 +6421,20 @@ function populateMemberSelect() {
 }
 function populateWalkerSelect() {
   const sel = document.getElementById('wm-walker');
+  const selected = sel.value;
   sel.innerHTML = '<option value="">Unassigned</option>' + allWalkers.map(w => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join('');
+  sel.value = selected;
+  refreshAddWalkWalkerLabels();
 }
+// Marks "(off)" on walkers with time off on the Add Walk modal's chosen date.
+window.refreshAddWalkWalkerLabels = () => {
+  const sel = document.getElementById('wm-walker');
+  const date = document.getElementById('wm-date')?.value;
+  Array.from(sel?.options || []).forEach(o => {
+    const w = allWalkers.find(x => x.id === o.value);
+    if (w) o.textContent = `${w.name}${date && walkerOffOn(w, date) ? ' (off)' : ''}`;
+  });
+};
 // Cache the Add Member modal's original HTML so it can be restored after
 // the success screen replaces it.
 let _addMemberModalOriginalHTML = null;
@@ -7645,9 +7765,92 @@ window.openWalkerDetail = (id) => {
     <div id="wd-save-status" style="font-size:12px;color:var(--text-light);margin-top:10px;min-height:16px;"></div>
     <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="saveWalkerSchedule('${walker.id}','${walker.uid}')">Save Schedule</button>
     <hr class="modal-divider">
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Time Off</div>
+    <div id="wd-timeoff-list">${renderWalkerTimeOffList(walker, walkerTimeOff(walker))}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+      <div class="form-field"><label>From</label><input type="date" id="wd-to-start"></div>
+      <div class="form-field"><label>To (optional)</label><input type="date" id="wd-to-end"></div>
+      <div class="form-field" style="grid-column:1 / -1;"><label>Note (optional)</label><input type="text" id="wd-to-note" placeholder="e.g. Family trip"></div>
+    </div>
+    <div id="wd-timeoff-status" style="font-size:12px;color:var(--text-light);margin-top:6px;min-height:16px;"></div>
+    <button class="btn-secondary" style="width:100%;margin-top:6px;" onclick="addWalkerTimeOff('${walker.id}','${walker.uid}')">Add Time Off</button>
+    <hr class="modal-divider">
     ${renderWalkerEarningsSection(walker)}
   `;
   document.getElementById('walkerDetailModal').classList.add('open');
+};
+
+// Upcoming time off (past entries hidden, not deleted), each with whatever
+// scheduled work still conflicts with it — so a conflict created AFTER the
+// time off was entered (assigning them anyway) still shows up here.
+function renderWalkerTimeOffList(walker, list) {
+  const today = dateKey(new Date());
+  const upcoming = list.map((t, i) => ({ ...t, i })).filter(t => t.end >= today).sort((a, b) => a.start.localeCompare(b.start));
+  if (!upcoming.length) return '<div style="font-size:13px;color:var(--text-light);">No upcoming time off.</div>';
+  return upcoming.map(t => {
+    const conflicts = walkerTimeOffConflicts(walker.id, t.start, t.end);
+    const conflictHTML = conflicts.length ? `
+      <div style="font-size:12px;color:#92400E;background:#FEF3C7;border-radius:4px;padding:6px 8px;margin-top:6px;">
+        ⚠ Still assigned during this time off — click to reassign:
+        ${conflicts.map(c => `<div style="margin-top:3px;"><a href="#" style="color:#92400E;" onclick="event.preventDefault();closeModal('walkerDetailModal');${c.kind === 'walk' ? `openWalkModal('${c.id}')` : `openOvernightModal('${c.id}')`}">${escapeHtml(fmtDateKeyRanges([c.day]))} · ${escapeHtml(c.label)}</a></div>`).join('')}
+      </div>` : '';
+    return `<div style="padding:8px 0;border-bottom:1px solid rgba(0,0,0,0.06);">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <span style="font-size:13px;color:var(--navy);">${escapeHtml(fmtTimeOffEntry(t))}${t.note ? ` <span style="color:var(--text-light);">· ${escapeHtml(t.note)}</span>` : ''}</span>
+        <button class="btn-secondary" style="padding:3px 10px;font-size:12px;color:var(--rust);" onclick="removeWalkerTimeOff('${walker.id}','${walker.uid}',${t.i})">Remove</button>
+      </div>
+      ${conflictHTML}
+    </div>`;
+  }).join('');
+}
+
+async function saveWalkerTimeOffList(walkerId, uid, list) {
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'walkers', walkerId), { timeOff: list });
+  if (uid && uid !== walkerId && uid !== 'undefined') batch.update(doc(db, 'walkers', uid), { timeOff: list });
+  await batch.commit();
+  // Re-render from the list just written rather than waiting on the
+  // walkers snapshot to come back around.
+  const walker = allWalkers.find(w => w.id === walkerId);
+  if (walker) walker.timeOff = list;
+  const listEl = document.getElementById('wd-timeoff-list');
+  if (listEl && walker) listEl.innerHTML = renderWalkerTimeOffList(walker, list);
+  renderCalendarDays();
+}
+
+window.addWalkerTimeOff = async (walkerId, uid) => {
+  const statusEl = document.getElementById('wd-timeoff-status');
+  const start = document.getElementById('wd-to-start').value;
+  const end = document.getElementById('wd-to-end').value || start;
+  const note = document.getElementById('wd-to-note').value.trim();
+  const fail = msg => { statusEl.textContent = msg; statusEl.style.color = '#991B1B'; };
+  if (!start) return fail('Pick a start date.');
+  if (end < start) return fail('The end date is before the start date.');
+  const walker = allWalkers.find(w => w.id === walkerId);
+  const list = [...walkerTimeOff(walker), { start, end, note, addedAt: new Date().toISOString() }];
+  statusEl.textContent = 'Saving...'; statusEl.style.color = 'var(--text-light)';
+  try {
+    await saveWalkerTimeOffList(walkerId, uid, list);
+    ['wd-to-start', 'wd-to-end', 'wd-to-note'].forEach(id => { document.getElementById(id).value = ''; });
+    const n = walkerTimeOffConflicts(walkerId, start, end).length;
+    statusEl.textContent = n ? `Saved. ${n} assignment${n === 1 ? '' : 's'} still need${n === 1 ? 's' : ''} a new walker — see above.` : 'Saved.';
+    statusEl.style.color = n ? '#92400E' : 'var(--green)';
+  } catch (e) {
+    fail(`Failed to save: ${e.message}`);
+  }
+};
+
+window.removeWalkerTimeOff = async (walkerId, uid, index) => {
+  const walker = allWalkers.find(w => w.id === walkerId);
+  const current = walkerTimeOff(walker);
+  if (!current[index] || !confirm(`Remove time off for ${fmtTimeOffEntry(current[index])}?`)) return;
+  const statusEl = document.getElementById('wd-timeoff-status');
+  try {
+    await saveWalkerTimeOffList(walkerId, uid, current.filter((_, i) => i !== index));
+    statusEl.textContent = 'Removed.'; statusEl.style.color = 'var(--green)';
+  } catch (e) {
+    statusEl.textContent = `Failed to remove: ${e.message}`; statusEl.style.color = '#991B1B';
+  }
 };
 
 // Uses the exact same calculateEarnings() from walker-pricing.js that
