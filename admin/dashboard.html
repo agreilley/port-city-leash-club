@@ -4635,7 +4635,9 @@ window.openRequestItem = async (id) => {
     fields = [
       { label: 'Walker', value: item.walkerName || '–' },
       { label: 'Request Type', value: item.requestType === 'time_off' ? 'Time Off' : 'Schedule Change' },
+      ...(item.startDate ? [{ label: 'Dates', value: fmtTimeOffEntry({ start: item.startDate, end: item.endDate || item.startDate }) }] : []),
       { label: 'Details', value: item.message || '–' },
+      ...(item.timeOffDecision ? [{ label: 'Decision', value: item.timeOffDecision === 'approved' ? 'Approved' : 'Declined' }] : []),
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
       { label: 'Submitted', value: fmtDate(item.createdAt) },
     ];
@@ -5136,6 +5138,32 @@ window.openRequestItem = async (id) => {
     actionBtn.onclick = async () => {
       actionBtn.disabled = true; actionBtn.textContent = 'Resolving...';
       await updateDoc(doc(db, 'submissions', item.id), { status: 'resolved', read: true });
+      closeModal('requestModal');
+    };
+  } else if (item.type === 'walker_schedule_request' && item.status !== 'handled' && item.requestType === 'time_off' && item.startDate) {
+    // Dated time-off request (walker/dashboard.html): Approve writes the
+    // range into the walker's timeOff, then opens the walker so any
+    // assignments still on those days are right there to reassign.
+    actionBtn.textContent = 'Approve Time Off'; actionBtn.style.display = 'block';
+    actionBtn.onclick = async () => {
+      const walker = allWalkers.find(w => w.id === item.walkerId);
+      if (!walker) { alert("Couldn't find this walker's record — add the time off from their Walkers tab entry instead."); return; }
+      actionBtn.disabled = true; actionBtn.textContent = 'Approving...';
+      try {
+        const entry = { start: item.startDate, end: item.endDate || item.startDate, note: item.message || '', addedAt: new Date().toISOString(), requestId: item.id };
+        await saveWalkerTimeOffList(walker.id, walker.uid, [...walkerTimeOff(walker), entry]);
+        await updateDoc(doc(db, 'submissions', item.id), { status: 'handled', read: true, timeOffDecision: 'approved' });
+        closeModal('requestModal');
+        openWalkerDetail(walker.id);
+      } catch (e) {
+        alert(`Couldn't approve: ${e.message}`);
+        actionBtn.disabled = false; actionBtn.textContent = 'Approve Time Off';
+      }
+    };
+    declineBtn.style.display = 'block';
+    declineBtn.onclick = async () => {
+      if (!confirm('Decline this time-off request? The walker is not notified automatically.')) return;
+      await updateDoc(doc(db, 'submissions', item.id), { status: 'handled', read: true, timeOffDecision: 'declined' });
       closeModal('requestModal');
     };
   } else if (item.type === 'walker_schedule_request' && item.status !== 'handled') {

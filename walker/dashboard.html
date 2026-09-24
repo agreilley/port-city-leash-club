@@ -303,14 +303,24 @@
       <div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:20px 24px;">
         <div style="margin-bottom:14px;">
           <label style="font-size:12px;font-weight:500;color:var(--navy);display:block;margin-bottom:6px;">What do you need?</label>
-          <select id="scheduleRequestType" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:14px;">
+          <select id="scheduleRequestType" onchange="toggleTimeOffDates()" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:14px;">
             <option value="time_off">Time off (specific dates)</option>
             <option value="schedule_change">Schedule change (ongoing availability)</option>
           </select>
         </div>
+        <div id="timeOffDates" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+          <div>
+            <label style="font-size:12px;font-weight:500;color:var(--navy);display:block;margin-bottom:6px;">First day off</label>
+            <input type="date" id="timeOffStart" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:14px;box-sizing:border-box;">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:500;color:var(--navy);display:block;margin-bottom:6px;">Last day off</label>
+            <input type="date" id="timeOffEnd" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:14px;box-sizing:border-box;">
+          </div>
+        </div>
         <div style="margin-bottom:14px;">
-          <label style="font-size:12px;font-weight:500;color:var(--navy);display:block;margin-bottom:6px;">Details</label>
-          <textarea id="scheduleRequestDetails" rows="3" placeholder="e.g. 'I need July 20–22 off' or 'Starting August, I can't do mornings on Wednesdays'" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;"></textarea>
+          <label style="font-size:12px;font-weight:500;color:var(--navy);display:block;margin-bottom:6px;">Details <span id="detailsOptional" style="font-weight:400;color:var(--text-light);">(optional)</span></label>
+          <textarea id="scheduleRequestDetails" rows="3" placeholder="e.g. 'Family trip' or 'Starting August, I can't do mornings on Wednesdays'" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;"></textarea>
         </div>
         <div id="scheduleRequestError" style="color:#C17B6F;font-size:13px;margin-bottom:8px;display:none;"></div>
         <button id="scheduleRequestBtn" onclick="submitScheduleRequest()" style="width:100%;background:var(--navy);color:white;border:none;border-radius:4px;padding:12px;font-size:14px;font-weight:500;font-family:inherit;cursor:pointer;">Submit Request</button>
@@ -1593,7 +1603,20 @@ function renderSchedule() {
   const overnightAvail = walkerDoc.overnightAvailability || null;
   const isOvernightDay = (day) => overnightAvail ? !!overnightAvail[day] : !!walkerDoc.availableForOvernights;
 
+  // Approved time off (walkers/{id}.timeOff, admin-written) — upcoming only.
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const fmtKey = k => new Date(`${k}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const timeOff = (Array.isArray(walkerDoc.timeOff) ? walkerDoc.timeOff : [])
+    .filter(t => t && t.start && t.end && t.end >= todayKey)
+    .sort((a, b) => a.start.localeCompare(b.start));
+  const timeOffHTML = timeOff.length ? `<div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:14px 18px;margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);margin-bottom:6px;">Upcoming Time Off</div>
+      ${timeOff.map(t => `<div style="font-size:14px;color:var(--navy);padding:3px 0;">${escapeHtml(t.start === t.end ? fmtKey(t.start) : `${fmtKey(t.start)} – ${fmtKey(t.end)}`)}${t.note ? ` <span style="color:var(--text-light);">· ${escapeHtml(t.note)}</span>` : ''}</div>`).join('')}
+    </div>` : '';
+
   container.innerHTML = `
+    ${timeOffHTML}
     ${zones.length ? `<div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:14px 18px;margin-bottom:16px;">
       <div style="font-size:12px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);margin-bottom:4px;">Assigned Zones</div>
       <div style="font-size:14px;color:var(--navy);font-weight:500;">${zones.map(z => escapeHtml(z)).join(', ')}</div>
@@ -1615,16 +1638,29 @@ function renderSchedule() {
     </div>`;
 }
 
+// Time off is whole days: a first/last date pair (last defaults to first).
+// Schedule changes stay free text.
+window.toggleTimeOffDates = () => {
+  const isTimeOff = document.getElementById('scheduleRequestType').value === 'time_off';
+  document.getElementById('timeOffDates').style.display = isTimeOff ? 'grid' : 'none';
+  document.getElementById('detailsOptional').style.display = isTimeOff ? 'inline' : 'none';
+};
+
 window.submitScheduleRequest = async () => {
   const type = document.getElementById('scheduleRequestType').value;
   const details = document.getElementById('scheduleRequestDetails').value.trim();
+  const isTimeOff = type === 'time_off';
+  const startDate = isTimeOff ? document.getElementById('timeOffStart').value : '';
+  const endDate = isTimeOff ? (document.getElementById('timeOffEnd').value || startDate) : '';
   const errEl = document.getElementById('scheduleRequestError');
   const btn = document.getElementById('scheduleRequestBtn');
   const successEl = document.getElementById('scheduleRequestSuccess');
   errEl.style.display = 'none';
   successEl.style.display = 'none';
 
-  if (!details) { errEl.textContent = 'Please describe what you need.'; errEl.style.display = 'block'; return; }
+  if (isTimeOff && !startDate) { errEl.textContent = 'Please pick your first day off.'; errEl.style.display = 'block'; return; }
+  if (isTimeOff && endDate < startDate) { errEl.textContent = 'Your last day off is before your first day off.'; errEl.style.display = 'block'; return; }
+  if (!isTimeOff && !details) { errEl.textContent = 'Please describe what you need.'; errEl.style.display = 'block'; return; }
 
   btn.disabled = true; btn.textContent = 'Submitting...';
   try {
@@ -1634,11 +1670,14 @@ window.submitScheduleRequest = async () => {
       walkerId: walkerDoc?.id || null,
       walkerName: walkerDoc?.name || null,
       message: details,
+      ...(isTimeOff ? { startDate, endDate } : {}),
       status: 'pending',
       read: false,
       createdAt: serverTimestamp(),
     });
     document.getElementById('scheduleRequestDetails').value = '';
+    document.getElementById('timeOffStart').value = '';
+    document.getElementById('timeOffEnd').value = '';
     successEl.style.display = 'block';
   } catch (e) {
     errEl.textContent = e.message;
