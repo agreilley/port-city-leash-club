@@ -1481,8 +1481,18 @@ function populateTimeSlotSelects() {
   ).join('');
   const wmSlot = document.getElementById('wm-slot');
   if (wmSlot) wmSlot.innerHTML = optionsHTML;
+  populateAddMemberTimeSlotSelect();
+}
+// Separate from the above because restoreAddMemberModal() swaps the whole
+// modal body back in from a snapshot taken ~100ms after load — before auth
+// resolves and initDashboard() runs — so the restored #am-timeslot is always
+// empty and has to be refilled after every restore.
+function populateAddMemberTimeSlotSelect() {
   const amTimeslot = document.getElementById('am-timeslot');
-  if (amTimeslot) amTimeslot.innerHTML = `<option value="">Not set</option>${optionsHTML}`;
+  if (!amTimeslot) return;
+  amTimeslot.innerHTML = '<option value="">Not set</option>' + WALK_TIME_SLOTS.map(key =>
+    `<option value="${key}">${WALK_TIME_SLOT_LABELS[key]} (${WALK_TIME_SLOT_RANGES[key]})</option>`
+  ).join('');
 }
 
 function initDashboard() {
@@ -6184,6 +6194,7 @@ window.restoreAddMemberModal = () => {
   } else {
     box.innerHTML = _addMemberModalOriginalHTML;
   }
+  populateAddMemberTimeSlotSelect();
 };
 // Capture on load
 setTimeout(() => { _addMemberModalOriginalHTML = document.querySelector('#addMemberModal .modal-box')?.innerHTML; }, 100);
