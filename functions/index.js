@@ -4769,7 +4769,11 @@ exports.sendOnboardingEmail = onCall({
 // queue will need a matching update when that lands; not done here.
 // ─────────────────────────────────────────────────────────────────────────
 exports.completeMeetGreetAndCreateAccount = onCall({
-  secrets: [RESEND_API_KEY],
+  // STRIPE_SECRET_KEY: this calls finalizeSubmissionIfReady, which can reach
+  // Stripe. Unreachable today (a brand-new account never has a card, so
+  // finalize stops at no_card_on_file), bound anyway so it can't become the
+  // same silent missing-secret failure confirmCardOnFile had.
+  secrets: [RESEND_API_KEY, STRIPE_SECRET_KEY],
 }, async (request) => {
   await assertIsAdmin(request.auth);
   const { submissionId, meetGreetCompleted, overrides } = request.data || {};
