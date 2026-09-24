@@ -4614,20 +4614,6 @@ window.openRequestItem = async (id) => {
       } else if (path || legacyUrl) {
         extraHTML = `<hr class="modal-divider"><div style="font-size:13px;color:var(--rust);">A resume reference was submitted but isn't a valid Storage path, so it isn't shown. Inspect the submission in Firestore before opening anything.</div>`;
       }
-    } else if (item.type === 'contact') {
-      // Opens a reply in the admin's own mail app, pre-addressed and quoting
-      // the message. The address comes from an unauthenticated public form,
-      // so it's shape-checked before it goes anywhere near an href.
-      const replyEmail = (item.email || '').trim();
-      if (/^[^\s@<>",;:()\[\]\\]+@[^\s@<>",;:()\[\]\\]+\.[^\s@<>",;:()\[\]\\]+$/.test(replyEmail)) {
-        const subject = `Re: ${item.topic || 'Your message to Port City Leash Club'}`;
-        const quoted = (item.message || '').split('\n').map(l => `> ${l}`).join('\n');
-        const body = `Hi ${(item.name || '').trim().split(/\s+/)[0] || 'there'},\n\n\n\n${quoted}`;
-        const href = `mailto:${encodeURIComponent(replyEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-        extraHTML = `<hr class="modal-divider"><a class="btn-secondary" href="${escapeHtml(href)}" style="display:inline-block;text-decoration:none;">Reply by email</a>`;
-      } else {
-        extraHTML = `<hr class="modal-divider"><div style="font-size:13px;color:var(--rust);">The email address on this message doesn't look valid, so there's no way to reply by email.</div>`;
-      }
     }
     document.getElementById('requestModalContent').innerHTML = `<div class="form-grid">${fieldHTML}</div>${availabilityGridHTML}${comfortGridHTML}${extraHTML}`;
 
