@@ -3306,7 +3306,11 @@ exports.sendMonthlyScheduleReminders = onSchedule({
       template: 'monthly-schedule-reminder',
       data: {
         firstName: (member.name || '').trim().split(/\s+/)[0] || 'there',
-        dogNames: (Array.isArray(member.dogs) ? member.dogs : []).map((d) => d && d.name).filter(Boolean),
+        // Every dog on dogs[]; falls back to the legacy single dogName field
+        // (same fallback as admin/dashboard.html's getMemberDogs).
+        dogNames: (Array.isArray(member.dogs) && member.dogs.length
+          ? member.dogs.map((d) => d && d.name)
+          : [member.dogName]).filter(Boolean),
         monthLabel,
         billingDateLabel: `${monthLabel} 1`,
         walks,
