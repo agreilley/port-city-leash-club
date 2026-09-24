@@ -228,6 +228,22 @@ service cloud.firestore {
           && request.resource.data.message is string && request.resource.data.message.size() <= 10000;
       }
 
+      // Contact fields on the two anonymous intake forms (membership-request
+      // and service-request) must be non-blank — a submission with no way to
+      // reach the customer is an unfollowable lead (happened 2026-09-23 from
+      // a paid-ad click). Email is shape-checked only; the client does the
+      // friendlier validation (10-digit phone etc.), this is the backstop.
+      function validOwnerContact() {
+        return request.resource.data.ownerName is string
+          && request.resource.data.ownerName.trim().size() > 0 && request.resource.data.ownerName.size() <= 200
+          && request.resource.data.email is string && request.resource.data.email.size() <= 320
+          && request.resource.data.email.matches('[^@ ]+@[^@ ]+[.][^@ ]+')
+          && request.resource.data.phone is string
+          && request.resource.data.phone.trim().size() > 0 && request.resource.data.phone.size() <= 50
+          && request.resource.data.address is string
+          && request.resource.data.address.trim().size() > 0 && request.resource.data.address.size() <= 1000;
+      }
+
       // Source: membership-request.html:551 (membershipForm submit).
       // startDate is localDateToTimestamp() → timestamp OR null (empty input),
       // so it must be null-tolerant. dogs is collectDogs() → list of maps with
@@ -256,9 +272,7 @@ service cloud.firestore {
             ['type', 'ownerName', 'email', 'phone', 'address', 'accessNotes',
              'dogs', 'dogName', 'startDate', 'timeWindow', 'days', 'meetGreetDateTime',
              'referredByCode', 'attribution', 'read', 'createdAt'])
-          && request.resource.data.ownerName is string && request.resource.data.ownerName.size() <= 200
-          && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
-          && request.resource.data.address is string && request.resource.data.address.size() <= 1000
+          && validOwnerContact()
           && (!('accessNotes' in request.resource.data)
               || (request.resource.data.accessNotes is string && request.resource.data.accessNotes.size() <= 5000))
           && request.resource.data.timeWindow is string && request.resource.data.timeWindow.size() <= 100
@@ -299,9 +313,7 @@ service cloud.firestore {
             ['type', 'service', 'startDate', 'endDate', 'timeSlot', 'notes', 'visitsPerDay', 'visitSchedule',
              'extraPet', 'medication', 'dogs', 'ownerName', 'email', 'phone', 'address',
              'meetGreetDateTime', 'estimatedTotal', 'referredByCode', 'attribution', 'read', 'createdAt'])
-          && request.resource.data.ownerName is string && request.resource.data.ownerName.size() <= 200
-          && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
-          && request.resource.data.address is string && request.resource.data.address.size() <= 1000
+          && validOwnerContact()
           && request.resource.data.notes is string && request.resource.data.notes.size() <= 10000
           // 'service' is a reserved word in the rules language (`service
           // cloud.firestore`), so this field MUST be read via bracket access —

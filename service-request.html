@@ -405,10 +405,10 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     <div class="form-section">
       <h2 class="form-section-title">Owner Information</h2>
       <div class="form-grid">
-        <div class="field"><label for="name">Name</label><input id="name" type="text"></div>
-        <div class="field"><label for="email">Email</label><input id="email" type="email"></div>
-        <div class="field"><label for="phone">Phone</label><input id="phone" type="tel"></div>
-        <div class="field"><label for="address">Home Address</label><input id="address" type="text"></div>
+        <div class="field"><label for="name">Name</label><input id="name" type="text"><span class="date-error" id="nameError">Please enter your name.</span></div>
+        <div class="field"><label for="email">Email</label><input id="email" type="email"><span class="date-error" id="emailError">Please enter a valid email so we can reach you.</span></div>
+        <div class="field"><label for="phone">Phone</label><input id="phone" type="tel"><span class="date-error" id="phoneError">Please enter a phone number we can call or text.</span></div>
+        <div class="field"><label for="address">Home Address</label><input id="address" type="text"><span class="date-error" id="addressError">Please enter your home address.</span></div>
       </div>
       <div class="field" style="max-width:320px;margin-top:18px;"><label for="referralCode">Referral code <span style="font-weight:400;">(optional)</span></label><input id="referralCode" type="text"><p id="referralCodeStatus" style="font-size:12px;color:var(--text-light);margin-top:6px;">Applies to your first charge, up to half the charge amount.</p></div>
     </div>
@@ -1022,6 +1022,14 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
   updateServiceFields();
 
+  // Clear a contact field's inline error as soon as it's filled in.
+  ['name', 'email', 'phone', 'address'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', function () {
+      const err = document.getElementById(`${id}Error`);
+      if (err && this.value.trim()) err.style.display = 'none';
+    });
+  });
+
   document.getElementById('serviceForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = event.target;
@@ -1051,6 +1059,30 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     }
     dateError.style.display = 'none';
 
+    // Contact fields are required — a request with no name, email, phone
+    // or address is a lead nobody can follow up on (this happened with a
+    // paid-ad booking 2026-09-23). Same inline-error pattern as the pet
+    // checks below; firestore.rules enforces non-blank as the backstop.
+    const contactChecks = [
+      ['name', v => v.length > 0],
+      ['email', v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)],
+      ['phone', v => v.replace(/\D/g, '').length >= 10],
+      ['address', v => v.length > 0],
+    ];
+    let firstInvalidContactField = null;
+    for (const [id, isValid] of contactChecks) {
+      const input = document.getElementById(id);
+      const err = document.getElementById(`${id}Error`);
+      const ok = isValid(input?.value.trim() || '');
+      if (err) err.style.display = ok ? 'none' : 'block';
+      if (!ok && !firstInvalidContactField) firstInvalidContactField = input;
+    }
+    if (firstInvalidContactField) {
+      firstInvalidContactField.focus();
+      firstInvalidContactField.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+
     // Pet name and breed are required for every pet card present — same
     // block-and-show-inline-error pattern as the date checks above. A
     // missing name or breed means the sitter/walker can't be briefed on
@@ -1078,8 +1110,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
     btn.textContent = 'Sending...'; btn.disabled = true;
     try {
-      const ownerName = document.getElementById('name')?.value || '';
-      const email     = document.getElementById('email')?.value || '';
+      const ownerName = document.getElementById('name')?.value.trim() || '';
+      const email     = document.getElementById('email')?.value.trim() || '';
 
       // Referral code is optional and never blocks submission — an invalid
       // or unrecognized code just means referredByCode stays null. The
@@ -1142,8 +1174,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         dogs: collectDogs(),
         ownerName,
         email,
-        phone: document.getElementById('phone')?.value || '',
-        address: document.getElementById('address')?.value || '',
+        phone: document.getElementById('phone')?.value.trim() || '',
+        address: document.getElementById('address')?.value.trim() || '',
         meetGreetDateTime: document.getElementById('meetGreetDateTime')?.value || '',
         // Deliberately the PRE-discount total — the referral credit shown in
         // the sidebar is a preview only. The server applies the real
