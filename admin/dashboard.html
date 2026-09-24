@@ -2209,9 +2209,15 @@ function bookingDay(val) {
 // dashed not-yet-scheduled chips, never anything actually scheduled.
 //
 // SAFE TO DELETE once the September demo data is cleared out — remove this,
-// TENTATIVE_CHIPS_ALWAYS_DOGS, tentativeShowsBeforeCutoff, and the two
+// TENTATIVE_CUTOFF_CREATED_BEFORE, TENTATIVE_CHIPS_ALWAYS_DOGS, tentativeShowsBeforeCutoff, and the two
 // `< TENTATIVE_CHIPS_FROM` guards in renderCalendarDays.
 const TENTATIVE_CHIPS_FROM = new Date(2026, 9, 1); // 1 Oct 2026, local midnight
+
+// Only requests CREATED before the cutoff went in can be demo noise — the
+// cutoff originally hid every September day regardless, which silently hid a
+// real paid-ad walk booked 2026-09-23 for 2026-09-25. Anything submitted on or
+// after this instant is real by definition and always shows.
+const TENTATIVE_CUTOFF_CREATED_BEFORE = new Date(2026, 8, 23); // 23 Sep 2026, local midnight
 
 // Real clients whose bookings sit among the September demo data and must stay
 // visible — the cutoff above is a blunt date filter and would hide them too.
@@ -2230,6 +2236,8 @@ const TENTATIVE_CHIPS_ALWAYS_DOGS = ['archie', 'bella'];
 // would be exactly the silent gap tentative chips were built to prevent. To
 // restrict it to walks only, add a type/service test here.
 function tentativeShowsBeforeCutoff(r) {
+  const created = r.createdAt?.toDate ? r.createdAt.toDate() : r.createdAt ? new Date(r.createdAt) : null;
+  if (created && !isNaN(created) && created >= TENTATIVE_CUTOFF_CREATED_BEFORE) return true;
   const member = r.memberId ? allMembers.find(m => m.id === (r.memberId || '').trim()) : null;
   const names = [
     ...(Array.isArray(r.dogs) ? r.dogs.map(d => d && d.name) : []),
