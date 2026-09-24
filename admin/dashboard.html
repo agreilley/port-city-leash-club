@@ -2389,6 +2389,7 @@ function renderCalendarDays() {
   // membership that should have begun and hasn't, which is worth seeing on
   // the calendar rather than hiding.
   const MEMBERSHIP_TENTATIVE_DAYS = 28;
+  const projectedMap = {}; // day → [member docs] — converted, schedule confirmed, awaiting card
   const WEEKDAY_NUMBERS = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
   allRequests.forEach(r => {
     if (r.type !== 'membership_request') return;
@@ -2406,6 +2407,33 @@ function renderCalendarDays() {
     if (mMember?.initialWalksGenerated) return;
     const start = bookingDay(r.startDate);
     if (!start) return;
+    // Converted but no card yet: the admin has already confirmed the schedule
+    // in the Add Member modal, so draw it as confirmed (projectedMap, solid
+    // chips) from the MEMBER doc's days/slot/walker — not the request's, which
+    // the admin may have changed at conversion. Real walk docs still don't
+    // exist until the card is saved and finalize runs; initialWalksGenerated
+    // (checked above) is what hands these days over to the real walk chips.
+    const memberDays = Array.isArray(mMember?.defaultWalkDays) ? mMember.defaultWalkDays : [];
+    if (mMember && mMember.tier === 'Member' && memberDays.length) {
+      const projDays = new Set(memberDays.map(d => WEEKDAY_NUMBERS[String(d).toLowerCase()]).filter(n => n !== undefined));
+      const pEnd = new Date(start);
+      pEnd.setDate(pEnd.getDate() + MEMBERSHIP_TENTATIVE_DAYS - 1);
+      const pExempt = tentativeShowsBeforeCutoff(r);
+      for (let d = new Date(start); d <= pEnd; d.setDate(d.getDate() + 1)) {
+        if (!projDays.has(d.getDay())) continue;
+        if (d < TENTATIVE_CHIPS_FROM && !pExempt) continue; // demo-data cutoff — see the constant
+        if (d.getFullYear() !== calendarYear || d.getMonth() !== calendarMonth) continue;
+        // A real walk already on this day (e.g. finalize generated some walks
+        // but failed before stamping initialWalksGenerated) wins — never both.
+        const hasRealWalk = allWalks.some(w => {
+          if ((w.memberId || '').trim() !== mMember.id) return false;
+          const wd = w.date?.toDate?.() || new Date(w.date);
+          return wd.getFullYear() === d.getFullYear() && wd.getMonth() === d.getMonth() && wd.getDate() === d.getDate();
+        });
+        if (!hasRealWalk) (projectedMap[d.getDate()] ||= []).push(mMember);
+      }
+      return;
+    }
     // membership-request.html stores `days` as a comma-joined STRING
     // ("Monday, Wednesday, Friday"), not the array a confirmed member's
     // walkDays holds — hence the split here rather than reusing that shape.
@@ -2513,7 +2541,19 @@ function renderCalendarDays() {
         : `${tName} \u00b7 ${serviceName} \u00b7 Not scheduled yet \u2014 awaiting meet & greet`);
       return `<div class="walk-chip tentative ${variant}" onclick="openRequestItem('${r.id}')" title="${title}">${label}</div>`;
     }).join('');
-    html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}${tentativeChips}</div>`;
+    // Confirmed-but-not-yet-generated membership days (see projectedMap).
+    // Styled exactly like a real walk chip, since the schedule is confirmed;
+    // clicking opens the member, because there's no walk doc to open yet.
+    const projectedChips = (projectedMap[d] || []).map(m => {
+      const wkId = (m.assignedWalkerId || '').trim();
+      const walker = wkId ? allWalkers.find(k => k.id === wkId) : null;
+      const cls = !walker ? 'unassigned' : (m.defaultTimeSlot || '');
+      const dogName = getMemberDogs(m)[0]?.name || m.name?.split(' ')[0] || 'Walk';
+      const label = escapeHtml(walker ? `${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`);
+      const title = escapeHtml(`${dogName} · Membership confirmed · walk is created once the card is saved`);
+      return `<div class="walk-chip ${cls}" onclick="openMemberDetail('${m.id}')" title="${title}">${label}</div>`;
+    }).join('');
+    html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}${projectedChips}${tentativeChips}</div>`;
   }
 
   // Next month padding
