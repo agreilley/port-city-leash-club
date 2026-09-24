@@ -1180,7 +1180,7 @@ import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inM
 import {
   initializeFirestore, memoryLocalCache, collection, collectionGroup, query, orderBy, onSnapshot,
   doc, getDoc, getDocs, addDoc, updateDoc, setDoc, where, limit, startAfter,
-  serverTimestamp, Timestamp, writeBatch, runTransaction
+  serverTimestamp, Timestamp, writeBatch, runTransaction, arrayUnion, arrayRemove
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { getStorage, ref as storageRef, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
@@ -7539,7 +7539,7 @@ document.querySelectorAll('.modal-overlay').forEach(m => m.addEventListener('cli
 let avYear = new Date().getFullYear();
 let avMonth = new Date().getMonth();
 let avData = {};       // Firestore: { "2026-08-15": { slots: [...], bookings: [...] } }
-let avBookings = {};   // { "2026-08-15": ["5:00pm", "6:30pm"] } — booked slots from submissions
+let avBookings = {};   // { "2026-08-15": [{ id, slot, name, kind }] } — active meet & greets from submissions
 let avSelectedDate = null;
 
 // Recurring weekly schedule (30-min increments)
@@ -7563,8 +7563,22 @@ function slotToMins(slot) {
   return h * 60 + m;
 }
 
-// Get slots for a date, removing booked ones + 30-min buffer before and after
-function getAvailableSlots(dateStr) {
+// Every booked slot on a date, de-duplicated. A booking lives in TWO places:
+// the submission's meetGreetDateTime, and onNewSubmission's mirror into
+// meet_greet_availability/{date}.bookings (the public calendars can't read
+// submissions, so the mirror is their only double-booking guard). Counting
+// both used to show every meet & greet twice. Mirror-only entries (submission
+// declined, deleted, or its booking cleared elsewhere) still count as booked,
+// since they still block the public calendar until released.
+function getBookedSlots(dateStr) {
+  const fromSubs = (avBookings[dateStr] || []).map(b => b.slot);
+  return [...new Set([...fromSubs, ...(avData[dateStr]?.bookings || [])])];
+}
+
+// Get slots for a date, removing booked ones + 30-min buffer before and after.
+// excludeSubmissionId leaves that submission's own booking out, so a
+// reschedule can move a meet & greet to a slot next to where it is now.
+function getAvailableSlots(dateStr, excludeSubmissionId = null) {
   const date = new Date(dateStr + 'T00:00:00');
   const dow = date.getDay();
   const base = WEEKLY_SCHEDULE[dow] || [];
@@ -7574,7 +7588,12 @@ function getAvailableSlots(dateStr) {
   // avClearOverride) must not read as "no availability" and black out the day.
   const override = avData[dateStr];
   const allSlots = (override && Array.isArray(override.slots)) ? override.slots : base;
-  const booked = (avData[dateStr]?.bookings || []).concat(avBookings[dateStr] || []);
+  let booked = getBookedSlots(dateStr);
+  if (excludeSubmissionId) {
+    const own = (avBookings[dateStr] || []).find(b => b.id === excludeSubmissionId);
+    const othersHoldIt = own && (avBookings[dateStr] || []).some(b => b.id !== own.id && b.slot === own.slot);
+    if (own && !othersHoldIt) booked = booked.filter(s => s !== own.slot);
+  }
   if (!booked.length) return allSlots;
 
   const bookedMins = booked.map(slotToMins);
@@ -7600,12 +7619,22 @@ function initAvailability() {
     avBookings = {};
     snap.forEach(d => {
       const data = d.data();
-      if (data.meetGreetDateTime) {
-        const [dateStr, ...rest] = data.meetGreetDateTime.split(' ');
-        const slot = rest.join(' ');
-        if (!avBookings[dateStr]) avBookings[dateStr] = [];
-        avBookings[dateStr].push(slot);
-      }
+      if (!data.meetGreetDateTime) return;
+      // Same closed statuses the admin calendar skips — a declined request's
+      // meet & greet isn't happening. Its mirror entry (if any) still shows
+      // as booked with a Release button, since it still blocks the public calendar.
+      if (['declined', 'cancelled'].includes(data.status)) return;
+      const [dateStr, ...rest] = data.meetGreetDateTime.split(' ');
+      const slot = rest.join(' ');
+      if (!avBookings[dateStr]) avBookings[dateStr] = [];
+      avBookings[dateStr].push({
+        id: d.id,
+        slot,
+        name: data.ownerName || data.name || 'Unknown',
+        kind: data.type === 'membership_request'
+          ? 'Membership'
+          : (SERVICE_PRICES[resolveServiceKey(data.service)]?.name || data.service || 'Request'),
+      });
     });
     renderAvCalendar();
     renderAvUpcoming();
@@ -7633,7 +7662,7 @@ function renderAvCalendar() {
     const dow = dateObj.getDay();
     const hasBase = (WEEKLY_SCHEDULE[dow] || []).length > 0;
     const available = getAvailableSlots(dateStr);
-    const booked = (avData[dateStr]?.bookings || []).concat(avBookings[dateStr] || []);
+    const booked = getBookedSlots(dateStr);
     const isSelected = avSelectedDate === dateStr;
     const isOverride = !!avData[dateStr]?.slots;
 
@@ -7664,7 +7693,7 @@ function avSelectDate(dateStr) {
   const baseSlots = WEEKLY_SCHEDULE[dow] || [];
   const override = avData[dateStr]?.slots;
   const allSlots = override || baseSlots;
-  const booked = (avData[dateStr]?.bookings || []).concat(avBookings[dateStr] || []);
+  const booked = getBookedSlots(dateStr);
   const available = getAvailableSlots(dateStr);
   const editor = document.getElementById('avSlotEditor');
 
@@ -7675,16 +7704,40 @@ function avSelectDate(dateStr) {
       <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:var(--sand);border:1px solid rgba(0,0,0,0.15);border-radius:2px;display:inline-block;"></span> Buffered out</span>
     </div>`;
 
-  const slotHTML = allSlots.map(slot => {
-    const isBooked = booked.includes(slot);
-    const isAvailable = available.includes(slot);
-    const isBuffered = !isBooked && !isAvailable;
-    let bg = isBooked ? '#FEE2E2' : isBuffered ? 'var(--sand)' : 'white';
-    let border = isBooked ? '#991B1B' : isBuffered ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.1)';
-    let label2 = isBooked ? ' 📅 Booked' : isBuffered ? ' ⏱ Buffer' : '';
-    return `<div style="padding:8px 12px;margin-bottom:6px;background:${bg};border:1px solid ${border};border-radius:5px;font-size:13px;display:flex;justify-content:space-between;align-items:center;">
+  const subsBySlot = {};
+  (avBookings[dateStr] || []).forEach(b => { (subsBySlot[b.slot] = subsBySlot[b.slot] || []).push(b); });
+  const bookingRow = (slot) => {
+    const subs = subsBySlot[slot] || [];
+    if (!subs.length) {
+      return `<div style="padding:8px 12px;margin-bottom:6px;background:#FEE2E2;border:1px solid #991B1B;border-radius:5px;font-size:13px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <span>${escapeHtml(slot)} <span style="font-size:11px;color:#991B1B;">📅 Booked · no active request</span></span>
+          <button class="btn-sm" onclick="avReleaseSlot('${dateStr}', this.dataset.slot)" data-slot="${escapeHtml(slot)}">Release</button>
+        </div>
+      </div>`;
+    }
+    return subs.map(b => `<div style="padding:8px 12px;margin-bottom:6px;background:#FEE2E2;border:1px solid #991B1B;border-radius:5px;font-size:13px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span>${escapeHtml(slot)} · <a href="#" onclick="event.preventDefault(); openRequestItem('${b.id}')" title="View request details" style="font-weight:500;color:var(--navy);text-decoration:underline;">${escapeHtml(b.name)}</a>
+          <span style="font-size:11px;color:#991B1B;">· ${escapeHtml(b.kind)}</span></span>
+        <span style="display:flex;gap:6px;">
+          <button class="btn-sm" onclick="avStartReschedule('${b.id}')">Reschedule</button>
+          <button class="btn-sm" onclick="avCancelMeetGreet('${b.id}')">Cancel</button>
+        </span>
+      </div>
+      <div id="avResched-${b.id}"></div>
+    </div>`).join('');
+  };
+
+  // Booked slots outside the day's schedule (e.g. booked before an override
+  // removed that time) would otherwise be invisible and uncancellable.
+  const offSchedule = booked.filter(s => !allSlots.includes(s));
+  const slotHTML = [...allSlots, ...offSchedule].sort((a, b) => slotToMins(a) - slotToMins(b)).map(slot => {
+    if (booked.includes(slot)) return bookingRow(slot);
+    const isBuffered = !available.includes(slot);
+    return `<div style="padding:8px 12px;margin-bottom:6px;background:${isBuffered ? 'var(--sand)' : 'white'};border:1px solid rgba(0,0,0,0.1);border-radius:5px;font-size:13px;display:flex;justify-content:space-between;align-items:center;">
       <span>${slot}</span>
-      <span style="font-size:11px;color:${isBooked?'#991B1B':'rgba(0,0,0,0.35)'};">${label2}</span>
+      <span style="font-size:11px;color:rgba(0,0,0,0.35);">${isBuffered ? ' ⏱ Buffer' : ''}</span>
     </div>`;
   }).join('');
 
@@ -7735,6 +7788,105 @@ window.avClearOverride = async (dateStr) => {
   }
 };
 
+function avFindBooking(submissionId) {
+  for (const [dateStr, list] of Object.entries(avBookings)) {
+    const b = list.find(x => x.id === submissionId);
+    if (b) return { ...b, dateStr };
+  }
+  return null;
+}
+
+// Drops a slot from the public-calendar mirror, but only when no other
+// active submission still holds it (a double-booked slot keeps its guard).
+function avMirrorRelease(batch, dateStr, slot, exceptSubmissionId) {
+  const stillHeld = (avBookings[dateStr] || []).some(b => b.slot === slot && b.id !== exceptSubmissionId);
+  if (!stillHeld) batch.set(doc(db, 'meet_greet_availability', dateStr), { bookings: arrayRemove(slot) }, { merge: true });
+}
+
+function avFmt(dateStr, slot) {
+  const label = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  return `${label} at ${slot}`;
+}
+
+window.avCancelMeetGreet = async (submissionId) => {
+  const b = avFindBooking(submissionId);
+  if (!b) return;
+  if (!confirm(`Cancel ${b.name}'s meet & greet on ${avFmt(b.dateStr, b.slot)}?\n\nThe slot reopens on the public calendar. ${b.name} is NOT notified automatically.`)) return;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'submissions', submissionId), {
+      meetGreetDateTime: '',
+      meetGreetCanceledDateTime: `${b.dateStr} ${b.slot}`,
+      meetGreetCanceledAt: serverTimestamp(),
+    });
+    avMirrorRelease(batch, b.dateStr, b.slot, submissionId);
+    await batch.commit();
+  } catch (e) {
+    alert('Could not cancel the meet & greet: ' + e.message);
+  }
+};
+
+window.avReleaseSlot = async (dateStr, slot) => {
+  if (!confirm(`Release ${avFmt(dateStr, slot)}? No active request holds it, so this just reopens it on the public calendar.`)) return;
+  try {
+    await setDoc(doc(db, 'meet_greet_availability', dateStr), { bookings: arrayRemove(slot) }, { merge: true });
+  } catch (e) {
+    alert('Could not release the slot: ' + e.message);
+  }
+};
+
+window.avStartReschedule = (submissionId) => {
+  const b = avFindBooking(submissionId);
+  const host = document.getElementById(`avResched-${submissionId}`);
+  if (!b || !host) return;
+  const today = new Date();
+  const minDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  host.innerHTML = `<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(153,27,27,0.2);display:flex;flex-direction:column;gap:8px;">
+    <div style="display:flex;gap:6px;">
+      <input type="date" id="avReschedDate-${submissionId}" min="${minDate}" value="${b.dateStr}" onchange="avFillRescheduleSlots('${submissionId}')" style="flex:1;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:6px 8px;font-size:12px;font-family:'DM Sans',sans-serif;">
+      <select id="avReschedSlot-${submissionId}" style="flex:1;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:6px 8px;font-size:12px;font-family:'DM Sans',sans-serif;"></select>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn-primary" style="flex:1;padding:6px 10px;font-size:12px;" onclick="avSaveReschedule('${submissionId}')">Move meet & greet</button>
+      <button class="btn-secondary" style="padding:6px 10px;font-size:12px;" onclick="this.closest('[id^=avResched-]').innerHTML=''">Close</button>
+    </div>
+  </div>`;
+  avFillRescheduleSlots(submissionId);
+};
+
+window.avFillRescheduleSlots = (submissionId) => {
+  const dateStr = document.getElementById(`avReschedDate-${submissionId}`)?.value;
+  const select = document.getElementById(`avReschedSlot-${submissionId}`);
+  if (!select) return;
+  const b = avFindBooking(submissionId);
+  const slots = dateStr ? getAvailableSlots(dateStr, submissionId).filter(s => !(b && dateStr === b.dateStr && s === b.slot)) : [];
+  select.innerHTML = slots.length
+    ? slots.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('')
+    : '<option value="">No open slots</option>';
+};
+
+window.avSaveReschedule = async (submissionId) => {
+  const b = avFindBooking(submissionId);
+  const newDate = document.getElementById(`avReschedDate-${submissionId}`)?.value;
+  const newSlot = document.getElementById(`avReschedSlot-${submissionId}`)?.value;
+  if (!b || !newDate || !newSlot) { alert('Pick a date with an open slot.'); return; }
+  if (!confirm(`Move ${b.name}'s meet & greet from ${avFmt(b.dateStr, b.slot)} to ${avFmt(newDate, newSlot)}?\n\n${b.name} is NOT notified automatically.`)) return;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'submissions', submissionId), {
+      meetGreetDateTime: `${newDate} ${newSlot}`,
+      meetGreetPreviousDateTime: `${b.dateStr} ${b.slot}`,
+      meetGreetRescheduledAt: serverTimestamp(),
+    });
+    avMirrorRelease(batch, b.dateStr, b.slot, submissionId);
+    batch.set(doc(db, 'meet_greet_availability', newDate), { bookings: arrayUnion(newSlot) }, { merge: true });
+    await batch.commit();
+    if (newDate !== b.dateStr) avSelectDate(newDate);
+  } catch (e) {
+    alert('Could not reschedule the meet & greet: ' + e.message);
+  }
+};
+
 function renderAvUpcoming() {
   const container = document.getElementById('avUpcomingList');
   const today = new Date(); today.setHours(0,0,0,0);
@@ -7744,7 +7896,7 @@ function renderAvUpcoming() {
     const d = new Date(today); d.setDate(today.getDate() + i);
     const dateStr = d.toISOString().split('T')[0];
     const available = getAvailableSlots(dateStr);
-    const booked = (avData[dateStr]?.bookings || []).concat(avBookings[dateStr] || []);
+    const booked = getBookedSlots(dateStr);
     if (available.length || booked.length) upcoming.push({ dateStr, available: available.length, booked: booked.length });
   }
   if (!upcoming.length) { container.innerHTML = '<div style="padding:16px 20px;font-size:13px;color:var(--text-light);">No upcoming availability in the next 30 days.</div>'; return; }
