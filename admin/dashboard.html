@@ -7198,8 +7198,14 @@ window.openMemberDetail = async (id) => {
   // its raw doc id. Capped at 5 most recent so this never turns into a full
   // booking history browser — that's what Care History / the calendar are
   // for; this is just "resend the one they say they never got."
+  //
+  // Walks only when they carry a submissionId, i.e. a one-off booking that
+  // had its own confirmation email. Recurring membership walks
+  // (generateWalksForMember) and admin Add Walk walks have none and never
+  // got a per-walk email — resending walk-confirmed for one of those would
+  // send a member a stray "your walk is confirmed" for a single recurring date.
   const recentBookings = [
-    ...allWalks.filter(w => w.memberId === member.id && w.status !== 'cancelled').map(w => ({
+    ...allWalks.filter(w => w.memberId === member.id && w.status !== 'cancelled' && w.submissionId).map(w => ({
       recordType: 'walk', id: w.id,
       date: w.date?.toDate?.() || new Date(w.date),
       label: (w.extended ? 'Extended Walk' : 'Walk') + ' — ' + fmtDate(w.date),
