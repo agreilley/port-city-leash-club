@@ -6764,6 +6764,20 @@ window.openAddWalkerModal = (prefill, submissionId) => {
 // (openEditVetEmergency) — every other field here still has no save path;
 // corrections happen directly in Firestore for now. See POST_LAUNCH_TODO.md
 // for the broader gap (no edit path exists for core member fields at all).
+window.saveMemberWalker = async (memberId, sel) => {
+  const walkerId = sel.value || '';
+  sel.disabled = true;
+  try {
+    await updateDoc(doc(db, 'members', memberId), { assignedWalkerId: walkerId });
+  } catch (e) {
+    alert(`Couldn't save the walker: ${e.message}`);
+    const prev = allMembers.find(m => m.id === memberId)?.assignedWalkerId || '';
+    sel.value = prev;
+  } finally {
+    sel.disabled = false;
+  }
+};
+
 window.openMemberDetail = async (id) => {
   const member = allMembers.find(m => m.id === id);
   if (!member) return;
@@ -6801,6 +6815,15 @@ window.openMemberDetail = async (id) => {
   }
 
   const walker = allWalkers.find(w => w.id === member.assignedWalkerId);
+  // Editable here because nothing else sets it after conversion: Add Member
+  // writes it once, and generateWalksForMember copies it onto every walk it
+  // creates. A member converted without a walker, still waiting on their card,
+  // had no walks to assign one on and no way to set it at all.
+  const assignedWalkerHTML = `<select id="md-walker" onchange="saveMemberWalker('${member.id}', this)" style="font-size:13px;padding:4px 6px;">
+      <option value="">Unassigned</option>
+      ${allWalkers.map(w => `<option value="${w.id}" ${w.id === member.assignedWalkerId ? 'selected' : ''}>${escapeHtml(w.name)}</option>`).join('')}
+    </select>
+    <div style="font-size:11px;color:var(--text-light);margin-top:3px;">Used for walks created from now on. Walks already scheduled keep their own walker.</div>`;
 
   const fields = [
     { label: 'Name', value: member.name || '–' },
@@ -6818,7 +6841,7 @@ window.openMemberDetail = async (id) => {
     { label: 'Status', value: member.status ? member.status.charAt(0).toUpperCase() + member.status.slice(1) : '–' },
     { label: 'Walk Days', value: (member.defaultWalkDays || []).join(', ') || '–' },
     { label: 'Time Slot', value: WALK_TIME_SLOT_LABELS[member.defaultTimeSlot] || member.defaultTimeSlot || '–' },
-    { label: 'Assigned Walker', value: walker?.name || 'Unassigned' },
+    { label: 'Assigned Walker', value: '', html: assignedWalkerHTML },
     { label: 'Stripe Customer ID', value: billing.stripeCustomerId || '–' },
     { label: 'Card on File', value: '', html: cardOnFileHTML },
     { label: 'Stripe Subscription ID', value: billing.stripeSubscriptionId || '–' },
