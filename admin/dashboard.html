@@ -8271,6 +8271,92 @@ window.addEventListener('beforeunload', (e) => {
   if (mgNotesDirty || mgNotesSaving) { e.preventDefault(); e.returnValue = ''; }
 });
 
+// ── Admin-scheduled meet & greet ─────────────────────────────────────
+// For a request with no meet & greet at all. Unlike the public calendars,
+// admin can pick any half hour 8am–7:30pm (in or out of public hours); a slot
+// already booked is disabled, a slot inside another booking's 1-hour buffer
+// is flagged but allowed. Writes the same two things a public booking does:
+// submissions/{id}.meetGreetDateTime and the meet_greet_availability mirror.
+const MG_ADMIN_TIMES = (() => {
+  const out = [];
+  for (let m = 8 * 60; m <= 19 * 60 + 30; m += 30) {
+    const h = Math.floor(m / 60), mm = m % 60;
+    out.push(`${h % 12 || 12}:${String(mm).padStart(2, '0')}${h < 12 ? 'am' : 'pm'}`);
+  }
+  return out;
+})();
+
+function mgLocalToday() {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+}
+
+function renderRequestMgScheduler(item) {
+  // The slot data (avData/avBookings) is only loaded once the Availability
+  // tab has been initialised — do it now so booked slots are known.
+  if (!window._avInit) { window._avInit = true; initAvailability(); }
+  const host = document.getElementById('requestMgNotes');
+  host.innerHTML = `<div style="margin-top:16px;border:1px solid rgba(0,0,0,0.08);border-radius:6px;padding:10px 12px;background:var(--sand-light);">
+    <div style="font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);margin-bottom:8px;">No meet &amp; greet booked</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <input type="date" id="mgSchedDate" min="${mgLocalToday()}" value="${mgLocalToday()}" onchange="mgSchedFillTimes()" style="flex:1;min-width:140px;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:6px 8px;font-size:12px;font-family:'DM Sans',sans-serif;">
+      <select id="mgSchedTime" style="flex:1;min-width:160px;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:6px 8px;font-size:12px;font-family:'DM Sans',sans-serif;"></select>
+      <button class="btn-primary" style="padding:6px 12px;font-size:12px;" onclick="mgSchedSave('${item.id}')">Schedule meet &amp; greet</button>
+    </div>
+    <div style="font-size:11px;color:var(--text-light);margin-top:6px;">No email is sent — this only books it on the backend.</div>
+  </div>`;
+  host.style.display = 'block';
+  mgSchedFillTimes();
+}
+
+window.mgSchedFillTimes = () => {
+  const dateStr = document.getElementById('mgSchedDate')?.value;
+  const select = document.getElementById('mgSchedTime');
+  if (!select) return;
+  if (!dateStr) { select.innerHTML = '<option value="">Pick a date</option>'; return; }
+  const booked = getBookedSlots(dateStr);
+  const bookedMins = booked.map(slotToMins);
+  const publicOpen = getAvailableSlots(dateStr);
+  const prev = select.value;
+  select.innerHTML = '<option value="">Pick a time</option>' + MG_ADMIN_TIMES.map(t => {
+    const m = slotToMins(t);
+    let note = '', disabled = '';
+    if (booked.includes(t)) { note = ' — booked'; disabled = ' disabled'; }
+    else if (bookedMins.some(bm => Math.abs(m - bm) < 60)) note = ' — within an hour of another booking';
+    else if (!publicOpen.includes(t)) note = ' — outside public hours';
+    return `<option value="${t}"${disabled}${t === prev && !disabled ? ' selected' : ''}>${t}${note}</option>`;
+  }).join('');
+};
+
+window.mgSchedSave = async (submissionId) => {
+  const item = allRequests.find(r => r.id === submissionId);
+  const dateStr = document.getElementById('mgSchedDate')?.value;
+  const slot = document.getElementById('mgSchedTime')?.value;
+  if (!item || !dateStr || !slot) { alert('Pick a date and time.'); return; }
+  const name = item.ownerName || item.name || 'this request';
+  try {
+    // Fresh check against the mirror in case the listeners haven't caught up.
+    const avSnap = await getDoc(doc(db, 'meet_greet_availability', dateStr));
+    if ((avSnap.data()?.bookings || []).includes(slot)) {
+      alert(`${avFmt(dateStr, slot)} is already booked. Pick another time.`);
+      mgSchedFillTimes();
+      return;
+    }
+    if (!confirm(`Book ${name}'s meet & greet for ${avFmt(dateStr, slot)}?\n\nNo email is sent.`)) return;
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'submissions', submissionId), {
+      meetGreetDateTime: `${dateStr} ${slot}`,
+      meetGreetScheduledByAdminAt: serverTimestamp(),
+    });
+    batch.set(doc(db, 'meet_greet_availability', dateStr), { bookings: arrayUnion(slot) }, { merge: true });
+    await batch.commit();
+    item.meetGreetDateTime = `${dateStr} ${slot}`;
+    renderRequestMgNotes(item);
+  } catch (e) {
+    alert('Could not schedule the meet & greet: ' + e.message);
+  }
+};
+
 // Notes section in the request detail modal: a preview plus an open button,
 // so after the meet & greet the raw notes sit right next to the request while
 // cleaning them up into owner notes / the booking. Shown for any request that
@@ -8286,7 +8372,16 @@ async function renderRequestMgNotes(item) {
   } catch (e) { /* preview is best-effort */ }
   const hadMeetGreet = item.meetGreetDateTime || item.meetGreetCompletedAt
     || item.meetGreetPreviousDateTime || item.meetGreetCanceledDateTime;
-  if (!text && !hadMeetGreet) return;
+  if (!text && !hadMeetGreet) {
+    // No slot was ever picked (e.g. skipped on the membership form) — let
+    // admin book one directly. Editing a submission sends no email
+    // (onNewSubmission is create-only), so this is backend-only.
+    if (['membership_request', 'service_request'].includes(item.type)
+        && !['declined', 'cancelled'].includes(item.status)) {
+      renderRequestMgScheduler(item);
+    }
+    return;
+  }
   const preview = text.length > 400 ? text.slice(0, 400) + '…' : text;
   host.innerHTML = `<div style="margin-top:16px;border:1px solid rgba(0,0,0,0.08);border-radius:6px;padding:10px 12px;background:var(--sand-light);">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
