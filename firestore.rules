@@ -614,6 +614,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Admin-only scratchpad for notes taken live during a meet & greet,
+    // keyed by submission id (admin/dashboard.html mgNotesOpen). Separate
+    // from submissions/ on purpose: a member can read their own submission
+    // once it carries their memberId (see above), and these are raw notes.
+    match /meetGreetNotes/{submissionId} {
+      allow read, write: if isAdmin();
+    }
+
     // Admin-added radius zones layered on top of index.html's hardcoded
     // SIMPLE_ZIPS/RADIUS_ZONES (see acceptWaitlistArea, functions/index.js) —
     // the "accept their area" waitlist action writes here so a coverage

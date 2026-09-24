@@ -1121,6 +1121,8 @@
          openRequestItem alongside the other fixed elements here. -->
     <div id="requestStatusNote" style="display:none;font-size:12px;color:var(--text-mid);background:var(--sand-light);border-radius:6px;padding:8px 12px;margin-bottom:16px;"></div>
     <div id="requestModalContent"></div>
+    <!-- Meet & greet notes preview + open button, filled in openRequestItem. -->
+    <div id="requestMgNotes" style="display:none;"></div>
     <hr class="modal-divider">
     <!-- Membership requests only: converting starts real billing, so the
          meet & greet has to be confirmed first. Shown/hidden in openRequestItem. -->
@@ -1137,6 +1139,28 @@
       <button class="btn-secondary" onclick="closeModal('requestModal')">Close</button>
       <button class="btn-secondary" id="requestDeclineBtn" style="display:none;color:var(--rust);">Decline</button>
       <button class="btn-primary" id="requestActionBtn">Convert to Member</button>
+    </div>
+  </div>
+</div>
+
+<!-- MEET & GREET NOTES MODAL — admin-only scratchpad for notes taken
+     live during a meet & greet. Stored in meetGreetNotes/{submissionId}, NOT
+     on the submission itself: members can read their own submission once
+     it carries their memberId (firestore.rules), and these are raw notes.
+     Autosaves while typing; closing (×, overlay, Done) flushes any pending save. -->
+<div class="modal-overlay" id="mgNotesModal">
+  <div class="modal" style="max-width:720px;">
+    <button class="modal-close" onclick="closeModal('mgNotesModal')">×</button>
+    <div class="modal-title" id="mgNotesTitle" style="margin-bottom:4px;">Meet &amp; Greet Notes</div>
+    <div id="mgNotesSub" style="font-size:12px;color:var(--text-light);margin-bottom:14px;"></div>
+    <textarea id="mgNotesText" oninput="mgNotesOnInput()" placeholder="Type as you go — saves automatically. Only you can see these." style="width:100%;min-height:50vh;box-sizing:border-box;border:1px solid rgba(0,0,0,0.14);border-radius:6px;padding:12px;font-size:15px;line-height:1.5;font-family:'DM Sans',sans-serif;resize:vertical;"></textarea>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;">
+      <span id="mgNotesStatus" style="font-size:12px;color:var(--text-light);"></span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-secondary" onclick="mgNotesInsertPrompts()">Add prompts</button>
+        <button class="btn-secondary" onclick="mgNotesCopy(this)">Copy</button>
+        <button class="btn-primary" onclick="closeModal('mgNotesModal')">Done</button>
+      </div>
     </div>
   </div>
 </div>
@@ -4872,6 +4896,7 @@ window.openRequestItem = async (id) => {
     actionBtn.style.display = 'none';
   }
   document.getElementById('requestModal').classList.add('open');
+  renderRequestMgNotes(item);
 };
 
 // ── REQUEST REVIEW-AND-CHARGE UI ────────────────────────────────────────────
@@ -7523,6 +7548,7 @@ window.saveWalkerSchedule = async (walkerId, uid) => {
 
 window.closeModal = (id) => {
   document.getElementById(id).classList.remove('open');
+  if (id === 'mgNotesModal') mgNotesFlush();
   if (id === 'conversationModal' && convoUnsubscribeThread) {
     convoUnsubscribeThread();
     convoUnsubscribeThread = null;
@@ -7613,6 +7639,16 @@ function initAvailability() {
     renderAvCalendar();
     renderAvUpcoming();
     if (avSelectedDate) avSelectDate(avSelectedDate);
+  });
+  // Which bookings already have notes, so the Notes button can show it.
+  onSnapshot(collection(db, 'meetGreetNotes'), snap => {
+    const next = {};
+    snap.forEach(d => { if ((d.data().text || '').trim()) next[d.id] = true; });
+    // Autosave fires this on every save; only re-render when a booking's
+    // has-notes state actually flipped.
+    const changed = Object.keys(next).sort().join() !== Object.keys(mgNotesExist).sort().join();
+    mgNotesExist = next;
+    if (changed && avSelectedDate) avSelectDate(avSelectedDate);
   });
   // Watch submissions for meet & greet bookings
   onSnapshot(collection(db, 'submissions'), snap => {
@@ -7721,6 +7757,7 @@ function avSelectDate(dateStr) {
         <span>${escapeHtml(slot)} · <a href="#" onclick="event.preventDefault(); openRequestItem('${b.id}')" title="View request details" style="font-weight:500;color:var(--navy);text-decoration:underline;">${escapeHtml(b.name)}</a>
           <span style="font-size:11px;color:#991B1B;">· ${escapeHtml(b.kind)}</span></span>
         <span style="display:flex;gap:6px;">
+          <button class="btn-sm" onclick="mgNotesOpen('${b.id}')" title="Private notes for this meet & greet">${mgNotesExist[b.id] ? '📝 Notes' : 'Notes'}</button>
           <button class="btn-sm" onclick="avStartReschedule('${b.id}')">Reschedule</button>
           <button class="btn-sm" onclick="avCancelMeetGreet('${b.id}')">Cancel</button>
         </span>
@@ -7886,6 +7923,173 @@ window.avSaveReschedule = async (submissionId) => {
     alert('Could not reschedule the meet & greet: ' + e.message);
   }
 };
+
+// ── Meet & greet notes ────────────────────────────────────────────────
+// Admin-only scratchpad in meetGreetNotes/{submissionId} (see the modal's
+// comment for why it isn't a submission field). Autosaves ~1s after typing
+// stops. A localStorage copy is kept until the save is confirmed, so a flaky
+// connection at a client's house (or a closed tab) doesn't lose anything —
+// reopening the notes restores the unsaved draft.
+let mgNotesExist = {};
+let mgNotesId = null;
+let mgNotesTimer = null;
+let mgNotesDirty = false;
+const MG_NOTES_PROMPTS = `Dog(s) — temperament, energy, reactivity:
+Leash / harness / gear:
+Feeding & treats (allergies?):
+Meds / health / vet:
+Home access — keys, lockbox, alarm, parking:
+House rules — crates, off-limits rooms, other pets:
+Schedule / walk preferences:
+Emergency contact:
+Follow-ups for me:
+`;
+const mgDraftKey = (id) => `mgNotesDraft:${id}`;
+
+function mgNotesStatus(text) {
+  document.getElementById('mgNotesStatus').textContent = text;
+}
+
+window.mgNotesOpen = async (submissionId) => {
+  if (mgNotesId && mgNotesId !== submissionId) await mgNotesFlush();
+  const req = allRequests.find(r => r.id === submissionId);
+  const booking = avFindBooking(submissionId);
+  const name = req?.ownerName || req?.name || booking?.name || 'Unknown';
+  const when = booking ? avFmt(booking.dateStr, booking.slot) : (req?.meetGreetDateTime || '');
+  mgNotesId = submissionId;
+  mgNotesDirty = false;
+  document.getElementById('mgNotesTitle').textContent = `Notes — ${name}`;
+  document.getElementById('mgNotesSub').textContent = when ? `Meet & greet · ${when}` : 'Meet & greet';
+  const ta = document.getElementById('mgNotesText');
+  ta.value = '';
+  ta.disabled = true;
+  mgNotesStatus('Loading…');
+  document.getElementById('mgNotesModal').classList.add('open');
+  let saved = '';
+  try {
+    const snap = await getDoc(doc(db, 'meetGreetNotes', submissionId));
+    saved = snap.exists() ? (snap.data().text || '') : '';
+  } catch (e) {
+    mgNotesStatus('Could not load saved notes: ' + e.message);
+  }
+  if (mgNotesId !== submissionId) return; // switched while loading
+  let draft = null;
+  try { draft = localStorage.getItem(mgDraftKey(submissionId)); } catch (e) {}
+  ta.disabled = false;
+  if (draft !== null && draft !== saved) {
+    ta.value = draft;
+    mgNotesDirty = true;
+    mgNotesStatus('Restored unsaved draft — saving…');
+    mgNotesScheduleSave(0);
+  } else {
+    ta.value = saved;
+    if (draft !== null) { try { localStorage.removeItem(mgDraftKey(submissionId)); } catch (e) {} }
+    if (!/Could not/.test(document.getElementById('mgNotesStatus').textContent)) mgNotesStatus(saved ? 'Saved' : '');
+  }
+  ta.focus();
+};
+
+window.mgNotesOnInput = () => {
+  if (!mgNotesId) return;
+  mgNotesDirty = true;
+  try { localStorage.setItem(mgDraftKey(mgNotesId), document.getElementById('mgNotesText').value); } catch (e) {}
+  mgNotesStatus('Unsaved changes…');
+  mgNotesScheduleSave(1000);
+};
+
+function mgNotesScheduleSave(delay) {
+  clearTimeout(mgNotesTimer);
+  mgNotesTimer = setTimeout(() => { mgNotesSave(); }, delay);
+}
+
+async function mgNotesSave() {
+  clearTimeout(mgNotesTimer);
+  if (!mgNotesId || !mgNotesDirty) return;
+  const id = mgNotesId;
+  const text = document.getElementById('mgNotesText').value;
+  const req = allRequests.find(r => r.id === id);
+  mgNotesDirty = false;
+  mgNotesStatus('Saving…');
+  try {
+    await setDoc(doc(db, 'meetGreetNotes', id), {
+      submissionId: id,
+      ownerName: req?.ownerName || req?.name || avFindBooking(id)?.name || '',
+      meetGreetDateTime: req?.meetGreetDateTime || '',
+      text,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    // Only drop the local backup if nothing was typed while the save was in flight.
+    try {
+      if (localStorage.getItem(mgDraftKey(id)) === text) localStorage.removeItem(mgDraftKey(id));
+    } catch (e) {}
+    if (mgNotesId === id && !mgNotesDirty) {
+      mgNotesStatus(`Saved ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`);
+    }
+  } catch (e) {
+    if (mgNotesId === id) {
+      mgNotesDirty = true;
+      mgNotesStatus('Save failed — kept on this device, will retry: ' + e.message);
+      mgNotesScheduleSave(5000);
+    }
+  }
+}
+
+async function mgNotesFlush() {
+  await mgNotesSave();
+  // The request modal underneath shows a preview — refresh it.
+  const open = document.getElementById('requestModal').classList.contains('open');
+  const req = open && allRequests.find(r => r.id === mgNotesId);
+  if (req) renderRequestMgNotes(req);
+}
+
+window.mgNotesInsertPrompts = () => {
+  const ta = document.getElementById('mgNotesText');
+  ta.value = ta.value.trim() ? `${ta.value.replace(/\s*$/, '')}\n\n${MG_NOTES_PROMPTS}` : MG_NOTES_PROMPTS;
+  mgNotesOnInput();
+  ta.focus();
+};
+
+window.mgNotesCopy = async (btn) => {
+  try {
+    await navigator.clipboard.writeText(document.getElementById('mgNotesText').value);
+    const label = btn.textContent;
+    btn.textContent = 'Copied';
+    setTimeout(() => { btn.textContent = label; }, 1500);
+  } catch (e) {
+    alert('Could not copy: ' + e.message);
+  }
+};
+
+window.addEventListener('beforeunload', (e) => {
+  if (mgNotesDirty) { e.preventDefault(); e.returnValue = ''; }
+});
+
+// Notes section in the request detail modal: a preview plus an open button,
+// so after the meet & greet the raw notes sit right next to the request while
+// cleaning them up into owner notes / the booking. Shown for any request that
+// has (or had) a meet & greet, or that already has notes.
+async function renderRequestMgNotes(item) {
+  const host = document.getElementById('requestMgNotes');
+  host.style.display = 'none';
+  host.innerHTML = '';
+  let text = '';
+  try {
+    const snap = await getDoc(doc(db, 'meetGreetNotes', item.id));
+    text = snap.exists() ? (snap.data().text || '').trim() : '';
+  } catch (e) { /* preview is best-effort */ }
+  const hadMeetGreet = item.meetGreetDateTime || item.meetGreetCompletedAt
+    || item.meetGreetPreviousDateTime || item.meetGreetCanceledDateTime;
+  if (!text && !hadMeetGreet) return;
+  const preview = text.length > 400 ? text.slice(0, 400) + '…' : text;
+  host.innerHTML = `<div style="margin-top:16px;border:1px solid rgba(0,0,0,0.08);border-radius:6px;padding:10px 12px;background:var(--sand-light);">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <span style="font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);">Meet &amp; greet notes · private</span>
+      <button class="btn-sm" onclick="mgNotesOpen('${item.id}')">${text ? 'Open notes' : 'Take notes'}</button>
+    </div>
+    ${text ? `<div style="font-size:13px;color:var(--navy);white-space:pre-wrap;margin-top:8px;">${escapeHtml(preview)}</div>` : ''}
+  </div>`;
+  host.style.display = 'block';
+}
 
 function renderAvUpcoming() {
   const container = document.getElementById('avUpcomingList');
