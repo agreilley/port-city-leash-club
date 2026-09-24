@@ -2542,8 +2542,9 @@ function renderCalendarDays() {
       return `<div class="walk-chip tentative ${variant}" onclick="openRequestItem('${r.id}')" title="${title}">${label}</div>`;
     }).join('');
     // Confirmed-but-not-yet-generated membership days (see projectedMap).
-    // Styled exactly like a real walk chip, since the schedule is confirmed;
-    // clicking opens the member, because there's no walk doc to open yet.
+    // Styled exactly like a real walk chip, since the schedule is confirmed.
+    // Clicking opens openMemberWalkerModal — the walk modal's suggestions,
+    // saved to the member's default walker, since there's no walk doc yet.
     const projectedChips = (projectedMap[d] || []).map(m => {
       const wkId = (m.assignedWalkerId || '').trim();
       const walker = wkId ? allWalkers.find(k => k.id === wkId) : null;
@@ -2551,7 +2552,7 @@ function renderCalendarDays() {
       const dogName = getMemberDogs(m)[0]?.name || m.name?.split(' ')[0] || 'Walk';
       const label = escapeHtml(walker ? `${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`);
       const title = escapeHtml(`${dogName} · Membership confirmed · walk is created once the card is saved`);
-      return `<div class="walk-chip ${cls}" onclick="openMemberDetail('${m.id}')" title="${title}">${label}</div>`;
+      return `<div class="walk-chip ${cls}" onclick="openMemberWalkerModal('${m.id}')" title="${title}">${label}</div>`;
     }).join('');
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}${projectedChips}${tentativeChips}</div>`;
   }
@@ -3921,6 +3922,97 @@ window.assignWalkerManual = async (walkId) => {
   const walkerId = document.getElementById('manualWalkerSelect').value;
   if (!walkerId) return;
   await assignWalker(walkId, walkerId);
+};
+
+// Walker assignment for a converted member whose walks don't exist yet (card
+// not saved — see projectedMap in renderCalendarDays). Same suggestions and
+// layout as openWalkModal, but scored across ALL the member's walk days rather
+// than one date, and saved to members/{id}.assignedWalkerId, which
+// generateWalksForMember copies onto every walk it creates.
+window.openMemberWalkerModal = (memberId) => {
+  const member = allMembers.find(m => m.id === memberId);
+  if (!member) return;
+  const DAY_KEYS = { sunday: 'sun', monday: 'mon', tuesday: 'tue', wednesday: 'wed', thursday: 'thu', friday: 'fri', saturday: 'sat' };
+  const memberDays = (member.defaultWalkDays || []).map(d => DAY_KEYS[String(d).toLowerCase()]).filter(Boolean);
+  const slot = member.defaultTimeSlot;
+  const slotLabel = WALK_TIME_SLOT_LABELS[slot] ? `${WALK_TIME_SLOT_LABELS[slot]} (${WALK_TIME_SLOT_RANGES[slot]})` : (slot || '–');
+  const currentId = (member.assignedWalkerId || '').trim();
+  const current = allWalkers.find(w => w.id === currentId);
+
+  // Same weights as openWalkModal; availability is scaled by how many of the
+  // member's days the walker covers in that slot.
+  const suggestions = allWalkers.filter(w => w.status === 'active').map(w => {
+    let score = 0;
+    const covered = memberDays.filter(d => (w.availability?.[d] || []).includes(slot)).length;
+    if (memberDays.length) score += Math.round(40 * covered / memberDays.length);
+    if (allWalks.filter(wk => wk.walkerId === w.id).length < (w.weeklyTarget || 20)) score += 30;
+    if ((w.zones || []).includes(member.zone || '')) score += 20;
+    return { ...w, score, covered };
+  }).sort((a, b) => b.score - a.score);
+
+  const walkerSelect = `<select id="memberWalkerSelect" style="width:100%;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:9px;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:10px;">
+    <option value="">Select a walker...</option>
+    ${allWalkers.map(w => `<option value="${w.id}" ${w.id === currentId ? 'selected' : ''}>${escapeHtml(w.name)}</option>`).join('')}
+  </select>`;
+
+  const assignmentHTML = current ? `
+    <div class="modal-label" style="margin-bottom:10px;">Assigned Walker</div>
+    <div class="suggestion-card best" style="margin-bottom:16px;">
+      <div>
+        <div style="font-weight:500;font-size:14px;">${escapeHtml(current.name)}</div>
+        <div style="font-size:12px;color:var(--text-light);">${escapeHtml((current.zones||[]).join(', ')||'Any')}</div>
+      </div>
+      <span style="font-size:11px;color:var(--green);font-weight:500;">Assigned ✓</span>
+    </div>
+    <div class="modal-label" style="margin-bottom:8px;">Change Walker</div>
+    ${walkerSelect}
+    <div style="display:flex;gap:8px;">
+      <button class="btn-primary" style="flex:1;" onclick="assignMemberWalkerManual('${member.id}')">Update Walker</button>
+      <button class="btn-secondary" onclick="assignMemberWalker('${member.id}', '')" style="color:var(--rust);">Unassign</button>
+    </div>` : suggestions.length ? `
+    <div class="modal-label" style="margin-bottom:10px;">Assignment Suggestions</div>
+    ${suggestions.slice(0,3).map((w,i) => `
+      <div class="suggestion-card ${i===0?'best':''}" onclick="assignMemberWalker('${member.id}', '${w.id}')">
+        <div>
+          <div style="font-weight:500;font-size:14px;">${escapeHtml(w.name)}</div>
+          <div style="font-size:12px;color:var(--text-light);">${escapeHtml((w.zones||[]).join(', ')||'Any')} · available ${w.covered} of ${memberDays.length} days</div>
+        </div>
+        <div class="suggestion-score ${i===0?'best':''}">${i===0?'Best fit':''} ${w.score}pts</div>
+      </div>`).join('')}
+    <hr class="modal-divider">
+    <div class="modal-label" style="margin-bottom:8px;">Or assign manually</div>
+    ${walkerSelect}
+    <button class="btn-primary" style="width:100%;" onclick="assignMemberWalkerManual('${member.id}')">Assign</button>` :
+    '<div style="color:var(--text-light);font-size:13px;">No active walkers available.</div>';
+
+  document.getElementById('walkModalTitle').textContent = `${memberDogNames(member) || 'Walks'} · Membership`;
+  document.getElementById('walkModalContent').innerHTML = `
+    <div class="form-grid" style="margin-bottom:20px;">
+      <div class="modal-field"><div class="modal-label">Member</div><div class="modal-value">${escapeHtml(member.name || '–')}</div></div>
+      <div class="modal-field"><div class="modal-label">Dog</div><div class="modal-value">${escapeHtml(memberDogNames(member) || '–')}</div></div>
+      <div class="modal-field"><div class="modal-label">Walk Days</div><div class="modal-value">${escapeHtml((member.defaultWalkDays || []).join(', ') || '–')}</div></div>
+      <div class="modal-field"><div class="modal-label">Time Slot</div><div class="modal-value">${escapeHtml(slotLabel)}</div></div>
+    </div>
+    <div style="font-size:12px;color:var(--text-mid);background:var(--sand-light);border-radius:6px;padding:8px 12px;margin-bottom:12px;">Walks are created once the card is saved. The walker you pick here goes on all of them.</div>
+    <hr class="modal-divider">
+    ${assignmentHTML}
+  `;
+  document.getElementById('walkModal').classList.add('open');
+};
+
+window.assignMemberWalker = async (memberId, walkerId) => {
+  try {
+    await updateDoc(doc(db, 'members', memberId), { assignedWalkerId: walkerId || '' });
+    closeModal('walkModal');
+  } catch (e) {
+    alert(`Couldn't save the walker: ${e.message}`);
+  }
+};
+
+window.assignMemberWalkerManual = async (memberId) => {
+  const walkerId = document.getElementById('memberWalkerSelect').value;
+  if (!walkerId) return;
+  await assignMemberWalker(memberId, walkerId);
 };
 
 // ── ADD WALK ──────────────────────────────────────────────────────────────────
