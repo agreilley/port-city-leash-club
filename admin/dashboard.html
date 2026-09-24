@@ -187,6 +187,18 @@
   .slot-available { background: var(--green-light); border-radius: 4px; padding: 4px; font-size: 11px; color: var(--green); font-weight: 500; }
   .slot-unavailable { background: #FEE2E2; border-radius: 4px; padding: 4px; font-size: 11px; color: #991B1B; font-weight: 500; }
   .slot-partial { background: var(--amber-light); border-radius: 4px; padding: 4px; font-size: 11px; color: var(--amber); font-weight: 500; }
+  /* Per-slot chips inside each day cell — one chip per WALK_TIME_SLOTS
+     entry, so a column scan answers "who has Friday morning" directly
+     instead of reading a 2/3 count and opening each walker. */
+  .slot-chips { display: flex; flex-direction: column; gap: 3px; }
+  .slot-chip { border-radius: 4px; padding: 3px 4px; font-size: 10px; font-weight: 500; white-space: nowrap; }
+  .slot-chip.on { background: var(--green-light); color: var(--green); }
+  .slot-chip.off { background: transparent; color: rgba(0,0,0,0.22); text-decoration: line-through; }
+  .slot-chip.match { outline: 2px solid var(--green); outline-offset: -2px; }
+  .avail-finder { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; font-size: 13px; color: var(--navy); }
+  .avail-finder select { border: 1px solid rgba(0,0,0,0.14); border-radius: 4px; padding: 6px 9px; font-size: 13px; font-family: 'DM Sans', sans-serif; color: var(--navy); background: white; }
+  .avail-finder-result { flex-basis: 100%; font-size: 13px; color: var(--text-dark); }
+  .avail-finder-result strong { color: var(--green); font-weight: 500; }
 
   /* ── FORM ── */
   .form-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
@@ -317,6 +329,7 @@
       text-align: right;
     }
     .availability-slot:first-of-type { border-top: none; }
+    .availability-slot .slot-chips { flex-direction: row; }
     .availability-slot::before {
       content: attr(data-day);
       font-size: 11px;
@@ -512,6 +525,16 @@
         </div>
         <div>
           <div class="table-title" style="margin-bottom:16px;">This Week's Availability</div>
+          <div class="avail-finder">
+            <span>Who's free</span>
+            <select id="availFinderDay" onchange="renderAvailabilityGrid()">
+              <option value="">Any day…</option>
+              <option value="mon">Monday</option><option value="tue">Tuesday</option><option value="wed">Wednesday</option>
+              <option value="thu">Thursday</option><option value="fri">Friday</option><option value="sat">Saturday</option><option value="sun">Sunday</option>
+            </select>
+            <select id="availFinderSlot" onchange="renderAvailabilityGrid()"><option value="">Any slot…</option></select>
+            <div class="avail-finder-result" id="availFinderResult"></div>
+          </div>
           <div class="availability-scroll">
           <div class="availability-grid">
             <div class="availability-header">
@@ -2473,6 +2496,27 @@ function renderAvailabilityGrid() {
   const slots = WALK_TIME_SLOTS;
   const dotColors = ['#C17B6F','#8FA8A2','#2D6A40','#3730A3','#92400E'];
 
+  // "Who's free" finder: pick a day and slot, list the walkers who have
+  // it, and outline the matching chip in the grid below.
+  const slotSelect = document.getElementById('availFinderSlot');
+  if (slotSelect.options.length === 1) {
+    slotSelect.insertAdjacentHTML('beforeend', slots.map(s =>
+      `<option value="${s}">${WALK_TIME_SLOT_LABELS[s]} (${WALK_TIME_SLOT_RANGES[s]})</option>`).join(''));
+  }
+  const findDay = document.getElementById('availFinderDay').value;
+  const findSlot = slotSelect.value;
+  const resultEl = document.getElementById('availFinderResult');
+  if (findDay && findSlot) {
+    const free = allWalkers.filter(w => (w.availability?.[findDay] || []).includes(findSlot));
+    const dayName = document.getElementById('availFinderDay').selectedOptions[0].text;
+    const when = `${dayName} ${WALK_TIME_SLOT_LABELS[findSlot].toLowerCase()}`;
+    resultEl.innerHTML = free.length
+      ? `<strong>${free.length}</strong> available ${escapeHtml(when)}: ${free.map(w => escapeHtml(w.name)).join(', ')}`
+      : `Nobody is available ${escapeHtml(when)}.`;
+  } else {
+    resultEl.innerHTML = '';
+  }
+
   container.innerHTML = allWalkers.map((w, i) => {
     const avail = w.availability || {};
     // Same fallback as openWalkerDetail's grid — a walker who's never had
@@ -2487,10 +2531,15 @@ function renderAvailabilityGrid() {
       </div>
       ${days.map((day, di) => {
         const dayAvail = avail[day] || [];
-        const available = slots.filter(s => dayAvail.includes(s)).length;
-        const cls = available === 3 ? 'slot-available' : available > 0 ? 'slot-partial' : 'slot-unavailable';
-        const label = available === 3 ? 'All' : available > 0 ? `${available}/3` : 'Off';
-        return `<div class="availability-slot" data-day="${dayLabels[di]}"><div class="${cls}">${label}</div></div>`;
+        if (!slots.some(s => dayAvail.includes(s))) {
+          return `<div class="availability-slot" data-day="${dayLabels[di]}"><div class="slot-unavailable">Off</div></div>`;
+        }
+        const chips = slots.map(s => {
+          const on = dayAvail.includes(s);
+          const match = on && day === findDay && s === findSlot;
+          return `<div class="slot-chip ${on ? 'on' : 'off'}${match ? ' match' : ''}" title="${WALK_TIME_SLOT_LABELS[s]} (${WALK_TIME_SLOT_RANGES[s]})">${WALK_TIME_SLOT_RANGES[s]}</div>`;
+        }).join('');
+        return `<div class="availability-slot" data-day="${dayLabels[di]}"><div class="slot-chips">${chips}</div></div>`;
       }).join('')}
     </div>
     <div class="availability-row availability-row-overnight">
@@ -2503,6 +2552,8 @@ function renderAvailabilityGrid() {
     </div>`;
   }).join('');
 }
+
+window.renderAvailabilityGrid = renderAvailabilityGrid;
 
 // ── MEMBERS TABLE ─────────────────────────────────────────────────────────────
 // Shared by the members table and the member detail modal. status is
