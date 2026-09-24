@@ -65,7 +65,7 @@ async function html(data) {
     <p style="margin:0 0 20px;">Hi ${escapeHtml(data.firstName || 'there')},</p>
     <p style="margin:0 0 20px;">Here's ${escapeHtml(names)}'s walk schedule for ${escapeHtml(data.monthLabel)}. Take a quick look and make any changes before the month starts.</p>
     ${block}
-    <p style="margin:0 0 12px;"><strong>Need to move a walk?</strong> <a href="${escapeHtml(data.rescheduleUrl)}" style="color:inherit;">Request a reschedule</a> from your portal at least 48 hours ahead.</p>
+    <p style="margin:0 0 12px;"><strong>Need to move a walk?</strong> <a href="${escapeHtml(data.rescheduleUrl)}" style="color:inherit;">Request a reschedule</a> from your portal at least 48 hours before your walk.</p>
     <p style="margin:0 0 12px;"><strong>Want different days or a different time going forward?</strong> <a href="${escapeHtml(data.scheduleUrl)}" style="color:inherit;">Update your walk schedule</a> in your account settings.</p>
     <p style="margin:0;">Your membership is billed on ${escapeHtml(data.billingDateLabel)} for the walks scheduled in ${escapeHtml(data.monthLabel)}.</p>
     ${renderButtonHtml({ href: data.calendarUrl, label: 'Review Your Calendar' })}
@@ -90,7 +90,7 @@ async function text(data) {
     }),
     ...r.dates.map(d => `  ${d}`),
     '',
-    `Need to move a walk? Request a reschedule from your portal at least 48 hours ahead: ${data.rescheduleUrl}`,
+    `Need to move a walk? Request a reschedule from your portal at least 48 hours before your walk: ${data.rescheduleUrl}`,
     '',
     `Want different days or a different time going forward? Update your walk schedule in your account settings: ${data.scheduleUrl}`,
     '',
