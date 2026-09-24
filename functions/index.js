@@ -347,7 +347,7 @@ exports.createAuthenticatedSetupIntent = onCall({ secrets: [STRIPE_SECRET_KEY] }
 // using the new card — chargeCurrentMonthWalks and chargeCustomerCard both
 // currently take paymentMethods.list()'s first result, which is otherwise
 // an ambiguous way to land on "the card just added" versus an older one.
-exports.confirmCardOnFile = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+exports.confirmCardOnFile = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KEY] }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
   const uid = request.auth.uid;
   const { setupIntentId } = request.data || {};
