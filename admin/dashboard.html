@@ -157,6 +157,17 @@
   .modal { background: white; border-radius: 10px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; padding: 32px; position: relative; }
   .modal-box { background: white; border-radius: 10px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; padding: 32px; position: relative; }
   .modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-light); }
+  .mg-notes-grid { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start; }
+  .mg-notes-ref { background: var(--sand-light); border-radius: 6px; padding: 10px 12px; font-size: 13px; color: var(--navy); }
+  .mg-notes-ref summary { cursor: pointer; font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-light); }
+  .mg-notes-ref h4 { font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-light); margin: 12px 0 4px; }
+  .mg-notes-ref .mg-row { margin: 2px 0; line-height: 1.45; }
+  .mg-notes-ref .mg-row b { font-weight: 500; }
+  .mg-notes-ref .mg-pet { border-top: 1px solid rgba(0,0,0,0.07); padding-top: 6px; margin-top: 6px; }
+  @media (min-width: 900px) {
+    .mg-notes-grid { grid-template-columns: minmax(260px, 340px) 1fr; }
+    .mg-notes-ref { max-height: 65vh; overflow-y: auto; }
+  }
   .modal-title { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 300; color: var(--navy); margin-bottom: 20px; }
   .modal-field { margin-bottom: 16px; }
   .modal-label { font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-light); margin-bottom: 6px; }
@@ -1147,19 +1158,30 @@
      live during a meet & greet. Stored in meetGreetNotes/{submissionId}, NOT
      on the submission itself: members can read their own submission once
      it carries their memberId (firestore.rules), and these are raw notes.
-     Autosaves while typing; closing (×, overlay, Done) flushes any pending save. -->
+     Autosaves while typing; closing (×, overlay, Done) flushes any pending save.
+     Side-by-side (owner's info | notes) at tablet/laptop widths, stacked with
+     the info collapsible on a phone. -->
 <div class="modal-overlay" id="mgNotesModal">
-  <div class="modal" style="max-width:720px;">
+  <div class="modal" style="max-width:1040px;">
     <button class="modal-close" onclick="closeModal('mgNotesModal')">×</button>
     <div class="modal-title" id="mgNotesTitle" style="margin-bottom:4px;">Meet &amp; Greet Notes</div>
     <div id="mgNotesSub" style="font-size:12px;color:var(--text-light);margin-bottom:14px;"></div>
-    <textarea id="mgNotesText" oninput="mgNotesOnInput()" placeholder="Type as you go — saves automatically. Only you can see these." style="width:100%;min-height:50vh;box-sizing:border-box;border:1px solid rgba(0,0,0,0.14);border-radius:6px;padding:12px;font-size:15px;line-height:1.5;font-family:'DM Sans',sans-serif;resize:vertical;"></textarea>
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;">
-      <span id="mgNotesStatus" style="font-size:12px;color:var(--text-light);"></span>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn-secondary" onclick="mgNotesInsertPrompts()">Add prompts</button>
-        <button class="btn-secondary" onclick="mgNotesCopy(this)">Copy</button>
-        <button class="btn-primary" onclick="closeModal('mgNotesModal')">Done</button>
+    <div class="mg-notes-grid">
+      <details id="mgNotesRef" class="mg-notes-ref">
+        <summary>What the owner told us</summary>
+        <div id="mgNotesRefBody"></div>
+      </details>
+      <div>
+        <div id="mgNotesBanner" style="display:none;font-size:12px;color:#b45309;background:#fffbeb;border-radius:6px;padding:8px 12px;margin-bottom:8px;"></div>
+        <textarea id="mgNotesText" oninput="mgNotesOnInput()" placeholder="Type as you go — saves automatically. Only you can see these." style="width:100%;min-height:50vh;box-sizing:border-box;border:1px solid rgba(0,0,0,0.14);border-radius:6px;padding:12px;font-size:15px;line-height:1.5;font-family:'DM Sans',sans-serif;resize:vertical;"></textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;">
+          <span id="mgNotesStatus" style="font-size:12px;color:var(--text-light);"></span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn-secondary" onclick="mgNotesInsertPrompts()">Add prompts</button>
+            <button class="btn-secondary" onclick="mgNotesCopy(this)">Copy</button>
+            <button class="btn-primary" onclick="closeModal('mgNotesModal')">Done</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -7927,13 +7949,25 @@ window.avSaveReschedule = async (submissionId) => {
 // ── Meet & greet notes ────────────────────────────────────────────────
 // Admin-only scratchpad in meetGreetNotes/{submissionId} (see the modal's
 // comment for why it isn't a submission field). Autosaves ~1s after typing
-// stops. A localStorage copy is kept until the save is confirmed, so a flaky
-// connection at a client's house (or a closed tab) doesn't lose anything —
-// reopening the notes restores the unsaved draft.
+// stops. Works on a phone, tablet or laptop, and tolerates losing the
+// connection mid-meeting:
+//  - Every keystroke is mirrored to localStorage (the "draft") until a save
+//    is confirmed, so a closed tab or dead connection loses nothing —
+//    reopening the notes on the same device restores and saves the draft.
+//  - If the saved notes can't be LOADED (offline when opening), whatever is
+//    typed is held as an "append" draft and never written on its own: once
+//    the load succeeds it's added below the saved notes, so an offline open
+//    can never replace existing notes with a blank slate.
 let mgNotesExist = {};
 let mgNotesId = null;
 let mgNotesTimer = null;
+let mgNotesSlowTimer = null;
+let mgNotesRetryTimer = null;
 let mgNotesDirty = false;
+let mgNotesSaving = false;
+// 'replace' = textarea holds the full notes; 'append' = saved notes couldn't
+// be loaded, textarea holds only what's new since.
+let mgNotesMode = 'replace';
 const MG_NOTES_PROMPTS = `Dog(s) — temperament, energy, reactivity:
 Leash / harness / gear:
 Feeding & treats (allergies?):
@@ -7944,10 +7978,91 @@ Schedule / walk preferences:
 Emergency contact:
 Follow-ups for me:
 `;
+// Two per-submission localStorage slots:
+//  mgNotesDraft:{id}  — full notes not yet confirmed saved (newer than the server copy)
+//  mgNotesAppend:{id} — text typed while the saved notes couldn't be loaded;
+//                       only ever added below the notes, never saved on its own
 const mgDraftKey = (id) => `mgNotesDraft:${id}`;
+const mgAppendKey = (id) => `mgNotesAppend:${id}`;
+function mgGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function mgSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function mgDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+function mgClearDraftIf(id, text) {
+  if (mgGet(mgDraftKey(id)) === text) mgDel(mgDraftKey(id));
+}
 
 function mgNotesStatus(text) {
   document.getElementById('mgNotesStatus').textContent = text;
+}
+function mgNotesBanner(text) {
+  const el = document.getElementById('mgNotesBanner');
+  el.textContent = text || '';
+  el.style.display = text ? 'block' : 'none';
+}
+const mgNow = () => new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+// ── Owner-provided info, shown beside the notes as a reference ──
+function mgFmtDay(val) {
+  if (!val) return '';
+  const d = val.toDate ? val.toDate() : new Date(val);
+  return isNaN(d) ? '' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+function mgOwnerInfoHTML(req) {
+  if (!req) return '<div class="mg-row" style="color:var(--text-light);margin-top:8px;">Request details aren\'t loaded.</div>';
+  const row = (label, val) => (val === undefined || val === null || val === '' ? '' : `<div class="mg-row"><b>${escapeHtml(label)}:</b> ${escapeHtml(val)}</div>`);
+  const out = [];
+
+  out.push('<h4>Contact</h4>');
+  out.push(row('Name', req.ownerName || req.name));
+  out.push(row('Phone', req.phone));
+  out.push(row('Email', req.email));
+  out.push(row('Address', req.address));
+
+  out.push('<h4>What they asked for</h4>');
+  if (req.type === 'membership_request') {
+    out.push(row('Service', 'Membership'));
+    out.push(row('Days', req.days));
+    out.push(row('Time window', req.timeWindow));
+    out.push(row('Start', mgFmtDay(req.startDate)));
+  } else {
+    const svc = SERVICE_PRICES[resolveServiceKey(req.service)]?.name || req.service;
+    out.push(row('Service', svc));
+    const start = mgFmtDay(req.startDate), end = mgFmtDay(req.endDate);
+    out.push(row('Dates', start && end && start !== end ? `${start} – ${end}` : start));
+    out.push(row('Time slot', req.timeSlot));
+    if (Array.isArray(req.visitSchedule) && req.visitSchedule.length) {
+      out.push(row('Visits', req.visitSchedule.map(v => `${v.date}: ${v.visits}`).join(', ')));
+    }
+    const addons = [req.extraPet && 'Multiple pets', req.medication && 'Medication'].filter(Boolean).join(', ');
+    out.push(row('Add-ons', addons));
+    out.push(row('Estimate', req.estimatedTotal ? `$${req.estimatedTotal}` : ''));
+  }
+  out.push(row('Access notes', req.accessNotes));
+  out.push(row('Care notes', req.notes));
+
+  const pets = Array.isArray(req.dogs) ? req.dogs : [];
+  if (pets.length) {
+    out.push(`<h4>${pets.length === 1 ? 'Pet' : `Pets (${pets.length})`}</h4>`);
+    pets.forEach(p => {
+      const basics = [p.species && p.species !== 'Dog' ? p.species : '', p.breed, p.age && `${p.age}`, p.weight && `${p.weight}`].filter(Boolean).join(' · ');
+      const yes = [
+        p.spayed && `Spayed/neutered: ${p.spayed}`,
+        p.temperament && `Temperament: ${p.temperament}`,
+        p.friendlyWithPeople && 'Friendly with people',
+        p.friendlyWithDogs && 'Friendly with dogs',
+        p.pullsOnLeash && 'Pulls on leash',
+        p.takesMedication && 'Takes medication',
+        p.indoorOnly && 'Indoor only',
+        p.comfortableHandled && 'Comfortable being handled',
+      ].filter(Boolean);
+      out.push(`<div class="mg-pet">
+        <div class="mg-row"><b>${escapeHtml(p.name || 'Unnamed')}</b>${basics ? ` — ${escapeHtml(basics)}` : ''}</div>
+        ${yes.map(t => `<div class="mg-row">${escapeHtml(t)}</div>`).join('')}
+        ${p.notes ? `<div class="mg-row" style="white-space:pre-wrap;">${escapeHtml(p.notes)}</div>` : ''}
+      </div>`);
+    });
+  }
+  return out.join('');
 }
 
 window.mgNotesOpen = async (submissionId) => {
@@ -7958,42 +8073,107 @@ window.mgNotesOpen = async (submissionId) => {
   const when = booking ? avFmt(booking.dateStr, booking.slot) : (req?.meetGreetDateTime || '');
   mgNotesId = submissionId;
   mgNotesDirty = false;
+  mgNotesMode = 'replace';
+  clearTimeout(mgNotesRetryTimer);
   document.getElementById('mgNotesTitle').textContent = `Notes — ${name}`;
   document.getElementById('mgNotesSub').textContent = when ? `Meet & greet · ${when}` : 'Meet & greet';
+  document.getElementById('mgNotesRefBody').innerHTML = mgOwnerInfoHTML(req);
+  // Reference open by default where there's room beside the notes; tucked
+  // away on a phone so the notes box isn't pushed off-screen.
+  document.getElementById('mgNotesRef').open = window.matchMedia('(min-width: 900px)').matches;
+  mgNotesBanner('');
   const ta = document.getElementById('mgNotesText');
   ta.value = '';
   ta.disabled = true;
   mgNotesStatus('Loading…');
   document.getElementById('mgNotesModal').classList.add('open');
-  let saved = '';
+
+  let saved = null; // null = couldn't load
   try {
     const snap = await getDoc(doc(db, 'meetGreetNotes', submissionId));
     saved = snap.exists() ? (snap.data().text || '') : '';
-  } catch (e) {
-    mgNotesStatus('Could not load saved notes: ' + e.message);
-  }
+  } catch (e) { /* handled below */ }
   if (mgNotesId !== submissionId) return; // switched while loading
-  let draft = null;
-  try { draft = localStorage.getItem(mgDraftKey(submissionId)); } catch (e) {}
   ta.disabled = false;
-  if (draft !== null && draft !== saved) {
-    ta.value = draft;
-    mgNotesDirty = true;
-    mgNotesStatus('Restored unsaved draft — saving…');
-    mgNotesScheduleSave(0);
+
+  if (saved === null) {
+    // Can't see the saved notes — start (or continue) an append-only draft.
+    mgNotesMode = 'append';
+    ta.value = mgGet(mgAppendKey(submissionId)) || '';
+    mgNotesBanner(mgGet(mgDraftKey(submissionId)) !== null
+      ? "You're offline. An unsaved draft of these notes is on this device and will be restored once the saved notes load. Anything you type now is added below them."
+      : "You're offline, so the saved notes can't load. Type away: what you write is kept on this device and added below the saved notes (never replacing them) once you're back online.");
+    mgNotesStatus('Offline — kept on this device');
+    mgNotesScheduleRetry();
   } else {
-    ta.value = saved;
-    if (draft !== null) { try { localStorage.removeItem(mgDraftKey(submissionId)); } catch (e) {} }
-    if (!/Could not/.test(document.getElementById('mgNotesStatus').textContent)) mgNotesStatus(saved ? 'Saved' : '');
+    mgNotesResolve(submissionId, saved, null);
   }
   ta.focus();
 };
 
+// Brings the textarea in line with the saved copy plus anything this device
+// is holding: a full-notes draft (newer than saved, so it wins) and any
+// append-only text (added below). typedNow is the textarea's text when
+// leaving append mode, which is the freshest version of the append draft.
+function mgNotesResolve(id, saved, typedNow) {
+  const ta = document.getElementById('mgNotesText');
+  const draft = mgGet(mgDraftKey(id));
+  const appended = typedNow ?? mgGet(mgAppendKey(id)) ?? '';
+  const base = draft !== null ? draft : saved;
+  const full = appended.trim() ? mgJoin(base, appended) : base;
+  mgNotesMode = 'replace';
+  mgNotesBanner('');
+  ta.value = full;
+  if (full !== saved) {
+    mgSet(mgDraftKey(id), full); // persist the merge before dropping its parts
+    mgDel(mgAppendKey(id));
+    mgNotesDirty = true;
+    mgNotesStatus(appended.trim() ? 'Added the notes you took offline — saving…' : 'Restored unsaved draft — saving…');
+    mgNotesScheduleSave(0);
+  } else {
+    mgDel(mgDraftKey(id));
+    mgDel(mgAppendKey(id));
+    mgNotesStatus(saved ? 'Saved' : '');
+  }
+}
+
+function mgJoin(saved, added) {
+  const a = (saved || '').replace(/\s*$/, ''), b = (added || '').replace(/^\s*/, '').replace(/\s*$/, '');
+  if (!a) return b;
+  if (!b) return a;
+  return `${a}\n\n— Added offline ${mgNow()} —\n${b}`;
+}
+
+// Append mode: keep trying to load the saved notes; once they load, merge
+// what was typed below them and switch to normal autosave.
+function mgNotesScheduleRetry(delay = 10000) {
+  clearTimeout(mgNotesRetryTimer);
+  mgNotesRetryTimer = setTimeout(mgNotesRetryLoad, delay);
+}
+async function mgNotesRetryLoad() {
+  const id = mgNotesId;
+  if (!id || mgNotesMode !== 'append') return;
+  if (!document.getElementById('mgNotesModal').classList.contains('open')) return;
+  let saved = null;
+  try {
+    const snap = await getDoc(doc(db, 'meetGreetNotes', id));
+    saved = snap.exists() ? (snap.data().text || '') : '';
+  } catch (e) {}
+  if (mgNotesId !== id || mgNotesMode !== 'append') return;
+  if (saved === null) { mgNotesScheduleRetry(); return; }
+  mgNotesResolve(id, saved, document.getElementById('mgNotesText').value);
+}
+
 window.mgNotesOnInput = () => {
   if (!mgNotesId) return;
+  const text = document.getElementById('mgNotesText').value;
+  mgSet(mgNotesMode === 'append' ? mgAppendKey(mgNotesId) : mgDraftKey(mgNotesId), text);
+  if (mgNotesMode === 'append') {
+    mgNotesStatus('Offline — kept on this device');
+    return; // never write while the saved notes are unknown
+  }
   mgNotesDirty = true;
-  try { localStorage.setItem(mgDraftKey(mgNotesId), document.getElementById('mgNotesText').value); } catch (e) {}
-  mgNotesStatus('Unsaved changes…');
+  mgNotesStatus(navigator.onLine ? 'Unsaved changes…' : 'Offline — kept on this device, will sync when back online');
   mgNotesScheduleSave(1000);
 };
 
@@ -8004,12 +8184,19 @@ function mgNotesScheduleSave(delay) {
 
 async function mgNotesSave() {
   clearTimeout(mgNotesTimer);
-  if (!mgNotesId || !mgNotesDirty) return;
+  if (!mgNotesId || !mgNotesDirty || mgNotesMode !== 'replace') return;
   const id = mgNotesId;
   const text = document.getElementById('mgNotesText').value;
   const req = allRequests.find(r => r.id === id);
   mgNotesDirty = false;
-  mgNotesStatus('Saving…');
+  mgNotesSaving = true;
+  mgNotesStatus(navigator.onLine ? 'Saving…' : 'Offline — kept on this device, will sync when back online');
+  // Offline, Firestore queues the write and this promise just doesn't settle
+  // until the connection returns — say so instead of an endless "Saving…".
+  clearTimeout(mgNotesSlowTimer);
+  mgNotesSlowTimer = setTimeout(() => {
+    if (mgNotesSaving && mgNotesId === id) mgNotesStatus('Connection looks slow or offline — kept on this device, will sync when back online');
+  }, 6000);
   try {
     await setDoc(doc(db, 'meetGreetNotes', id), {
       submissionId: id,
@@ -8018,29 +8205,49 @@ async function mgNotesSave() {
       text,
       updatedAt: serverTimestamp(),
     }, { merge: true });
-    // Only drop the local backup if nothing was typed while the save was in flight.
-    try {
-      if (localStorage.getItem(mgDraftKey(id)) === text) localStorage.removeItem(mgDraftKey(id));
-    } catch (e) {}
-    if (mgNotesId === id && !mgNotesDirty) {
-      mgNotesStatus(`Saved ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`);
-    }
+    mgClearDraftIf(id, text); // only if nothing was typed since
+    if (mgNotesId === id && !mgNotesDirty) mgNotesStatus(`Saved ${mgNow()}`);
   } catch (e) {
     if (mgNotesId === id) {
       mgNotesDirty = true;
       mgNotesStatus('Save failed — kept on this device, will retry: ' + e.message);
       mgNotesScheduleSave(5000);
     }
+  } finally {
+    mgNotesSaving = false;
+    clearTimeout(mgNotesSlowTimer);
   }
 }
 
 async function mgNotesFlush() {
-  await mgNotesSave();
+  clearTimeout(mgNotesRetryTimer);
+  // Don't block closing on a save that can't finish offline — it's queued,
+  // and the draft stays on this device either way.
+  mgNotesSave();
   // The request modal underneath shows a preview — refresh it.
   const open = document.getElementById('requestModal').classList.contains('open');
   const req = open && allRequests.find(r => r.id === mgNotesId);
   if (req) renderRequestMgNotes(req);
 }
+
+window.addEventListener('online', () => {
+  if (!document.getElementById('mgNotesModal').classList.contains('open')) return;
+  if (mgNotesMode === 'append') mgNotesRetryLoad();
+  else if (mgNotesDirty) mgNotesScheduleSave(0);
+});
+window.addEventListener('offline', () => {
+  if (!document.getElementById('mgNotesModal').classList.contains('open')) return;
+  if (mgNotesDirty || mgNotesSaving || mgNotesMode === 'append') mgNotesStatus('Offline — kept on this device, will sync when back online');
+});
+
+// Laptop/tablet keyboard: Cmd/Ctrl+S saves now instead of the browser's Save Page.
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's'
+      && document.getElementById('mgNotesModal').classList.contains('open')) {
+    e.preventDefault();
+    if (mgNotesMode === 'append') mgNotesRetryLoad(); else mgNotesSave();
+  }
+});
 
 window.mgNotesInsertPrompts = () => {
   const ta = document.getElementById('mgNotesText');
@@ -8061,7 +8268,7 @@ window.mgNotesCopy = async (btn) => {
 };
 
 window.addEventListener('beforeunload', (e) => {
-  if (mgNotesDirty) { e.preventDefault(); e.returnValue = ''; }
+  if (mgNotesDirty || mgNotesSaving) { e.preventDefault(); e.returnValue = ''; }
 });
 
 // Notes section in the request detail modal: a preview plus an open button,
