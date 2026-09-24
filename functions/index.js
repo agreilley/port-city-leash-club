@@ -4562,7 +4562,7 @@ function encodeEmailHeader(value) {
   return words.map((w) => `=?UTF-8?B?${Buffer.from(w, 'utf8').toString('base64')}?=`).join('\r\n ');
 }
 
-async function sendGmailMessage({ to, subject, body, threadId, inReplyTo, references, from }) {
+async function sendGmailMessage({ to, subject, body, threadId, inReplyTo, references, from, replyTo }) {
   const gmail = await getGmailClient();
   if (!gmail) {
     throw new HttpsError('failed-precondition', 'Gmail isn\'t connected yet — connect it from the admin portal first.');
@@ -4577,6 +4577,10 @@ async function sendGmailMessage({ to, subject, body, threadId, inReplyTo, refere
     'Content-Type: text/plain; charset="UTF-8"',
     'MIME-Version: 1.0',
   ];
+  // Callers must pass a bare, already-validated address (see
+  // isPlainEmailAddress) — this goes straight into a raw header, so a CR/LF
+  // from an untrusted form field would otherwise be header injection.
+  if (replyTo) headers.push(`Reply-To: ${replyTo}`);
   if (inReplyTo) headers.push(`In-Reply-To: ${inReplyTo}`);
   if (references) headers.push(`References: ${references}`);
 
@@ -7658,6 +7662,58 @@ async function sendPortalWalkRequestReceivedEmail(sub, submissionId) {
   if (!result.ok) console.error(`onNewSubmission: portal-walk-request-received failed for ${submissionId}:`, result.error);
 }
 
+// Strict on purpose: the public contact form's email field is unvalidated
+// by firestore.rules (validContact only bounds name/topic/message), and the
+// result is written into a raw Reply-To header. Anything that isn't a single
+// plain address is dropped rather than sanitized.
+function isPlainEmailAddress(value) {
+  return typeof value === 'string' && value.length <= 320 && /^[^\s@<>",;:()\[\]\\]+@[^\s@<>",;:()\[\]\\]+\.[^\s@<>",;:()\[\]\\]+$/.test(value);
+}
+
+// Admin alert for a contact-form message. Same self-notification pattern as
+// the meet & greet alert in onNewSubmission (to/from the connected Gmail
+// address), plus Reply-To so a reply goes to the person who wrote in.
+// Never throws — a failed alert must not fail the trigger; the message is
+// still in the admin Requests tab either way.
+async function sendContactAlert(sub) {
+  try {
+    const gmail = await getGmailClient();
+    if (!gmail) {
+      console.error('Contact alert skipped: Gmail is not connected.');
+      return;
+    }
+    const profile = await gmail.users.getProfile({ userId: 'me' });
+    const notifyEmail = profile.data.emailAddress;
+    if (!notifyEmail) return;
+
+    const name = (sub.name || '').trim() || 'Unknown';
+    const senderEmail = (sub.email || '').trim();
+    const replyTo = isPlainEmailAddress(senderEmail) ? senderEmail : null;
+
+    const bodyLines = [
+      `${REQUEST_TYPE_LABELS.contact} from ${name}${senderEmail ? ` (${senderEmail})` : ''}.`,
+      sub.memberId ? 'Sent from the member portal (existing member).' : null,
+      sub.topic ? `Topic: ${sub.topic}` : null,
+      '',
+      sub.message || '(no message)',
+      '',
+      replyTo
+        ? `Reply to this email to answer ${name} directly.`
+        : 'The email address they entered doesn\'t look valid, so Reply won\'t reach them — check the admin portal Requests tab.',
+    ].filter((l) => l !== null);
+
+    await sendGmailMessage({
+      to: notifyEmail,
+      from: notifyEmail,
+      replyTo,
+      subject: `Contact form: ${sub.topic || 'New message'} — ${name}`,
+      body: bodyLines.join('\n'),
+    });
+  } catch (e) {
+    console.error('Contact alert email failed:', e.message);
+  }
+}
+
 exports.onNewSubmission = onDocumentCreated({
   document: 'submissions/{submissionId}',
   secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, RESEND_API_KEY],
@@ -7712,8 +7768,18 @@ exports.onNewSubmission = onDocumentCreated({
     console.error(`onNewSubmission: email dispatch failed for ${event.params.submissionId} (type ${sub.type}):`, e.message);
   }
 
-  // Only meet & greet bookings page admin. Everything else (membership
-  // requests without a booked slot, service requests, contact forms,
+  // Contact-form messages (public contact.html and portal-contact.html) are
+  // questions from a person waiting on an answer, so they page admin too —
+  // with Reply-To set to the sender, so hitting Reply in Gmail answers them
+  // directly. Returns after: a contact submission never carries a meet &
+  // greet slot.
+  if (sub.type === 'contact') {
+    await sendContactAlert(sub);
+    return;
+  }
+
+  // Only meet & greet bookings and contact messages page admin. Everything
+  // else (membership requests without a booked slot, service requests,
   // portal-generated requests) is reviewed in the admin portal instead —
   // unchanged by the requester-facing emails above, which fire regardless
   // of whether a meet & greet was booked.
