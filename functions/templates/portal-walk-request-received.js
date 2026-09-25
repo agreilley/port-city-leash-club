@@ -21,15 +21,17 @@ const {
 
 // See walk-confirmed.js's formatWalkWhen for why this checks both a
 // timeSlot bucket and an exact-time slot before falling back to date-only.
-function formatWalkWhen(w) {
+// async because formatWalkTimeSlot is (see _layout.js) — without the await
+// the "When" line rendered as "Saturday, October 17 at [object Promise]".
+async function formatWalkWhen(w) {
   const dateLabel = formatCalendarDate(w.dateStr);
   if (!dateLabel) return null;
-  const slotLabel = formatWalkTimeSlot(w.slot) || formatMeetGreetSlot(w.slot);
+  const slotLabel = (await formatWalkTimeSlot(w.slot)) || formatMeetGreetSlot(w.slot);
   return slotLabel ? `${dateLabel} at ${slotLabel}` : dateLabel;
 }
 
-function whenValue(data) {
-  const formatted = (data.walks || []).map(formatWalkWhen).filter(Boolean);
+async function whenValue(data) {
+  const formatted = (await Promise.all((data.walks || []).map(formatWalkWhen))).filter(Boolean);
   return formatted.join('; ') || 'Time to be confirmed';
 }
 
@@ -38,14 +40,15 @@ function subject(data) {
   return `We got your request for ${names}`;
 }
 
-function html(data) {
+async function html(data) {
   const dogCount = (data.dogNames || []).filter(Boolean).length || 1;
+  const whenStr = await whenValue(data);
 
   const block = renderBlockHtml({
     eyebrow: 'Your request',
     heading: escapeHtml(`${data.walkTypeLabel || 'Walk'}, ${data.durationMinutes || 45} minutes`),
     rows: [
-      { label: 'When', value: escapeHtml(whenValue(data)) },
+      { label: 'When', value: escapeHtml(whenStr) },
     ],
   });
 
@@ -61,8 +64,9 @@ function html(data) {
   return wrapHtml({ preheader: `We've got your request and we're looking over the details now.`, bodyHtml: body });
 }
 
-function text(data) {
+async function text(data) {
   const dogCount = (data.dogNames || []).filter(Boolean).length || 1;
+  const whenStr = await whenValue(data);
 
   const lines = [
     `Hi ${data.firstName || 'there'},`,
@@ -72,7 +76,7 @@ function text(data) {
     renderBlockText({
       eyebrow: 'Your request',
       heading: `${data.walkTypeLabel || 'Walk'}, ${data.durationMinutes || 45} minutes`,
-      rows: [{ label: 'When', value: whenValue(data) }],
+      rows: [{ label: 'When', value: whenStr }],
     }),
     '',
     `We'll confirm everything shortly. In the meantime, you can update your ${possessive(dogCount, 'dog', 'dogs')} routine, feeding, or any other details anytime in your ${possessive(dogCount, "dog", "dogs")} profile in the portal.`,

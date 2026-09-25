@@ -156,7 +156,7 @@ async function sendEmail({ to, template, data, replyTo, idempotencyKey }) {
 
   let subject, html, text;
   try {
-    // Awaited uniformly even though only walk-confirmed's html/text are
+    // Awaited uniformly even though only the walk-slot templates' html/text are
     // actually async (formatWalkTimeSlot's dynamic import of time-slots.js —
     // see functions/templates/_layout.js) — await on a plain synchronous
     // return from every other template is a no-op, not a behavior change.
