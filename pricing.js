@@ -196,24 +196,21 @@ export function calculateDropInScheduleTotal({ schedule, extraPet = false, medic
 // Paid drop-in visits added onto an overnight stay — admin-only, set on the
 // review screen after the meet & greet when a stay leaves an uncovered half
 // day (e.g. mid-day Saturday to mid-day Monday: two nights, each with its
-// baked-in check-in, plus one extra visit). Priced like a standalone
-// drop-in booking of the same days (per visit, Medication per drop-in day)
-// EXCEPT Multiple Pets, which the stay itself already charges — never
-// charged again for an add-on drop-in (decided 2026-09-24). addOnDropIns is [{date, visits}];
+// baked-in check-in, plus one extra visit). Priced at the drop-in rate per
+// visit only — no Multiple Pets or Medication fee, since the stay itself
+// already charges those (decided 2026-09-24). addOnDropIns is [{date, visits}];
 // zero-visit days are ignored. Breakdown labels are distinct from the
 // overnight's own add-on lines so the two can be listed side by side.
-export function calculateAddOnDropInTotal({ addOnDropIns, medication = false } = {}) {
+export function calculateAddOnDropInTotal({ addOnDropIns } = {}) {
   const schedule = {};
   (addOnDropIns || []).forEach((d) => {
     const visits = Number(d?.visits) || 0;
     if (d?.date && visits > 0) schedule[d.date] = visits;
   });
-  const r = calculateDropInScheduleTotal({ schedule, extraPet: false, medication });
+  const r = calculateDropInScheduleTotal({ schedule });
   if (!r.totalVisits) return { total: 0, breakdown: [], days: 0, totalVisits: 0 };
-  const suffix = (label) => (label === SERVICE_PRICES['drop-in-visit'].name
-    ? `${label} (add-on, ${r.totalVisits} visit${r.totalVisits === 1 ? '' : 's'})`
-    : `${label} (drop-ins)`);
-  return { ...r, breakdown: r.breakdown.map((b) => ({ ...b, label: suffix(b.label) })) };
+  const label = `${SERVICE_PRICES['drop-in-visit'].name} (add-on, ${r.totalVisits} visit${r.totalVisits === 1 ? '' : 's'})`;
+  return { ...r, breakdown: r.breakdown.map((b) => ({ ...b, label })) };
 }
 
 // The ONE place discount eligibility is decided — used by both the

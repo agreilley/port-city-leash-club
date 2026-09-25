@@ -79,8 +79,8 @@ export function calculateOvernightPayout(overnight) {
 
   // Paid add-on drop-ins on an overnight stay (addOnDropIns — see
   // pricing.js's calculateAddOnDropInTotal): WALKER_RATES.checkin per visit,
-  // medication fee per drop-in day. No Multiple Pets fee — mirrors the
-  // member side, which doesn't charge it again on top of the stay's.
+  // no pet/medication fees — mirrors the member side, which doesn't charge
+  // them again on top of the stay's.
   // Overnight-only; a check-in doc never carries them.
   const addOnDays = key === 'overnight' && Array.isArray(overnight.addOnDropIns)
     ? overnight.addOnDropIns.filter(d => (Number(d?.visits) || 0) > 0)
@@ -89,7 +89,7 @@ export function calculateOvernightPayout(overnight) {
   const addOnDropInBase = WALKER_RATES.checkin * addOnDropInVisits;
 
   const extraPetTotal = overnight.extraPet ? WALKER_EXTRA_PET_FEE * days : 0;
-  const medicationTotal = overnight.medication ? WALKER_MEDICATION_FEE * (days + addOnDays.length) : 0;
+  const medicationTotal = overnight.medication ? WALKER_MEDICATION_FEE * days : 0;
 
   return {
     total: base + addOnDropInBase + extraPetTotal + medicationTotal,

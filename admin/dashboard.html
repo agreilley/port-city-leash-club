@@ -5465,8 +5465,8 @@ function setOvernightVisitScheduleFieldVisible(visible) {
 // mid-day Monday: two nights, each with its baked-in check-in, plus one
 // extra visit), decided by admin after the meet & greet. These ARE billed
 // (calculateAddOnDropInTotal, pricing.js — same price as a standalone
-// drop-in of those days, minus Multiple Pets — the stay already charges
-// that) and paid to the walker (calculateOvernightPayout),
+// drop-in visit, with no pet/medication fees — the stay already charges
+// those) and paid to the walker (calculateOvernightPayout),
 // and go to the server as `addOnDropIns`, persisted on the overnights doc.
 // One row per day of the stay, return day included, all defaulting to 0.
 let _reviewAddOnDropIns = {};
@@ -5530,8 +5530,8 @@ function addOnDropInList() {
 // An overnight stay's calculateServiceTotal result plus its add-on
 // drop-ins, as one total/breakdown — the single place both review modals
 // and confirmRequestDates combine the two, before any discount is applied.
-function withAddOnDropIns(raw, medication) {
-  const addOn = calculateAddOnDropInTotal({ addOnDropIns: addOnDropInList(), medication });
+function withAddOnDropIns(raw) {
+  const addOn = calculateAddOnDropInTotal({ addOnDropIns: addOnDropInList() });
   if (!addOn.total) return raw;
   return { ...raw, total: raw.total + addOn.total, breakdown: [...raw.breakdown, ...addOn.breakdown] };
 }
@@ -5747,7 +5747,7 @@ window.reviewRecalcService = () => {
     });
     if (isOvernightStay) {
       syncAddOnDropInRows();
-      raw = withAddOnDropIns(raw, medication);
+      raw = withAddOnDropIns(raw);
     }
     // This branch also covers a plain walk/extended-walk — Friends & Family
     // must never discount those, so the gate here is the explicit travel-service
@@ -5871,7 +5871,6 @@ window.reviewRecalcOvernight = () => {
     syncAddOnDropInRows();
     const raw = withAddOnDropIns(
       calculateServiceTotal({ serviceKey: service, startDate, endDate, extraPet, medication }),
-      medication,
     );
     const applied = travelDiscountPercent > 0
       ? applyTravelDiscount(raw.total, raw.breakdown, travelDiscountPercent)
@@ -6052,7 +6051,7 @@ window.confirmRequestDates = async (submissionId, item) => {
         // the per-day schedule, not a flat days x rate estimate.
         const r = isCheckin
           ? computeDropInVisitTotal(extraPet, medication)
-          : withAddOnDropIns(calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet, medication }), medication);
+          : withAddOnDropIns(calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet, medication }));
         const applied = travelDiscountPercent > 0 ? applyTravelDiscount(r.total, r.breakdown, travelDiscountPercent) : r;
         amountInDollars = applied.total; unitCount = isCheckin ? r.totalVisits : r.unitCount;
         travelDiscountApplied = travelDiscountPercent > 0;
@@ -6084,7 +6083,7 @@ window.confirmRequestDates = async (submissionId, item) => {
       }
     } else {
       let r = calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet, medication });
-      if (isOvernightStay) r = withAddOnDropIns(r, medication);
+      if (isOvernightStay) r = withAddOnDropIns(r);
       // This same branch also handles a plain walk/extended-walk booked
       // through service_request — Friends & Family must never discount
       // those, so gate on the explicit travel-service allowlist, not just
