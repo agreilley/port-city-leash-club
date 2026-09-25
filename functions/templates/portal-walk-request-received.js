@@ -26,8 +26,12 @@ const {
 async function formatWalkWhen(w) {
   const dateLabel = formatCalendarDate(w.dateStr);
   if (!dateLabel) return null;
-  const slotLabel = (await formatWalkTimeSlot(w.slot)) || formatMeetGreetSlot(w.slot);
-  return slotLabel ? `${dateLabel} at ${slotLabel}` : dateLabel;
+  // A time-slot bucket reads as "Saturday, October 17, late afternoon"; an
+  // exact clock time keeps "at" ("Saturday, October 17 at 5:00 PM").
+  const bucket = await formatWalkTimeSlot(w.slot);
+  if (bucket) return `${dateLabel}, ${bucket.toLowerCase()}`;
+  const clock = formatMeetGreetSlot(w.slot);
+  return clock ? `${dateLabel} at ${clock}` : dateLabel;
 }
 
 async function whenValue(data) {
