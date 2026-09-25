@@ -60,7 +60,7 @@ async function html(data) {
     <p style="margin:0 0 20px;">Hi ${escapeHtml(data.firstName || 'there')},</p>
     <p style="margin:0 0 20px;">Thanks for your request. We've got it and we're looking over the details now.</p>
     ${block}
-    <p style="margin:20px 0 0;">We'll confirm everything shortly. In the meantime, you can update your ${possessive(dogCount, 'dog', 'dogs')} routine, feeding, or any other details anytime in your ${possessive(dogCount, "dog", "dogs")} profile in the portal.</p>
+    <p style="margin:20px 0 0;">We'll confirm everything shortly. In the meantime, you can update your ${possessive(dogCount, 'dog', 'dogs')} routine or any other details anytime in your ${possessive(dogCount, "dog", "dogs")} profile in the portal.</p>
     <p style="margin:20px 0 0;">If you have any questions, just reply here and it'll come straight to us.</p>
     ${renderSignoffHtml(SIGNOFF_NAME, 'Talk soon,')}
   `;
@@ -83,7 +83,7 @@ async function text(data) {
       rows: [{ label: 'When', value: whenStr }],
     }),
     '',
-    `We'll confirm everything shortly. In the meantime, you can update your ${possessive(dogCount, 'dog', 'dogs')} routine, feeding, or any other details anytime in your ${possessive(dogCount, "dog", "dogs")} profile in the portal.`,
+    `We'll confirm everything shortly. In the meantime, you can update your ${possessive(dogCount, 'dog', 'dogs')} routine or any other details anytime in your ${possessive(dogCount, "dog", "dogs")} profile in the portal.`,
     '',
     `If you have any questions, just reply here and it'll come straight to us.`,
     '',

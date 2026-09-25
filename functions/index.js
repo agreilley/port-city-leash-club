@@ -7920,6 +7920,7 @@ async function sendPortalServiceRequestReceivedEmail(sub, submissionId) {
       endDateStr: endDate ? isoDateStr(endDate) : '',
       unitCount,
       unitNoun: isDropIn ? 'visit' : 'night',
+      isWalk: info?.unit === 'walk',
     },
     idempotencyKey: `portal-service-request-received:${submissionId}`,
   });

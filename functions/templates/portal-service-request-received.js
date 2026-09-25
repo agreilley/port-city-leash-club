@@ -23,6 +23,8 @@
 //                           // the date range alone is shown instead, and
 //                           // admin confirms the real count at review time.
 //   unitNoun: 'night' | 'visit',
+//   isWalk: boolean,        // an extra walk — same portal line minus
+//                           // "feeding", which doesn't apply to a walk
 // }
 
 const {
@@ -59,7 +61,7 @@ function html(data) {
     <p style="margin:0 0 20px;">Hi ${escapeHtml(data.firstName || 'there')},</p>
     <p style="margin:0 0 20px;">Thanks for your request. We've got it and we're looking over the dates now.</p>
     ${block}
-    <p style="margin:20px 0 0;">We'll confirm everything shortly. In the meantime, you can update your ${possessive(petCount, 'pet', 'pets')} routine, feeding, or any other details anytime in your ${possessive(petCount, "pet", "pets")} profile in the portal.</p>
+    <p style="margin:20px 0 0;">${data.isWalk ? `We'll confirm everything shortly. In the meantime, you can update your ${possessive(petCount, 'pet', 'pets')} routine or any other details anytime in your ${possessive(petCount, "pet", "pets")} profile in the portal.` : `We'll confirm everything shortly. In the meantime, you can update your ${possessive(petCount, 'pet', 'pets')} routine, feeding, or any other details anytime in your ${possessive(petCount, "pet", "pets")} profile in the portal.`}</p>
     <p style="margin:20px 0 0;">If you have any questions, just reply here and it'll come straight to us.</p>
     ${renderSignoffHtml(SIGNOFF_NAME, 'Talk soon,')}
   `;
@@ -84,7 +86,7 @@ function text(data) {
       ],
     }),
     '',
-    `We'll confirm everything shortly. In the meantime, you can update your ${possessive(petCount, 'pet', 'pets')} routine, feeding, or any other details anytime in your ${possessive(petCount, "pet", "pets")} profile in the portal.`,
+    data.isWalk ? `We'll confirm everything shortly. In the meantime, you can update your ${possessive(petCount, 'pet', 'pets')} routine or any other details anytime in your ${possessive(petCount, "pet", "pets")} profile in the portal.` : `We'll confirm everything shortly. In the meantime, you can update your ${possessive(petCount, 'pet', 'pets')} routine, feeding, or any other details anytime in your ${possessive(petCount, "pet", "pets")} profile in the portal.`,
     '',
     `If you have any questions, just reply here and it'll come straight to us.`,
     '',
