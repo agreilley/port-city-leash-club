@@ -5120,9 +5120,11 @@ window.openRequestItem = async (id) => {
     if (getActiveTravelDiscountPercent(item.memberId) > 0) {
       setActionBtnEnabled(actionBtn, false);
     }
-  } else if (item.type === 'reschedule' && item.status !== 'confirmed') {
+  } else if (item.type === 'reschedule' && item.status !== 'confirmed' && item.status !== 'declined') {
     actionBtn.textContent = 'Approve & Assign Walker'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => approveReschedule(item.id, item);
+    declineBtn.style.display = 'block';
+    declineBtn.onclick = () => declineReschedule(item.id, item);
   } else if (isUnresolvedWalkExtension) {
     actionBtn.textContent = 'Confirm & Charge'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => confirmWalkExtension(item.id, item);
@@ -6366,17 +6368,62 @@ window.approveReschedule = async (submissionId, item) => {
     const mappedSlot = RESCHEDULE_TIME_SLOT_MAP[(item.newTimeSlot || '').toLowerCase()];
     if (mappedSlot) updates.timeSlot = mappedSlot;
 
+    // previousDate/previousTimeSlot: once the walk moves, nothing else
+    // remembers where it was — the member email ("Was: ...") reads these.
     await updateDoc(doc(db, 'walks', item.walkId), updates);
-    await updateDoc(doc(db, 'submissions', submissionId), { status: 'confirmed', read: true });
+    await updateDoc(doc(db, 'submissions', submissionId), {
+      status: 'confirmed', read: true,
+      previousDate: walk.date || null, previousTimeSlot: walk.timeSlot || null,
+    });
 
+    const warnings = [];
     if (!mappedSlot && item.newTimeSlot) {
-      alert(`Date updated, but "${item.newTimeSlot}" didn't map to a known time slot — set it manually on the walk.`);
+      warnings.push(`Date updated, but "${item.newTimeSlot}" didn't map to a known time slot — set it manually on the walk.`);
     }
+    // Sent before the walk modal opens, so a walker reassignment made there
+    // isn't reflected in this email — it names whoever was on the walk.
+    try {
+      await httpsCallable(fns, 'sendRescheduleDecisionEmail')({ submissionId });
+    } catch (e) {
+      warnings.push(`Walk rescheduled, but the member email wasn't sent: ${e.message}`);
+    }
+    if (warnings.length) alert(warnings.join('\n\n'));
 
     closeModal('requestModal');
     openWalkModal(item.walkId);
   } catch (e) {
     btn.textContent = 'Approve & Assign Walker'; btn.disabled = false;
+    alert('Error: ' + e.message);
+  }
+};
+
+// Leaves the walk exactly where it was — declining just closes the request
+// and emails the member that the walk is still on, inviting a reply.
+window.declineReschedule = async (submissionId, item) => {
+  if (!confirm('Decline this reschedule request? The walk stays on its original date and the member gets an email asking them to reply to find another time.')) return;
+  const btn = document.getElementById('requestDeclineBtn');
+  btn.textContent = 'Declining…'; btn.disabled = true;
+  try {
+    await updateDoc(doc(db, 'submissions', submissionId), { status: 'declined', read: true });
+    let emailWarning = null;
+    try {
+      await httpsCallable(fns, 'sendRescheduleDecisionEmail')({ submissionId });
+    } catch (e) {
+      emailWarning = `Request declined, but the member email wasn't sent: ${e.message}`;
+    }
+
+    // The shared Decline button is reused by the next request opened, and
+    // the modal only toggles its display — put it back the way it was.
+    btn.textContent = 'Decline'; btn.disabled = false;
+    closeModal('requestModal');
+    const msg = document.createElement('div');
+    msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#C17B6F;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
+    msg.textContent = 'Reschedule request declined';
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 3000);
+    if (emailWarning) alert(emailWarning);
+  } catch (e) {
+    btn.textContent = 'Decline'; btn.disabled = false;
     alert('Error: ' + e.message);
   }
 };
