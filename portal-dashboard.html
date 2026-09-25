@@ -1638,15 +1638,6 @@ function updateMetrics() {
         ? memberData.dogs.map(d => d.name).filter(Boolean).join(' & ')
         : memberData?.dogName || '–';
       document.getElementById('modalDog').textContent = dogs;
-      // Skipped in preview mode: Reschedule/Extend are disabled so nothing
-      // consumes these, and they'd otherwise leave the previewed member's
-      // walk ID sitting in the admin's own sessionStorage for that tab.
-      if (!isPreviewMode) {
-        sessionStorage.setItem('walkDate', formatDateString(date));
-        sessionStorage.setItem('walkTime', document.getElementById('modalTime').textContent);
-        sessionStorage.setItem('activeWalkId', walk.id);
-      }
-
       const pendingResched = liveWalk.status !== 'completed' ? pendingReschedules[walk.id] : null;
       document.getElementById('modalRescheduleNote').style.display = pendingResched ? '' : 'none';
       if (pendingResched) {
