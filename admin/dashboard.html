@@ -1230,7 +1230,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { getStorage, ref as storageRef, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
-import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalkExtensionTotal, WALK_EXTENSION_PRICE, EXTRA_PET_FEE, MEDICATION_FEE, applyTravelDiscount, isTravelDiscountService } from '../pricing.js';
+import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalkExtensionTotal, WALK_EXTENSION_PRICE, EXTRA_PET_FEE, MEDICATION_FEE, applyTravelDiscount, isTravelDiscountService, calculateAddOnDropInTotal } from '../pricing.js';
 // Walk time-of-day slot: keys + base label + clock range, shared with every
 // other page that shows or picks one (see time-slots.js's own header
 // comment). Deliberately NOT the careers/screening availability grids —
@@ -3800,7 +3800,7 @@ window.openOvernightModal = (overnightId) => {
       const isDone = v.status === 'completed';
       return `<div style="padding:8px 0;border-bottom:1px solid rgba(0,0,0,0.06);">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="font-size:13px;color:var(--navy);">${fmtDate(v.date)} · ${escapeHtml(VISIT_SLOT_LABELS[v.slot] || v.slot || '–')}</span>
+          <span style="font-size:13px;color:var(--navy);">${fmtDate(v.date)} · ${escapeHtml(VISIT_SLOT_LABELS[v.slot] || v.slot || '–')}${v.addOn ? ' · Add-on drop-in' : ''}</span>
           <span style="font-size:12px;font-weight:500;color:${isDone ? 'var(--green)' : 'var(--text-light)'};">${isDone ? '✓ Completed' : 'Expected'}</span>
         </div>
         ${v.note ? `<div style="font-size:12px;color:var(--text-mid);margin-top:4px;">${escapeHtml(v.note)}</div>` : ''}
@@ -5460,6 +5460,90 @@ function setOvernightVisitScheduleFieldVisible(visible) {
   if (field) field.style.display = visible ? 'flex' : 'none';
 }
 
+// ── Overnight-stay paid add-on drop-ins (PRICED — unlike the grid above) ──
+// For a stay that leaves an uncovered half day (e.g. mid-day Saturday to
+// mid-day Monday: two nights, each with its baked-in check-in, plus one
+// extra visit), decided by admin after the meet & greet. These ARE billed
+// (calculateAddOnDropInTotal, pricing.js — same price as a standalone
+// drop-in of those days) and paid to the walker (calculateOvernightPayout),
+// and go to the server as `addOnDropIns`, persisted on the overnights doc.
+// One row per day of the stay, return day included, all defaulting to 0.
+let _reviewAddOnDropIns = {};
+
+function syncAddOnDropInRows() {
+  const container = document.getElementById('rev-addon-dropins');
+  if (!container) return;
+  const startStr = document.getElementById('rev-start')?.value;
+  const endStr = document.getElementById('rev-end')?.value;
+  if (!startStr || !endStr || endStr <= startStr) { container.innerHTML = ''; _reviewAddOnDropIns = {}; return; }
+
+  const dates = [];
+  const cursor = new Date(`${startStr}T12:00:00`);
+  const end = new Date(`${endStr}T12:00:00`);
+  while (cursor <= end) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  const next = {};
+  dates.forEach(d => { next[d] = _reviewAddOnDropIns[d] || { count: 0, slots: [] }; });
+  _reviewAddOnDropIns = next;
+
+  container.innerHTML = dates.map(d => {
+    const { count, slots } = _reviewAddOnDropIns[d];
+    const label = new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const slotPickers = slots.map((slot, i) => `
+      <select style="font-size:12px;" onchange="updateAddOnDropInSlot('${d}', ${i}, this.value)">
+        ${VISIT_SLOTS.map(key => `<option value="${key}" ${slot === key ? 'selected' : ''}>${VISIT_SLOT_LABELS[key]}</option>`).join('')}
+      </select>
+    `).join('');
+    return `<div style="padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.05);">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+        <span style="font-size:13px;color:var(--navy);">${label}</span>
+        <input type="number" min="0" max="10" value="${count}" style="width:64px;" onchange="updateAddOnDropInCount('${d}', this.value)">
+      </div>
+      ${count > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">${slotPickers}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+window.updateAddOnDropInCount = (dateStr, value) => {
+  const count = Math.min(10, Math.max(0, parseInt(value, 10) || 0));
+  _reviewAddOnDropIns[dateStr] = { count, slots: defaultOvernightSlotsForCount(count) };
+  _reviewRecalcFn?.(); // priced — re-syncs rows and recomputes the total
+};
+
+window.updateAddOnDropInSlot = (dateStr, index, slot) => {
+  const entry = _reviewAddOnDropIns[dateStr];
+  if (entry) entry.slots[index] = slot; // scheduling only, no recalc
+};
+
+// [{date, visits, slots}] for days with at least one visit, date order —
+// the exact shape markDatesConfirmed expects.
+function addOnDropInList() {
+  return Object.entries(_reviewAddOnDropIns)
+    .filter(([, e]) => e.count > 0)
+    .map(([date, e]) => ({ date, visits: e.count, slots: e.slots }))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
+// An overnight stay's calculateServiceTotal result plus its add-on
+// drop-ins, as one total/breakdown — the single place both review modals
+// and confirmRequestDates combine the two, before any discount is applied.
+function withAddOnDropIns(raw, extraPet, medication) {
+  const addOn = calculateAddOnDropInTotal({ addOnDropIns: addOnDropInList(), extraPet, medication });
+  if (!addOn.total) return raw;
+  return { ...raw, total: raw.total + addOn.total, breakdown: [...raw.breakdown, ...addOn.breakdown] };
+}
+
+function addOnDropInFieldHTML() {
+  return `<div class="form-field" id="rev-addon-dropins-field" style="display:none;grid-column:1 / -1;"><label>Add-on Drop-In Visits <span style="font-weight:400;color:var(--text-light);">(charged at the drop-in rate, added to the total above)</span></label><div id="rev-addon-dropins"></div></div>`;
+}
+
+function setAddOnDropInFieldVisible(visible) {
+  const field = document.getElementById('rev-addon-dropins-field');
+  if (field) field.style.display = visible ? 'flex' : 'none';
+}
+
 function toDateInputValue(val) {
   if (!val) return '';
   if (typeof val === 'string') return val.slice(0, 10);
@@ -5522,6 +5606,7 @@ function renderTravelDiscountBanner(memberId) {
 function renderServiceRequestReview(item) {
   _reviewTotalTouched = false;
   _reviewVisitSchedule = {};
+  _reviewAddOnDropIns = {};
   _reviewItemVisitsPerDay = parseInt(item.visitsPerDay, 10) || 1;
   _reviewItemVisitSchedule = {};
   (item.visitSchedule || []).forEach(({ date, visits }) => {
@@ -5556,6 +5641,7 @@ function renderServiceRequestReview(item) {
         </select>
       </div>
       ${visitScheduleFieldHTML()}
+      ${addOnDropInFieldHTML()}
       <div class="form-field"><label>Start Date</label><input type="date" id="rev-start" value="${escapeHtml(toDateInputValue(item.startDate))}" onchange="reviewRecalcService()"></div>
       <div class="form-field" id="rev-end-field"><label>End Date</label><input type="date" id="rev-end" value="${escapeHtml(toDateInputValue(item.endDate))}" onchange="reviewRecalcService()"></div>
       <div class="form-field" id="rev-timeslot-field" style="display:none;"><label>Time Slot</label>
@@ -5639,6 +5725,8 @@ window.reviewRecalcService = () => {
   document.getElementById('rev-end-field').style.display = isWalk ? 'none' : 'flex';
   document.getElementById('rev-timeslot-field').style.display = isWalk ? 'flex' : 'none';
   setVisitScheduleFieldVisible(isDropIn);
+  const isOvernightStay = service === 'overnight-stay';
+  setAddOnDropInFieldVisible(isOvernightStay);
 
   const startDate = document.getElementById('rev-start').value;
   const endDate = document.getElementById('rev-end').value;
@@ -5653,9 +5741,13 @@ window.reviewRecalcService = () => {
     // gate needed here, unlike the generic branch below.
     total = computeAndRenderDropInPricing(extraPet, medication, travelDiscountPercent);
   } else {
-    const raw = calculateServiceTotal({
+    let raw = calculateServiceTotal({
       serviceKey: service, startDate, endDate, extraPet, medication,
     });
+    if (isOvernightStay) {
+      syncAddOnDropInRows();
+      raw = withAddOnDropIns(raw, extraPet, medication);
+    }
     // This branch also covers a plain walk/extended-walk — Friends & Family
     // must never discount those, so the gate here is the explicit travel-service
     // allowlist (isTravelDiscountService), not just "not drop-in" and not a
@@ -5681,6 +5773,7 @@ function renderOvernightReview(item) {
   _reviewMemberId = item.memberId || null;
   _reviewVisitSchedule = {};
   _reviewOvernightVisitSchedule = {};
+  _reviewAddOnDropIns = {};
   _reviewItemVisitsPerDay = parseInt(item.visitsPerDay, 10) || 1;
   _reviewItemVisitSchedule = {};
   (item.visitSchedule || []).forEach(({ date, visits }) => {
@@ -5700,6 +5793,7 @@ function renderOvernightReview(item) {
       </div>
       ${visitScheduleFieldHTML()}
       ${overnightVisitScheduleFieldHTML()}
+      ${addOnDropInFieldHTML()}
       <div class="form-field"><label>Start Date</label><input type="date" id="rev-start" value="${escapeHtml(toDateInputValue(item.startDate))}" onchange="reviewRecalcOvernight()"></div>
       <div class="form-field"><label>End Date</label><input type="date" id="rev-end" value="${escapeHtml(toDateInputValue(item.endDate))}" onchange="reviewRecalcOvernight()"></div>
     </div>
@@ -5750,6 +5844,7 @@ window.reviewRecalcOvernight = () => {
   const isCheckin = resolveServiceKey(service) === 'drop-in-visit';
   setVisitScheduleFieldVisible(isCheckin);
   setOvernightVisitScheduleFieldVisible(!isCheckin);
+  setAddOnDropInFieldVisible(!isCheckin);
   const startDate = document.getElementById('rev-start').value;
   const endDate = document.getElementById('rev-end').value;
   const extraPet = document.getElementById('rev-extra-pet').checked;
@@ -5772,7 +5867,11 @@ window.reviewRecalcOvernight = () => {
     // range in sync with Start/End Date below; it's a pure UI side effect
     // and never feeds `raw`/`total` here — see that grid's own top comment
     // for why it has to stay entirely outside this pricing path.
-    const raw = calculateServiceTotal({ serviceKey: service, startDate, endDate, extraPet, medication });
+    syncAddOnDropInRows();
+    const raw = withAddOnDropIns(
+      calculateServiceTotal({ serviceKey: service, startDate, endDate, extraPet, medication }),
+      extraPet, medication,
+    );
     const applied = travelDiscountPercent > 0
       ? applyTravelDiscount(raw.total, raw.breakdown, travelDiscountPercent)
       : raw;
@@ -5916,6 +6015,11 @@ window.confirmRequestDates = async (submissionId, item) => {
     // service_request. Used both to pick the per-visit pricing path below
     // and to decide whether visitSchedule gets captured at all.
     const isCheckin = serviceKey === 'drop-in-visit';
+    // Paid add-on drop-ins (overnight stay only) — priced into every
+    // overnight-stay total below via withAddOnDropIns, exactly as the
+    // review screen showed it, and sent to the server as addOnDropIns.
+    const isOvernightStay = serviceKey === 'overnight-stay';
+    const addOnDropIns = isOvernightStay ? addOnDropInList() : [];
 
     // Friends & Family — see renderTravelDiscountBanner/reviewRecalcService/
     // reviewRecalcOvernight, which already show and factor this discount
@@ -5947,7 +6051,7 @@ window.confirmRequestDates = async (submissionId, item) => {
         // the per-day schedule, not a flat days x rate estimate.
         const r = isCheckin
           ? computeDropInVisitTotal(extraPet, medication)
-          : calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet, medication });
+          : withAddOnDropIns(calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet, medication }), extraPet, medication);
         const applied = travelDiscountPercent > 0 ? applyTravelDiscount(r.total, r.breakdown, travelDiscountPercent) : r;
         amountInDollars = applied.total; unitCount = isCheckin ? r.totalVisits : r.unitCount;
         travelDiscountApplied = travelDiscountPercent > 0;
@@ -5978,7 +6082,8 @@ window.confirmRequestDates = async (submissionId, item) => {
         travelDiscountPercentApplied = travelDiscountApplied ? travelDiscountPercent : 0;
       }
     } else {
-      const r = calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet, medication });
+      let r = calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet, medication });
+      if (isOvernightStay) r = withAddOnDropIns(r, extraPet, medication);
       // This same branch also handles a plain walk/extended-walk booked
       // through service_request — Friends & Family must never discount
       // those, so gate on the explicit travel-service allowlist, not just
@@ -6020,6 +6125,7 @@ window.confirmRequestDates = async (submissionId, item) => {
       submissionId, service, startDate: startDateStr, endDate: endDateStr,
       timeSlot, extraPet, medication, visitSchedule, overnightVisitPlan, amountInDollars, unitCount,
       travelDiscountApplied, travelDiscountPercent: travelDiscountPercentApplied,
+      addOnDropIns: addOnDropIns.length ? addOnDropIns : null,
     });
 
     closeModal('requestModal');

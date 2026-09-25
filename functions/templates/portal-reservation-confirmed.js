@@ -23,6 +23,9 @@
 //   chargeDateStr: string,         // 'YYYY-MM-DD' — matches chargeScheduledFor
 //   visitSchedule: array<{date: 'YYYY-MM-DD', visits: number}> | null,
 //     // check-in only; null/absent for overnight stays — no per-day block rendered
+//   addOnDropIns: array<{date: 'YYYY-MM-DD', visits: number}> | null,
+//     // overnight stay only — paid drop-ins admin added; each listed as its
+//     // own line item under the stay
 //   needsCard: boolean,            // true when there's no card on file yet —
 //     // confirming no longer waits on one (finalizeSubmissionIfReady), so
 //     // the charge-date sentence below would otherwise state a date/amount
@@ -31,7 +34,7 @@
 // }
 
 const {
-  escapeHtml, formatDateRange, formatCalendarDate, joinNames, pluralNoun, TEAM_SIGNOFF,
+  escapeHtml, formatDateRange, formatCalendarDate, joinNames, pluralNoun, TEAM_SIGNOFF, addOnDropInRows,
   renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
@@ -49,6 +52,19 @@ function visitScheduleRows(visitSchedule) {
   }));
 }
 
+// Service/Dates/Total normally; with add-on drop-ins, one line item per
+// service instead (the stay, then each drop-in day), then the Total.
+function reservationRows(data) {
+  const dropIns = addOnDropInRows(data.addOnDropIns);
+  const head = dropIns.length
+    ? [{ label: data.serviceLabel || 'Service', value: formatDateRange(data.startDateStr, data.endDateStr) }, ...dropIns]
+    : [
+      { label: 'Service', value: data.serviceLabel || '' },
+      { label: 'Dates', value: formatDateRange(data.startDateStr, data.endDateStr) },
+    ];
+  return [...head, { label: 'Total', value: fmtDollars(data.totalDollars) }];
+}
+
 function subject() {
   return 'Your pet sitting reservation is confirmed';
 }
@@ -58,11 +74,7 @@ function html(data) {
 
   const reservationBlock = renderBlockHtml({
     eyebrow: 'Your reservation',
-    rows: [
-      { label: 'Service', value: escapeHtml(data.serviceLabel || '') },
-      { label: 'Dates', value: escapeHtml(formatDateRange(data.startDateStr, data.endDateStr)) },
-      { label: 'Total', value: escapeHtml(fmtDollars(data.totalDollars)) },
-    ],
+    rows: reservationRows(data).map(r => ({ label: r.label, value: escapeHtml(r.value) })),
   });
 
   const scheduleBlock = Array.isArray(data.visitSchedule) && data.visitSchedule.length
@@ -103,11 +115,7 @@ function text(data) {
     '',
     renderBlockText({
       eyebrow: 'Your reservation',
-      rows: [
-        { label: 'Service', value: data.serviceLabel || '' },
-        { label: 'Dates', value: formatDateRange(data.startDateStr, data.endDateStr) },
-        { label: 'Total', value: fmtDollars(data.totalDollars) },
-      ],
+      rows: reservationRows(data),
     }),
     '',
   ];

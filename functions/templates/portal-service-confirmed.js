@@ -18,6 +18,9 @@
 //   endDateStr: string,
 //   unitCount: number,
 //   unitNoun: 'night' | 'visit',
+//   addOnDropIns: array<{date: 'YYYY-MM-DD', visits: number}> | null,
+//     // overnight stay only — paid drop-ins admin added; each listed as its
+//     // own line item under the stay
 //   isNewAccount: boolean,
 //   portalSetupLink: string|null, // generatePasswordResetLink() output; required when isNewAccount is true
 //   needsCard: boolean,   // true when there's no card on file yet — confirming no longer waits on one
@@ -25,7 +28,7 @@
 // }
 
 const {
-  escapeHtml, formatDateRange, joinNames, possessive, spellSmallNumber,
+  escapeHtml, formatDateRange, joinNames, possessive, spellSmallNumber, addOnDropInRows,
   SIGNOFF_NAME, renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
@@ -33,6 +36,23 @@ function unitLine(data) {
   const word = spellSmallNumber(data.unitCount);
   const noun = data.unitCount === 1 ? data.unitNoun : `${data.unitNoun}s`;
   return `${word} ${noun}`;
+}
+
+// Service/Dates/Length normally; with add-on drop-ins, one line item per
+// service instead (the stay, then each drop-in day).
+function bookingRows(data) {
+  const dropIns = addOnDropInRows(data.addOnDropIns);
+  if (!dropIns.length) {
+    return [
+      { label: 'Service', value: data.serviceLabel || '' },
+      { label: 'Dates', value: formatDateRange(data.startDateStr, data.endDateStr) },
+      { label: 'Length', value: unitLine(data) },
+    ];
+  }
+  return [
+    { label: data.serviceLabel || 'Service', value: `${formatDateRange(data.startDateStr, data.endDateStr)} · ${unitLine(data).toLowerCase()}` },
+    ...dropIns,
+  ];
 }
 
 function subject(data) {
@@ -46,11 +66,7 @@ function html(data) {
 
   const block = renderBlockHtml({
     eyebrow: 'Your booking',
-    rows: [
-      { label: 'Service', value: escapeHtml(data.serviceLabel || '') },
-      { label: 'Dates', value: escapeHtml(formatDateRange(data.startDateStr, data.endDateStr)) },
-      { label: 'Length', value: escapeHtml(unitLine(data)) },
-    ],
+    rows: bookingRows(data).map(r => ({ label: r.label, value: escapeHtml(r.value) })),
   });
 
   // isNewAccount is only ever true from confirmWalkExtension now — a new
@@ -109,11 +125,7 @@ function text(data) {
     '',
     renderBlockText({
       eyebrow: 'Your booking',
-      rows: [
-        { label: 'Service', value: data.serviceLabel || '' },
-        { label: 'Dates', value: formatDateRange(data.startDateStr, data.endDateStr) },
-        { label: 'Length', value: unitLine(data) },
-      ],
+      rows: bookingRows(data),
     }),
     '',
     routineLine,

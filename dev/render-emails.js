@@ -182,6 +182,44 @@ const RENDERS = [
     },
   },
 
+  {
+    template: 'portal-service-confirmed',
+    variant: 'overnight-with-dropin',
+    label: 'Overnight + add-on drop-in',
+    petCount: 2,
+    data: {
+      firstName: 'Rebecca',
+      petNames: ['Luna', 'Milo'],
+      serviceLabel: 'Overnight Stay',
+      startDateStr: '2026-09-26',
+      endDateStr: '2026-09-28',
+      unitCount: 2,
+      unitNoun: 'night',
+      addOnDropIns: [{ date: '2026-09-26', visits: 1 }],
+      isNewAccount: false,
+      portalSetupLink: null,
+    },
+  },
+
+  // ── portal-reservation-confirmed ──────────────────────────────────────
+  {
+    template: 'portal-reservation-confirmed',
+    variant: 'overnight-with-dropins',
+    label: 'Overnight + add-on drop-ins',
+    petCount: 2,
+    data: {
+      firstName: 'Rebecca',
+      petNames: ['Luna', 'Milo'],
+      serviceLabel: 'Overnight Stay',
+      startDateStr: '2026-09-26',
+      endDateStr: '2026-09-28',
+      totalDollars: 285,
+      chargeDateStr: '2026-09-25',
+      addOnDropIns: [{ date: '2026-09-26', visits: 1 }, { date: '2026-09-28', visits: 2 }],
+      needsCard: false,
+    },
+  },
+
   // ── walk-confirmed ────────────────────────────────────────────────────
   {
     template: 'walk-confirmed',

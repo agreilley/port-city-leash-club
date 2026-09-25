@@ -864,7 +864,7 @@ function renderTodaysVisits() {
       return `<div class="walk-card" style="align-items:center;">
         <div style="flex:1;">
           <div style="font-size:13px;color:var(--text-mid);">${address}</div>
-          <div style="font-size:13px;color:var(--text-light);">${v.date} · ${slotLabel}</div>
+          <div style="font-size:13px;color:var(--text-light);">${v.date} · ${slotLabel}${v.addOn ? ' · Extra drop-in' : ''}</div>
         </div>
         <button class="btn-complete" style="width:auto;padding:8px 16px;" onclick="openVisitCompleteForm('${o.id}', '${v.id}')">Mark complete</button>
       </div>`;
@@ -1203,7 +1203,7 @@ function renderCalendar() {
         .filter(v => walkDateStr(v.date) === dayStr)
         .map(v => {
           const name = escapeHtml(petNames);
-          return `<div class="my-walk-chip ${cls}" onclick="openVisitCompleteForm('${o.id}', '${v.id}')" title="${name} · ${typeLabel}">${name}</div>`;
+          return `<div class="my-walk-chip ${cls}" onclick="openVisitCompleteForm('${o.id}', '${v.id}')" title="${name} · ${v.addOn ? 'Extra drop-in' : typeLabel}">${name}</div>`;
         });
     }).join('');
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}${visitChips}</div>`;

@@ -193,6 +193,29 @@ export function calculateDropInScheduleTotal({ schedule, extraPet = false, medic
   return { total: serviceTotal + extraPetTotal + medicationTotal, breakdown, days, totalVisits };
 }
 
+// Paid drop-in visits added onto an overnight stay — admin-only, set on the
+// review screen after the meet & greet when a stay leaves an uncovered half
+// day (e.g. mid-day Saturday to mid-day Monday: two nights, each with its
+// baked-in check-in, plus one extra visit). Priced exactly like a standalone
+// drop-in booking of the same days (per visit, Multiple Pets / Medication
+// per drop-in day), so adding one here never costs the member more or less
+// than booking it separately would have. addOnDropIns is [{date, visits}];
+// zero-visit days are ignored. Breakdown labels are distinct from the
+// overnight's own add-on lines so the two can be listed side by side.
+export function calculateAddOnDropInTotal({ addOnDropIns, extraPet = false, medication = false } = {}) {
+  const schedule = {};
+  (addOnDropIns || []).forEach((d) => {
+    const visits = Number(d?.visits) || 0;
+    if (d?.date && visits > 0) schedule[d.date] = visits;
+  });
+  const r = calculateDropInScheduleTotal({ schedule, extraPet, medication });
+  if (!r.totalVisits) return { total: 0, breakdown: [], days: 0, totalVisits: 0 };
+  const suffix = (label) => (label === SERVICE_PRICES['drop-in-visit'].name
+    ? `${label} (add-on, ${r.totalVisits} visit${r.totalVisits === 1 ? '' : 's'})`
+    : `${label} (drop-ins)`);
+  return { ...r, breakdown: r.breakdown.map((b) => ({ ...b, label: suffix(b.label) })) };
+}
+
 // The ONE place discount eligibility is decided — used by both the
 // discount-application call sites (admin/dashboard.html) and the
 // server-side assertion (functions/index.js's chargeCustomerCard), so they

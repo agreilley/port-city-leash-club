@@ -144,6 +144,18 @@ function pluralNoun(count, singular, plural) {
   return count === 1 ? singular : plural;
 }
 
+// An overnight stay's paid add-on drop-ins ([{date, visits}]) as booking
+// block rows — one line item per day, listed under the stay itself by both
+// pet-sitting confirmation templates. Plain text; callers escape for HTML.
+function addOnDropInRows(addOnDropIns) {
+  return (Array.isArray(addOnDropIns) ? addOnDropIns : [])
+    .filter(d => d && Number(d.visits) > 0)
+    .map(d => ({
+      label: 'Drop-In Visit',
+      value: `${formatCalendarDate(d.date) || d.date} · ${spellSmallNumber(Number(d.visits)).toLowerCase()} ${pluralNoun(Number(d.visits), 'visit', 'visits')}`,
+    }));
+}
+
 // "your dog's" (1) / "your dogs'" (2+) — works for "pet"/"pets" too.
 // Passing the same word for singular/plural where a noun's plural isn't a
 // simple +s isn't needed here (dog/dogs, pet/pets both regular).
@@ -314,7 +326,7 @@ function wrapText({ bodyText }) {
 module.exports = {
   NAVY, SEAFOAM, SAND, SAND_LIGHT, CORAL, HEADING_FONT, BODY_FONT, SIGNOFF_NAME, TEAM_SIGNOFF,
   escapeHtml, formatCalendarDate, formatMeetGreetDate, formatMeetGreetSlot, formatWalkTimeSlot, formatDateRange,
-  joinNames, meetClosingLine, pluralNoun, possessive, spellSmallNumber,
+  joinNames, meetClosingLine, pluralNoun, possessive, spellSmallNumber, addOnDropInRows,
   renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml,
   renderCodeBlockHtml, renderCodeBlockText,
   wrapHtml, wrapText,

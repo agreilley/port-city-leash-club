@@ -5334,6 +5334,23 @@ function generateOvernightVisits(reviewed, isCheckin) {
   }));
 }
 
+// Tracking entries for an overnight stay's paid add-on drop-ins — same
+// shape as generateOvernightVisits' entries, flagged addOn: true.
+function generateAddOnDropInVisits(addOnDropIns) {
+  return (addOnDropIns || []).flatMap((day) => day.slots.map((slot) => ({
+    id: db.collection('overnights').doc().id,
+    date: day.date,
+    slot,
+    status: 'expected',
+    completedAt: null,
+    note: '',
+    photoUrls: [],
+    walkerId: '',
+    walkerName: '',
+    addOn: true,
+  })));
+}
+
 async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, reviewed) {
   const { SERVICE_PRICES, resolveServiceKey } = await import('./pricing.js');
   const isOvernightRequest = sub.type === 'overnight_request';
@@ -5508,10 +5525,20 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
       // submitted through (service_request or overnight_request) — a true
       // overnight-stay keeps the exclusive-nights model and never sets this.
       ...(isCheckin ? { visitSchedule: reviewed.visitSchedule } : {}),
+      // Paid add-on drop-ins (overnight stay only — markDatesConfirmed
+      // rejects them for anything else). Unlike overnightVisitPlan, this IS
+      // persisted: calculateOvernightPayout pays the walker for these.
+      ...(reviewed.addOnDropIns ? { addOnDropIns: reviewed.addOnDropIns } : {}),
       // Per-visit tracking — see generateOvernightVisits' own comment for
       // why this is safe to write in the same create call rather than a
       // follow-up update (no payout/pricing field above depends on it).
-      visits: generateOvernightVisits(reviewed, isCheckin),
+      // Add-on drop-ins get their own entries (addOn: true) alongside the
+      // stay's regular visits so the walker sees and completes them the
+      // same way.
+      visits: [
+        ...generateOvernightVisits(reviewed, isCheckin),
+        ...generateAddOnDropInVisits(reviewed.addOnDropIns),
+      ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)),
       confirmedTotalCents: Math.round(reviewed.amountInDollars * 100),
       // See markDatesConfirmed — chargeCustomerCard's Friends & Family guard
       // reads this off whichever doc it's handed, and chargeScheduledReservations
@@ -5639,6 +5666,7 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
       totalDollars: reviewed.amountInDollars,
       chargeDateStr: chargeResult.chargeScheduledFor?.toDate ? isoDateStr(chargeResult.chargeScheduledFor.toDate()) : null,
       visitSchedule: isCheckin ? reviewed.visitSchedule : null,
+      addOnDropIns: reviewed.addOnDropIns || null,
       needsCard, addCardUrl,
     };
   } else if (isWalk) {
@@ -5660,6 +5688,7 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
       startDateStr, endDateStr,
       unitCount: Math.max(reviewed.unitCount || 1, 1),
       unitNoun: 'night',
+      addOnDropIns: reviewed.addOnDropIns || null,
       needsCard, addCardUrl,
     };
   }
@@ -6210,7 +6239,7 @@ exports.markDatesConfirmed = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KE
   const {
     submissionId, service, startDate: startDateStr, endDate: endDateStr,
     timeSlot, extraPet, medication, visitSchedule, overnightVisitPlan, amountInDollars, unitCount,
-    travelDiscountApplied, travelDiscountPercent,
+    travelDiscountApplied, travelDiscountPercent, addOnDropIns: rawAddOnDropIns,
   } = request.data || {};
   if (!submissionId) throw new HttpsError('invalid-argument', 'submissionId is required.');
   if (typeof amountInDollars !== 'number' || amountInDollars < 0) {
@@ -6236,6 +6265,38 @@ exports.markDatesConfirmed = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KE
 
   const startDate = startDateStr ? Timestamp.fromDate(new Date(`${startDateStr}T12:00:00Z`)) : (sub.startDate || null);
   const endDate = endDateStr ? Timestamp.fromDate(new Date(`${endDateStr}T12:00:00Z`)) : (sub.endDate || null);
+
+  // Paid drop-in visits added onto an overnight stay (see pricing.js's
+  // calculateAddOnDropInTotal). The client already priced them into
+  // amountInDollars; this only checks the shape, since the same list is
+  // what the walker gets scheduled for and paid on. Every day must fall
+  // within the stay, start and return day included.
+  let addOnDropIns = null;
+  if (Array.isArray(rawAddOnDropIns) && rawAddOnDropIns.length) {
+    const { resolveServiceKey } = await import('./pricing.js');
+    const { VISIT_SLOTS } = await import('./visit-slots.js');
+    if (resolveServiceKey(service || sub.service) !== 'overnight-stay') {
+      throw new HttpsError('invalid-argument', 'Add-on drop-in visits only apply to an overnight stay.');
+    }
+    const stayStart = startDate ? isoDateStr(startDate.toDate()) : null;
+    const stayEnd = endDate ? isoDateStr(endDate.toDate()) : null;
+    addOnDropIns = rawAddOnDropIns.map((d) => {
+      const visits = Number(d?.visits);
+      if (!Number.isInteger(visits) || visits < 0 || visits > 10) {
+        throw new HttpsError('invalid-argument', 'Add-on drop-in visit counts must be whole numbers from 0 to 10.');
+      }
+      const date = typeof d?.date === 'string' ? d.date : '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !stayStart || !stayEnd || date < stayStart || date > stayEnd) {
+        throw new HttpsError('invalid-argument', `Add-on drop-in date ${date || '(blank)'} is outside the stay.`);
+      }
+      const slots = Array.isArray(d.slots) && d.slots.length === visits && d.slots.every((sl) => VISIT_SLOTS.includes(sl))
+        ? d.slots
+        : Array(visits).fill('midday');
+      return { date, visits, slots };
+    }).filter((d) => d.visits > 0).sort((a, b) => (a.date < b.date ? -1 : 1));
+    if (!addOnDropIns.length) addOnDropIns = null;
+  }
+
   const reviewed = {
     service: service || sub.service,
     startDate, endDate,
@@ -6267,6 +6328,10 @@ exports.markDatesConfirmed = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KE
     // client actually priced the charge on. Defaults to 1 wherever it
     // doesn't apply (walk, drop-in, overnight_request all ignore it).
     unitCount: typeof unitCount === 'number' && unitCount > 0 ? unitCount : 1,
+    // Persisted onto the submission (via the merge below) as well as the
+    // overnights doc, since finalizeSubmissionIfReady rebuilds the
+    // confirmation email from the submission, not from this object.
+    addOnDropIns,
   };
 
   await runServiceOrOvernightBookingDoc(sub, submissionId, sub.memberId, reviewed);
@@ -6367,6 +6432,7 @@ exports.resendBookingConfirmationEmail = onCall({
       totalDollars: typeof record.confirmedTotalCents === 'number' ? record.confirmedTotalCents / 100 : null,
       chargeDateStr: record.chargeScheduledFor?.toDate ? isoDateStr(record.chargeScheduledFor.toDate()) : null,
       visitSchedule: isCheckin ? record.visitSchedule || null : null,
+      addOnDropIns: record.addOnDropIns || null,
       needsCard, addCardUrl,
     };
   }
@@ -6982,6 +7048,11 @@ exports.onOvernightCompleted = onDocumentUpdated({
         baseTotal: payout.base,
         extraPetTotal: payout.extraPetTotal,
         medicationTotal: payout.medicationTotal,
+        // Paid add-on drop-ins on an overnight stay — included in amount,
+        // stamped separately so buildPayoutCounts can file them under
+        // Drop-In Visit instead of inflating the Overnight Stay line.
+        addOnDropInVisits: payout.addOnDropInVisits,
+        addOnDropInBaseTotal: payout.addOnDropInBase,
         amount: payout.total,
         stampedAt: FieldValue.serverTimestamp(),
       },
@@ -7277,6 +7348,7 @@ function buildPayoutCounts(walkSnaps, overnightSnaps) {
     const o = snap.data();
     counts[o.payout.rateKey].count++;
     counts[o.payout.rateKey].total += o.payout.baseTotal;
+    if (o.payout.addOnDropInBaseTotal) { counts.checkin.count++; counts.checkin.total += o.payout.addOnDropInBaseTotal; }
     if (o.payout.extraPetTotal) { counts.extraPet.count++; counts.extraPet.total += o.payout.extraPetTotal; }
     if (o.payout.medicationTotal) { counts.medication.count++; counts.medication.total += o.payout.medicationTotal; }
     const visitTips = (Array.isArray(o.visits) ? o.visits : [])
