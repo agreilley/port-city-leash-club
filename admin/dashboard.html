@@ -6410,7 +6410,7 @@ window.approveReschedule = async (submissionId, item) => {
     if (mappedSlot) updates.timeSlot = mappedSlot;
 
     // previousDate/previousTimeSlot: once the walk moves, nothing else
-    // remembers where it was — the member email ("Was: ...") reads these.
+    // remembers where it was — the member email ("Original time: ...") reads these.
     await updateDoc(doc(db, 'walks', item.walkId), updates);
     await updateDoc(doc(db, 'submissions', submissionId), {
       status: 'confirmed', read: true,

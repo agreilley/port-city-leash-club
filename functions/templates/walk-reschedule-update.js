@@ -59,7 +59,7 @@ async function content(data) {
       eyebrow: 'Rescheduled walk',
       rows: [
         { label: 'New time', value: requested },
-        { label: 'Was', value: original },
+        { label: 'Original time', value: original },
       ],
       outro: `You'll see the change on your calendar in the portal.`,
       preheader: `${names}'s walk is now ${requested}.`,
