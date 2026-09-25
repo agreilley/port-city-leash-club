@@ -514,7 +514,7 @@
             <span class="detail-label">Time</span>
             <span class="detail-value" id="currentTime"></span>
           </div>
-          <div class="walk-detail-row">
+          <div class="walk-detail-row" id="currentWalkerRow">
             <span class="detail-label">Walker</span>
             <span class="detail-value" id="currentWalker"></span>
           </div>
@@ -834,7 +834,11 @@ window.selectWalk = (walkId) => {
   if (walk) {
     document.getElementById('currentDate').textContent = formatWalkDate(walkDateOf(walk));
     document.getElementById('currentTime').textContent = formatWalkSlot(walk);
-    document.getElementById('currentWalker').textContent = walk.walkerName || 'To be assigned';
+    // Walks only carry walkerName once completed — members can't read
+    // walkers/ to resolve walkerId — so hide the row rather than claim
+    // "To be assigned" for a walk that has a walker.
+    document.getElementById('currentWalker').textContent = walk.walkerName || '';
+    document.getElementById('currentWalkerRow').style.display = walk.walkerName ? '' : 'none';
     document.getElementById('currentDuration').textContent = walk.extended ? '45-minute walk' : (walk.duration || '30-minute walk');
     card.style.display = '';
   } else {

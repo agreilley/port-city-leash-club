@@ -14,11 +14,10 @@
 //   firstName: string,
 //   dogNames: string[],
 //   approved: boolean,
-//   originalDateStr: string|null,  // 'YYYY-MM-DD'
+//   originalDateStr: string|null,  // 'YYYY-MM-DD'; null on a decline of a request with no walk attached
 //   originalSlot: string|null,     // timeSlot bucket key ('morning', ...)
 //   newDateStr: string|null,       // approved: the walk's new date; declined: the date they asked for
 //   newSlot: string|null,          // bucket key, or the member-facing label the request stored ('Morning')
-//   walkerName: string|null,       // approved only
 //   calendarUrl: string,
 // }
 
@@ -56,26 +55,31 @@ async function content(data) {
   const requested = await when(data.newDateStr, data.newSlot);
   if (data.approved) {
     return {
-      intro: `You're all set. We've moved ${names}'s walk to the new date.`,
+      intro: `You're all set. We've rescheduled ${names}'s walk.`,
       eyebrow: 'Rescheduled walk',
       rows: [
         { label: 'New time', value: requested },
         { label: 'Was', value: original },
-        data.walkerName ? { label: 'Walker', value: data.walkerName } : null,
-      ].filter(Boolean),
+      ],
       outro: `You'll see the change on your calendar in the portal.`,
       preheader: `${names}'s walk is now ${requested}.`,
     };
   }
+  // No original date = a request that never had a walk attached (sent
+  // before the reschedule page had its walk picker), so there's no single
+  // walk to say is "still scheduled".
+  const hasOriginal = !!data.originalDateStr;
   return {
-    intro: `We weren't able to move ${names}'s walk to the time you asked for, so it's staying on its original date for now.`,
-    eyebrow: 'Your walk',
+    intro: hasOriginal
+      ? `We weren't able to move ${names}'s walk to the time you asked for, so it's staying on its original date for now.`
+      : `We weren't able to process your reschedule request for ${names}, so your walks are staying as scheduled for now.`,
+    eyebrow: hasOriginal ? 'Your walk' : 'Your request',
     rows: [
-      { label: 'Still scheduled', value: original },
+      hasOriginal ? { label: 'Still scheduled', value: original } : null,
       { label: 'You asked for', value: requested },
-    ],
+    ].filter(Boolean),
     outro: `Just reply to this email and we'll find another time that works.`,
-    preheader: `${names}'s walk is still on for ${original}.`,
+    preheader: hasOriginal ? `${names}'s walk is still on for ${original}.` : `An update on your reschedule request for ${names}.`,
   };
 }
 

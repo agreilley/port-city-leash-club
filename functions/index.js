@@ -6568,7 +6568,12 @@ exports.sendRescheduleDecisionEmail = onCall({
   const approved = sub.status === 'confirmed';
 
   const walk = sub.walkId ? (await db.collection('walks').doc(sub.walkId).get()).data() : null;
-  if (!walk) throw new HttpsError('failed-precondition', 'The walk for this request no longer exists.');
+  // An approve always has a walk (approveReschedule refuses without one). A
+  // decline may not — requests sent before the reschedule page had its own
+  // walk picker (2026-09-25) carry walkId null — and still gets a
+  // walk-less version of the email.
+  if (!walk && approved) throw new HttpsError('failed-precondition', 'The walk for this request no longer exists.');
+
 
   const member = (await db.collection('members').doc(sub.memberId).get()).data();
   if (!member || !member.email) throw new HttpsError('failed-precondition', 'This member has no email on file.');
@@ -6583,11 +6588,10 @@ exports.sendRescheduleDecisionEmail = onCall({
       ? member.dogs.map((d) => d && d.name)
       : [member.dogName]).filter(Boolean),
     approved,
-    originalDateStr: approved ? toStr(sub.previousDate) : toStr(walk.date),
-    originalSlot: approved ? (sub.previousTimeSlot || null) : (walk.timeSlot || null),
+    originalDateStr: approved ? toStr(sub.previousDate) : toStr(walk?.date),
+    originalSlot: approved ? (sub.previousTimeSlot || null) : (walk?.timeSlot || null),
     newDateStr: approved ? toStr(walk.date) : toStr(sub.newDate),
     newSlot: approved ? (walk.timeSlot || null) : (sub.newTimeSlot || null),
-    walkerName: approved ? (walk.walkerName || null) : null,
   };
   // Open the calendar on the month of the walk as it now stands.
   const focusDate = approved ? data.newDateStr : data.originalDateStr;

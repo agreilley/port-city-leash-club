@@ -4681,7 +4681,10 @@ window.openRequestItem = async (id) => {
     const walk = allWalks.find(w => w.id === item.walkId);
     fields = [
       { label: 'Member', value: item.memberName || item.memberId || '–' },
-      { label: 'Currently Scheduled', value: walk ? `${fmtDate(walk.date)} · ${WALK_TIME_SLOT_LABELS[walk.timeSlot] || walk.timeSlot || '–'}` : 'Walk not found — may have been deleted' },
+      // No walkId = sent before the reschedule page had its own walk picker
+      // (the member never told us which walk) — not a deleted walk.
+      { label: 'Currently Scheduled', value: walk ? `${fmtDate(walk.date)} · ${WALK_TIME_SLOT_LABELS[walk.timeSlot] || walk.timeSlot || '–'}`
+        : item.walkId ? 'Walk not found — may have been deleted' : "Unknown — the member didn't pick a walk (request sent before the page was fixed)" },
       { label: 'Requested New Date', value: fmtDate(item.newDate) },
       { label: 'Requested New Time', value: item.newTimeSlot || '–' },
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
@@ -6389,7 +6392,9 @@ window.approveReschedule = async (submissionId, item) => {
   try {
     const walk = allWalks.find(w => w.id === item.walkId);
     if (!walk) {
-      alert('The original walk for this request no longer exists — nothing was changed.');
+      alert(item.walkId
+        ? 'The original walk for this request no longer exists — nothing was changed.'
+        : "This request isn't linked to a walk (it was sent before the reschedule page let members pick one), so it can't be approved. Move the walk yourself from the calendar, or Decline to email the member asking them to reply.");
       btn.textContent = 'Approve & Assign Walker'; btn.disabled = false;
       return;
     }
