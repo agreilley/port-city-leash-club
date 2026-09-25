@@ -756,6 +756,7 @@ function updateSidebar() {
 window.signOutMember = () => signOut(auth).then(() => window.location.href = 'portal-login.html');
 
 let upcomingWalks = [];
+const pendingWalkIds = new Set();
 
 // 48-hour reschedule cutoff, measured from the START of the walk's time
 // slot (same window the calendar below already enforces on the new date).
@@ -784,6 +785,11 @@ async function loadPageData() {
   try {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const snap = await getDocs(query(collection(db, 'walks'), where('memberId', '==', userId)));
+    // Walks that already have a pending reschedule request can't be picked
+    // again — same one-request-per-walk rule as the dashboard modal, which
+    // hides its Reschedule button for them.
+    const reqSnap = await getDocs(query(collection(db, 'submissions'), where('memberId', '==', userId), where('type', '==', 'reschedule')));
+    reqSnap.docs.forEach(d => { const r = d.data(); if (r.walkId && r.status === 'pending') pendingWalkIds.add(r.walkId); });
     upcomingWalks = snap.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .filter(w => walkDateOf(w) >= today && w.status !== 'cancelled' && w.status !== 'completed')
@@ -801,8 +807,10 @@ async function loadPageData() {
 
   // Too-soon walks stay listed (so a member looking for one isn't left
   // wondering where it went) but can't be picked from the dropdown.
+  const blockedReason = w => pendingWalkIds.has(w.id) ? ' (reschedule already requested)'
+    : isTooSoon(w) ? ' (less than 48 hours away)' : '';
   select.innerHTML = '<option value="">Choose a walk...</option>' + upcomingWalks.map(w =>
-    `<option value="${w.id}"${isTooSoon(w) ? ' disabled' : ''}>${formatWalkDate(walkDateOf(w))} · ${WALK_TIME_SLOT_LABELS[w.timeSlot] || w.timeSlot || ''}${isTooSoon(w) ? ' (less than 48 hours away)' : ''}</option>`
+    `<option value="${w.id}"${blockedReason(w) ? ' disabled' : ''}>${formatWalkDate(walkDateOf(w))} · ${WALK_TIME_SLOT_LABELS[w.timeSlot] || w.timeSlot || ''}${blockedReason(w)}</option>`
   ).join('');
   select.disabled = false;
 

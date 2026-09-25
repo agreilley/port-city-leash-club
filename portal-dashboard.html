@@ -253,6 +253,34 @@
     .calendar-day .ext-badge.pending { border: 2px dashed #0D1B2A; }
     .calendar-day .ext-badge.confirmed { border: 2px solid #0D1B2A; }
 
+    /* Pending reschedule (top-left): the walk stays on its original date
+       until admin approves, so the cell keeps its normal fill and gets a
+       dashed outline + a white "↻" chip marking it tentative. Same
+       dashed = pending convention as the fills and the 45 badge. */
+    .calendar-day.reschedule-pending { outline: 1.5px dashed #C17B6F; outline-offset: -1.5px; }
+    .calendar-day .resched-badge,
+    .legend-resched {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: white;
+      color: #C17B6F;
+      border: 2px dashed #C17B6F;
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+    .calendar-day .resched-badge {
+      position: absolute;
+      top: -5px;
+      left: -5px;
+      box-shadow: 0 1px 3px rgba(13, 27, 42, 0.3);
+    }
+    .legend-resched { width: 16px; height: 16px; font-size: 9px; border-width: 1.5px; }
+
     .calendar-day.today {
       border: 3px solid #0D1B2A;
     }
@@ -698,6 +726,10 @@
               <div class="legend-color" style="background: #DDE3E8; border: 1.5px dashed #1C2F42;"></div>
               <span>Drop-In Visit (pending)</span>
             </div>
+            <div class="legend-item">
+              <div class="legend-resched">↻</div>
+              <span>Reschedule requested</span>
+            </div>
             <div class="legend-item" style="margin-left: auto; color: #888;">
               Click a walk to reschedule
             </div>
@@ -749,6 +781,11 @@
         <p>Scheduled walk details</p>
       </div>
       <div class="modal-body">
+        <div class="detail-box" id="modalRescheduleNote" style="display:none; border-left: 3px dashed #C17B6F;">
+          <div class="detail-label">Reschedule requested</div>
+          <p class="detail-value" id="modalRescheduleTo"></p>
+          <p style="margin:6px 0 0; font-size:13px; color:#7A7A7A; line-height:1.5;">This walk stays on its original date until we confirm the change. We'll email you either way. Need to change the request? Email us at <a href="mailto:hello@portcityleashclub.com" style="color:#C17B6F;">hello@portcityleashclub.com</a>.</p>
+        </div>
         <div class="detail-box" id="modalOvernightNote" style="display:none; border-left: 3px solid #C17B6F;">
           <p id="modalOvernightNoteText" style="margin:0; font-size:14px; color:#0D1B2A; line-height:1.5;"></p>
         </div>
@@ -767,7 +804,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" onclick="closeWalkModal()">Close</button>
-        <button class="btn-primary" onclick="navigateToReschedule()">Reschedule</button>
+        <button class="btn-primary" id="modalRescheduleBtn" onclick="navigateToReschedule()">Reschedule</button>
         <button class="btn-primary" id="modalExtendBtn" onclick="navigateToExtendWalk()">Extend</button>
       </div>
     </div>
@@ -827,6 +864,10 @@ let memberData = null;
 let billingData = null;
 let myWalks = [];
 let myOvernights = []; // confirmed overnights + pending requests
+// walkId -> the member's pending reschedule submission for that walk (most
+// recent if somehow more than one). Drives the calendar's "↻" marker and
+// the walk modal's "Reschedule requested" box.
+let pendingReschedules = {};
 // Shown on any walks/overnights load failure — deliberately says "couldn't
 // load", never "no walks", so a display problem never reads as a cancelled
 // service. Empty state (a real member with zero walks) never calls this —
@@ -1011,6 +1052,23 @@ async function loadAndSubscribe(targetId) {
   // else happens to touch the page. Matching every service_request here,
   // not just check-ins, is harmless — an unrelated walk request just causes
   // one extra loadOvernights call that changes nothing.
+  // Pending reschedule requests — approve/decline flips status, which drops
+  // the marker live.
+  const reschedQ = query(collection(db, 'submissions'), where('memberId', '==', targetId), where('type', '==', 'reschedule'));
+  onSnapshot(reschedQ, (snap) => {
+    const createdMs = s => s.createdAt?.toMillis?.() || 0;
+    pendingReschedules = {};
+    snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .filter(s => s.walkId && s.status === 'pending')
+      .sort((a, b) => createdMs(a) - createdMs(b))
+      .forEach(s => { pendingReschedules[s.walkId] = s; });
+    generateCalendar();
+  }, (err) => {
+    // Non-fatal: the calendar still works without the marker, so no
+    // member-facing error for this one.
+    console.error('reschedule submissions subscription error:', err.code, err.message);
+  });
+
   const pendingQ = query(collection(db, 'submissions'), where('memberId', '==', targetId), where('type', 'in', ['overnight_request', 'service_request']));
   onSnapshot(pendingQ, () => {
     loadOvernights(targetId);
@@ -1124,8 +1182,10 @@ function populateMemberUI() {
   document.getElementById('metricTierDetail').textContent = isTravelOnly ? 'No recurring walks' : (walksPerWeek ? `${walksPerWeek * 4} walks / month` : '');
 
   // Schedule banner — prefer stored field, else derive from walks
-  const days = (memberData.defaultWalkDays || []).join(', ');
-  const slot = memberData.defaultTimeSlot || '';
+  // Stored lowercase ('saturday') and as a slot key ('early-afternoon') —
+  // capitalize the days and use the member-facing slot label for display.
+  const days = (memberData.defaultWalkDays || []).map(d => String(d).charAt(0).toUpperCase() + String(d).slice(1)).join(', ');
+  const slot = WALK_TIME_SLOT_LABELS[memberData.defaultTimeSlot] || memberData.defaultTimeSlot || '';
   document.getElementById('bannerLabel').textContent = isTravelOnly ? `${dogNames}'s Care Plan` : `${dogNames}'s Walk Routine`;
   document.getElementById('bannerSchedule').textContent = isTravelOnly
     ? 'No recurring walks on file'
@@ -1336,6 +1396,17 @@ function updateMetrics() {
           badge.textContent = '45';
           dayEl.appendChild(badge);
         }
+        // Only on a walk that hasn't happened yet — a completed walk's
+        // leftover pending request is moot.
+        function addRescheduleBadge() {
+          if (!w || w.status === 'completed' || !pendingReschedules[w.id]) return;
+          dayEl.classList.add('reschedule-pending');
+          const badge = document.createElement('div');
+          badge.className = 'resched-badge';
+          badge.textContent = '↻';
+          dayEl.appendChild(badge);
+          dayEl.title = dayEl.title ? `${dayEl.title} · Reschedule requested` : 'Reschedule requested';
+        }
         function addWalkDot(kind) {
           const dot = document.createElement('div');
           dot.className = 'walk-dot ' + kind;
@@ -1365,6 +1436,7 @@ function updateMetrics() {
           addWalkDot('confirmed');
           addExtensionBadge();
           dayEl.title = 'Overnight stay (confirmed) — walk may not be needed';
+          addRescheduleBadge();
           dayEl.style.cursor = 'pointer';
           dayEl.onclick = () => openWalkModal(w, cellDate);
         } else if (dayOvernight && dayOvernight.status === 'confirmed') {
@@ -1393,6 +1465,7 @@ function updateMetrics() {
             const extNote = w.extendedStatus === 'pending' ? '45-minute walk (pending confirmation)' : '45-minute walk (confirmed)';
             dayEl.title = dayEl.title ? `${dayEl.title} · ${extNote}` : extNote;
           }
+          addRescheduleBadge();
           dayEl.style.cursor = 'pointer';
           dayEl.onclick = () => openWalkModal(w, cellDate);
         } else if (dayOvernight) {
@@ -1570,6 +1643,17 @@ function updateMetrics() {
         sessionStorage.setItem('walkTime', document.getElementById('modalTime').textContent);
         sessionStorage.setItem('activeWalkId', walk.id);
       }
+
+      const pendingResched = liveWalk.status !== 'completed' ? pendingReschedules[walk.id] : null;
+      document.getElementById('modalRescheduleNote').style.display = pendingResched ? '' : 'none';
+      if (pendingResched) {
+        const to = pendingResched.newDate?.toDate?.();
+        document.getElementById('modalRescheduleTo').textContent =
+          [to ? `Moving to ${formatDateString(to)}` : 'New date requested', pendingResched.newTimeSlot].filter(Boolean).join(' · ');
+      }
+      // One pending request per walk — a second one from here would just
+      // pile up alongside the first in admin's queue.
+      document.getElementById('modalRescheduleBtn').style.display = pendingResched ? 'none' : '';
 
       const walkDateObj = liveWalk.date?.toDate?.() || new Date(liveWalk.date);
       const walkDateLocal = new Date(walkDateObj.getFullYear(), walkDateObj.getMonth(), walkDateObj.getDate());
