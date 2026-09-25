@@ -2585,7 +2585,7 @@ function renderCalendarDays() {
       const resched = w.status !== 'completed' ? reschedByWalk[w.id] : null;
       const label = escapeHtml(`${resched ? '\u21bb ' : ''}` + (walker ? `${off ? '⚠ ' : ''}${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`));
       let title = off ? `${label} · ${escapeHtml(walker.name.split(' ')[0])} is off this day` : label;
-      if (resched) title += escapeHtml(` · Reschedule requested to ${reschedWhen(resched.newDate?.toDate?.(), resched.newTimeSlot) || 'a new date'}`);
+      if (resched) title += escapeHtml(` · Reschedule requested to ${reschedWhen(resched.newDate?.toDate?.(), WALK_TIME_SLOT_LABELS[resched.newTimeSlot] || resched.newTimeSlot) || 'a new date'}`);
       return `<div class="walk-chip ${cls}${resched ? ' resched-pending' : ''}" onclick="openWalkModal('${w.id}')" title="${title}">${label}</div>`;
     }).join('');
     // Same dog-name-plus-walker convention as the walk chip above, not the
@@ -2665,7 +2665,7 @@ function renderCalendarDays() {
       const rName = getMemberDogs(rMember)[0]?.name || (r.memberName || rMember?.name || '').split(' ')[0] || 'Walk';
       const from = rWalk ? reschedWhen(rWalk.date?.toDate?.() || new Date(rWalk.date), WALK_TIME_SLOT_LABELS[rWalk.timeSlot] || rWalk.timeSlot) : '';
       const label = escapeHtml(`\u21bb ${rName} · Requested`);
-      const title = escapeHtml(`${rName} · Reschedule requested${r.newTimeSlot ? ` for ${r.newTimeSlot}` : ''}${from ? ` · currently ${from}` : ''} · click to approve or decline`);
+      const title = escapeHtml(`${rName} · Reschedule requested${r.newTimeSlot ? ` for ${WALK_TIME_SLOT_LABELS[r.newTimeSlot] || r.newTimeSlot}` : ''}${from ? ` · currently ${from}` : ''} · click to approve or decline`);
       return `<div class="walk-chip tentative t-resched" onclick="openRequestItem('${r.id}')" title="${title}">${label}</div>`;
     }).join('');
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}${projectedChips}${tentativeChips}${reschedChips}</div>`;
@@ -4686,7 +4686,7 @@ window.openRequestItem = async (id) => {
       { label: 'Currently Scheduled', value: walk ? `${fmtDate(walk.date)} · ${WALK_TIME_SLOT_LABELS[walk.timeSlot] || walk.timeSlot || '–'}`
         : item.walkId ? 'Walk not found — may have been deleted' : "Unknown — the member didn't pick a walk (request sent before the page was fixed)" },
       { label: 'Requested New Date', value: fmtDate(item.newDate) },
-      { label: 'Requested New Time', value: item.newTimeSlot || '–' },
+      { label: 'Requested New Time', value: WALK_TIME_SLOT_LABELS[item.newTimeSlot] || item.newTimeSlot || '–' },
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
     ];
   } else if (item.type === 'walk_extension') {
@@ -6406,7 +6406,11 @@ window.approveReschedule = async (submissionId, item) => {
       const d = item.newDate.toDate();
       updates.date = Timestamp.fromDate(new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0)));
     }
-    const mappedSlot = RESCHEDULE_TIME_SLOT_MAP[(item.newTimeSlot || '').toLowerCase()];
+    // New requests store the slot key itself; older ones stored the label
+    // ('Early Afternoon'), which the map translates.
+    const mappedSlot = WALK_TIME_SLOTS.includes(item.newTimeSlot)
+      ? item.newTimeSlot
+      : RESCHEDULE_TIME_SLOT_MAP[(item.newTimeSlot || '').toLowerCase()];
     if (mappedSlot) updates.timeSlot = mappedSlot;
 
     // previousDate/previousTimeSlot: once the walk moves, nothing else

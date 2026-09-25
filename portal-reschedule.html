@@ -556,15 +556,15 @@
         <div class="form-section">
           <div class="form-title">Select New Time</div>
           <div class="time-slots" id="timeSlots">
-            <div class="time-slot" onclick="selectTimeSlot(this, 'Morning', '8:00 AM - 11:00 AM')">
+            <div class="time-slot" onclick="selectTimeSlot(this, 'morning', '8:00 AM - 11:00 AM')">
               <div class="slot-time">Morning</div>
               <div class="slot-range">8:00 AM - 11:00 AM</div>
             </div>
-            <div class="time-slot" onclick="selectTimeSlot(this, 'Early Afternoon', '11:00 AM - 2:00 PM')">
+            <div class="time-slot" onclick="selectTimeSlot(this, 'early-afternoon', '11:00 AM - 2:00 PM')">
               <div class="slot-time">Early Afternoon</div>
               <div class="slot-range">11:00 AM - 2:00 PM</div>
             </div>
-            <div class="time-slot" onclick="selectTimeSlot(this, 'Late Afternoon', '2:00 PM - 5:00 PM')">
+            <div class="time-slot" onclick="selectTimeSlot(this, 'late-afternoon', '2:00 PM - 5:00 PM')">
               <div class="slot-time">Late Afternoon</div>
               <div class="slot-range">2:00 PM - 5:00 PM</div>
             </div>
@@ -586,6 +586,10 @@
     let selectedTime = null;
     let selectedTimeDisplay = null;
     let selectedWalkId = null;
+    // 'YYYY-MM-DD' days that already have one of the member's walks (or a
+    // pending reschedule headed there) — greyed out below, since the portal
+    // calendar can only show one walk per day. Filled by the module script.
+    let occupiedDates = new Set();
 
     function generateCalendar() {
       const year = currentDate.getFullYear();
@@ -622,9 +626,14 @@
         dayEl.textContent = day;
 
         const cellDate = new Date(year, month, day);
+        const cellKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const occupied = occupiedDates.has(cellKey);
+        if (occupied) dayEl.title = 'You already have a walk this day';
+        if (selectedDate && selectedDate.getTime() === cellDate.getTime()) dayEl.classList.add('selected');
 
-        // Can reschedule to any future date with 48-hour buffer
-        if (cellDate >= minDate) {
+        // Can reschedule to any future date with 48-hour buffer, except a
+        // day that already has a walk
+        if (cellDate >= minDate && !occupied) {
           dayEl.onclick = () => selectDate(day, cellDate, dayEl);
           dayEl.style.cursor = 'pointer';
         } else {
@@ -756,6 +765,20 @@ function updateSidebar() {
 window.signOutMember = () => signOut(auth).then(() => window.location.href = 'portal-login.html');
 
 let upcomingWalks = [];
+let allWalks = [];          // every non-cancelled walk, past or future — for occupiedDates
+const pendingTargets = [];  // [{ walkId, key }] — days other pending reschedules are headed to
+const dayKey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// The walk being moved doesn't block its own day (a same-day time change is
+// fine), and neither does its own earlier pending request.
+function refreshOccupiedDates() {
+  occupiedDates = new Set([
+    ...allWalks.filter(w => w.id !== selectedWalkId).map(w => dayKey(walkDateOf(w))),
+    ...pendingTargets.filter(t => t.walkId !== selectedWalkId).map(t => t.key),
+  ]);
+  if (selectedDate && occupiedDates.has(dayKey(selectedDate))) selectedDate = null;
+  generateCalendar();
+}
 const pendingWalkIds = new Set();
 
 // 48-hour reschedule cutoff, measured from the START of the walk's time
@@ -790,6 +813,14 @@ async function loadPageData() {
     // hides its Reschedule button for them.
     const reqSnap = await getDocs(query(collection(db, 'submissions'), where('memberId', '==', userId), where('type', '==', 'reschedule')));
     reqSnap.docs.forEach(d => { const r = d.data(); if (r.walkId && r.status === 'pending') pendingWalkIds.add(r.walkId); });
+    allWalks = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(w => w.status !== 'cancelled');
+    reqSnap.docs.forEach(d => {
+      const r = d.data();
+      const nd = r.status === 'pending' && r.newDate?.toDate?.();
+      if (nd) pendingTargets.push({ walkId: r.walkId, key: dayKey(nd) });
+    });
     upcomingWalks = snap.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .filter(w => walkDateOf(w) >= today && w.status !== 'cancelled' && w.status !== 'completed')
@@ -813,6 +844,7 @@ async function loadPageData() {
     `<option value="${w.id}"${blockedReason(w) ? ' disabled' : ''}>${formatWalkDate(walkDateOf(w))} · ${WALK_TIME_SLOT_LABELS[w.timeSlot] || w.timeSlot || ''}${blockedReason(w)}</option>`
   ).join('');
   select.disabled = false;
+  refreshOccupiedDates();
 
   const preselect = new URLSearchParams(window.location.search).get('walk');
   if (preselect && upcomingWalks.some(w => w.id === preselect)) {
@@ -844,6 +876,7 @@ window.selectWalk = (walkId) => {
   } else {
     card.style.display = 'none';
   }
+  refreshOccupiedDates();
   updateConfirmButton();
 };
 
@@ -863,7 +896,7 @@ window.submitReschedule = async (walkId, newDate, newTimeSlot) => {
       memberId: userId,
       memberName: memberData?.name || '',
       newDate: newDate ? Timestamp.fromDate(new Date(newDate)) : null,
-      newTimeSlot: newTimeSlot,
+      newTimeSlot: newTimeSlot,   // slot key ('early-afternoon'), same as walks/{id}.timeSlot — was the label ('Early Afternoon') before 2026-09-25
       status: 'pending',
       read: false,
       createdAt: serverTimestamp(),

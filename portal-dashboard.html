@@ -1643,7 +1643,7 @@ function updateMetrics() {
       if (pendingResched) {
         const to = pendingResched.newDate?.toDate?.();
         document.getElementById('modalRescheduleTo').textContent =
-          [to ? `Moving to ${formatDateString(to)}` : 'New date requested', pendingResched.newTimeSlot].filter(Boolean).join(' · ');
+          [to ? `Moving to ${formatDateString(to)}` : 'New date requested', WALK_TIME_SLOT_LABELS[pendingResched.newTimeSlot] || pendingResched.newTimeSlot].filter(Boolean).join(' · ');
       }
       // One pending request per walk — a second one from here would just
       // pile up alongside the first in admin's queue.

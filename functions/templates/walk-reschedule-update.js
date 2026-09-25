@@ -39,7 +39,7 @@ async function when(dateStr, slot) {
   const d = formatCalendarDate(dateStr);
   const s = await slotLabel(slot);
   if (!d) return s || 'Date to be confirmed';
-  return s ? `${d}, ${s}` : d;
+  return s ? `${d}, ${s.toLowerCase()}` : d; // "Saturday, October 3, late afternoon" — same as walk-confirmed
 }
 
 function subject(data) {
