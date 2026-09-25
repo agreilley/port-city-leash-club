@@ -5351,6 +5351,33 @@ function generateAddOnDropInVisits(addOnDropIns) {
   })));
 }
 
+// Day-by-day plan for an overnight stay's confirmation email, built from the
+// visits actually booked on its overnights doc (included + extra) rather than
+// any rule about which day a night's drop-in lands on — admin places those
+// per trip. One entry per day, start through return day inclusive.
+function buildStayPlan(overnight) {
+  if (!overnight?.startDate?.toDate || !overnight?.endDate?.toDate) return null;
+  const startStr = isoDateStr(overnight.startDate.toDate());
+  const endStr = isoDateStr(overnight.endDate.toDate());
+  const slotOrder = ['morning', 'midday', 'evening', 'last-out'];
+  const visits = Array.isArray(overnight.visits) ? overnight.visits : [];
+  const plan = [];
+  const cursor = new Date(`${startStr}T12:00:00Z`);
+  const end = new Date(`${endStr}T12:00:00Z`);
+  while (cursor <= end) {
+    const date = isoDateStr(cursor);
+    plan.push({
+      date,
+      visits: visits.filter((v) => v.date === date)
+        .sort((a, b) => slotOrder.indexOf(a.slot) - slotOrder.indexOf(b.slot))
+        .map((v) => ({ slot: v.slot, extra: !!v.addOn })),
+      overnight: date < endStr,
+    });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return plan;
+}
+
 async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, reviewed) {
   const { SERVICE_PRICES, resolveServiceKey } = await import('./pricing.js');
   const isOvernightRequest = sub.type === 'overnight_request';
@@ -5656,6 +5683,20 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
   const needsCard = !cardOnFile;
   const addCardUrl = `${BUSINESS_PORTAL_ORIGIN}/portal-account?addCard=1`;
 
+  // Overnight stays get a day-by-day plan from the booked visits — the
+  // overnights doc already exists by now (runServiceOrOvernightBookingDoc
+  // runs in markDatesConfirmed, before finalize sends this). Best-effort:
+  // a failed read just omits the plan, never blocks the email.
+  let stayPlan = null;
+  if (serviceKey === 'overnight-stay') {
+    try {
+      const snap = await db.collection('overnights').where('submissionId', '==', submissionId).limit(1).get();
+      if (!snap.empty) stayPlan = buildStayPlan(snap.docs[0].data());
+    } catch (e) {
+      console.error(`sendServiceOrOvernightConfirmationEmail: couldn't build stay plan for ${submissionId}:`, e.message);
+    }
+  }
+
   let template, data;
   if (isOvernightRequest || isCheckin) {
     template = 'portal-reservation-confirmed';
@@ -5667,6 +5708,7 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
       chargeDateStr: chargeResult.chargeScheduledFor?.toDate ? isoDateStr(chargeResult.chargeScheduledFor.toDate()) : null,
       visitSchedule: isCheckin ? reviewed.visitSchedule : null,
       addOnDropIns: reviewed.addOnDropIns || null,
+      stayPlan,
       needsCard, addCardUrl,
     };
   } else if (isWalk) {
@@ -5689,6 +5731,7 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
       unitCount: Math.max(reviewed.unitCount || 1, 1),
       unitNoun: 'night',
       addOnDropIns: reviewed.addOnDropIns || null,
+      stayPlan,
       needsCard, addCardUrl,
     };
   }
@@ -6433,6 +6476,7 @@ exports.resendBookingConfirmationEmail = onCall({
       chargeDateStr: record.chargeScheduledFor?.toDate ? isoDateStr(record.chargeScheduledFor.toDate()) : null,
       visitSchedule: isCheckin ? record.visitSchedule || null : null,
       addOnDropIns: record.addOnDropIns || null,
+      stayPlan: isCheckin ? null : buildStayPlan(record),
       needsCard, addCardUrl,
     };
   }

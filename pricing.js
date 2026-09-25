@@ -209,7 +209,7 @@ export function calculateAddOnDropInTotal({ addOnDropIns } = {}) {
   });
   const r = calculateDropInScheduleTotal({ schedule });
   if (!r.totalVisits) return { total: 0, breakdown: [], days: 0, totalVisits: 0 };
-  const label = `${SERVICE_PRICES['drop-in-visit'].name} (add-on, ${r.totalVisits} visit${r.totalVisits === 1 ? '' : 's'})`;
+  const label = `Extra ${SERVICE_PRICES['drop-in-visit'].name} (${r.totalVisits} visit${r.totalVisits === 1 ? '' : 's'})`;
   return { ...r, breakdown: r.breakdown.map((b) => ({ ...b, label })) };
 }
 

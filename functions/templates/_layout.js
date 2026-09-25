@@ -151,9 +151,34 @@ function addOnDropInRows(addOnDropIns) {
   return (Array.isArray(addOnDropIns) ? addOnDropIns : [])
     .filter(d => d && Number(d.visits) > 0)
     .map(d => ({
-      label: 'Drop-In Visit',
+      label: 'Extra Drop-In Visit',
       value: `${formatCalendarDate(d.date) || d.date} · ${spellSmallNumber(Number(d.visits)).toLowerCase()} ${pluralNoun(Number(d.visits), 'visit', 'visits')}`,
     }));
+}
+
+// Lowercase visit-slot names for prose — mirrors visit-slots.js's
+// VISIT_SLOT_LABELS (an ES module these CommonJS templates can't import).
+const STAY_SLOT_WORDS = { morning: 'morning', midday: 'midday', evening: 'evening', 'last-out': 'last out' };
+
+// An overnight stay's day-by-day plan (buildStayPlan, functions/index.js)
+// as block rows: "Saturday, September 26" -> "Extra drop-in visit (midday),
+// then overnight care". Plain text; callers escape for HTML.
+function stayPlanRows(stayPlan) {
+  return (Array.isArray(stayPlan) ? stayPlan : []).map(day => {
+    const parts = (day.visits || []).map(v => `${v.extra ? 'extra drop-in visit' : 'drop-in visit'} (${STAY_SLOT_WORDS[v.slot] || v.slot})`);
+    if (day.overnight) parts.push(parts.length ? 'then overnight care' : 'overnight care');
+    const text = parts.length ? parts.join(', ') : 'stay ends';
+    return { label: formatCalendarDate(day.date) || day.date, value: text.charAt(0).toUpperCase() + text.slice(1) };
+  });
+}
+
+// The note under the plan — what every night includes, plus a sentence
+// about extras only when the stay actually has some.
+function stayPlanNote(addOnDropIns) {
+  const extraVisits = (Array.isArray(addOnDropIns) ? addOnDropIns : []).reduce((sum, d) => sum + (Number(d?.visits) || 0), 0);
+  const base = 'Every night includes evening settling and overnight supervision in your home, plus a daytime drop-in visit.';
+  if (!extraVisits) return base;
+  return `${base} We've added ${extraVisits === 1 ? 'an extra drop-in visit' : 'extra drop-in visits'} to cover the rest of your trip.`;
 }
 
 // "your dog's" (1) / "your dogs'" (2+) — works for "pet"/"pets" too.
@@ -326,7 +351,7 @@ function wrapText({ bodyText }) {
 module.exports = {
   NAVY, SEAFOAM, SAND, SAND_LIGHT, CORAL, HEADING_FONT, BODY_FONT, SIGNOFF_NAME, TEAM_SIGNOFF,
   escapeHtml, formatCalendarDate, formatMeetGreetDate, formatMeetGreetSlot, formatWalkTimeSlot, formatDateRange,
-  joinNames, meetClosingLine, pluralNoun, possessive, spellSmallNumber, addOnDropInRows,
+  joinNames, meetClosingLine, pluralNoun, possessive, spellSmallNumber, addOnDropInRows, stayPlanRows, stayPlanNote,
   renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml,
   renderCodeBlockHtml, renderCodeBlockText,
   wrapHtml, wrapText,

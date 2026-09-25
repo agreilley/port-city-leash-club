@@ -76,10 +76,25 @@ export function calculateOvernightPayout(overnight) {
     : days;
 
   const base = WALKER_RATES[key] * units;
+
+  // Paid add-on drop-ins on an overnight stay (addOnDropIns — see
+  // pricing.js's calculateAddOnDropInTotal): WALKER_RATES.checkin per visit,
+  // no pet/medication fees — mirrors the member side, which doesn't charge
+  // them again on top of the stay's.
+  // Overnight-only; a check-in doc never carries them.
+  const addOnDays = key === 'overnight' && Array.isArray(overnight.addOnDropIns)
+    ? overnight.addOnDropIns.filter(d => (Number(d?.visits) || 0) > 0)
+    : [];
+  const addOnDropInVisits = addOnDays.reduce((sum, d) => sum + Number(d.visits), 0);
+  const addOnDropInBase = WALKER_RATES.checkin * addOnDropInVisits;
+
   const extraPetTotal = overnight.extraPet ? WALKER_EXTRA_PET_FEE * days : 0;
   const medicationTotal = overnight.medication ? WALKER_MEDICATION_FEE * days : 0;
 
-  return { total: base + extraPetTotal + medicationTotal, key, base, extraPetTotal, medicationTotal, days, units };
+  return {
+    total: base + addOnDropInBase + extraPetTotal + medicationTotal,
+    key, base, extraPetTotal, medicationTotal, days, units, addOnDropInVisits, addOnDropInBase,
+  };
 }
 
 // Aggregates a walker's payout across a set of already-completed walks
@@ -109,10 +124,11 @@ export function calculateEarnings(completedWalks, completedOvernights) {
   });
 
   (completedOvernights || []).forEach(o => {
-    const { key, base, extraPetTotal, medicationTotal } = calculateOvernightPayout(o);
+    const { key, base, extraPetTotal, medicationTotal, addOnDropInBase } = calculateOvernightPayout(o);
     breakdown[key].count++;
     breakdown[key].total += base;
     total += base;
+    if (addOnDropInBase) { breakdown.checkin.count++; breakdown.checkin.total += addOnDropInBase; total += addOnDropInBase; }
     if (extraPetTotal) { breakdown.extraPet.count++; breakdown.extraPet.total += extraPetTotal; total += extraPetTotal; }
     if (medicationTotal) { breakdown.medication.count++; breakdown.medication.total += medicationTotal; total += medicationTotal; }
   });

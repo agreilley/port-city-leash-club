@@ -3800,7 +3800,7 @@ window.openOvernightModal = (overnightId) => {
       const isDone = v.status === 'completed';
       return `<div style="padding:8px 0;border-bottom:1px solid rgba(0,0,0,0.06);">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="font-size:13px;color:var(--navy);">${fmtDate(v.date)} · ${escapeHtml(VISIT_SLOT_LABELS[v.slot] || v.slot || '–')}${v.addOn ? ' · Add-on drop-in' : ''}</span>
+          <span style="font-size:13px;color:var(--navy);">${fmtDate(v.date)} · ${escapeHtml(VISIT_SLOT_LABELS[v.slot] || v.slot || '–')}${v.addOn ? ' · Extra drop-in' : ''}</span>
           <span style="font-size:12px;font-weight:500;color:${isDone ? 'var(--green)' : 'var(--text-light)'};">${isDone ? '✓ Completed' : 'Expected'}</span>
         </div>
         ${v.note ? `<div style="font-size:12px;color:var(--text-mid);margin-top:4px;">${escapeHtml(v.note)}</div>` : ''}
@@ -5452,7 +5452,7 @@ window.updateOvernightVisitScheduleSlot = (dateStr, index, slot) => {
 };
 
 function overnightVisitScheduleFieldHTML() {
-  return `<div class="form-field" id="rev-overnight-visits-field" style="display:none;grid-column:1 / -1;"><label>Visit Schedule <span style="font-weight:400;color:var(--text-light);">(scheduling only, does not change the total)</span></label><div id="rev-overnight-visit-schedule"></div></div>`;
+  return `<div class="form-field" id="rev-overnight-visits-field" style="display:none;grid-column:1 / -1;"><label>Included Drop-In Visits <span style="font-weight:400;color:var(--text-light);">(one per night, place them to fit the trip; no charge)</span></label><div id="rev-overnight-visit-schedule"></div></div>`;
 }
 
 function setOvernightVisitScheduleFieldVisible(visible) {
@@ -5537,7 +5537,7 @@ function withAddOnDropIns(raw) {
 }
 
 function addOnDropInFieldHTML() {
-  return `<div class="form-field" id="rev-addon-dropins-field" style="display:none;grid-column:1 / -1;"><label>Add-on Drop-In Visits <span style="font-weight:400;color:var(--text-light);">(charged at the drop-in rate, added to the total above)</span></label><div id="rev-addon-dropins"></div></div>`;
+  return `<div class="form-field" id="rev-addon-dropins-field" style="display:none;grid-column:1 / -1;"><label>Extra Drop-In Visits <span style="font-weight:400;color:var(--text-light);">(charged per visit, added to the total above)</span></label><div id="rev-addon-dropins"></div></div>`;
 }
 
 function setAddOnDropInFieldVisible(visible) {
@@ -5607,6 +5607,7 @@ function renderTravelDiscountBanner(memberId) {
 function renderServiceRequestReview(item) {
   _reviewTotalTouched = false;
   _reviewVisitSchedule = {};
+  _reviewOvernightVisitSchedule = {};
   _reviewAddOnDropIns = {};
   _reviewItemVisitsPerDay = parseInt(item.visitsPerDay, 10) || 1;
   _reviewItemVisitSchedule = {};
@@ -5642,6 +5643,7 @@ function renderServiceRequestReview(item) {
         </select>
       </div>
       ${visitScheduleFieldHTML()}
+      ${overnightVisitScheduleFieldHTML()}
       ${addOnDropInFieldHTML()}
       <div class="form-field"><label>Start Date</label><input type="date" id="rev-start" value="${escapeHtml(toDateInputValue(item.startDate))}" onchange="reviewRecalcService()"></div>
       <div class="form-field" id="rev-end-field"><label>End Date</label><input type="date" id="rev-end" value="${escapeHtml(toDateInputValue(item.endDate))}" onchange="reviewRecalcService()"></div>
@@ -5727,6 +5729,7 @@ window.reviewRecalcService = () => {
   document.getElementById('rev-timeslot-field').style.display = isWalk ? 'flex' : 'none';
   setVisitScheduleFieldVisible(isDropIn);
   const isOvernightStay = service === 'overnight-stay';
+  setOvernightVisitScheduleFieldVisible(isOvernightStay);
   setAddOnDropInFieldVisible(isOvernightStay);
 
   const startDate = document.getElementById('rev-start').value;
@@ -5746,6 +5749,7 @@ window.reviewRecalcService = () => {
       serviceKey: service, startDate, endDate, extraPet, medication,
     });
     if (isOvernightStay) {
+      syncOvernightVisitScheduleRows(); // scheduling only — never priced
       syncAddOnDropInRows();
       raw = withAddOnDropIns(raw);
     }
@@ -6110,13 +6114,14 @@ window.confirmRequestDates = async (submissionId, item) => {
       : null;
 
     // A true overnight stay's per-night visit plan — deliberately a
-    // DIFFERENT field name from visitSchedule above, sent only when this is
-    // an overnight_request AND not a check-in. Server-side
+    // DIFFERENT field name from visitSchedule above, sent for any overnight
+    // stay (portal or public form — both review screens show the Included
+    // Drop-In Visits grid). Server-side
     // (generateOvernightVisits, functions/index.js) uses this only to seed
     // that reservation's `visits` tracking array; it's never persisted onto
     // the overnights doc and never reaches calculateOvernightPayout, which
     // is exactly why it can't reuse the visitSchedule field name.
-    const overnightVisitPlan = (isOvernightRequest && !isCheckin)
+    const overnightVisitPlan = isOvernightStay
       ? Object.entries(_reviewOvernightVisitSchedule).map(([date, entry]) => ({ date, slots: entry.slots })).sort((a, b) => (a.date < b.date ? -1 : 1))
       : null;
 

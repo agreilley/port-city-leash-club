@@ -26,6 +26,8 @@
 //   addOnDropIns: array<{date: 'YYYY-MM-DD', visits: number}> | null,
 //     // overnight stay only — paid drop-ins admin added; each listed as its
 //     // own line item under the stay
+//   stayPlan: array<{date, visits: [{slot, extra}], overnight}> | null,
+//     // overnight stay only — day-by-day plan from the booked visits
 //   needsCard: boolean,            // true when there's no card on file yet —
 //     // confirming no longer waits on one (finalizeSubmissionIfReady), so
 //     // the charge-date sentence below would otherwise state a date/amount
@@ -34,7 +36,7 @@
 // }
 
 const {
-  escapeHtml, formatDateRange, formatCalendarDate, joinNames, pluralNoun, TEAM_SIGNOFF, addOnDropInRows,
+  escapeHtml, formatDateRange, formatCalendarDate, joinNames, pluralNoun, TEAM_SIGNOFF, addOnDropInRows, stayPlanRows, stayPlanNote,
   renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
@@ -81,6 +83,12 @@ function html(data) {
     ? renderBlockHtml({ eyebrow: 'Visit schedule', rows: visitScheduleRows(data.visitSchedule).map(r => ({ label: r.label, value: escapeHtml(r.value) })) })
     : '';
 
+  const planRows = stayPlanRows(data.stayPlan);
+  const planSection = planRows.length ? `
+    <div style="margin-top:20px;">${renderBlockHtml({ eyebrow: 'Your stay', rows: planRows.map(r => ({ label: r.label, value: escapeHtml(r.value) })) })}</div>
+    <p style="margin:20px 0 0;">${escapeHtml(stayPlanNote(data.addOnDropIns))}</p>
+  ` : '';
+
   const billingHtml = data.needsCard ? `
     <p style="margin:20px 0 0;">We don't have a card on file for you yet — add one so we can process the ${escapeHtml(fmtDollars(data.totalDollars))} charge for this reservation.</p>
     ${renderButtonHtml({ href: data.addCardUrl, label: 'Add Your Card' })}
@@ -94,6 +102,7 @@ function html(data) {
     <p style="margin:0 0 20px;">Your pet sitting reservation for ${escapeHtml(names)} is confirmed. Here's what to expect.</p>
     ${reservationBlock}
     ${scheduleBlock}
+    ${planSection}
     ${billingHtml}
     <p style="margin:20px 0 0;">If you have any questions, just reply to this email.</p>
     ${renderSignoffHtml(TEAM_SIGNOFF)}
@@ -124,6 +133,15 @@ function text(data) {
     lines.push(
       renderBlockText({ eyebrow: 'Visit schedule', rows: visitScheduleRows(data.visitSchedule) }),
       ''
+    );
+  }
+
+  if (stayPlanRows(data.stayPlan).length) {
+    lines.push(
+      renderBlockText({ eyebrow: 'Your stay', rows: stayPlanRows(data.stayPlan) }),
+      '',
+      stayPlanNote(data.addOnDropIns),
+      '',
     );
   }
 

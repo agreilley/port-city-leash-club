@@ -21,6 +21,8 @@
 //   addOnDropIns: array<{date: 'YYYY-MM-DD', visits: number}> | null,
 //     // overnight stay only — paid drop-ins admin added; each listed as its
 //     // own line item under the stay
+//   stayPlan: array<{date, visits: [{slot, extra}], overnight}> | null,
+//     // overnight stay only — day-by-day plan from the booked visits
 //   isNewAccount: boolean,
 //   portalSetupLink: string|null, // generatePasswordResetLink() output; required when isNewAccount is true
 //   needsCard: boolean,   // true when there's no card on file yet — confirming no longer waits on one
@@ -28,7 +30,7 @@
 // }
 
 const {
-  escapeHtml, formatDateRange, joinNames, possessive, spellSmallNumber, addOnDropInRows,
+  escapeHtml, formatDateRange, joinNames, possessive, spellSmallNumber, addOnDropInRows, stayPlanRows, stayPlanNote,
   SIGNOFF_NAME, renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
@@ -97,10 +99,17 @@ function html(data) {
     ${renderButtonHtml({ href: data.addCardUrl, label: 'Add Your Card' })}
   ` : '';
 
+  const planRows = stayPlanRows(data.stayPlan);
+  const planSection = planRows.length ? `
+    <div style="margin-top:20px;">${renderBlockHtml({ eyebrow: 'Your stay', rows: planRows.map(r => ({ label: r.label, value: escapeHtml(r.value) })) })}</div>
+    <p style="margin:20px 0 0;">${escapeHtml(stayPlanNote(data.addOnDropIns))}</p>
+  ` : '';
+
   const body = `
     <p style="margin:0 0 20px;">Hi ${escapeHtml(data.firstName || 'there')},</p>
     <p style="margin:0 0 20px;">Great news, your pet sitting is booked and we've got ${escapeHtml(names)} covered.</p>
     ${block}
+    ${planSection}
     <p style="margin:20px 0 0;">${routineLine}</p>
     ${portalSection}
     ${cardSection}
@@ -128,6 +137,12 @@ function text(data) {
       rows: bookingRows(data),
     }),
     '',
+    ...(stayPlanRows(data.stayPlan).length ? [
+      renderBlockText({ eyebrow: 'Your stay', rows: stayPlanRows(data.stayPlan) }),
+      '',
+      stayPlanNote(data.addOnDropIns),
+      '',
+    ] : []),
     routineLine,
     '',
   ];
