@@ -95,6 +95,12 @@
   .walk-chip.tentative.t-overnight { border-color: #2D7A5E; color: #2D7A5E; }
   .walk-chip.tentative.t-checkin   { border-color: var(--navy-mid); color: var(--navy-mid); }
   .walk-chip.tentative.t-walk      { border-color: #3730A3; color: #3730A3; }
+  /* Pending reschedule: the walk chip keeps its slot colour on the ORIGINAL
+     date (nothing has moved yet) with a dashed rust outline and a ↻ prefix;
+     the requested date gets its own dashed rust "Requested" chip that opens
+     the request. Outline rather than border so the chip's size doesn't change. */
+  .walk-chip.resched-pending { outline: 1px dashed var(--rust); outline-offset: -1px; }
+  .walk-chip.tentative.t-resched { border-color: var(--rust); color: var(--rust); }
 
   /* ── REVIEWS ── */
   /* Placed before the mobile .stats-row media query below (same specificity,
@@ -503,6 +509,7 @@
         <div class="legend-item"><div class="legend-dot" style="background:#E8F4F0;border:1px solid #8FA8A2;"></div> Overnight</div>
         <div class="legend-item"><div class="legend-dot" style="background:#E4E9EE;border:1px solid #1C2F42;"></div> Drop-In Visit</div>
         <div class="legend-item"><div class="legend-dot" style="background:transparent;border:1px dashed var(--text-mid);"></div> Tentative &mdash; awaiting meet &amp; greet</div>
+        <div class="legend-item"><div class="legend-dot" style="background:transparent;border:1px dashed var(--rust);"></div> &#8635; Reschedule requested</div>
       </div>
       <div class="calendar-header">
         <div class="calendar-nav">
@@ -2529,6 +2536,22 @@ function renderCalendarDays() {
     }
   });
 
+  // Pending reschedule requests. By walk (marks the walk's chip on its
+  // original date) and by requested day (a "Requested" chip on the new
+  // date, so that day's load is visible before approving). Approve/decline
+  // flips status and the snapshot re-render drops both.
+  const reschedByWalk = {};
+  const reschedMap = {};
+  allRequests.forEach(r => {
+    if (r.type !== 'reschedule' || r.status !== 'pending' || !r.walkId) return;
+    reschedByWalk[r.walkId] = r;
+    const nd = r.newDate?.toDate?.();
+    if (nd && nd.getFullYear() === calendarYear && nd.getMonth() === calendarMonth) {
+      (reschedMap[nd.getDate()] ||= []).push(r);
+    }
+  });
+  const reschedWhen = (date, slot) => [date ? date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : null, slot].filter(Boolean).join(', ');
+
   // Build overnight map: day → overnight doc
   const overnightMap = {};
   allOvernights.filter(o => o.status !== 'cancelled').forEach(o => {
@@ -2559,9 +2582,11 @@ function renderCalendarDays() {
       const dogName = getMemberDogs(member)[0]?.name || member?.name?.split(' ')[0] || 'Walk';
       // ⚠ when the assigned walker has this day off (walker time off).
       const off = walker && w.status !== 'completed' && walkerOffOn(walker, dateStr);
-      const label = escapeHtml(walker ? `${off ? '⚠ ' : ''}${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`);
-      const title = off ? `${label} · ${escapeHtml(walker.name.split(' ')[0])} is off this day` : label;
-      return `<div class="walk-chip ${cls}" onclick="openWalkModal('${w.id}')" title="${title}">${label}</div>`;
+      const resched = w.status !== 'completed' ? reschedByWalk[w.id] : null;
+      const label = escapeHtml(`${resched ? '\u21bb ' : ''}` + (walker ? `${off ? '⚠ ' : ''}${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`));
+      let title = off ? `${label} · ${escapeHtml(walker.name.split(' ')[0])} is off this day` : label;
+      if (resched) title += escapeHtml(` · Reschedule requested to ${reschedWhen(resched.newDate?.toDate?.(), resched.newTimeSlot) || 'a new date'}`);
+      return `<div class="walk-chip ${cls}${resched ? ' resched-pending' : ''}" onclick="openWalkModal('${w.id}')" title="${title}">${label}</div>`;
     }).join('');
     // Same dog-name-plus-walker convention as the walk chip above, not the
     // owner's name — the overnights doc stamps its own dogName at creation
@@ -2632,7 +2657,18 @@ function renderCalendarDays() {
       const title = escapeHtml(`${dogName} · Membership confirmed · walk is created once the card is saved${off ? ` · ${walker.name.split(' ')[0]} is off this day` : ''}`);
       return `<div class="walk-chip ${cls}" onclick="openMemberWalkerModal('${m.id}')" title="${title}">${label}</div>`;
     }).join('');
-    html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}${projectedChips}${tentativeChips}</div>`;
+    // Requested-date chips for pending reschedules — open the request itself,
+    // where Approve / Decline live.
+    const reschedChips = (reschedMap[d] || []).map(r => {
+      const rWalk = allWalks.find(w => w.id === r.walkId);
+      const rMember = allMembers.find(m => m.id === (r.memberId || '').trim());
+      const rName = getMemberDogs(rMember)[0]?.name || (r.memberName || rMember?.name || '').split(' ')[0] || 'Walk';
+      const from = rWalk ? reschedWhen(rWalk.date?.toDate?.() || new Date(rWalk.date), WALK_TIME_SLOT_LABELS[rWalk.timeSlot] || rWalk.timeSlot) : '';
+      const label = escapeHtml(`\u21bb ${rName} · Requested`);
+      const title = escapeHtml(`${rName} · Reschedule requested${r.newTimeSlot ? ` for ${r.newTimeSlot}` : ''}${from ? ` · currently ${from}` : ''} · click to approve or decline`);
+      return `<div class="walk-chip tentative t-resched" onclick="openRequestItem('${r.id}')" title="${title}">${label}</div>`;
+    }).join('');
+    html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}${projectedChips}${tentativeChips}${reschedChips}</div>`;
   }
 
   // Next month padding
