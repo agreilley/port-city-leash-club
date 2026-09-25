@@ -132,6 +132,18 @@
       border-radius: 8px;
     }
 
+    .too-soon-note {
+      margin-top: 12px;
+      padding: 12px 14px;
+      font-size: 14px;
+      color: #0D1B2A;
+      background: #FAF8F4;
+      border-left: 3px solid #C17B6F;
+      border-radius: 4px;
+    }
+
+    .too-soon-note a { color: #C17B6F; }
+
     /* Current Walk Details */
     .current-walk {
       background: #FAF8F4;
@@ -485,6 +497,10 @@
           <select id="walkSelect" class="walk-select" disabled onchange="selectWalk(this.value)">
             <option value="">Loading your walks...</option>
           </select>
+          <div id="tooSoonNote" class="too-soon-note" style="display:none;">
+            This walk is less than 48 hours away, so it can't be rescheduled online.
+            Email us at <a href="mailto:hello@portcityleashclub.com">hello@portcityleashclub.com</a> and we'll see what we can do.
+          </div>
         </div>
 
         <!-- Current Walk Details -->
@@ -741,6 +757,18 @@ window.signOutMember = () => signOut(auth).then(() => window.location.href = 'po
 
 let upcomingWalks = [];
 
+// 48-hour reschedule cutoff, measured from the START of the walk's time
+// slot (same window the calendar below already enforces on the new date).
+// Unknown slots count from 8am, the earliest start, so they're never
+// treated as further away than they are.
+const SLOT_START_HOUR = { morning: 8, 'early-afternoon': 11, 'late-afternoon': 14 };
+const RESCHEDULE_CUTOFF_MS = 48 * 60 * 60 * 1000;
+function isTooSoon(w) {
+  const d = walkDateOf(w);
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), SLOT_START_HOUR[w.timeSlot] ?? 8);
+  return start.getTime() - Date.now() < RESCHEDULE_CUTOFF_MS;
+}
+
 const walkDateOf = w => w.date?.toDate?.() || new Date(w.date);
 const formatWalkDate = d => d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 const formatWalkSlot = w => WALK_TIME_SLOT_LABELS[w.timeSlot]
@@ -771,8 +799,10 @@ async function loadPageData() {
     return;
   }
 
+  // Too-soon walks stay listed (so a member looking for one isn't left
+  // wondering where it went) but can't be picked from the dropdown.
   select.innerHTML = '<option value="">Choose a walk...</option>' + upcomingWalks.map(w =>
-    `<option value="${w.id}">${formatWalkDate(walkDateOf(w))} · ${WALK_TIME_SLOT_LABELS[w.timeSlot] || w.timeSlot || ''}</option>`
+    `<option value="${w.id}"${isTooSoon(w) ? ' disabled' : ''}>${formatWalkDate(walkDateOf(w))} · ${WALK_TIME_SLOT_LABELS[w.timeSlot] || w.timeSlot || ''}${isTooSoon(w) ? ' (less than 48 hours away)' : ''}</option>`
   ).join('');
   select.disabled = false;
 
@@ -786,7 +816,12 @@ async function loadPageData() {
 window.selectWalk = (walkId) => {
   const walk = upcomingWalks.find(w => w.id === walkId);
   // selectedWalkId / updateConfirmButton are the classic script's globals above.
-  selectedWalkId = walk ? walk.id : null;
+  // A too-soon walk (only reachable via the dashboard's ?walk= link — the
+  // dropdown disables it) still shows its details, but with the note and
+  // no selection, so Confirm stays off.
+  const tooSoon = !!walk && isTooSoon(walk);
+  selectedWalkId = walk && !tooSoon ? walk.id : null;
+  document.getElementById('tooSoonNote').style.display = tooSoon ? '' : 'none';
   const card = document.getElementById('currentWalkCard');
   if (walk) {
     document.getElementById('currentDate').textContent = formatWalkDate(walkDateOf(walk));
@@ -802,6 +837,11 @@ window.selectWalk = (walkId) => {
 
 window.submitReschedule = async (walkId, newDate, newTimeSlot) => {
   if (!userId || !walkId) return;
+  const walk = upcomingWalks.find(w => w.id === walkId);
+  if (!walk || isTooSoon(walk)) {
+    showError("This walk is less than 48 hours away, so it can't be rescheduled online. Email us at hello@portcityleashclub.com.");
+    return;
+  }
   const btn = document.getElementById('confirmBtn');
   if (btn) btn.disabled = true;   // the old blocking alert is gone — guard against double-submit
   try {
