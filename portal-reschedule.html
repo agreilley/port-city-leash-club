@@ -121,6 +121,17 @@
       color: #7A7A7A;
     }
 
+    .walk-select {
+      width: 100%;
+      padding: 12px 14px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      color: #0D1B2A;
+      background: #FFFFFF;
+      border: 1px solid #E5E0D8;
+      border-radius: 8px;
+    }
+
     /* Current Walk Details */
     .current-walk {
       background: #FAF8F4;
@@ -466,24 +477,34 @@
           <p>Choose a new date and time for your walk</p>
         </div>
 
+        <!-- Which walk — picked here rather than carried over from the
+             dashboard, so the page works when opened straight from the
+             monthly schedule email (no walk in context). -->
+        <div class="form-section">
+          <div class="form-title">Select Walk to Reschedule</div>
+          <select id="walkSelect" class="walk-select" disabled onchange="selectWalk(this.value)">
+            <option value="">Loading your walks...</option>
+          </select>
+        </div>
+
         <!-- Current Walk Details -->
-        <div class="current-walk">
+        <div class="current-walk" id="currentWalkCard" style="display:none;">
           <div class="current-walk-title">Current Schedule</div>
           <div class="walk-detail-row">
             <span class="detail-label">Date</span>
-            <span class="detail-value" id="currentDate">Thursday, June 20</span>
+            <span class="detail-value" id="currentDate"></span>
           </div>
           <div class="walk-detail-row">
             <span class="detail-label">Time</span>
-            <span class="detail-value" id="currentTime">Morning (8:00 AM - 11:00 AM)</span>
+            <span class="detail-value" id="currentTime"></span>
           </div>
           <div class="walk-detail-row">
             <span class="detail-label">Walker</span>
-            <span class="detail-value" id="currentWalker">Marcus</span>
+            <span class="detail-value" id="currentWalker"></span>
           </div>
           <div class="walk-detail-row">
             <span class="detail-label">Duration</span>
-            <span class="detail-value">30-minute walk</span>
+            <span class="detail-value" id="currentDuration"></span>
           </div>
         </div>
 
@@ -492,7 +513,7 @@
           <div class="form-title">Select New Date</div>
           <div class="calendar-wrapper">
             <div class="calendar-nav">
-              <div class="calendar-month" id="calendarMonth">June 2026</div>
+              <div class="calendar-month" id="calendarMonth"></div>
               <div style="display: flex; gap: 8px;">
                 <button class="calendar-btn" onclick="previousMonth()">← Previous</button>
                 <button class="calendar-btn" onclick="nextMonth()">Next →</button>
@@ -537,7 +558,7 @@
         <!-- Action Buttons -->
         <div class="action-buttons">
           <button class="btn btn-secondary" onclick="goBack()">Cancel</button>
-          <button class="btn btn-primary" id="confirmBtn" disabled onclick="submitReschedule(sessionStorage.getItem('activeWalkId'), selectedDate, selectedTime)">Confirm Reschedule</button>
+          <button class="btn btn-primary" id="confirmBtn" disabled onclick="submitReschedule(selectedWalkId, selectedDate, selectedTime)">Confirm Reschedule</button>
         </div>
       </div>
     </div>
@@ -548,6 +569,7 @@
     let selectedDate = null;
     let selectedTime = null;
     let selectedTimeDisplay = null;
+    let selectedWalkId = null;
 
     function generateCalendar() {
       const year = currentDate.getFullYear();
@@ -625,7 +647,7 @@
 
     function updateConfirmButton() {
       const btn = document.getElementById('confirmBtn');
-      btn.disabled = !(selectedDate && selectedTime);
+      btn.disabled = !(selectedWalkId && selectedDate && selectedTime);
     }
 
     function previousMonth() {
@@ -642,16 +664,9 @@
       window.history.back();
     }
 
-    // Initialize
+    // Initialize — the current-walk card stays hidden until the module
+    // script below loads the member's walks and one is selected.
     function initPage() {
-      // Load walk details from sessionStorage
-      const walkDate = sessionStorage.getItem('walkDate') || 'Thursday, June 20';
-      const walkTime = sessionStorage.getItem('walkTime') || 'Morning (8:00 AM - 11:00 AM)';
-      const walkDuration = sessionStorage.getItem('walkDuration') || '30-minute walk';
-      
-      document.getElementById('currentDate').textContent = walkDate;
-      document.getElementById('currentTime').textContent = walkTime;
-      
       generateCalendar();
     }
 
@@ -661,9 +676,10 @@
 <script type="module">
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { initializeFirestore, memoryLocalCache, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { initializeFirestore, memoryLocalCache, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { showSuccess, showError } from '/js/status.js';
 import { requireMemberDoc, showPortalLoadTimeout } from '/js/portal-guard.js';
+import { WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '/time-slots.js';
 const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
 const app = getApps().find(a => a.name === 'member-app') || initializeApp(cfg, 'member-app');
 // Explicit persistence fallback chain — the SDK's default hierarchy probes
@@ -723,10 +739,69 @@ function updateSidebar() {
 
 window.signOutMember = () => signOut(auth).then(() => window.location.href = 'portal-login.html');
 
-function loadPageData() {}
+let upcomingWalks = [];
+
+const walkDateOf = w => w.date?.toDate?.() || new Date(w.date);
+const formatWalkDate = d => d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+const formatWalkSlot = w => WALK_TIME_SLOT_LABELS[w.timeSlot]
+  ? `${WALK_TIME_SLOT_LABELS[w.timeSlot]} (${WALK_TIME_SLOT_RANGES[w.timeSlot]})`
+  : (w.timeSlot || '–');
+
+// Same upcoming filter as portal-extend-walk.html's walk list: today or
+// later, not cancelled/completed. A ?walk=<id> param (set by the
+// dashboard's walk modal) preselects that walk; opened from the monthly
+// email there's no param and the member picks one from the list.
+async function loadPageData() {
+  const select = document.getElementById('walkSelect');
+  try {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const snap = await getDocs(query(collection(db, 'walks'), where('memberId', '==', userId)));
+    upcomingWalks = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(w => walkDateOf(w) >= today && w.status !== 'cancelled' && w.status !== 'completed')
+      .sort((a, b) => walkDateOf(a) - walkDateOf(b));
+  } catch (e) {
+    console.error(e);
+    select.innerHTML = '<option value="">Couldn\'t load your walks. Please refresh.</option>';
+    return;
+  }
+
+  if (!upcomingWalks.length) {
+    select.innerHTML = '<option value="">No upcoming walks to reschedule</option>';
+    return;
+  }
+
+  select.innerHTML = '<option value="">Choose a walk...</option>' + upcomingWalks.map(w =>
+    `<option value="${w.id}">${formatWalkDate(walkDateOf(w))} · ${WALK_TIME_SLOT_LABELS[w.timeSlot] || w.timeSlot || ''}</option>`
+  ).join('');
+  select.disabled = false;
+
+  const preselect = new URLSearchParams(window.location.search).get('walk');
+  if (preselect && upcomingWalks.some(w => w.id === preselect)) {
+    select.value = preselect;
+    window.selectWalk(preselect);
+  }
+}
+
+window.selectWalk = (walkId) => {
+  const walk = upcomingWalks.find(w => w.id === walkId);
+  // selectedWalkId / updateConfirmButton are the classic script's globals above.
+  selectedWalkId = walk ? walk.id : null;
+  const card = document.getElementById('currentWalkCard');
+  if (walk) {
+    document.getElementById('currentDate').textContent = formatWalkDate(walkDateOf(walk));
+    document.getElementById('currentTime').textContent = formatWalkSlot(walk);
+    document.getElementById('currentWalker').textContent = walk.walkerName || 'To be assigned';
+    document.getElementById('currentDuration').textContent = walk.extended ? '45-minute walk' : (walk.duration || '30-minute walk');
+    card.style.display = '';
+  } else {
+    card.style.display = 'none';
+  }
+  updateConfirmButton();
+};
 
 window.submitReschedule = async (walkId, newDate, newTimeSlot) => {
-  if (!userId) return;
+  if (!userId || !walkId) return;
   const btn = document.getElementById('confirmBtn');
   if (btn) btn.disabled = true;   // the old blocking alert is gone — guard against double-submit
   try {

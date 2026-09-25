@@ -3314,8 +3314,9 @@ exports.sendMonthlyScheduleReminders = onSchedule({
         monthLabel,
         billingDateLabel: `${monthLabel} 1`,
         walks,
-        calendarUrl: `${BUSINESS_PORTAL_ORIGIN}/portal-dashboard`,
-        rescheduleUrl: `${BUSINESS_PORTAL_ORIGIN}/portal-reschedule`,
+        // Opens the dashboard calendar on the month this email is about;
+        // rescheduling is done from there (click the walk -> Reschedule).
+        calendarUrl: `${BUSINESS_PORTAL_ORIGIN}/portal-dashboard?month=${periodKey}#calendar`,
         scheduleUrl: `${BUSINESS_PORTAL_ORIGIN}/portal-account`,
       },
       idempotencyKey: `monthly-schedule-reminder:${memberDoc.id}:${periodKey}`,

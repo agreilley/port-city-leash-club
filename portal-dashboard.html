@@ -642,8 +642,8 @@
           </div>
         </div>
 
-        <!-- Calendar -->
-        <div class="calendar-section">
+        <!-- Calendar — id is the #calendar anchor the monthly schedule email links to -->
+        <div class="calendar-section" id="calendar">
           <!-- Cross-month notice: a confirmed overnight can cover walks in a
                month the calendar isn't currently showing, so per-day styling
                alone wouldn't surface it. Populated by renderOvernightConflicts(). -->
@@ -834,6 +834,12 @@ let myOvernights = []; // confirmed overnights + pending requests
 const LOAD_ERROR_MSG = "We couldn't load your walks just now. Please refresh, or contact us if this continues.";
 const today = new Date(); today.setHours(0,0,0,0);
     let currentDate = new Date(today.getFullYear(), today.getMonth(), 1);
+    // ?month=YYYY-MM opens the calendar on that month — the monthly schedule
+    // email links here with next month so members don't land a month early.
+    {
+      const m = /^(\d{4})-(\d{2})$/.exec(new URLSearchParams(location.search).get('month') || '');
+      if (m && +m[2] >= 1 && +m[2] <= 12) currentDate = new Date(+m[1], +m[2] - 1, 1);
+    }
 
 // ── ADMIN PREVIEW MODE ────────────────────────────────────────────────────────
 // ?memberId=<id> requests a read-only preview of another member's dashboard.
@@ -971,12 +977,19 @@ async function loadAndSubscribe(targetId) {
   if (isPreviewMode) applyPreviewModeUI();
 
   // Real-time walks subscription
+  let scrolledToCalendar = false;
   const walksQ = query(collection(db, 'walks'), where('memberId', '==', targetId));
   onSnapshot(walksQ, (snap) => {
     myWalks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     updateMetrics();
     generateCalendar();
     renderOvernightConflicts();
+    // The page is still behind the portal guard when the browser would
+    // normally jump to #calendar, so scroll there once the walks are in.
+    if (!scrolledToCalendar && location.hash === '#calendar') {
+      scrolledToCalendar = true;
+      document.getElementById('calendar')?.scrollIntoView({ block: 'start' });
+    }
   }, (err) => {
     console.error('walks subscription error:', err.code, err.message);
     showError(LOAD_ERROR_MSG);
@@ -1623,7 +1636,7 @@ function updateMetrics() {
       document.getElementById('walkModal').classList.add('show');
     }
 
-    window.navigateToReschedule = function() { if (isPreviewMode) return; window.location.href = 'portal-reschedule.html'; };
+    window.navigateToReschedule = function() { if (isPreviewMode) return; window.location.href = 'portal-reschedule.html' + (activeWalkId ? `?walk=${encodeURIComponent(activeWalkId)}` : ''); };
     window.navigateToExtendWalk = function() { if (isPreviewMode) return; window.location.href = '/portal-extend-walk'; };
     window.closeWalkModal = function() { document.getElementById('walkModal').classList.remove('show'); };
 

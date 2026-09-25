@@ -13,8 +13,7 @@
 //   monthLabel: string,        // 'November'
 //   billingDateLabel: string,  // 'November 1'
 //   walks: [{ dateStr: 'YYYY-MM-DD', slot: string|null }], // sorted, at least one
-//   calendarUrl: string,       // portal-dashboard
-//   rescheduleUrl: string,     // portal-reschedule
+//   calendarUrl: string,       // portal-dashboard calendar, opened on this month
 //   scheduleUrl: string,       // portal-account (walk days / time slot)
 // }
 
@@ -65,7 +64,7 @@ async function html(data) {
     <p style="margin:0 0 20px;">Hi ${escapeHtml(data.firstName || 'there')},</p>
     <p style="margin:0 0 20px;">Here's ${escapeHtml(names)}'s walk schedule for ${escapeHtml(data.monthLabel)}. Take a quick look and make any changes before the month starts.</p>
     ${block}
-    <p style="margin:0 0 12px;"><strong>Need to move a walk?</strong> <a href="${escapeHtml(data.rescheduleUrl)}" style="color:inherit;">Request a reschedule</a> from your portal at least 48 hours before your walk.</p>
+    <p style="margin:0 0 12px;"><strong>Need to move a walk?</strong> Open <a href="${escapeHtml(data.calendarUrl)}" style="color:inherit;">your calendar</a>, click the date of the walk, and choose Reschedule, at least 48 hours before your walk.</p>
     <p style="margin:0 0 12px;"><strong>Want different days or a different time going forward?</strong> <a href="${escapeHtml(data.scheduleUrl)}" style="color:inherit;">Update your walk schedule</a> in your account settings.</p>
     <p style="margin:0;">Your membership is billed on ${escapeHtml(data.billingDateLabel)} for the walks scheduled in ${escapeHtml(data.monthLabel)}.</p>
     ${renderButtonHtml({ href: data.calendarUrl, label: 'Review Your Calendar' })}
@@ -90,7 +89,7 @@ async function text(data) {
     }),
     ...r.dates.map(d => `  ${d}`),
     '',
-    `Need to move a walk? Request a reschedule from your portal at least 48 hours before your walk: ${data.rescheduleUrl}`,
+    `Need to move a walk? Open your calendar, click the date of the walk, and choose Reschedule, at least 48 hours before your walk: ${data.calendarUrl}`,
     '',
     `Want different days or a different time going forward? Update your walk schedule in your account settings: ${data.scheduleUrl}`,
     '',
