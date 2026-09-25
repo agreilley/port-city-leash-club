@@ -5398,7 +5398,7 @@ function syncOvernightVisitScheduleRows() {
   if (!container) return;
   const startStr = document.getElementById('rev-start')?.value;
   const endStr = document.getElementById('rev-end')?.value;
-  if (!startStr || !endStr || endStr <= startStr) { container.innerHTML = ''; _reviewOvernightVisitSchedule = {}; return; }
+  if (!startStr || !endStr || endStr <= startStr) { container.innerHTML = ''; _reviewOvernightVisitSchedule = {}; renderIncludedVisitCount(); return; }
 
   const dates = [];
   const cursor = new Date(`${startStr}T12:00:00`);
@@ -5433,6 +5433,7 @@ function syncOvernightVisitScheduleRows() {
       ${count > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">${slotPickers}</div>` : ''}
     </div>`;
   }).join('');
+  renderIncludedVisitCount();
 }
 
 // Neither handler ever calls _reviewRecalcFn or touches rev-total-override —
@@ -5451,8 +5452,29 @@ window.updateOvernightVisitScheduleSlot = (dateStr, index, slot) => {
   entry.slots[index] = slot;
 };
 
+// Each night comes with one included drop-in. More than that here would be a
+// visit nobody is charged or paid for (this grid never touches pricing or
+// payout), so confirmRequestDates blocks it; fewer is allowed (a customer
+// who doesn't want a daytime visit one day) and just shows in the count.
+function includedVisitTotals() {
+  const placed = Object.values(_reviewOvernightVisitSchedule).reduce((sum, e) => sum + (Number(e.count) || 0), 0);
+  const nights = Math.max(Object.keys(_reviewOvernightVisitSchedule).length - 1, 0);
+  return { placed, nights };
+}
+
+function renderIncludedVisitCount() {
+  const el = document.getElementById('rev-overnight-visits-count');
+  if (!el) return;
+  const { placed, nights } = includedVisitTotals();
+  if (!nights) { el.textContent = ''; return; }
+  const over = placed > nights;
+  el.style.color = over ? 'var(--rust)' : 'var(--text-light)';
+  el.textContent = `${placed} of ${nights} included visit${nights === 1 ? '' : 's'} placed`
+    + (over ? ' — too many. Move the extra to Extra Drop-In Visits below.' : '');
+}
+
 function overnightVisitScheduleFieldHTML() {
-  return `<div class="form-field" id="rev-overnight-visits-field" style="display:none;grid-column:1 / -1;"><label>Included Drop-In Visits <span style="font-weight:400;color:var(--text-light);">(one per night, place them to fit the trip; no charge)</span></label><div id="rev-overnight-visit-schedule"></div></div>`;
+  return `<div class="form-field" id="rev-overnight-visits-field" style="display:none;grid-column:1 / -1;"><label>Included Drop-In Visits <span style="font-weight:400;color:var(--text-light);">(one per night, place them to fit the trip; no charge)</span></label><div id="rev-overnight-visit-schedule"></div><div id="rev-overnight-visits-count" style="font-size:12px;margin-top:6px;"></div></div>`;
 }
 
 function setOvernightVisitScheduleFieldVisible(visible) {
@@ -5999,6 +6021,13 @@ async function chargeAndTrackPayment(submissionId, amountInDollars, description,
 // behavior, preserved exactly here, not something this rewrite unifies.
 window.confirmRequestDates = async (submissionId, item) => {
   const btn = document.getElementById('requestActionBtn');
+  if (resolveServiceKey(document.getElementById('rev-service')?.value || item.service) === 'overnight-stay') {
+    const { placed, nights } = includedVisitTotals();
+    if (placed > nights) {
+      alert(`This stay has ${nights} night${nights === 1 ? '' : 's'}, so it includes ${nights} drop-in visit${nights === 1 ? '' : 's'}, but ${placed} are placed under Included Drop-In Visits. Move the extra to Extra Drop-In Visits so it's charged and the walker is paid for it.`);
+      return;
+    }
+  }
   const isOvernightRequest = item.type === 'overnight_request';
   const originalLabel = isOvernightRequest || resolveServiceKey(item.service) === 'drop-in-visit'
     ? 'Confirm and schedule charge' : 'Confirm & Charge';
