@@ -1005,7 +1005,7 @@ onAuthStateChanged(auth, async (user) => {
       .map(d => ({ id: d.id, ...d.data() }))
       .filter(w => w.status === 'completed')
       .map(w => {
-        const duration = (w.extended ? '45-minute walk' : (w.duration || '30-minute walk')) + (w.extended && w.extendedStatus === 'pending' ? ' (pending confirmation)' : '');
+        const duration = (w.extended ? '45-minute walk' : '30-minute walk') /* `extended` alone — a declined extension can leave a stale duration */ + (w.extended && w.extendedStatus === 'pending' ? ' (pending confirmation)' : '');
         const slot = WALK_TIME_SLOT_LABELS[w.timeSlot] || w.timeSlot || '';
         return {
           type: 'walk',

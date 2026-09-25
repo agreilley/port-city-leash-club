@@ -839,7 +839,7 @@ window.selectWalk = (walkId) => {
     // "To be assigned" for a walk that has a walker.
     document.getElementById('currentWalker').textContent = walk.walkerName || '';
     document.getElementById('currentWalkerRow').style.display = walk.walkerName ? '' : 'none';
-    document.getElementById('currentDuration').textContent = walk.extended ? '45-minute walk' : (walk.duration || '30-minute walk');
+    document.getElementById('currentDuration').textContent = walk.extended ? '45-minute walk' : '30-minute walk'; // `extended` alone — see portal-dashboard.html's walk modal
     card.style.display = '';
   } else {
     card.style.display = 'none';

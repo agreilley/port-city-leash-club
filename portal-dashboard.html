@@ -1626,7 +1626,10 @@ function updateMetrics() {
         : (walk.timeSlot || '–');
       // Always read from the live myWalks array so extended flag is current
       const liveWalk = myWalks.find(w => w.id === walk.id) || walk;
-      const durationText = liveWalk.extended ? '45-minute walk' : (liveWalk.duration || '30-minute walk');
+      // Decided by `extended` alone — a declined extension used to leave
+      // duration: '45-minute walk' behind (it's only ever set alongside
+      // extended: true), which kept showing 45 after the decline.
+      const durationText = liveWalk.extended ? '45-minute walk' : '30-minute walk';
       document.getElementById('modalDuration').textContent = liveWalk.extended
         ? `${durationText} — ${liveWalk.extendedStatus === 'pending' ? 'pending confirmation' : 'confirmed'}`
         : durationText;

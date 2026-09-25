@@ -6502,7 +6502,7 @@ window.confirmWalkExtension = async (submissionId, item) => {
     // field exists; it should never linger on a walk that isn't currently
     // a confirmed extension.
     await Promise.all(droppedIds.map(walkId =>
-      updateDoc(doc(db, 'walks', walkId), { extended: false, extendedStatus: null, extensionChargeId: null })
+      updateDoc(doc(db, 'walks', walkId), { extended: false, extendedStatus: null, extensionChargeId: null, duration: null })
     ));
     await updateDoc(doc(db, 'submissions', submissionId), {
       status: 'confirmed',
@@ -6602,7 +6602,7 @@ window.declineWalkExtension = async (submissionId, item) => {
   btn.textContent = 'Declining…'; btn.disabled = true;
   try {
     await Promise.all((item.walkIds || []).map(walkId =>
-      updateDoc(doc(db, 'walks', walkId), { extended: false, extendedStatus: null, extensionChargeId: null })
+      updateDoc(doc(db, 'walks', walkId), { extended: false, extendedStatus: null, extensionChargeId: null, duration: null })
     ));
     await updateDoc(doc(db, 'submissions', submissionId), { status: 'declined', read: true });
     let emailWarning = null;

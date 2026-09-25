@@ -1262,7 +1262,7 @@ function renderHistory() {
       // Same duration text portal-walk-history.html shows the member —
       // Standard vs. Extended was never surfaced anywhere in this portal
       // before, so a walker had no way to tell which walk a given card was.
-      const duration = (entry.walk.extended ? '45-minute walk' : (entry.walk.duration || '30-minute walk'))
+      const duration = (entry.walk.extended ? '45-minute walk' : '30-minute walk') /* `extended` alone — a declined extension can leave a stale duration */
         + (entry.walk.extended && entry.walk.extendedStatus === 'pending' ? ' (pending confirmation)' : '');
       subLabel = `${slotLabel} · ${duration}`;
     } else {
