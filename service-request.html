@@ -363,12 +363,14 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       <div class="form-grid">
         <div class="field">
           <label for="service">Service</label>
-          <select id="service" name="service">
+          <select id="service" name="service" required onchange="document.getElementById('serviceError').style.display='none'">
+            <option value="" disabled selected>Choose a service…</option>
             <option value="standard-walk">Standard Walk · 30 minutes · $30</option>
             <option value="extended-walk">Extended Walk · 45 minutes · $42</option>
             <option value="drop-in-visit">Drop-In Visit · $25</option>
             <option value="overnight-stay">Overnight Stay · $115</option>
           </select>
+          <span class="date-error" id="serviceError">Please choose a service.</span>
         </div>
         <div class="field">
           <label for="start-date">Start Date</label>
@@ -1034,6 +1036,14 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     event.preventDefault();
     const form = event.target;
     const btn = form.querySelector('[type=submit]');
+    // No service is preselected (the placeholder option) — a default of
+    // Standard Walk meant pet-sitting visitors who never touched the
+    // dropdown submitted walk requests without realizing it.
+    if (!PRICES[serviceSelect.value]) {
+      document.getElementById('serviceError').style.display = 'block';
+      serviceSelect.focus(); serviceSelect.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
     // B: validate dates BEFORE any Firestore write
     if (!startInput.value || startInput.value < minDateStr) {
       dateError.textContent = 'We begin September 1 — please choose a date on or after September 1.';
