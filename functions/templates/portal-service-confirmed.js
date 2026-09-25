@@ -31,7 +31,7 @@
 
 const {
   escapeHtml, formatDateRange, joinNames, possessive, spellSmallNumber, addOnDropInRows, stayPlanRows, stayPlanNote,
-  SIGNOFF_NAME, renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml, wrapHtml, wrapText,
+  TEAM_SIGNOFF, renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
 function unitLine(data) {
@@ -114,7 +114,7 @@ function html(data) {
     ${portalSection}
     ${cardSection}
     <p style="margin:20px 0 0;">${closingLine}</p>
-    ${renderSignoffHtml(SIGNOFF_NAME, 'Talk soon,')}
+    ${renderSignoffHtml(TEAM_SIGNOFF)}
   `;
 
   return wrapHtml({ preheader: `Your pet sitting is booked. Here's everything you need to know.`, bodyHtml: body });
@@ -174,8 +174,7 @@ function text(data) {
   lines.push(
     closingLine,
     '',
-    `Talk soon,`,
-    SIGNOFF_NAME,
+    TEAM_SIGNOFF,
   );
 
   return wrapText({ bodyText: lines.join('\n') });

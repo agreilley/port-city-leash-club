@@ -16,7 +16,7 @@
 
 const {
   escapeHtml, formatCalendarDate, formatMeetGreetSlot, formatWalkTimeSlot, joinNames, possessive,
-  SIGNOFF_NAME, renderBlockHtml, renderBlockText, renderSignoffHtml, wrapHtml, wrapText,
+  TEAM_SIGNOFF, renderBlockHtml, renderBlockText, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
 // See walk-confirmed.js's formatWalkWhen for why this checks both a
@@ -62,7 +62,7 @@ async function html(data) {
     ${block}
     <p style="margin:20px 0 0;">We'll confirm everything shortly. In the meantime, you can update your ${possessive(dogCount, 'dog', 'dogs')} routine or any other details anytime in your ${possessive(dogCount, "dog", "dogs")} profile in the portal.</p>
     <p style="margin:20px 0 0;">If you have any questions, just reply here and it'll come straight to us.</p>
-    ${renderSignoffHtml(SIGNOFF_NAME, 'Talk soon,')}
+    ${renderSignoffHtml(TEAM_SIGNOFF)}
   `;
 
   return wrapHtml({ preheader: `We've got your request and we're looking over the details now.`, bodyHtml: body });
@@ -87,8 +87,7 @@ async function text(data) {
     '',
     `If you have any questions, just reply here and it'll come straight to us.`,
     '',
-    `Talk soon,`,
-    SIGNOFF_NAME,
+    TEAM_SIGNOFF,
   ];
 
   return wrapText({ bodyText: lines.join('\n') });

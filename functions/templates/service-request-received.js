@@ -21,7 +21,7 @@
 
 const {
   escapeHtml, formatCalendarDate, formatMeetGreetSlot, joinNames, meetClosingLine,
-  NAVY, SAND, SIGNOFF_NAME, renderBlockHtml, renderBlockText, renderSignoffHtml, wrapHtml, wrapText,
+  NAVY, SAND, TEAM_SIGNOFF, renderBlockHtml, renderBlockText, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
 function buildMeetGreet(data) {
@@ -81,7 +81,7 @@ function html(data) {
     <p style="margin:20px 0 0;">Alison, our founder, will come by to meet ${escapeHtml(c.names)} and ${c.visitPurpose}. It's a great time to ask any questions you have. Please have a spare key or entry details ready, and Alison will take those with her for ${c.futureVisitsNoun}.</p>
     <p style="margin:20px 0 0;">${c.confirmLine}</p>
     <p style="margin:20px 0 0;">${escapeHtml(meetClosingLine(data.petNames))} Questions in the meantime? Just reply here and it'll come straight to us.</p>
-    ${renderSignoffHtml(SIGNOFF_NAME)}
+    ${renderSignoffHtml(TEAM_SIGNOFF)}
   `;
 
   return wrapHtml({
@@ -122,7 +122,7 @@ function text(data) {
     '',
     `${meetClosingLine(data.petNames)} Questions in the meantime? Just reply here and it'll come straight to us.`,
     '',
-    SIGNOFF_NAME,
+    TEAM_SIGNOFF,
   );
 
   return wrapText({ bodyText: lines.join('\n') });

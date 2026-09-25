@@ -22,7 +22,7 @@
 
 const {
   escapeHtml, formatCalendarDate, joinNames, possessive,
-  SIGNOFF_NAME, renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml, wrapHtml, wrapText,
+  TEAM_SIGNOFF, renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
 function subject(data) {
@@ -57,7 +57,7 @@ function html(data) {
     <p style="margin:20px 0 0;">Your walker will send photos and a note after every walk, so you'll always know how it went. You can view your schedule, adjust dates, and update your ${possessive(dogCount, 'dog', 'dogs')} profile anytime in your portal.</p>
     ${renderButtonHtml({ href: data.portalSetupLink, label: 'Set Up Your Portal Access' })}
     <p style="margin:20px 0 0;">We're honored you've trusted us with ${escapeHtml(names)}, and we can't wait to get started.</p>
-    ${renderSignoffHtml(SIGNOFF_NAME, 'Talk soon,')}
+    ${renderSignoffHtml(TEAM_SIGNOFF)}
   `;
 
   return wrapHtml({ preheader: `Welcome to the Leash Club. Here's what happens next.`, bodyHtml: body });
@@ -90,8 +90,7 @@ function text(data) {
     '',
     `We're honored you've trusted us with ${names}, and we can't wait to get started.`,
     '',
-    `Talk soon,`,
-    SIGNOFF_NAME,
+    TEAM_SIGNOFF,
   ];
 
   return wrapText({ bodyText: lines.join('\n') });

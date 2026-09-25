@@ -14,7 +14,7 @@
 // }
 
 const {
-  escapeHtml, formatCalendarDate, formatWalkTimeSlot, joinNames, SIGNOFF_NAME,
+  escapeHtml, formatCalendarDate, formatWalkTimeSlot, joinNames, TEAM_SIGNOFF,
   renderBlockHtml, renderBlockText, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
@@ -55,7 +55,7 @@ async function html(data) {
     <p style="margin:0 0 20px;">${escapeHtml(c.intro)}</p>
     ${block}
     <p style="margin:20px 0 0;">${escapeHtml(c.outro)}</p>
-    ${renderSignoffHtml(SIGNOFF_NAME, 'Talk soon,')}
+    ${renderSignoffHtml(TEAM_SIGNOFF)}
   `;
   return wrapHtml({ preheader: `An update on your extended walk request.`, bodyHtml: body });
 }
@@ -74,8 +74,7 @@ async function text(data) {
       '',
       c.outro,
       '',
-      `Talk soon,`,
-      SIGNOFF_NAME,
+      TEAM_SIGNOFF,
     ].join('\n'),
   });
 }

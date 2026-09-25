@@ -30,7 +30,7 @@
 
 const {
   escapeHtml, formatDateRange, joinNames, possessive, spellSmallNumber,
-  SIGNOFF_NAME, renderBlockHtml, renderBlockText, renderSignoffHtml, wrapHtml, wrapText,
+  TEAM_SIGNOFF, renderBlockHtml, renderBlockText, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
 function unitLine(data) {
@@ -64,7 +64,7 @@ function html(data) {
     ${block}
     <p style="margin:20px 0 0;">${data.isWalk ? `We'll confirm everything shortly. In the meantime, you can update your ${possessive(petCount, 'dog', 'dogs')} routine or any other details anytime in your ${possessive(petCount, 'dog', 'dogs')} profile in the portal.` : `We'll confirm everything shortly. In the meantime, you can update your ${possessive(petCount, 'pet', 'pets')} routine, feeding, or any other details anytime in your ${possessive(petCount, "pet", "pets")} profile in the portal.`}</p>
     <p style="margin:20px 0 0;">If you have any questions, just reply here and it'll come straight to us.</p>
-    ${renderSignoffHtml(SIGNOFF_NAME, 'Talk soon,')}
+    ${renderSignoffHtml(TEAM_SIGNOFF)}
   `;
 
   return wrapHtml({ preheader: `We've got your request and we're looking over the dates now.`, bodyHtml: body });
@@ -91,8 +91,7 @@ function text(data) {
     '',
     `If you have any questions, just reply here and it'll come straight to us.`,
     '',
-    `Talk soon,`,
-    SIGNOFF_NAME,
+    TEAM_SIGNOFF,
   ];
 
   return wrapText({ bodyText: lines.join('\n') });

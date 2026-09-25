@@ -24,7 +24,7 @@
 
 const {
   escapeHtml, formatCalendarDate, formatMeetGreetSlot, formatWalkTimeSlot, joinNames, possessive,
-  SIGNOFF_NAME, renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml, wrapHtml, wrapText,
+  TEAM_SIGNOFF, renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
 // A walk's slot may be a timeSlot bucket ('morning', from walk_extension /
@@ -103,7 +103,7 @@ async function html(data) {
     ${portalSection}
     ${cardSection}
     <p style="margin:20px 0 0;">${closingLine}</p>
-    ${renderSignoffHtml(SIGNOFF_NAME, 'Talk soon,')}
+    ${renderSignoffHtml(TEAM_SIGNOFF)}
   `;
 
   return wrapHtml({ preheader: `Your walk is booked. Here's everything you need to know.`, bodyHtml: body });
@@ -158,8 +158,7 @@ async function text(data) {
   lines.push(
     closingLine,
     '',
-    `Talk soon,`,
-    SIGNOFF_NAME,
+    TEAM_SIGNOFF,
   );
 
   return wrapText({ bodyText: lines.join('\n') });
