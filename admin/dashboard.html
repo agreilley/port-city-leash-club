@@ -6605,13 +6605,21 @@ window.declineWalkExtension = async (submissionId, item) => {
       updateDoc(doc(db, 'walks', walkId), { extended: false, extendedStatus: null, extensionChargeId: null })
     ));
     await updateDoc(doc(db, 'submissions', submissionId), { status: 'declined', read: true });
+    let emailWarning = null;
+    try {
+      await httpsCallable(fns, 'sendWalkExtensionDeclinedEmail')({ submissionId });
+    } catch (e) {
+      emailWarning = `Extension declined, but the member email wasn't sent: ${e.message}`;
+    }
 
+    btn.textContent = 'Decline'; btn.disabled = false;
     closeModal('requestModal');
     const msg = document.createElement('div');
     msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#C17B6F;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
     msg.textContent = 'Walk extension declined';
     document.body.appendChild(msg);
     setTimeout(() => msg.remove(), 3000);
+    if (emailWarning) alert(emailWarning);
   } catch (e) {
     btn.textContent = 'Decline'; btn.disabled = false;
     alert('Error: ' + e.message);

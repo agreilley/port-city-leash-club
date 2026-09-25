@@ -6607,6 +6607,50 @@ exports.sendRescheduleDecisionEmail = onCall({
   return { success: true, sentTo: member.email };
 });
 
+// ─────────────────────────────────────────────────────────────────────────
+// Walk-extension decline email — fired by declineWalkExtension in
+// admin/dashboard.html after it has reverted the walks and marked the
+// submission declined. Reads the walks from the submission's walkIds (the
+// walk docs still exist; only their extended flag was cleared). Throws on
+// failure; the caller warns without undoing the decline.
+// ─────────────────────────────────────────────────────────────────────────
+exports.sendWalkExtensionDeclinedEmail = onCall({
+  secrets: [RESEND_API_KEY],
+}, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { submissionId } = request.data || {};
+  if (!submissionId) throw new HttpsError('invalid-argument', 'submissionId is required.');
+
+  const sub = (await db.collection('submissions').doc(submissionId).get()).data();
+  if (!sub || sub.type !== 'walk_extension') throw new HttpsError('not-found', 'Walk extension request not found.');
+  if (sub.status !== 'declined') throw new HttpsError('failed-precondition', 'This request hasn\'t been declined.');
+
+  const member = (await db.collection('members').doc(sub.memberId).get()).data();
+  if (!member || !member.email) throw new HttpsError('failed-precondition', 'This member has no email on file.');
+
+  const walkSnaps = await Promise.all((sub.walkIds || []).map((id) => db.collection('walks').doc(id).get()));
+  const walks = walkSnaps
+    .map((s) => s.data())
+    .filter((w) => w && w.date?.toDate)
+    .map((w) => ({ dateStr: isoDateStr(w.date.toDate()), slot: w.timeSlot || null }))
+    .sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+
+  const result = await sendEmail({
+    to: member.email,
+    template: 'walk-extension-declined',
+    data: {
+      firstName: (member.name || '').trim().split(/\s+/)[0] || 'there',
+      dogNames: (Array.isArray(member.dogs) && member.dogs.length
+        ? member.dogs.map((d) => d && d.name)
+        : [member.dogName]).filter(Boolean),
+      walks,
+    },
+    idempotencyKey: `walk-extension-declined:${submissionId}`,
+  });
+  if (!result.ok) throw new HttpsError('internal', `Email failed to send: ${result.error}`);
+  return { success: true, sentTo: member.email };
+});
+
 exports.gmailAuthUrl = onCall({ secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET] }, async (request) => {
   await assertIsAdmin(request.auth);
   const oauth2Client = gmailOAuthClient();
