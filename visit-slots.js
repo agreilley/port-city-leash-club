@@ -40,7 +40,7 @@ export const VISIT_SLOT_LABELS = {
 export const VISIT_SLOT_RANGES = {
   morning: '7–9am',
   midday: '12–3pm',
-  evening: '4–6pm',
+  evening: '4–7pm',
   'last-out': '8–10pm',
 };
 
