@@ -2381,7 +2381,7 @@ const TENTATIVE_CUTOFF_CREATED_BEFORE = new Date(2026, 8, 23); // 23 Sep 2026, l
 // visible — the cutoff above is a blunt date filter and would hide them too.
 // Lowercase; matching is exact on a trimmed, lowercased dog name, so "Bella"
 // never accidentally matches a "Bellamy".
-const TENTATIVE_CHIPS_ALWAYS_DOGS = ['archie', 'bella', 'banks'];
+const TENTATIVE_CHIPS_ALWAYS_DOGS = ['archie', 'bella'];
 
 // Whether one submission is exempt from the September cutoff. Checks every dog
 // name the chip renderer might end up displaying — the submission's own dogs[],
@@ -2426,9 +2426,9 @@ function renderCalendarDays() {
   // invisible here, so the calendar looks free on days that are effectively
   // spoken for. datesConfirmedAt is stamped in the same call that writes the
   // real doc, so gating on it is what guarantees a booking shows as either a
-  // dashed chip or a solid one, never both. An array per day, not a single
-  // doc like overnightMap — nothing dedupes these against each other, and
-  // silently dropping one would defeat the point.
+  // dashed chip or a solid one, never both. An array per day — nothing
+  // dedupes these against each other, and silently dropping one would
+  // defeat the point.
   const tentativeMap = {};
   allRequests.forEach(r => {
     if (r.type !== 'service_request' && r.type !== 'overnight_request') return;
@@ -2552,7 +2552,10 @@ function renderCalendarDays() {
   });
   const reschedWhen = (date, slot) => [date ? date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : null, slot].filter(Boolean).join(', ');
 
-  // Build overnight map: day → overnight doc
+  // Build overnight map: day → [overnight docs]. An array, not one doc per
+  // day: two reservations routinely share a day (one stay ending as another
+  // begins, or a check-in during someone else's overnight), and a single
+  // slot let whichever was processed last silently hide the other.
   const overnightMap = {};
   allOvernights.filter(o => o.status !== 'cancelled').forEach(o => {
     const start = o.startDate?.toDate?.() || new Date(o.startDate);
@@ -2561,7 +2564,7 @@ function renderCalendarDays() {
     const e = new Date(end.getFullYear(),   end.getMonth(),   end.getDate());
     for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
       if (d.getFullYear() === calendarYear && d.getMonth() === calendarMonth) {
-        overnightMap[d.getDate()] = o;
+        (overnightMap[d.getDate()] ||= []).push(o);
       }
     }
   });
@@ -2594,19 +2597,19 @@ function renderCalendarDays() {
     // over a live member lookup's first dog, which could be wrong for a
     // multi-dog household. Falls back to a live lookup, then the member's
     // own name, only if the doc predates dogName being stamped.
-    const oMember = overnightMap[d] ? allMembers.find(m => m.id === (overnightMap[d].memberId || '').trim()) : null;
-    const oIsCheckin = overnightMap[d] ? isCheckinType(overnightMap[d].serviceType) : false;
-    const oWkId = overnightMap[d] ? (overnightMap[d].walkerId || '').trim() : '';
-    const oWalker = oWkId ? allWalkers.find(k => k.id === oWkId) : null;
-    const oDogName = overnightMap[d]?.dogName || getMemberDogs(oMember)[0]?.name || oMember?.name?.split(' ')[0] || (oIsCheckin ? 'Drop-In Visit' : 'Overnight');
-    const oOff = oWalker && overnightMap[d].status !== 'completed' && walkerOffOn(oWalker, dateStr);
-    const oLabel = escapeHtml(oWalker ? `${oOff ? '⚠ ' : ''}${oDogName} / ${oWalker.name.split(' ')[0]}` : `${oDogName} · Unassigned`);
-    const oOffNote = oOff ? ` · ${escapeHtml(oWalker.name.split(' ')[0])} is off this day` : '';
-    const overnightChip = overnightMap[d]
-      ? (oIsCheckin
-          ? `<div class="walk-chip checkin" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Drop-In Visit${oOffNote}">${oLabel}</div>`
-          : `<div class="walk-chip overnight" onclick="openOvernightModal('${overnightMap[d].id}')" title="${oLabel} · Overnight${oOffNote}">${oLabel}</div>`)
-      : '';
+    const overnightChip = (overnightMap[d] || []).map(o => {
+      const oMember = allMembers.find(m => m.id === (o.memberId || '').trim());
+      const oIsCheckin = isCheckinType(o.serviceType);
+      const oWkId = (o.walkerId || '').trim();
+      const oWalker = oWkId ? allWalkers.find(k => k.id === oWkId) : null;
+      const oDogName = o.dogName || getMemberDogs(oMember)[0]?.name || oMember?.name?.split(' ')[0] || (oIsCheckin ? 'Drop-In Visit' : 'Overnight');
+      const oOff = oWalker && o.status !== 'completed' && walkerOffOn(oWalker, dateStr);
+      const oLabel = escapeHtml(oWalker ? `${oOff ? '⚠ ' : ''}${oDogName} / ${oWalker.name.split(' ')[0]}` : `${oDogName} · Unassigned`);
+      const oOffNote = oOff ? ` · ${escapeHtml(oWalker.name.split(' ')[0])} is off this day` : '';
+      return oIsCheckin
+        ? `<div class="walk-chip checkin" onclick="openOvernightModal('${o.id}')" title="${oLabel} · Drop-In Visit${oOffNote}">${oLabel}</div>`
+        : `<div class="walk-chip overnight" onclick="openOvernightModal('${o.id}')" title="${oLabel} · Overnight${oOffNote}">${oLabel}</div>`;
+    }).join('');
     // Rendered last, below the confirmed work for the day, so what's
     // actually scheduled still reads first. Clicking opens the submission
     // itself (openRequestItem) rather than a walk/overnight modal — there
