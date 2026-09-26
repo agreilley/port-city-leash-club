@@ -4535,8 +4535,10 @@ window.openRequestItem = async (id) => {
   function buildApplicationAvailabilityGrid(raw) {
     const dayKeys = ['mon','tue','wed','thu','fri','sat','sun'];
     const dayLabels = { mon:'Monday', tue:'Tuesday', wed:'Wednesday', thu:'Thursday', fri:'Friday', sat:'Saturday', sun:'Sunday' };
-    const slotKeys = ['morning','early-afternoon','late-afternoon'];
-    const slotLabels = { 'morning':'Morning', 'early-afternoon':'Early Afternoon', 'late-afternoon':'Late Afternoon' };
+    // evening + overnight added to the careers grid 2026-09-26; older
+    // applications simply have neither, and show those columns empty.
+    const slotKeys = ['morning','early-afternoon','late-afternoon','evening','overnight'];
+    const slotLabels = { 'morning':'Morning', 'early-afternoon':'Early Afternoon', 'late-afternoon':'Late Afternoon', 'evening':'Evening', 'overnight':'Overnight' };
 
     const norm = {};
     dayKeys.forEach(d => norm[d] = []);
@@ -4858,7 +4860,13 @@ window.openRequestItem = async (id) => {
       // Applications submitted before this field existed have it missing/
       // undefined → show 'Not specified' (never a misleading 'No' or a blank),
       // and don't infer a value.
-      { label: 'Available for Overnights', value: typeof item.availableForOvernights === 'boolean' ? (item.availableForOvernights ? 'Yes' : 'No') : 'Not specified' },
+      // Newer applications mark specific nights in the grid; list those.
+      { label: 'Available for Overnights', value: (() => {
+        const nights = ['mon','tue','wed','thu','fri','sat','sun'].filter(d => Array.isArray(item.availability?.[d]) && item.availability[d].includes('overnight'));
+        const names = { mon:'Mon', tue:'Tue', wed:'Wed', thu:'Thu', fri:'Fri', sat:'Sat', sun:'Sun' };
+        if (nights.length) return nights.map(d => names[d]).join(', ');
+        return typeof item.availableForOvernights === 'boolean' ? (item.availableForOvernights ? 'Yes' : 'No') : 'Not specified';
+      })() },
       { label: 'Additional Notes', value: item.additional || '–' },
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
       { label: 'Submitted', value: fmtDate(item.createdAt) },
