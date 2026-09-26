@@ -1244,7 +1244,7 @@ import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalk
 // those stay separate, see buildApplicationAvailabilityGrid and
 // buildScreeningAvailabilityGrid below.
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
-import { VISIT_SLOTS, VISIT_SLOT_LABELS, defaultSlotsForCount, buildStaySchedule, groupStayScheduleByDay, stayRowLabel } from '../visit-slots.js';
+import { VISIT_SLOTS, VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, defaultSlotsForCount, buildStaySchedule, groupStayScheduleByDay, stayRowLabel } from '../visit-slots.js';
 import { calculateEarnings, isCheckinType, visitWalkerId, overnightWalkerIds, calculateVisitCovers, overnightPayoutShare, overnightTipShare, isOvernightPayee, overnightClaimFor } from '../walker-pricing.js';
 import { showError } from '/js/status.js';
 
@@ -3862,7 +3862,7 @@ window.openOvernightModal = (overnightId) => {
           const isDone = v.status === 'completed';
           return `<div style="padding:4px 0 6px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:13px;color:var(--navy);">${escapeHtml(stayRowLabel(row, isCheckin))}</span>
+              <span style="font-size:13px;color:var(--navy);">${escapeHtml(stayRowLabel(row, isCheckin))}${VISIT_SLOT_RANGES[v.slot] ? ` <span style="color:var(--text-light);">· ${escapeHtml(VISIT_SLOT_RANGES[v.slot])}</span>` : ''}</span>
               <span style="font-size:12px;font-weight:500;color:${isDone ? 'var(--green)' : 'var(--text-light)'};">${isDone ? '✓ Completed' : 'Expected'}</span>
             </div>
             ${visitWalkerSelectHTML(o, v, _walkers)}
@@ -5424,7 +5424,7 @@ function syncVisitScheduleRows(defaultVisits) {
     const label = new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     const slotPickers = slots.map((slot, i) => `
       <select style="font-size:12px;" onchange="updateVisitScheduleSlot('${d}', ${i}, this.value)">
-        ${VISIT_SLOTS.map(key => `<option value="${key}" ${slot === key ? 'selected' : ''}>${VISIT_SLOT_LABELS[key]}</option>`).join('')}
+        ${VISIT_SLOTS.map(key => `<option value="${key}" ${slot === key ? 'selected' : ''}>${VISIT_SLOT_LABELS[key]} (${VISIT_SLOT_RANGES[key]})</option>`).join('')}
       </select>
     `).join('');
     return `<div style="padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.05);">
@@ -5575,7 +5575,7 @@ function syncOvernightVisitScheduleRows() {
     const label = new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + (d === lastDate ? ' (return day)' : '');
     const slotPickers = slots.map((slot, i) => `
       <select style="font-size:12px;" onchange="updateOvernightVisitScheduleSlot('${d}', ${i}, this.value)">
-        ${VISIT_SLOTS.map(key => `<option value="${key}" ${slot === key ? 'selected' : ''}>${VISIT_SLOT_LABELS[key]}</option>`).join('')}
+        ${VISIT_SLOTS.map(key => `<option value="${key}" ${slot === key ? 'selected' : ''}>${VISIT_SLOT_LABELS[key]} (${VISIT_SLOT_RANGES[key]})</option>`).join('')}
       </select>
     `).join('');
     return `<div style="padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.05);">
@@ -5669,7 +5669,7 @@ function syncAddOnDropInRows() {
     const label = new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     const slotPickers = slots.map((slot, i) => `
       <select style="font-size:12px;" onchange="updateAddOnDropInSlot('${d}', ${i}, this.value)">
-        ${VISIT_SLOTS.map(key => `<option value="${key}" ${slot === key ? 'selected' : ''}>${VISIT_SLOT_LABELS[key]}</option>`).join('')}
+        ${VISIT_SLOTS.map(key => `<option value="${key}" ${slot === key ? 'selected' : ''}>${VISIT_SLOT_LABELS[key]} (${VISIT_SLOT_RANGES[key]})</option>`).join('')}
       </select>
     `).join('');
     return `<div style="padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.05);">
