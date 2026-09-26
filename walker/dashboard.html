@@ -90,6 +90,7 @@
      window printed on the chip itself (renderCalendar), rather than a
      color per walk time slot that had to be decoded from the legend. */
   .my-walk-chip .chip-time { font-weight: 700; margin-right: 4px; }
+  .my-walk-chip .chip-time-short { display: none; }
   .my-walk-chip.walk { background: #EBF5EF; color: #1A5C30; border-left: 3px solid #1A5C30; }
   .my-walk-chip.dropin { background: #E6EEFB; color: #1E4E8C; border-left: 3px solid #1E4E8C; }
   .my-walk-chip.overnight { background: #F1E9F7; color: #5B2A86; border-left: 3px solid #5B2A86; }
@@ -150,6 +151,8 @@
     .my-walk-chip { padding: 2px 3px; font-size: 10px; }
     .my-walk-chip .chip-time, .my-walk-chip .chip-name { display: block; overflow: hidden; text-overflow: ellipsis; }
     .my-walk-chip .chip-time { margin-right: 0; }
+    .my-walk-chip .chip-time-full { display: none; }
+    .my-walk-chip .chip-time-short { display: inline; }
 
     /* Walk cards: tighten padding */
     .walk-card { padding: 16px; gap: 12px; }
@@ -1267,7 +1270,10 @@ function renderCalendar() {
     });
     const chips = items.sort((a, b) => a.start - b.start).map(it =>
       `<div class="my-walk-chip ${it.cls}" onclick="${it.onclick}" title="${escapeHtml(`${it.name} · ${it.title}`)}">`
-      + (it.time ? `<span class="chip-time">${escapeHtml(it.time)}</span>` : '')
+      // Phones get a short form (see .chip-time-short in the mobile CSS):
+      // "11am–2pm" -> "11–2", "Overnight" -> "Night". The chip's color and
+      // its place in the day's order carry the rest.
+      + (it.time ? `<span class="chip-time"><span class="chip-time-full">${escapeHtml(it.time)}</span><span class="chip-time-short">${escapeHtml(it.time === 'Overnight' ? 'Night' : it.time.replace(/am|pm/g, ''))}</span></span>` : '')
       + `<span class="chip-name">${escapeHtml(it.name)}</span></div>`
     ).join('');
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}</div>`;
