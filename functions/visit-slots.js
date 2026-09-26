@@ -119,11 +119,26 @@ export function buildStaySchedule(o, isCheckin) {
   return rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.order - b.order));
 }
 
+// buildStaySchedule's rows bucketed by date, in order — [{ date, rows }] —
+// so a card can read day by day under one heading per day.
+export function groupStayScheduleByDay(rows) {
+  const days = [];
+  for (const row of rows) {
+    const last = days[days.length - 1];
+    if (last && last.date === row.date) last.rows.push(row);
+    else days.push({ date: row.date, rows: [row] });
+  }
+  return days;
+}
+
 // The text for one buildStaySchedule row's service, e.g. "Midday check-in
-// (included)", "Evening · Extra drop-in", or "Overnight".
-export function stayRowLabel(row, isCheckin) {
+// (included)", "Evening · Extra drop-in", or "Overnight". "(included)" is a
+// pricing note for the admin and member — the walker view passes
+// showIncluded: false.
+export function stayRowLabel(row, isCheckin, { showIncluded = true } = {}) {
   if (row.kind === 'night') return 'Overnight';
   const slot = VISIT_SLOT_LABELS[row.visit.slot] || row.visit.slot || '–';
   if (row.visit.addOn) return `${slot} · Extra drop-in`;
-  return isCheckin ? slot : `${slot} check-in (included)`;
+  if (isCheckin) return slot;
+  return showIncluded ? `${slot} check-in (included)` : `${slot} check-in`;
 }

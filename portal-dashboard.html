@@ -838,7 +838,7 @@ import { showError } from '/js/status.js';
 import { requireMemberDoc, showPortalLoadTimeout } from '/js/portal-guard.js';
 import { WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
 import { isCheckinType } from './walker-pricing.js';
-import { buildStaySchedule, stayRowLabel } from './visit-slots.js';
+import { buildStaySchedule, groupStayScheduleByDay, stayRowLabel } from './visit-slots.js';
 const firebaseConfig = {
   apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
   authDomain: "port-city-leash-club-827ab.firebaseapp.com",
@@ -1563,11 +1563,14 @@ function updateMetrics() {
         // Overnight stay: each night plus the midday check-in that comes
         // with it (and any add-on drop-ins), day by day — see
         // buildStaySchedule in visit-slots.js.
-        document.getElementById('reservationModalSchedule').innerHTML = buildStaySchedule(entry, false).map(row => {
-          const d = new Date(`${row.date}T12:00:00`);
+        document.getElementById('reservationModalSchedule').innerHTML = groupStayScheduleByDay(buildStaySchedule(entry, false)).map(day => {
+          const d = new Date(`${day.date}T12:00:00`);
           const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-          const done = row.kind === 'visit' && row.visit.status === 'completed' ? ' ✓' : '';
-          return `<p class="detail-value" style="margin:2px 0;">${label}: ${stayRowLabel(row, false)}${done}</p>`;
+          const items = day.rows.map(row => {
+            const done = row.kind === 'visit' && row.visit.status === 'completed' ? ' ✓' : '';
+            return `<p class="detail-value" style="margin:0 0 0 12px;">${stayRowLabel(row, false)}${done}</p>`;
+          }).join('');
+          return `<p class="detail-value" style="margin:8px 0 2px;font-weight:600;">${label}</p>${items}`;
         }).join('');
         document.getElementById('reservationModalScheduleLabel').textContent = 'Stay schedule';
         scheduleBox.style.display = '';
