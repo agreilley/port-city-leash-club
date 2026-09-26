@@ -763,7 +763,7 @@
           <p class="detail-value" id="reservationModalTotal">–</p>
         </div>
         <div class="detail-box" id="reservationModalScheduleBox" style="display:none;">
-          <div class="detail-label">Visit schedule</div>
+          <div class="detail-label" id="reservationModalScheduleLabel">Visit schedule</div>
           <div id="reservationModalSchedule"></div>
         </div>
       </div>
@@ -838,6 +838,7 @@ import { showError } from '/js/status.js';
 import { requireMemberDoc, showPortalLoadTimeout } from '/js/portal-guard.js';
 import { WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
 import { isCheckinType } from './walker-pricing.js';
+import { buildStaySchedule, stayRowLabel } from './visit-slots.js';
 const firebaseConfig = {
   apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
   authDomain: "port-city-leash-club-827ab.firebaseapp.com",
@@ -1556,6 +1557,19 @@ function updateMetrics() {
           const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
           return `<p class="detail-value" style="margin:2px 0;">${label}: ${v.visits} visit${v.visits === 1 ? '' : 's'}</p>`;
         }).join('');
+        document.getElementById('reservationModalScheduleLabel').textContent = 'Visit schedule';
+        scheduleBox.style.display = '';
+      } else if (!isPending && !isCheckin && Array.isArray(entry.visits) && entry.visits.length) {
+        // Overnight stay: each night plus the midday check-in that comes
+        // with it (and any add-on drop-ins), day by day — see
+        // buildStaySchedule in visit-slots.js.
+        document.getElementById('reservationModalSchedule').innerHTML = buildStaySchedule(entry, false).map(row => {
+          const d = new Date(`${row.date}T12:00:00`);
+          const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+          const done = row.kind === 'visit' && row.visit.status === 'completed' ? ' ✓' : '';
+          return `<p class="detail-value" style="margin:2px 0;">${label}: ${stayRowLabel(row, false)}${done}</p>`;
+        }).join('');
+        document.getElementById('reservationModalScheduleLabel').textContent = 'Stay schedule';
         scheduleBox.style.display = '';
       } else {
         scheduleBox.style.display = 'none';

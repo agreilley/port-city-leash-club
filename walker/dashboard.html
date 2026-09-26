@@ -384,7 +384,7 @@ import { initializeFirestore, memoryLocalCache, collection, query, where, onSnap
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 import { calculateEarnings, WALKER_RATES, WALKER_EXTRA_PET_FEE, WALKER_MEDICATION_FEE } from '../walker-pricing.js';
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
-import { VISIT_SLOT_LABELS } from '../visit-slots.js';
+import { VISIT_SLOT_LABELS, buildStaySchedule, stayRowLabel } from '../visit-slots.js';
 import { showError } from '/js/status.js';
 
 // ─── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────────────
@@ -858,13 +858,14 @@ function renderTodaysVisits() {
     const member = allMembers.find(m => m.id === o.memberId);
     const petNames = escapeHtml(getDogNames(member) || o.dogName || 'Pet');
     const address = escapeHtml(member?.address || '–');
-    const serviceLabel = (o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin') ? 'Drop-In' : 'Overnight';
+    const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
+    const serviceLabel = isCheckin ? 'Drop-In' : 'Overnight';
     const rows = visits.map(v => {
-      const slotLabel = VISIT_SLOT_LABELS[v.slot] || v.slot || '–';
+      const slotLabel = escapeHtml(stayRowLabel({ kind: 'visit', visit: v }, isCheckin));
       return `<div class="walk-card" style="align-items:center;">
         <div style="flex:1;">
           <div style="font-size:13px;color:var(--text-mid);">${address}</div>
-          <div style="font-size:13px;color:var(--text-light);">${v.date} · ${slotLabel}${v.addOn ? ' · Extra drop-in' : ''}</div>
+          <div style="font-size:13px;color:var(--text-light);">${v.date} · ${slotLabel}</div>
         </div>
         <button class="btn-complete" style="width:auto;padding:8px 16px;" onclick="openVisitCompleteForm('${o.id}', '${v.id}')">Mark complete</button>
       </div>`;
@@ -1122,8 +1123,19 @@ window.openOvernightDetail = (overnightId) => {
   // HTML, so escaping here just left a literal "&amp;" on screen for any
   // multi-dog household instead of the "&" it was meant to render as.
   const dogNames = getDogNames(member) || o.dogName || 'Pet';
-  const serviceLabel = (o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin') ? 'Drop-In' : 'Overnight';
+  const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
+  const serviceLabel = isCheckin ? 'Drop-In' : 'Overnight';
   const isCompleted = o.status === 'completed';
+
+  // Day-by-day schedule. For an overnight stay this includes a row per
+  // night — o.visits alone is only the included midday check-ins, which
+  // read as a couple of drop-ins rather than a stay.
+  const scheduleHTML = buildStaySchedule(o, isCheckin).map(row => {
+    const d = new Date(`${row.date}T12:00:00`);
+    const dateLabel = isNaN(d) ? row.date : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const status = row.kind === 'night' ? '🌙' : row.visit.status === 'completed' ? '✓ Done' : 'Expected';
+    return `<div class="detail-row"><span class="detail-label">${escapeHtml(dateLabel)}</span><span class="detail-value">${escapeHtml(stayRowLabel(row, isCheckin))} · ${status}</span></div>`;
+  }).join('');
 
   function fmtFullDate(val) {
     if (!val) return '–';
@@ -1149,6 +1161,7 @@ window.openOvernightDetail = (overnightId) => {
     ${renderEmergencyBlock(member)}
     <div class="detail-row"><span class="detail-label">Start Date</span><span class="detail-value">${fmtFullDate(o.startDate)}</span></div>
     <div class="detail-row"><span class="detail-label">End Date</span><span class="detail-value">${fmtFullDate(o.endDate)}</span></div>
+    ${scheduleHTML ? `<div style="font-weight:600;font-size:14px;color:var(--navy);margin:14px 0 4px;">${isCheckin ? 'Visits' : 'Stay schedule'}</div>${scheduleHTML}` : ''}
     ${o.extraPet ? `<div class="detail-row"><span class="detail-label">Multiple Pets</span><span class="detail-value">Yes</span></div>` : ''}
     ${o.medication ? `<div class="detail-row"><span class="detail-label">Medication</span><span class="detail-value">Yes</span></div>` : ''}
     <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted ? '✓ Completed' : 'Assigned'}</span></div>

@@ -85,3 +85,45 @@ function checksum(str) {
   return (h >>> 0).toString(16);
 }
 export const VISIT_SLOTS_VERSION = checksum(JSON.stringify({ VISIT_SLOTS, VISIT_SLOT_LABELS, VISIT_SLOT_RANGES }));
+
+// One overnight stay's day-by-day schedule, for the reservation detail cards
+// (admin, walker, member). o.visits alone is misleading for a true overnight
+// stay: it only holds the midday check-in included with each night (plus any
+// paid add-on drop-ins), so a two-night stay listed nothing but two
+// "Midday" rows and read as two drop-ins. This interleaves a row for each
+// NIGHT (start date through the night before endDate — the departure day
+// has no night) after that day's visits, in slot order. Night rows are
+// display-only: they aren't completable and never feed pricing or payout.
+//
+// A drop-in reservation has no nights, so pass isCheckin and it gets its
+// visit rows back unchanged. `startDate`/`endDate` may be Firestore
+// Timestamps, Dates, or 'YYYY-MM-DD' strings; visit dates are 'YYYY-MM-DD'.
+export function buildStaySchedule(o, isCheckin) {
+  const toKey = (val) => {
+    if (!val) return null;
+    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+    const d = val.toDate ? val.toDate() : new Date(val);
+    if (isNaN(d)) return null;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const rows = (Array.isArray(o.visits) ? o.visits : [])
+    .map((visit) => ({ kind: 'visit', date: toKey(visit.date) || '', order: VISIT_SLOTS.indexOf(visit.slot), visit }));
+  const start = toKey(o.startDate);
+  const end = toKey(o.endDate);
+  if (!isCheckin && start && end) {
+    const d = new Date(`${start}T12:00:00`);
+    for (let key = start; key < end; d.setDate(d.getDate() + 1), key = toKey(d)) {
+      rows.push({ kind: 'night', date: key, order: VISIT_SLOTS.length });
+    }
+  }
+  return rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.order - b.order));
+}
+
+// The text for one buildStaySchedule row's service, e.g. "Midday check-in
+// (included)", "Evening · Extra drop-in", or "Overnight".
+export function stayRowLabel(row, isCheckin) {
+  if (row.kind === 'night') return 'Overnight';
+  const slot = VISIT_SLOT_LABELS[row.visit.slot] || row.visit.slot || '–';
+  if (row.visit.addOn) return `${slot} · Extra drop-in`;
+  return isCheckin ? slot : `${slot} check-in (included)`;
+}

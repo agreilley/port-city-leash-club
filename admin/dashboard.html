@@ -1244,7 +1244,7 @@ import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalk
 // those stay separate, see buildApplicationAvailabilityGrid and
 // buildScreeningAvailabilityGrid below.
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
-import { VISIT_SLOTS, VISIT_SLOT_LABELS, defaultSlotsForCount } from '../visit-slots.js';
+import { VISIT_SLOTS, VISIT_SLOT_LABELS, defaultSlotsForCount, buildStaySchedule, stayRowLabel } from '../visit-slots.js';
 import { calculateEarnings, isCheckinType } from '../walker-pricing.js';
 import { showError } from '/js/status.js';
 
@@ -3834,12 +3834,21 @@ window.openOvernightModal = (overnightId) => {
   const completedVisitCount = trackedVisits.filter(v => v.status === 'completed').length;
   const visitProgressHTML = trackedVisits.length ? `
     <hr class="modal-divider">
-    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Visits (${completedVisitCount} of ${trackedVisits.length} completed)</div>
-    ${trackedVisits.map(v => {
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">${isCheckin ? 'Visits' : 'Stay schedule'} (${completedVisitCount} of ${trackedVisits.length} ${isCheckin ? '' : 'visits '}completed)</div>
+    ${buildStaySchedule(o, isCheckin).map(row => {
+      // Night rows (overnight stays only) aren't completable — they're
+      // there so the stay doesn't read as just its included check-ins.
+      if (row.kind === 'night') {
+        return `<div style="padding:8px 0;border-bottom:1px solid rgba(0,0,0,0.06);display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:13px;color:var(--navy);">${fmtDate(row.date)} · Overnight</span>
+          <span style="font-size:12px;color:var(--text-light);">🌙 Night</span>
+        </div>`;
+      }
+      const v = row.visit;
       const isDone = v.status === 'completed';
       return `<div style="padding:8px 0;border-bottom:1px solid rgba(0,0,0,0.06);">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="font-size:13px;color:var(--navy);">${fmtDate(v.date)} · ${escapeHtml(VISIT_SLOT_LABELS[v.slot] || v.slot || '–')}${v.addOn ? ' · Extra drop-in' : ''}</span>
+          <span style="font-size:13px;color:var(--navy);">${fmtDate(v.date)} · ${escapeHtml(stayRowLabel(row, isCheckin))}</span>
           <span style="font-size:12px;font-weight:500;color:${isDone ? 'var(--green)' : 'var(--text-light)'};">${isDone ? '✓ Completed' : 'Expected'}</span>
         </div>
         ${v.note ? `<div style="font-size:12px;color:var(--text-mid);margin-top:4px;">${escapeHtml(v.note)}</div>` : ''}
