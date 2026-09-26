@@ -1213,7 +1213,7 @@ window.nextMonth = () => { calMonth++; if (calMonth > 11) { calMonth = 0; calYea
 
 // Start hour of each time window, only for ordering a day's calendar chips.
 const CAL_SLOT_START = { morning: 8, 'early-afternoon': 11, 'late-afternoon': 14 };
-const CAL_VISIT_START = { morning: 7, midday: 13, evening: 16, 'last-out': 20 };
+const CAL_VISIT_START = { morning: 7, midday: 12, evening: 16, 'last-out': 20 };
 const member_ = (id) => allMembers.find(m => m.id === id);
 
 function renderCalendar() {

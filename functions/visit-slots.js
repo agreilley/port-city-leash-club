@@ -36,10 +36,10 @@ export const VISIT_SLOT_LABELS = {
 // that needs one more trip out overnight. Two-hour windows (set 2026-09-26)
 // that don't touch each other, so two adjacent slots on the same day never
 // read as the same visit twice. Separate from the walk windows in
-// time-slots.js on purpose — e.g. midday is 1–3pm here, not 11am–2pm.
+// time-slots.js on purpose — e.g. midday is 12–3pm here, not 11am–2pm.
 export const VISIT_SLOT_RANGES = {
   morning: '7–9am',
-  midday: '1–3pm',
+  midday: '12–3pm',
   evening: '4–6pm',
   'last-out': '8–10pm',
 };
