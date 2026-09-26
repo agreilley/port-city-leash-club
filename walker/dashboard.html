@@ -306,7 +306,7 @@
     <!-- SCHEDULE VIEW -->
     <div class="view" id="view-schedule">
       <div id="availabilitySetup"></div>
-      <div class="section-title">My Availability</div>
+      <div class="section-title" id="availabilityTitle">My Availability</div>
       <p id="availabilityIntro" style="font-size:13px;color:var(--text-light);margin-bottom:16px;">Your current weekly schedule, set by Alison. Need a day off or a schedule change? Submit a request below.</p>
       <div id="availabilityDisplay" style="margin-bottom:32px;"><div style="text-align:center;padding:40px;color:var(--text-light);">Loading...</div></div>
 
@@ -1681,7 +1681,6 @@ function renderSchedule() {
   const slotColors = { morning: '#EBF5EF', 'early-afternoon': '#EEF2FF', 'late-afternoon': '#FEF3C7' };
   const slotTextColors = { morning: '#1A5C30', 'early-afternoon': '#3730A3', 'late-afternoon': '#92400E' };
 
-  const zones = walkerDoc.zones || [];
   // Falls back to the old blanket availableForOvernights boolean for a
   // walker who's never had this new per-day field saved by admin yet —
   // same fallback admin's own grid uses (openWalkerDetail, admin/dashboard.html)
@@ -1705,9 +1704,13 @@ function renderSchedule() {
   // Once the walker has submitted hourly availability, show that instead of
   // the older walk-slot view below (which is now derived from it).
   const hourly = walkerDoc.availabilityConfirmedAt && walkerDoc.hourlyAvailability;
+  // Before they've submitted, the old walk-slot schedule is shown only as
+  // a reference, labeled so nobody tries to "update" it instead of filling
+  // out the form above it.
+  document.getElementById('availabilityTitle').textContent = hourly ? 'My Availability' : 'Previous Schedule (for reference)';
   document.getElementById('availabilityIntro').textContent = hourly
     ? 'Your weekly availability. Need a day off or a change? Submit a request below and Alison will update it.'
-    : 'Your current weekly schedule, set by Alison. Need a day off or a schedule change? Submit a request below.';
+    : "This is the schedule we had on file before. You don't need to update it. Just fill out Set Your Availability above, and that will replace it.";
   const dayRowsHTML = hourly
     ? days.map(d => {
         const hours = hourly[d.key] || [];
@@ -1726,10 +1729,6 @@ function renderSchedule() {
 
   container.innerHTML = `
     ${timeOffHTML}
-    ${zones.length ? `<div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:14px 18px;margin-bottom:16px;">
-      <div style="font-size:12px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);margin-bottom:4px;">Assigned Zones</div>
-      <div style="font-size:14px;color:var(--navy);font-weight:500;">${zones.map(z => escapeHtml(z)).join(', ')}</div>
-    </div>` : ''}
     <div style="display:grid;gap:8px;">
       ${dayRowsHTML ?? days.map(d => {
         const daySlots = avail[d.key] || [];
