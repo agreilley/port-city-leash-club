@@ -645,6 +645,10 @@ service cloud.firestore {
       // access on their own assigned overnight, matching how completeWalk()
       // already writes multiple fields freely on walks.
       allow read, update: if isWalker() && resource.data.walkerId == myWalkerId();
+      // A walker covering individual visits (visits[].walkerId) is listed
+      // in walkerIds (kept in sync by admin's assign functions), and gets
+      // the same access so they can see and complete those visits.
+      allow read, update: if isWalker() && myWalkerId() in resource.data.get('walkerIds', []);
     }
 
     match /conversations/{id} {

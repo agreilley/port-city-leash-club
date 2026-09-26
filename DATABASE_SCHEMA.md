@@ -347,7 +347,13 @@ Confirmed (paid, scheduled) overnight stays and check-in visits — created from
   confirmedAt: timestamp
   completedAt: timestamp
   submissionId: string               // reference back to the originating submissions doc
-  walkerId: string                   // references walkers.walkerId; empty until assigned
+  walkerId: string                   // references walkers.walkerId; empty until assigned. The DEFAULT walker —
+                                    // any visits[i].walkerId overrides it for that one visit (empty = default).
+  walkerIds: array<string>           // default + every walker covering a visit; kept in sync by admin's
+                                    // assignOvernightWalker/assignVisitWalker. Drives the covering walker's
+                                    // dashboard query (array-contains) and their firestore.rules access.
+  payoutId: string                   // walkerPayments id that claimed the DEFAULT walker's share
+  payoutIds: map<walkerId, string>   // walkerPayments id that claimed each COVERING walker's share
   extraPet: boolean
   medication: boolean
   payout: {                          // written ONCE by onOvernightCompleted (functions/index.js), on the
@@ -361,6 +367,10 @@ Confirmed (paid, scheduled) overnight stays and check-in visits — created from
     extraPetTotal: number            // 0 if extraPet was false
     medicationTotal: number          // 0 if medication was false
     amount: number                   // baseTotal + extraPetTotal + medicationTotal
+    covers: map<walkerId, {...}>     // only when another walker covered visits: each one's share
+                                    // (WALKER_RATES.checkin per visit, plus a drop-in day's per-day fees
+                                    // if they did all of that day). The default gets amount minus covers.
+                                    // See calculateVisitCovers / overnightPayoutShare in walker-pricing.js.
     stampedAt: timestamp
   }
 }

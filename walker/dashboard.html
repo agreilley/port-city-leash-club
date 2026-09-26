@@ -380,9 +380,9 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { initializeFirestore, memoryLocalCache, collection, query, where, onSnapshot, doc, getDoc, updateDoc, getDocs, addDoc, serverTimestamp, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { initializeFirestore, memoryLocalCache, collection, query, where, onSnapshot, doc, getDoc, updateDoc, getDocs, addDoc, serverTimestamp, Timestamp, runTransaction } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
-import { calculateEarnings, WALKER_RATES, WALKER_EXTRA_PET_FEE, WALKER_MEDICATION_FEE } from '../walker-pricing.js';
+import { calculateEarnings, WALKER_RATES, WALKER_EXTRA_PET_FEE, WALKER_MEDICATION_FEE, visitWalkerId, isOvernightPayee, overnightClaimFor, overnightTipShare } from '../walker-pricing.js';
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
 import { VISIT_SLOT_LABELS, buildStaySchedule, groupStayScheduleByDay, stayRowLabel } from '../visit-slots.js';
 import { showError } from '/js/status.js';
@@ -418,7 +418,13 @@ const ALISON_PHONE = '(919) 368-0605';
 
 let walkerDoc = null;
 let myWalks = [];
+// myOvernights: this walker's view of each reservation — `visits` holds
+// only the visits they're doing, and `_covering` is true when another
+// walker is the reservation's default and this one only covers some
+// visits. myOvernightDocs keeps the full docs, for pay (which needs every
+// visit to split it) — never for rendering.
 let myOvernights = [];
+let myOvernightDocs = [];
 let allMembers = [];
 let myPayouts = [];
 
@@ -655,10 +661,24 @@ function loadData() {
     showError("Couldn't load your assigned walks. Please refresh, or contact us if this keeps happening.");
   });
 
-  // Subscribe to this walker's assigned overnight/check-in stays
-  const overnightsQ = query(collection(db, 'overnights'), where('walkerId', '==', walkerDoc.id));
-  onSnapshot(overnightsQ, snap => {
-    myOvernights = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => {
+  // Subscribe to this walker's overnight/check-in stays: the ones they're
+  // the default walker on, plus ones where they cover individual visits
+  // (walkerIds — see assignVisitWalker in admin/dashboard.html). Two
+  // listeners, merged; each keeps its own latest snapshot.
+  const overnightSources = { assigned: [], covering: [] };
+  const onOvernightsSnap = (key) => (snap) => {
+    overnightSources[key] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const byId = new Map();
+    [...overnightSources.assigned, ...overnightSources.covering].forEach(o => byId.set(o.id, o));
+    myOvernightDocs = [...byId.values()].filter(o => o.status !== 'cancelled' || (o.walkerId || '').trim() === walkerDoc.id);
+    myOvernights = myOvernightDocs.map(o => ({
+      ...o,
+      _covering: (o.walkerId || '').trim() !== walkerDoc.id,
+      visits: (Array.isArray(o.visits) ? o.visits : []).filter(v => visitWalkerId(v, o) === walkerDoc.id),
+    }))
+    // A reservation this walker once covered but no longer has any visits on.
+    .filter(o => !o._covering || o.visits.length)
+    .sort((a,b) => {
       const da = a.startDate?.toDate?.() || new Date(a.startDate || 0);
       const db_ = b.startDate?.toDate?.() || new Date(b.startDate || 0);
       return da - db_;
@@ -675,10 +695,13 @@ function loadData() {
     // told it to look again.
     renderHistory();
     renderEarnings();
-  }, (err) => {
+  };
+  const onOvernightsError = (err) => {
     console.error('overnights subscription error:', err.code, err.message, 'walkerDoc.id:', walkerDoc.id);
     showError("Couldn't load your assigned pet-sitting services. Please refresh, or contact us if this keeps happening.");
-  });
+  };
+  onSnapshot(query(collection(db, 'overnights'), where('walkerId', '==', walkerDoc.id)), onOvernightsSnap('assigned'), onOvernightsError);
+  onSnapshot(query(collection(db, 'overnights'), where('walkerIds', 'array-contains', walkerDoc.id)), onOvernightsSnap('covering'), onOvernightsError);
 
   // Load members for dog/owner info
   onSnapshot(collection(db, 'members'), snap => {
@@ -940,6 +963,22 @@ window.openVisitCompleteForm = (overnightId, visitId) => {
   document.getElementById('walkModal').classList.add('open');
 };
 
+// Changes one visit inside an overnights doc's `visits` array. Reads the
+// doc fresh inside a transaction rather than using myOvernights: that only
+// holds THIS walker's visits, and another walker covering visits on the
+// same reservation may have just written the array. `patch(visit)` returns
+// the updated visit; `extra(visits, o)` optionally adds fields to the write.
+async function updateVisit(overnightId, visitId, patch, extra) {
+  const ref = doc(db, 'overnights', overnightId);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error('This reservation no longer exists.');
+    const o = snap.data();
+    const visits = (o.visits || []).map(v => v.id === visitId ? patch(v) : v);
+    tx.update(ref, { visits, ...(extra ? extra(visits, o) : {}) });
+  });
+}
+
 // Uses uploadCompletionPhotos (shared with completeWalk) for the photo
 // side — only the Storage path and the write target differ. A visit has no
 // doc of its own: it's one entry in the overnights doc's `visits` array, so
@@ -959,13 +998,12 @@ window.completeVisit = async (overnightId, visitId) => {
   try {
     const photoUrls = await uploadCompletionPhotos(fileInput?.files, `overnight-photos/${overnightId}`, `${visitId}_`);
 
-    const o = myOvernights.find(x => x.id === overnightId);
     // Timestamp.now() (a client-clock value), NOT serverTimestamp() — that
     // sentinel is rejected by Firestore the moment it's nested inside an
     // array element, in every SDK, not just here. The array as a whole is
-    // still written through a normal updateDoc, so this is the one field
+    // still written through a normal update, so this is the one field
     // that can't get the usual server-resolved timestamp treatment.
-    const visits = (o?.visits || []).map(v => v.id === visitId ? {
+    await updateVisit(overnightId, visitId, v => ({
       ...v,
       status: 'completed',
       completedAt: Timestamp.now(),
@@ -973,27 +1011,25 @@ window.completeVisit = async (overnightId, visitId) => {
       photoUrls,
       walkerId: walkerDoc?.id || '',
       walkerName: walkerDoc?.name || '',
-    } : v);
-
-    // Completing the last outstanding visit also closes out the whole
-    // reservation, in this same write. This is now the ONLY way a
-    // reservation's own `status` reaches 'completed' — the old separate
-    // reservation-level "Mark as Completed" button (completeOvernight) was
-    // removed: it let a walker skip straight to closing the reservation
-    // without ever completing the individual visits underneath it, which
-    // still stamped payout (onOvernightCompleted, functions/index.js) with
-    // no note/photo ever captured and no visit-completed email ever sent to
-    // the member. `visits.length` guards against an empty array (no visits
-    // generated at all) trivially satisfying .every() and auto-completing a
-    // reservation that was never really underway; the `o.status !==
-    // 'completed'` check keeps this a no-op on an already-closed one.
-    const allVisitsComplete = visits.length > 0 && visits.every(v => v.status === 'completed');
-    const updatePayload = { visits };
-    if (allVisitsComplete && o.status !== 'completed') {
-      updatePayload.status = 'completed';
-      updatePayload.completedAt = serverTimestamp();
-    }
-    await updateDoc(doc(db, 'overnights', overnightId), updatePayload);
+    }), (visits, o) => {
+      // Completing the last outstanding visit also closes out the whole
+      // reservation, in this same write. This is now the ONLY way a
+      // reservation's own `status` reaches 'completed' — the old separate
+      // reservation-level "Mark as Completed" button (completeOvernight) was
+      // removed: it let a walker skip straight to closing the reservation
+      // without ever completing the individual visits underneath it, which
+      // still stamped payout (onOvernightCompleted, functions/index.js) with
+      // no note/photo ever captured and no visit-completed email ever sent to
+      // the member. `visits.length` guards against an empty array (no visits
+      // generated at all) trivially satisfying .every() and auto-completing a
+      // reservation that was never really underway; the `o.status !==
+      // 'completed'` check keeps this a no-op on an already-closed one.
+      // `visits` here is the whole reservation's, every walker's included.
+      const allVisitsComplete = visits.length > 0 && visits.every(v => v.status === 'completed');
+      return allVisitsComplete && o.status !== 'completed'
+        ? { status: 'completed', completedAt: serverTimestamp() }
+        : {};
+    });
 
     document.getElementById('walkModal').classList.remove('open');
   } catch (e) {
@@ -1024,9 +1060,8 @@ window.addVisitPhoto = async (overnightId, visitId) => {
     const remaining = MAX_COMPLETION_PHOTOS - existing.length;
     const newUrls = await uploadCompletionPhotos(Array.from(fileInput.files).slice(0, remaining), `overnight-photos/${overnightId}`, `${visitId}_`);
     const photoUrls = [...existing, ...newUrls];
-    const visits = (o?.visits || []).map(v => v.id === visitId ? { ...v, photoUrls } : v);
-    await updateDoc(doc(db, 'overnights', overnightId), { visits });
-    if (o) o.visits = visits;
+    await updateVisit(overnightId, visitId, v => ({ ...v, photoUrls }));
+    if (visit) visit.photoUrls = photoUrls;
     openVisitCompleteForm(overnightId, visitId);
   } catch (e) {
     errEl.textContent = e.message;
@@ -1060,9 +1095,8 @@ window.saveVisitNote = async (overnightId, visitId) => {
   try {
     // Whole-array rewrite, same as completeVisit — a visit is an entry in
     // the overnights doc's `visits` array, not a doc of its own.
-    const visits = (o?.visits || []).map(v => v.id === visitId ? { ...v, note } : v);
-    await updateDoc(doc(db, 'overnights', overnightId), { visits });
-    if (o) o.visits = visits;
+    await updateVisit(overnightId, visitId, v => ({ ...v, note }));
+    if (visit) visit.note = note;
     openVisitCompleteForm(overnightId, visitId);
   } catch (e) {
     errEl.textContent = 'That note couldn\'t be saved — check your signal and try again.';
@@ -1100,7 +1134,7 @@ function renderOvernights() {
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
           <div style="font-size:16px;font-weight:600;color:var(--navy);">${dogNames}</div>
-          <div style="font-size:13px;color:var(--text-mid);">${memberName} · ${escapeHtml(o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin' ? 'Drop-In' : 'Overnight')}</div>
+          <div style="font-size:13px;color:var(--text-mid);">${memberName} · ${escapeHtml(o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin' ? 'Drop-In' : 'Overnight')}${o._covering ? ` · Covering ${o.visits.length} visit${o.visits.length === 1 ? '' : 's'}` : ''}</div>
           <div style="font-size:13px;color:var(--text-light);">${fmtDate(o.startDate)} – ${fmtDate(o.endDate)}${o.extraPet ? ' · Multiple pets' : ''}${o.medication ? ' · Medication' : ''}</div>
         </div>
         <span class="walk-status ${isCompleted ? 'completed' : 'scheduled'}">${isCompleted ? 'Completed' : 'Assigned'}</span>
@@ -1130,7 +1164,8 @@ window.openOvernightDetail = (overnightId) => {
   // Day-by-day schedule. For an overnight stay this includes a row per
   // night — o.visits alone is only the included midday check-ins, which
   // read as a couple of drop-ins rather than a stay.
-  const scheduleHTML = groupStayScheduleByDay(buildStaySchedule(o, isCheckin)).map(day => {
+  // A walker covering only some visits sees just those, no night rows.
+  const scheduleHTML = groupStayScheduleByDay(buildStaySchedule(o, isCheckin, { nights: !o._covering })).map(day => {
     const d = new Date(`${day.date}T12:00:00`);
     const dateLabel = isNaN(d) ? day.date : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     const items = day.rows.map(row => {
@@ -1715,15 +1750,19 @@ window.submitScheduleRequest = async () => {
 function renderEarnings() {
   const container = document.getElementById('earningsDisplay');
   const completedWalks = myWalks.filter(w => w.status === 'completed');
-  const completedOvernights = myOvernights.filter(o => o.status === 'completed');
+  // Full docs, not the filtered view: splitting pay needs every visit.
+  const completedOvernights = myOvernightDocs.filter(o => o.status === 'completed');
+  const me = walkerDoc?.id;
 
   // Only chargeStatus: 'charged' counts, same rule the payout generator
   // itself uses. A reservation's tip is a single top-level charge now
   // (chargeWalkTip's 'overnight' case), not per-visit — but visits[] is
   // still checked too, for any older record that predates that change.
   function tipAmount(tip) { return tip?.chargeStatus === 'charged' ? tip.amountCents / 100 : 0; }
+  // This walker's tips only — the reservation tip goes to the default
+  // walker, not to someone who covered a visit (overnightTipShare).
   function overnightTipAmount(o) {
-    return tipAmount(o.tip) + (o.visits || []).reduce((sum, v) => sum + tipAmount(v.tip), 0);
+    return overnightTipShare(o, me);
   }
 
   // Upcoming Payout: every completed item that's still unclaimed (no
@@ -1736,8 +1775,9 @@ function renderEarnings() {
   // Generate button reads (computeUnclaimedPreview in admin/dashboard.html),
   // so this can't disagree with what clicking Generate would produce.
   const unclaimedWalks = completedWalks.filter(w => !w.payoutId);
-  const unclaimedOvernights = completedOvernights.filter(o => !o.payoutId);
-  const upcomingPayout = calculateEarnings(unclaimedWalks, unclaimedOvernights);
+  // Same per-walker claim + payee rules runGenerateWalkerPayout uses.
+  const unclaimedOvernights = completedOvernights.filter(o => !overnightClaimFor(o, me) && (!o.payout || isOvernightPayee(o, me)));
+  const upcomingPayout = calculateEarnings(unclaimedWalks, unclaimedOvernights, me);
   upcomingPayout.total += unclaimedWalks.reduce((sum, w) => sum + tipAmount(w.tip), 0)
     + unclaimedOvernights.reduce((sum, o) => sum + overnightTipAmount(o), 0);
 
@@ -1760,9 +1800,11 @@ function renderEarnings() {
   let tipTotal = 0, tipCount = 0;
   completedWalks.forEach(w => { const t = tipAmount(w.tip); if (t) { tipTotal += t; tipCount++; } });
   completedOvernights.forEach(o => {
-    const t = tipAmount(o.tip);
-    if (t) { tipTotal += t; tipCount++; }
-    (o.visits || []).forEach(v => { const vt = tipAmount(v.tip); if (vt) { tipTotal += vt; tipCount++; } });
+    if ((o.walkerId || '').trim() === me) { const t = tipAmount(o.tip); if (t) { tipTotal += t; tipCount++; } }
+    (o.visits || []).forEach(v => {
+      if (visitWalkerId(v, o) !== me) return;
+      const vt = tipAmount(v.tip); if (vt) { tipTotal += vt; tipCount++; }
+    });
   });
 
   function fmtPeriod(p) {

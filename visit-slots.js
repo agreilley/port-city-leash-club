@@ -98,7 +98,9 @@ export const VISIT_SLOTS_VERSION = checksum(JSON.stringify({ VISIT_SLOTS, VISIT_
 // A drop-in reservation has no nights, so pass isCheckin and it gets its
 // visit rows back unchanged. `startDate`/`endDate` may be Firestore
 // Timestamps, Dates, or 'YYYY-MM-DD' strings; visit dates are 'YYYY-MM-DD'.
-export function buildStaySchedule(o, isCheckin) {
+// Pass { nights: false } to leave out the night rows (a walker covering only
+// some of a stay's visits, who isn't doing the nights).
+export function buildStaySchedule(o, isCheckin, { nights = true } = {}) {
   const toKey = (val) => {
     if (!val) return null;
     if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
@@ -110,7 +112,7 @@ export function buildStaySchedule(o, isCheckin) {
     .map((visit) => ({ kind: 'visit', date: toKey(visit.date) || '', order: VISIT_SLOTS.indexOf(visit.slot), visit }));
   const start = toKey(o.startDate);
   const end = toKey(o.endDate);
-  if (!isCheckin && start && end) {
+  if (!isCheckin && nights && start && end) {
     const d = new Date(`${start}T12:00:00`);
     for (let key = start; key < end; d.setDate(d.getDate() + 1), key = toKey(d)) {
       rows.push({ kind: 'night', date: key, order: VISIT_SLOTS.length });

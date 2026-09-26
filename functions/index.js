@@ -32,7 +32,7 @@ const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https')
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const { initializeApp } = require('firebase-admin/app');
-const { getFirestore, FieldValue, Timestamp } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue, FieldPath, Timestamp } = require('firebase-admin/firestore');
 const { sendEmail, RESEND_API_KEY, ADMIN_EMAIL } = require('./lib/email');
 
 initializeApp();
@@ -1129,6 +1129,9 @@ exports.cancelOvernightReservation = onCall({ secrets: [RESEND_API_KEY] }, async
   await ref.set({
     status: 'cancelled', chargePending: false, cancelledAt: FieldValue.serverTimestamp(),
     walkerId: '', walkerName: '',
+    // Drops any walker covering individual visits too, so it leaves their
+    // dashboards along with the default's.
+    walkerIds: [],
   }, { merge: true });
   await sendRequestDeclinedEmail(data, `ovn:${overnightId}`);
   return { success: true };
@@ -7185,8 +7188,12 @@ exports.onOvernightCompleted = onDocumentUpdated({
 
   const overnightId = event.params.overnightId;
   try {
-    const { calculateOvernightPayout, WALKER_RATES } = await import('./walker-pricing.js');
+    const { calculateOvernightPayout, calculateVisitCovers, WALKER_RATES } = await import('./walker-pricing.js');
     const payout = calculateOvernightPayout(after);
+    // Walkers who covered individual visits, and what each earns — the
+    // default walker's share is the rest (overnightPayoutShare). Stamped
+    // only when someone covered, so a single-walker stamp looks as before.
+    const covers = calculateVisitCovers(after);
 
     await event.data.after.ref.update({
       payout: {
@@ -7207,6 +7214,7 @@ exports.onOvernightCompleted = onDocumentUpdated({
         addOnDropInVisits: payout.addOnDropInVisits,
         addOnDropInBaseTotal: payout.addOnDropInBase,
         amount: payout.total,
+        ...(Object.keys(covers).length ? { covers } : {}),
         stampedAt: FieldValue.serverTimestamp(),
       },
     });
@@ -7467,23 +7475,29 @@ function walkItemFromSnap(snap) {
 // added AFTER this reservation's payout has already been generated and
 // claimed (payoutId set) is not retroactively picked up by a later payout
 // run — same "claimed once" model every other item here already has.
-function overnightItemFromSnap(snap) {
+//
+// Once other walkers can cover individual visits, each walker is paid only
+// their share (overnightPayoutShare, walker-pricing.js) and their tips
+// (overnightTipShare), so these take the walker being paid.
+function overnightItemFromSnap(snap, walkerId, { overnightPayoutShare, overnightTipShare, WALKER_RATES }) {
   const o = snap.data();
-  const visitTips = (Array.isArray(o.visits) ? o.visits : [])
-    .reduce((sum, v) => sum + chargedTipAmount(v.tip), 0);
-  const tipAmount = visitTips + chargedTipAmount(o.tip);
+  const share = overnightPayoutShare(o, walkerId);
+  const tipAmount = overnightTipShare(o, walkerId);
+  const isDefault = walkerId === (o.walkerId || '').trim();
   return {
-    type: o.payout.rateKey === 'checkin' ? 'checkin' : 'overnight',
+    // A covering walker only ever did drop-ins, even on an overnight stay.
+    type: !isDefault || o.payout.rateKey === 'checkin' ? 'checkin' : 'overnight',
     refCollection: 'overnights', refId: snap.id, date: o.startDate,
-    rateKey: o.payout.rateKey, rateApplied: o.payout.rate,
-    extraPet: !!o.extraPet, medication: !!o.medication, amount: o.payout.amount + tipAmount, tipAmount,
+    rateKey: isDefault ? o.payout.rateKey : 'checkin', rateApplied: isDefault ? o.payout.rate : WALKER_RATES.checkin,
+    extraPet: !!o.extraPet, medication: !!o.medication, amount: share.amount + tipAmount, tipAmount,
+    ...(!isDefault ? { coveredVisits: o.payout.covers?.[walkerId]?.visits || 0 } : {}),
   };
 }
 
 // Per-category rollup, same shape as walker-pricing.js's calculateEarnings()
 // breakdown — built from the same stamped payout data as the items above,
 // not a separate recalculation.
-function buildPayoutCounts(walkSnaps, overnightSnaps) {
+function buildPayoutCounts(walkSnaps, overnightSnaps, walkerId, { overnightPayoutShare, overnightTipShare }) {
   const counts = {
     standard: { count: 0, total: 0 }, extended: { count: 0, total: 0 },
     checkin: { count: 0, total: 0 }, overnight: { count: 0, total: 0 },
@@ -7499,14 +7513,12 @@ function buildPayoutCounts(walkSnaps, overnightSnaps) {
   });
   overnightSnaps.forEach(snap => {
     const o = snap.data();
-    counts[o.payout.rateKey].count++;
-    counts[o.payout.rateKey].total += o.payout.baseTotal;
-    if (o.payout.addOnDropInBaseTotal) { counts.checkin.count++; counts.checkin.total += o.payout.addOnDropInBaseTotal; }
-    if (o.payout.extraPetTotal) { counts.extraPet.count++; counts.extraPet.total += o.payout.extraPetTotal; }
-    if (o.payout.medicationTotal) { counts.medication.count++; counts.medication.total += o.payout.medicationTotal; }
-    const visitTips = (Array.isArray(o.visits) ? o.visits : [])
-      .reduce((sum, v) => sum + chargedTipAmount(v.tip), 0);
-    const tipAmount = visitTips + chargedTipAmount(o.tip);
+    const share = overnightPayoutShare(o, walkerId);
+    if (share.baseTotal) { counts[o.payout.rateKey].count++; counts[o.payout.rateKey].total += share.baseTotal; }
+    if (share.dropInTotal) { counts.checkin.count++; counts.checkin.total += share.dropInTotal; }
+    if (share.extraPetTotal) { counts.extraPet.count++; counts.extraPet.total += share.extraPetTotal; }
+    if (share.medicationTotal) { counts.medication.count++; counts.medication.total += share.medicationTotal; }
+    const tipAmount = overnightTipShare(o, walkerId);
     if (tipAmount) { counts.tips.count++; counts.tips.total += tipAmount; }
   });
   return counts;
@@ -7587,17 +7599,37 @@ async function runGenerateWalkerPayout(adminUid, { walkerId, periodStart, period
     throw new HttpsError('already-exists', `A payout already exists for this walker and period: ${paymentId}.`);
   }
 
-  const [walksSnap, overnightsSnap] = await Promise.all([
+  const pricing = await import('./walker-pricing.js');
+  const { isOvernightPayee, overnightClaimFor } = pricing;
+
+  // Overnights come from two queries: reservations this walker is the
+  // default on, and ones where they covered individual visits (walkerIds).
+  // The second is filtered to completed here rather than in the query, so
+  // it needs no composite index.
+  const [walksSnap, overnightsSnap, coveredSnap] = await Promise.all([
     db.collection('walks').where('walkerId', '==', walkerId).where('status', '==', 'completed').get(),
     db.collection('overnights').where('walkerId', '==', walkerId).where('status', '==', 'completed').get(),
+    db.collection('overnights').where('walkerIds', 'array-contains', walkerId).get(),
   ]);
+  const overnightDocs = [...overnightsSnap.docs];
+  coveredSnap.docs.forEach(d => {
+    if (d.data().status === 'completed' && !overnightDocs.some(x => x.id === d.id)) overnightDocs.push(d);
+  });
 
   const isUnclaimed = (doc) => {
     const d = doc.data();
     return d.demo !== true && !d.payoutId;
   };
+  // An overnight is this walker's to claim only if the stamped payout pays
+  // them (isOvernightPayee) — a reservation not yet stamped is kept so the
+  // unstamped check below still blocks on it, same as before.
+  const isUnclaimedOvernight = (doc) => {
+    const d = doc.data();
+    if (d.demo === true || overnightClaimFor(d, walkerId)) return false;
+    return !d.payout || isOvernightPayee(d, walkerId);
+  };
   const unclaimedWalks = walksSnap.docs.filter(isUnclaimed);
-  const unclaimedOvernights = overnightsSnap.docs.filter(isUnclaimed);
+  const unclaimedOvernights = overnightDocs.filter(isUnclaimedOvernight);
 
   if (!unclaimedWalks.length && !unclaimedOvernights.length) {
     return { status: 'no_unclaimed_work', walkerId, total: 0 };
@@ -7622,7 +7654,7 @@ async function runGenerateWalkerPayout(adminUid, { walkerId, periodStart, period
     const freshWalks = await Promise.all(unclaimedWalks.map(d => tx.get(d.ref)));
     const freshOvernights = await Promise.all(unclaimedOvernights.map(d => tx.get(d.ref)));
     const stillUnclaimedWalks = freshWalks.filter(s => s.exists && !s.data().payoutId);
-    const stillUnclaimedOvernights = freshOvernights.filter(s => s.exists && !s.data().payoutId);
+    const stillUnclaimedOvernights = freshOvernights.filter(s => s.exists && !overnightClaimFor(s.data(), walkerId) && isOvernightPayee(s.data(), walkerId));
 
     if (!stillUnclaimedWalks.length && !stillUnclaimedOvernights.length) {
       // Everything this call found was claimed by a concurrent generate()
@@ -7630,8 +7662,8 @@ async function runGenerateWalkerPayout(adminUid, { walkerId, periodStart, period
       return { status: 'no_unclaimed_work', walkerId, total: 0 };
     }
 
-    const items = [...stillUnclaimedWalks.map(walkItemFromSnap), ...stillUnclaimedOvernights.map(overnightItemFromSnap)];
-    const counts = buildPayoutCounts(stillUnclaimedWalks, stillUnclaimedOvernights);
+    const items = [...stillUnclaimedWalks.map(walkItemFromSnap), ...stillUnclaimedOvernights.map(s => overnightItemFromSnap(s, walkerId, pricing))];
+    const counts = buildPayoutCounts(stillUnclaimedWalks, stillUnclaimedOvernights, walkerId, pricing);
     const total = items.reduce((sum, i) => sum + i.amount, 0);
 
     tx.create(paymentRef, {
@@ -7651,7 +7683,12 @@ async function runGenerateWalkerPayout(adminUid, { walkerId, periodStart, period
     });
 
     stillUnclaimedWalks.forEach(s => tx.update(s.ref, { payoutId: paymentId }));
-    stillUnclaimedOvernights.forEach(s => tx.update(s.ref, { payoutId: paymentId }));
+    // The default's claim stays in payoutId; a covering walker's goes in
+    // payoutIds.{walkerId}, so each walker's share is claimed separately.
+    stillUnclaimedOvernights.forEach(s => {
+      if (walkerId === (s.data().walkerId || '').trim()) tx.update(s.ref, { payoutId: paymentId });
+      else tx.update(s.ref, new FieldPath('payoutIds', walkerId), paymentId);
+    });
 
     return { status: 'generated', walkerId, paymentId, total, itemCount: items.length };
   });
@@ -7733,8 +7770,12 @@ async function runVoidWalkerPayout(adminUid, { paymentId } = {}) {
     // but this is money) is left untouched rather than stolen from whatever
     // claimed it.
     itemSnaps.forEach((itemSnap, i) => {
-      if (itemSnap.exists && itemSnap.data().payoutId === paymentId) {
+      if (!itemSnap.exists) return;
+      if (itemSnap.data().payoutId === paymentId) {
         tx.update(itemRefs[i], { payoutId: FieldValue.delete() });
+      } else if (itemSnap.data().payoutIds?.[payment.walkerId] === paymentId) {
+        // A covering walker's share (see runGenerateWalkerPayout).
+        tx.update(itemRefs[i], new FieldPath('payoutIds', payment.walkerId), FieldValue.delete());
       }
     });
 
