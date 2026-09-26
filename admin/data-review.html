@@ -55,7 +55,7 @@
 
 <main>
   <div class="intro">
-    <strong>What this page does:</strong> lists every member, walker, form submission, and scheduled walk in the database so you can tell demo/test data apart from real data before launch. Records matching the <em>documented</em> seed data (the demo member account, the four sample walkers) are flagged automatically, and walks pointing at a member that no longer exists are flagged as "Orphaned" — everything else is shown as-is for you to judge. Deleting is permanent and can't be undone from here, so double-check before confirming.
+    <strong>What this page does:</strong> lists every member, walker, form submission, job application, and scheduled walk in the database so you can tell demo/test data apart from real data before launch. Records matching the <em>documented</em> seed data (the demo member account, the four sample walkers) are flagged automatically, and walks pointing at a member that no longer exists are flagged as "Orphaned" — everything else is shown as-is for you to judge. Deleting is permanent and can't be undone from here, so double-check before confirming.
   </div>
 
   <div class="section-title">Members <span class="count-badge" id="memberCount">–</span> <button class="btn-delete-all" onclick="window.deleteAll('members')">Delete all members</button></div>
@@ -66,6 +66,9 @@
 
   <div class="section-title">Submissions <span class="count-badge" id="submissionCount">–</span> <button class="btn-delete-all" onclick="window.deleteAll('submissions')">Delete all submissions</button></div>
   <div id="submissionsList"><div class="loading-msg">Loading...</div></div>
+
+  <div class="section-title">Applications &amp; Screenings <span class="count-badge" id="applicationCount">–</span> <button class="btn-delete-all" onclick="window.deleteAll('applications')">Delete all applications &amp; screenings</button></div>
+  <div id="applicationsList"><div class="loading-msg">Loading...</div></div>
 
   <div class="section-title">Walks <span class="count-badge" id="walkCount">–</span> <button class="btn-delete-all" onclick="window.deleteAll('walks')">Delete all walks</button></div>
   <div id="walksList"><div class="loading-msg">Loading...</div></div>
@@ -152,6 +155,7 @@
     await loadMembers();
     await loadWalkers();
     await loadSubmissions();
+    await loadApplications();
     await loadWalks();
     await loadOvernights();
   }
@@ -198,20 +202,41 @@
     }).join('');
   }
 
-  async function loadSubmissions() {
-    const snap = await getDocs(collection(db, 'submissions'));
-    const list = document.getElementById('submissionsList');
-    document.getElementById('submissionCount').textContent = snap.size;
-    if (snap.empty) { list.innerHTML = '<div class="empty-msg">No submissions yet.</div>'; return; }
+  // Careers applications and walker screenings live in submissions/ too, but
+  // there are enough of them to bury everything else, so they get their own
+  // section. Both sections (and their Delete-all buttons) are filtered by type.
+  const APPLICATION_TYPES = ['application', 'walker_screening'];
+  const APPLICATION_LABELS = { application: 'Careers application', walker_screening: 'Walker screening' };
+  const isApplication = d => APPLICATION_TYPES.includes(d.data().type);
 
-    // Newest first
-    const docs = snap.docs.sort((a, b) => {
+  // "Collections" shown on this page that are really filtered views of
+  // submissions/. Maps the section key to its real collection + filter.
+  const SECTION_SOURCES = {
+    submissions: { collection: 'submissions', filter: d => !isApplication(d) },
+    applications: { collection: 'submissions', filter: isApplication },
+  };
+
+  async function getSectionDocs(section) {
+    const src = SECTION_SOURCES[section] || { collection: section, filter: () => true };
+    const snap = await getDocs(collection(db, src.collection));
+    return { collectionName: src.collection, docs: snap.docs.filter(src.filter) };
+  }
+
+  function newestFirst(docs) {
+    return docs.sort((a, b) => {
       const at = a.data().createdAt?.toMillis?.() || 0;
       const bt = b.data().createdAt?.toMillis?.() || 0;
       return bt - at;
     });
+  }
 
-    list.innerHTML = docs.map(d => {
+  async function loadSubmissions() {
+    const { docs } = await getSectionDocs('submissions');
+    const list = document.getElementById('submissionsList');
+    document.getElementById('submissionCount').textContent = docs.length;
+    if (!docs.length) { list.innerHTML = '<div class="empty-msg">No submissions yet.</div>'; return; }
+
+    list.innerHTML = newestFirst(docs).map(d => {
       const s = d.data();
       return `
         <div class="record-card">
@@ -220,7 +245,27 @@
             <div class="record-sub">${escapeHtml(s.ownerName || s.memberName || s.name || 'no name')} &middot; ${escapeHtml(s.email || 'no email')} &middot; ${fmtDate(s.createdAt)}</div>
             <div class="record-meta">submissions/${d.id} &middot; status: ${escapeHtml(s.status || 'pending')}</div>
           </div>
-          <button class="btn-delete" onclick="window.deleteRecord('submissions', '${d.id}', this)">Delete</button>
+          <button class="btn-delete" onclick="window.deleteRecord('submissions', '${d.id}', this, 'submissionCount')">Delete</button>
+        </div>`;
+    }).join('');
+  }
+
+  async function loadApplications() {
+    const { docs } = await getSectionDocs('applications');
+    const list = document.getElementById('applicationsList');
+    document.getElementById('applicationCount').textContent = docs.length;
+    if (!docs.length) { list.innerHTML = '<div class="empty-msg">No applications or screenings yet.</div>'; return; }
+
+    list.innerHTML = newestFirst(docs).map(d => {
+      const a = d.data();
+      return `
+        <div class="record-card">
+          <div class="record-main">
+            <div class="record-title">${escapeHtml(a.name?.trim() || 'no name')} <span class="count-badge">${escapeHtml(APPLICATION_LABELS[a.type] || a.type)}</span></div>
+            <div class="record-sub">${escapeHtml(a.email || 'no email')} &middot; ${escapeHtml(a.phone || 'no phone')} &middot; ${fmtDate(a.createdAt)}</div>
+            <div class="record-meta">submissions/${d.id} &middot; status: ${escapeHtml(a.status || 'pending')}</div>
+          </div>
+          <button class="btn-delete" onclick="window.deleteRecord('submissions', '${d.id}', this, 'applicationCount')">Delete</button>
         </div>`;
     }).join('');
   }
@@ -266,15 +311,15 @@
     }).join('');
   }
 
-  window.deleteAll = async (collectionName) => {
-    const snap = await getDocs(collection(db, collectionName));
-    if (snap.empty) { showToast('Nothing to delete.'); return; }
+  window.deleteAll = async (section) => {
+    const { collectionName, docs } = await getSectionDocs(section);
+    if (!docs.length) { showToast('Nothing to delete.'); return; }
 
-    const confirmed = confirm(`Permanently delete ALL ${snap.size} record(s) in "${collectionName}"?\n\nThis cannot be undone.`);
+    const confirmed = confirm(`Permanently delete ALL ${docs.length} record(s) in "${section}"?\n\nThis cannot be undone.`);
     if (!confirmed) return;
 
     let deleted = 0;
-    for (const d of snap.docs) {
+    for (const d of docs) {
       try {
         await deleteDoc(doc(db, collectionName, d.id));
         deleted++;
@@ -283,13 +328,14 @@
       }
     }
 
-    showToast(`Deleted ${deleted} of ${snap.size} record(s).`);
+    showToast(`Deleted ${deleted} of ${docs.length} record(s).`);
     // Reload this section to reflect the change
-    if (collectionName === 'members') loadMembers();
-    if (collectionName === 'walkers') loadWalkers();
-    if (collectionName === 'submissions') loadSubmissions();
-    if (collectionName === 'walks') loadWalks();
-    if (collectionName === 'overnights') loadOvernights();
+    if (section === 'members') loadMembers();
+    if (section === 'walkers') loadWalkers();
+    if (section === 'submissions') loadSubmissions();
+    if (section === 'applications') loadApplications();
+    if (section === 'walks') loadWalks();
+    if (section === 'overnights') loadOvernights();
   };
 
   async function loadOvernights() {
@@ -324,7 +370,7 @@
     }).join('');
   }
 
-  window.deleteRecord = async (collectionName, id, btn) => {
+  window.deleteRecord = async (collectionName, id, btn, countId) => {
     const confirmed = confirm(`Permanently delete this ${collectionName.slice(0, -1)} record?\n\n${collectionName}/${id}\n\nThis cannot be undone.`);
     if (!confirmed) return;
 
@@ -336,7 +382,7 @@
       showToast('Deleted.');
       // Update count
       const countIds = { members: 'memberCount', walkers: 'walkerCount', submissions: 'submissionCount', walks: 'walkCount', overnights: 'overnightCount' };
-      const countEl = document.getElementById(countIds[collectionName]);
+      const countEl = document.getElementById(countId || countIds[collectionName]);
       countEl.textContent = parseInt(countEl.textContent, 10) - 1;
     } catch (e) {
       alert('Failed to delete: ' + e.message);
