@@ -24,6 +24,10 @@
     .intro strong { color: var(--navy); }
 
     .section-title { font-size: 15px; font-weight: 500; margin: 32px 0 12px; display: flex; align-items: center; gap: 8px; }
+    .section-title { cursor: pointer; user-select: none; }
+    .section-title::before { content: '\25BE'; display: inline-block; width: 12px; color: var(--text-light); transition: transform 0.15s; }
+    .section-title.collapsed::before { transform: rotate(-90deg); }
+    .section-title.collapsed + div { display: none; }
     .count-badge { background: rgba(0,0,0,0.06); color: var(--text-mid); font-size: 12px; padding: 2px 8px; border-radius: 10px; }
 
     .record-card { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 16px 20px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -58,22 +62,22 @@
     <strong>What this page does:</strong> lists every member, walker, form submission, job application, and scheduled walk in the database so you can tell demo/test data apart from real data before launch. Records matching the <em>documented</em> seed data (the demo member account, the four sample walkers) are flagged automatically, and walks pointing at a member that no longer exists are flagged as "Orphaned" — everything else is shown as-is for you to judge. Deleting is permanent and can't be undone from here, so double-check before confirming.
   </div>
 
-  <div class="section-title">Members <span class="count-badge" id="memberCount">–</span> <button class="btn-delete-all" onclick="window.deleteAll('members')">Delete all members</button></div>
+  <div class="section-title" role="button" tabindex="0" aria-expanded="true">Members <span class="count-badge" id="memberCount">–</span> <button class="btn-delete-all" onclick="event.stopPropagation(); window.deleteAll('members')">Delete all members</button></div>
   <div id="membersList"><div class="loading-msg">Loading...</div></div>
 
-  <div class="section-title">Walkers <span class="count-badge" id="walkerCount">–</span> <button class="btn-delete-all" onclick="window.deleteAll('walkers')">Delete all walkers</button></div>
+  <div class="section-title" role="button" tabindex="0" aria-expanded="true">Walkers <span class="count-badge" id="walkerCount">–</span> <button class="btn-delete-all" onclick="event.stopPropagation(); window.deleteAll('walkers')">Delete all walkers</button></div>
   <div id="walkersList"><div class="loading-msg">Loading...</div></div>
 
-  <div class="section-title">Submissions <span class="count-badge" id="submissionCount">–</span> <button class="btn-delete-all" onclick="window.deleteAll('submissions')">Delete all submissions</button></div>
+  <div class="section-title" role="button" tabindex="0" aria-expanded="true">Submissions <span class="count-badge" id="submissionCount">–</span> <button class="btn-delete-all" onclick="event.stopPropagation(); window.deleteAll('submissions')">Delete all submissions</button></div>
   <div id="submissionsList"><div class="loading-msg">Loading...</div></div>
 
-  <div class="section-title">Applications &amp; Screenings <span class="count-badge" id="applicationCount">–</span> <button class="btn-delete-all" onclick="window.deleteAll('applications')">Delete all applications &amp; screenings</button></div>
+  <div class="section-title" role="button" tabindex="0" aria-expanded="true">Applications &amp; Screenings <span class="count-badge" id="applicationCount">–</span> <button class="btn-delete-all" onclick="event.stopPropagation(); window.deleteAll('applications')">Delete all applications &amp; screenings</button></div>
   <div id="applicationsList"><div class="loading-msg">Loading...</div></div>
 
-  <div class="section-title">Walks <span class="count-badge" id="walkCount">–</span> <button class="btn-delete-all" onclick="window.deleteAll('walks')">Delete all walks</button></div>
+  <div class="section-title" role="button" tabindex="0" aria-expanded="true">Walks <span class="count-badge" id="walkCount">–</span> <button class="btn-delete-all" onclick="event.stopPropagation(); window.deleteAll('walks')">Delete all walks</button></div>
   <div id="walksList"><div class="loading-msg">Loading...</div></div>
 
-  <div class="section-title">Overnights <span class="count-badge" id="overnightCount">–</span> <button class="btn-delete-all" onclick="window.deleteAll('overnights')">Delete all overnights</button></div>
+  <div class="section-title" role="button" tabindex="0" aria-expanded="true">Overnights <span class="count-badge" id="overnightCount">–</span> <button class="btn-delete-all" onclick="event.stopPropagation(); window.deleteAll('overnights')">Delete all overnights</button></div>
   <div id="overnightsList"><div class="loading-msg">Loading...</div></div>
 </main>
 
@@ -137,6 +141,19 @@
   function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
+
+  // Click (or Enter/Space on) a section title to collapse or expand its list.
+  // The Delete-all button inside the title stops propagation so it doesn't toggle.
+  document.querySelectorAll('.section-title').forEach(title => {
+    const toggle = () => {
+      const collapsed = title.classList.toggle('collapsed');
+      title.setAttribute('aria-expanded', String(!collapsed));
+    };
+    title.addEventListener('click', toggle);
+    title.addEventListener('keydown', e => {
+      if (e.target === title && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(); }
+    });
+  });
 
   function showToast(msg) {
     const t = document.getElementById('toast');
