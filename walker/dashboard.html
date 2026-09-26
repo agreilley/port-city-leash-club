@@ -86,16 +86,13 @@
   .day-num { font-size: 13px; font-weight: 500; color: var(--text-mid); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; }
   .calendar-day.today .day-num { background: var(--rust); color: white; border-radius: 50%; }
   .my-walk-chip { background: var(--green-light); color: var(--green); border-radius: 4px; padding: 2px 6px; font-size: 11px; font-weight: 500; margin-bottom: 2px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .my-walk-chip.morning { background: #EBF5EF; color: #1A5C30; }
-  .my-walk-chip.early-afternoon { background: #EEF2FF; color: #3730A3; }
-  .my-walk-chip.late-afternoon { background: #FEF3C7; color: #92400E; }
-  /* Drop-in/overnight visit chips get their own colors (matching admin's
-     .walk-chip.checkin/.overnight) rather than reusing a walk time-slot
-     color — a visit chip used to be visually identical to a walk chip in
-     the same window, so the "· Drop-In"/"· Overnight" label below was the
-     only thing distinguishing them; this makes the color say it too. */
-  .my-walk-chip.dropin { background: #E4E9EE; color: #1C2F42; }
-  .my-walk-chip.overnight-visit { background: #E8F4F0; color: #2D7A5E; }
+  /* One color per service — walk / drop-in / overnight — with the time
+     window printed on the chip itself (renderCalendar), rather than a
+     color per walk time slot that had to be decoded from the legend. */
+  .my-walk-chip .chip-time { font-weight: 700; margin-right: 4px; }
+  .my-walk-chip.walk { background: #EBF5EF; color: #1A5C30; border-left: 3px solid #1A5C30; }
+  .my-walk-chip.dropin { background: #E6EEFB; color: #1E4E8C; border-left: 3px solid #1E4E8C; }
+  .my-walk-chip.overnight { background: #F1E9F7; color: #5B2A86; border-left: 3px solid #5B2A86; }
 
   /* MODAL */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; display: none; align-items: center; justify-content: center; }
@@ -149,6 +146,10 @@
 
     /* Calendar: shorter cells so a full month fits without excess scrolling */
     .calendar-day { min-height: 56px; padding: 4px; }
+    /* Cells are ~50px wide here: time on its own line, name under it. */
+    .my-walk-chip { padding: 2px 3px; font-size: 10px; }
+    .my-walk-chip .chip-time, .my-walk-chip .chip-name { display: block; overflow: hidden; text-overflow: ellipsis; }
+    .my-walk-chip .chip-time { margin-right: 0; }
 
     /* Walk cards: tighten padding */
     .walk-card { padding: 16px; gap: 12px; }
@@ -269,19 +270,13 @@
         <div class="calendar-days" id="calendarDays"></div>
         <div style="display:flex;gap:16px;padding:12px 4px 0;flex-wrap:wrap;">
           <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-light);">
-            <div style="width:12px;height:12px;border-radius:3px;background:#EBF5EF;border:1px solid #1A5C30;"></div> Morning (8–11am)
+            <div style="width:12px;height:12px;border-radius:3px;background:#EBF5EF;border:1px solid #1A5C30;"></div> Walk
           </div>
           <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-light);">
-            <div style="width:12px;height:12px;border-radius:3px;background:#EEF2FF;border:1px solid #3730A3;"></div> Early Afternoon (11am–2pm)
+            <div style="width:12px;height:12px;border-radius:3px;background:#E6EEFB;border:1px solid #1E4E8C;"></div> Drop-In Visit
           </div>
           <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-light);">
-            <div style="width:12px;height:12px;border-radius:3px;background:#FEF3C7;border:1px solid #92400E;"></div> Late Afternoon (2–5pm)
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-light);">
-            <div style="width:12px;height:12px;border-radius:3px;background:#E4E9EE;border:1px solid #1C2F42;"></div> Drop-In Visit
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-light);">
-            <div style="width:12px;height:12px;border-radius:3px;background:#E8F4F0;border:1px solid #2D7A5E;"></div> Overnight Visit
+            <div style="width:12px;height:12px;border-radius:3px;background:#F1E9F7;border:1px solid #5B2A86;"></div> Overnight
           </div>
         </div>
       </div>
@@ -384,7 +379,7 @@ import { initializeFirestore, memoryLocalCache, collection, query, where, onSnap
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 import { calculateEarnings, WALKER_RATES, WALKER_EXTRA_PET_FEE, WALKER_MEDICATION_FEE, visitWalkerId, isOvernightPayee, overnightClaimFor, overnightTipShare } from '../walker-pricing.js';
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
-import { VISIT_SLOT_LABELS, buildStaySchedule, groupStayScheduleByDay, stayRowLabel } from '../visit-slots.js';
+import { VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, buildStaySchedule, groupStayScheduleByDay, stayRowLabel } from '../visit-slots.js';
 import { showError } from '/js/status.js';
 
 // ─── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────────────
@@ -1213,6 +1208,11 @@ window.openOvernightDetail = (overnightId) => {
 window.prevMonth = () => { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } renderCalendar(); };
 window.nextMonth = () => { calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; } renderCalendar(); };
 
+// Start hour of each time window, only for ordering a day's calendar chips.
+const CAL_SLOT_START = { morning: 8, 'early-afternoon': 11, 'late-afternoon': 14 };
+const CAL_VISIT_START = { morning: 7, midday: 11, evening: 17, 'last-out': 21 };
+const member_ = (id) => allMembers.find(m => m.id === id);
+
 function renderCalendar() {
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   document.getElementById('calendarMonth').textContent = `${months[calMonth]} ${calYear}`;
@@ -1232,33 +1232,45 @@ function renderCalendar() {
       const wd = w.date?.toDate?.() || new Date(w.date);
       return wd.getFullYear() === calYear && wd.getMonth() === calMonth && wd.getDate() === d;
     });
-    const chips = dayWalks.map(w => {
-      const member = allMembers.find(m => m.id === w.memberId);
-      return `<div class="my-walk-chip ${w.timeSlot}" onclick="openWalkDetail('${w.id}')">${escapeHtml(getDogNames(member))}</div>`;
-    }).join('');
-    // Overnight/check-in reservations never showed here at all — only
-    // recurring walks did. Each reservation expands into one visits[]
-    // entry per day it covers (generateOvernightVisits, functions/index.js),
-    // so matching those against dayStr (via walkDateStr, same UTC-safe
-    // comparison Today's Visits already uses) surfaces exactly the days
-    // this walker actually has pet-sitting work, alongside their walks.
-    // Colored and labeled by SERVICE TYPE (drop-in vs. overnight), not by
-    // visit time slot, and never sharing a walk time-slot color — a plain
-    // dog name here used to be indistinguishable from a regular walk chip.
-    const visitChips = myOvernights.flatMap(o => {
-      const member = allMembers.find(m => m.id === o.memberId);
-      const petNames = getDogNames(member) || o.dogName || 'Pet';
+    // One chip per piece of work, colored by SERVICE (walk / drop-in /
+    // overnight) with its time window printed on the chip, so a walker can
+    // read the day without opening anything. Sorted by start time, with
+    // the overnight itself last. Every overnight/drop-in visit comes from
+    // the reservation's visits[] (generateOvernightVisits,
+    // functions/index.js), matched via walkDateStr (UTC-safe). Nights
+    // aren't in visits[], so they get their own chip — only for the
+    // reservation's default walker, since a walker covering a single visit
+    // isn't doing the night.
+    const items = dayWalks.map(w => ({
+      cls: 'walk', start: CAL_SLOT_START[w.timeSlot] ?? 99,
+      time: WALK_TIME_SLOT_RANGES[w.timeSlot] || '', name: getDogNames(member_(w.memberId)),
+      title: `Walk · ${WALK_TIME_SLOT_LABELS[w.timeSlot] || ''}`, onclick: `openWalkDetail('${w.id}')`,
+    }));
+    myOvernights.forEach(o => {
+      const petNames = getDogNames(member_(o.memberId)) || o.dogName || 'Pet';
       const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
-      const cls = isCheckin ? 'dropin' : 'overnight-visit';
-      const typeLabel = isCheckin ? 'Drop-In' : 'Overnight';
-      return (Array.isArray(o.visits) ? o.visits : [])
+      (Array.isArray(o.visits) ? o.visits : [])
         .filter(v => walkDateStr(v.date) === dayStr)
-        .map(v => {
-          const name = escapeHtml(petNames);
-          return `<div class="my-walk-chip ${cls}" onclick="openVisitCompleteForm('${o.id}', '${v.id}')" title="${name} · ${v.addOn ? 'Extra drop-in' : typeLabel}">${name}</div>`;
-        });
-    }).join('');
-    html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}${visitChips}</div>`;
+        .forEach(v => items.push({
+          cls: 'dropin', start: CAL_VISIT_START[v.slot] ?? 99,
+          time: VISIT_SLOT_RANGES[v.slot] || VISIT_SLOT_LABELS[v.slot] || '', name: petNames,
+          title: `${v.addOn ? 'Extra drop-in' : isCheckin ? 'Drop-in' : 'Drop-in (overnight stay)'} · ${VISIT_SLOT_LABELS[v.slot] || v.slot || ''}`,
+          onclick: `openVisitCompleteForm('${o.id}', '${v.id}')`,
+        }));
+      if (!isCheckin && !o._covering && o.status !== 'cancelled') {
+        const start = walkDateStr(o.startDate), end = walkDateStr(o.endDate);
+        // Nights run start date up to, not including, the return date.
+        if (start && end && start <= dayStr && dayStr < end) {
+          items.push({ cls: 'overnight', start: 100, time: 'Overnight', name: petNames, title: 'Overnight stay', onclick: `openOvernightDetail('${o.id}')` });
+        }
+      }
+    });
+    const chips = items.sort((a, b) => a.start - b.start).map(it =>
+      `<div class="my-walk-chip ${it.cls}" onclick="${it.onclick}" title="${escapeHtml(`${it.name} · ${it.title}`)}">`
+      + (it.time ? `<span class="chip-time">${escapeHtml(it.time)}</span>` : '')
+      + `<span class="chip-name">${escapeHtml(it.name)}</span></div>`
+    ).join('');
+    html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}</div>`;
   }
 
   const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
