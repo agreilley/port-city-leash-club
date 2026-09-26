@@ -7790,6 +7790,67 @@ exports.voidWalkerPayout = onCall({}, async (request) => {
 exports.runVoidWalkerPayout = runVoidWalkerPayout;
 
 // ─────────────────────────────────────────────────────────────────────────
+// Walker hourly availability — the walker's one-time self-report from
+// their dashboard (Schedule tab). Walkers can't write their own walker doc
+// (firestore.rules: admin only), so this does it for them: both copies
+// (the friendly walkerId doc and the Auth-UID doc — see DATABASE_SCHEMA.md
+// §walkers), plus the derived walk-slot `availability` the rest of the app
+// still reads (normalizeAvailability, walker-availability.js).
+// One-time by decision (2026-09-26): once availabilityConfirmedAt is set,
+// later changes go through a schedule change request and admin edits the
+// grid. Also drops a walker_schedule_request submission so it lands in the
+// admin Requests tab and onNewSubmission's notification email.
+// ─────────────────────────────────────────────────────────────────────────
+exports.submitWalkerAvailability = onCall({}, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Please sign in again.');
+  const uid = request.auth.uid;
+  const uidRef = db.collection('walkers').doc(uid);
+  const uidSnap = await uidRef.get();
+  if (!uidSnap.exists) throw new HttpsError('permission-denied', 'Only walkers can submit availability.');
+  const walker = uidSnap.data();
+  const walkerId = walker.walkerId || uid;
+
+  const { normalizeAvailability, summarizeHours, AVAILABILITY_DAYS, AVAILABILITY_DAY_LABELS } = await import('./walker-availability.js');
+  let clean;
+  try {
+    clean = normalizeAvailability(request.data?.hourlyAvailability, request.data?.overnightAvailability);
+  } catch (e) {
+    throw new HttpsError('invalid-argument', e.message);
+  }
+
+  const summary = AVAILABILITY_DAYS.map(day => {
+    const hours = clean.hourlyAvailability[day];
+    const parts = [hours.length ? summarizeHours(hours) : 'Not available', ...(clean.overnightAvailability[day] ? ['overnight OK'] : [])];
+    return `${AVAILABILITY_DAY_LABELS[day]}: ${parts.join(' · ')}`;
+  }).join('\n');
+
+  const refs = [uidRef, ...(walkerId !== uid ? [db.collection('walkers').doc(walkerId)] : [])];
+  const submissionRef = db.collection('submissions').doc();
+  await db.runTransaction(async (tx) => {
+    const snaps = await Promise.all(refs.map(r => tx.get(r)));
+    if (snaps.some(snap => snap.data()?.availabilityConfirmedAt)) {
+      throw new HttpsError('failed-precondition', 'Your availability is already set. To change it, send a schedule change request below.');
+    }
+    snaps.forEach((snap, i) => {
+      if (snap.exists) {
+        tx.update(refs[i], { ...clean, availabilityConfirmedAt: FieldValue.serverTimestamp(), availabilitySetBy: 'walker' });
+      }
+    });
+    tx.create(submissionRef, {
+      type: 'walker_schedule_request',
+      requestType: 'availability_submitted',
+      walkerId,
+      walkerName: walker.name || null,
+      message: summary,
+      status: 'pending',
+      read: false,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  });
+  return { success: true, ...clean };
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // 10. Email notification for every new request (membership request, service
 //    request, application, contact form, reschedule, pause, tier change,
 //    dog roster update — everything that lands in the admin "Requests"

@@ -95,6 +95,17 @@
   .my-walk-chip.dropin { background: #E6EEFB; color: #1E4E8C; border-left: 3px solid #1E4E8C; }
   .my-walk-chip.overnight { background: #F1E9F7; color: #5B2A86; border-left: 3px solid #5B2A86; }
 
+  /* One-time hourly availability setup (renderAvailabilitySetup) */
+  .avail-day { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 14px 16px; margin-bottom: 10px; }
+  .avail-day-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .avail-day-name { font-size: 14px; font-weight: 600; color: var(--navy); }
+  .avail-quick { display: flex; gap: 6px; flex-wrap: wrap; }
+  .avail-quick button { background: none; border: 1px solid rgba(0,0,0,0.12); border-radius: 12px; padding: 3px 10px; font-size: 11px; font-family: inherit; color: var(--text-mid); cursor: pointer; }
+  .avail-hours { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px; }
+  .avail-hour { border: 1px solid rgba(0,0,0,0.12); background: white; border-radius: 6px; padding: 8px 0; font-size: 12px; font-family: inherit; color: var(--text-mid); cursor: pointer; }
+  .avail-hour.on { background: var(--green-light); border-color: var(--green); color: var(--green); font-weight: 600; }
+  .avail-overnight { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--navy); cursor: pointer; }
+
   /* MODAL */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; display: none; align-items: center; justify-content: center; }
   .modal-overlay.open { display: flex; }
@@ -237,6 +248,7 @@
 
     <!-- UPCOMING VIEW -->
     <div class="view active" id="view-upcoming">
+      <div id="availabilityBanner"></div>
       <div class="stats-row">
         <div class="stat-card"><div class="stat-label">This Week</div><div class="stat-value" id="stat-week">–</div><div class="stat-sub">Walks scheduled</div></div>
         <div class="stat-card"><div class="stat-label">This Month</div><div class="stat-value" id="stat-month">–</div><div class="stat-sub">Total walks</div></div>
@@ -293,8 +305,9 @@
 
     <!-- SCHEDULE VIEW -->
     <div class="view" id="view-schedule">
+      <div id="availabilitySetup"></div>
       <div class="section-title">My Availability</div>
-      <p style="font-size:13px;color:var(--text-light);margin-bottom:16px;">Your current weekly schedule, set by Alison. Need a day off or a schedule change? Submit a request below.</p>
+      <p id="availabilityIntro" style="font-size:13px;color:var(--text-light);margin-bottom:16px;">Your current weekly schedule, set by Alison. Need a day off or a schedule change? Submit a request below.</p>
       <div id="availabilityDisplay" style="margin-bottom:32px;"><div style="text-align:center;padding:40px;color:var(--text-light);">Loading...</div></div>
 
       <div class="section-title">Request Time Off or Schedule Change</div>
@@ -380,8 +393,10 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { initializeFirestore, memoryLocalCache, collection, query, where, onSnapshot, doc, getDoc, updateDoc, getDocs, addDoc, serverTimestamp, Timestamp, runTransaction } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { calculateEarnings, WALKER_RATES, WALKER_EXTRA_PET_FEE, WALKER_MEDICATION_FEE, visitWalkerId, isOvernightPayee, overnightClaimFor, overnightTipShare } from '../walker-pricing.js';
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
+import { AVAILABILITY_DAYS, AVAILABILITY_DAY_LABELS, AVAILABILITY_HOURS, hourLabel, hourBlockLabel, summarizeHours } from '../walker-availability.js';
 import { VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, buildStaySchedule, groupStayScheduleByDay, stayRowLabel } from '../visit-slots.js';
 import { showError } from '/js/status.js';
 
@@ -407,6 +422,7 @@ const auth = initializeAuth(app, {
 // Firestore already defaults to memory-only cache with no persistence
 // configured; making it explicit documents the choice on purpose.
 const db = initializeFirestore(app, { localCache: memoryLocalCache() });
+const fns = getFunctions(app);
 const storage = getStorage(app);
 
 // Last-resort fallback for the "In an emergency" block below when a member
@@ -725,6 +741,7 @@ function loadData() {
   });
 
   renderSchedule();
+  renderAvailabilitySetup();
 }
 
 // ── STATS ─────────────────────────────────────────────────────────────────────
@@ -1685,6 +1702,28 @@ function renderSchedule() {
       ${timeOff.map(t => `<div style="font-size:14px;color:var(--navy);padding:3px 0;">${escapeHtml(t.start === t.end ? fmtKey(t.start) : `${fmtKey(t.start)} – ${fmtKey(t.end)}`)}${t.note ? ` <span style="color:var(--text-light);">· ${escapeHtml(t.note)}</span>` : ''}</div>`).join('')}
     </div>` : '';
 
+  // Once the walker has submitted hourly availability, show that instead of
+  // the older walk-slot view below (which is now derived from it).
+  const hourly = walkerDoc.availabilityConfirmedAt && walkerDoc.hourlyAvailability;
+  document.getElementById('availabilityIntro').textContent = hourly
+    ? 'Your weekly availability. Need a day off or a change? Submit a request below and Alison will update it.'
+    : 'Your current weekly schedule, set by Alison. Need a day off or a schedule change? Submit a request below.';
+  const dayRowsHTML = hourly
+    ? days.map(d => {
+        const hours = hourly[d.key] || [];
+        const onOvernight = isOvernightDay(d.key);
+        const isOff = !hours.length && !onOvernight;
+        return `<div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+          <div style="font-size:14px;font-weight:500;color:${isOff ? 'var(--text-light)' : 'var(--navy)'};">${d.label}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+            ${isOff ? '<span style="font-size:12px;color:var(--text-light);">Off</span>' : ''}
+            ${hours.length ? `<span style="background:var(--green-light);color:var(--green);font-size:11px;font-weight:500;padding:3px 10px;border-radius:12px;">${escapeHtml(summarizeHours(hours))}</span>` : ''}
+            ${onOvernight ? '<span style="background:#F1E9F7;color:#5B2A86;font-size:11px;font-weight:500;padding:3px 10px;border-radius:12px;">Overnight</span>' : ''}
+          </div>
+        </div>`;
+      }).join('')
+    : null;
+
   container.innerHTML = `
     ${timeOffHTML}
     ${zones.length ? `<div style="background:white;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:14px 18px;margin-bottom:16px;">
@@ -1692,7 +1731,7 @@ function renderSchedule() {
       <div style="font-size:14px;color:var(--navy);font-weight:500;">${zones.map(z => escapeHtml(z)).join(', ')}</div>
     </div>` : ''}
     <div style="display:grid;gap:8px;">
-      ${days.map(d => {
+      ${dayRowsHTML ?? days.map(d => {
         const daySlots = avail[d.key] || [];
         const onOvernight = isOvernightDay(d.key);
         const isOff = !daySlots.length && !onOvernight;
@@ -1707,6 +1746,102 @@ function renderSchedule() {
       }).join('')}
     </div>`;
 }
+
+// ── ONE-TIME HOURLY AVAILABILITY ─────────────────────────────────────────────
+// Until a walker has submitted it (walkerDoc.availabilityConfirmedAt), the
+// Schedule tab leads with this form and Next Up shows a reminder. The
+// older schedule display below stays as it was until then. Submitting goes
+// through submitWalkerAvailability (functions/index.js) — walkers can't
+// write their own walker doc — and is one-time: later changes are a
+// schedule change request that Alison applies from the admin side.
+let availDraft = null;
+
+function renderAvailabilitySetup() {
+  const el = document.getElementById('availabilitySetup');
+  const banner = document.getElementById('availabilityBanner');
+  if (!el || !banner) return;
+  const needed = !!walkerDoc && !walkerDoc.availabilityConfirmedAt;
+  banner.innerHTML = needed ? `
+    <div style="background:#FEF3C7;border:1px solid #F3D38A;border-radius:8px;padding:14px 18px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="font-size:14px;color:#92400E;"><strong>Set your weekly availability.</strong> Tell us which hours you're free each day and which nights you can stay over.</div>
+      <button onclick="switchView('schedule')" style="background:var(--navy);color:white;border:none;border-radius:4px;padding:8px 16px;font-size:13px;font-family:inherit;cursor:pointer;">Set availability</button>
+    </div>` : '';
+  if (!needed) { el.innerHTML = ''; return; }
+
+  if (!availDraft) {
+    availDraft = { hourly: {}, overnight: {} };
+    AVAILABILITY_DAYS.forEach(d => { availDraft.hourly[d] = new Set(); availDraft.overnight[d] = false; });
+  }
+  el.innerHTML = `
+    <div class="section-title">Set Your Availability</div>
+    <p style="font-size:13px;color:var(--text-light);margin-bottom:16px;">For each day of the week, tap every hour you're free to work. Each box is one hour, so <strong>7am</strong> means 7–8am. Then check whether you can stay overnight that night. You only fill this out once. After that, send a schedule change request and Alison will update it.</p>
+    ${AVAILABILITY_DAYS.map((day, i) => {
+      const set = availDraft.hourly[day];
+      const prev = AVAILABILITY_DAYS[i - 1];
+      return `<div class="avail-day">
+        <div class="avail-day-head">
+          <span class="avail-day-name">${AVAILABILITY_DAY_LABELS[day]}</span>
+          <span class="avail-quick">
+            ${prev ? `<button type="button" onclick="availCopyPrev('${day}')">Same as ${AVAILABILITY_DAY_LABELS[prev]}</button>` : ''}
+            <button type="button" onclick="availFillDay('${day}', true)">All day</button>
+            <button type="button" onclick="availFillDay('${day}', false)">Clear</button>
+          </span>
+        </div>
+        <div class="avail-hours">
+          ${AVAILABILITY_HOURS.map(h => `<button type="button" class="avail-hour ${set.has(h) ? 'on' : ''}" title="${hourBlockLabel(h)}" onclick="availToggle('${day}', ${h})">${hourLabel(h)}</button>`).join('')}
+        </div>
+        <label class="avail-overnight"><input type="checkbox" ${availDraft.overnight[day] ? 'checked' : ''} onchange="availOvernight('${day}', this.checked)" style="accent-color:var(--green);"> I can stay overnight ${AVAILABILITY_DAY_LABELS[day]} night</label>
+      </div>`;
+    }).join('')}
+    <div id="availSubmitError" style="color:#C17B6F;font-size:13px;margin:8px 0;display:none;"></div>
+    <button id="availSubmitBtn" onclick="submitAvailability()" style="width:100%;background:var(--navy);color:white;border:none;border-radius:4px;padding:12px;font-size:14px;font-weight:500;font-family:inherit;cursor:pointer;margin-bottom:32px;">Submit Availability</button>`;
+}
+
+window.availToggle = (day, h) => {
+  const set = availDraft.hourly[day];
+  set.has(h) ? set.delete(h) : set.add(h);
+  renderAvailabilitySetup();
+};
+window.availFillDay = (day, on) => {
+  availDraft.hourly[day] = new Set(on ? AVAILABILITY_HOURS : []);
+  renderAvailabilitySetup();
+};
+window.availCopyPrev = (day) => {
+  const prev = AVAILABILITY_DAYS[AVAILABILITY_DAYS.indexOf(day) - 1];
+  availDraft.hourly[day] = new Set(availDraft.hourly[prev]);
+  availDraft.overnight[day] = availDraft.overnight[prev];
+  renderAvailabilitySetup();
+};
+window.availOvernight = (day, on) => { availDraft.overnight[day] = on; };
+
+window.submitAvailability = async () => {
+  const errEl = document.getElementById('availSubmitError');
+  const btn = document.getElementById('availSubmitBtn');
+  errEl.style.display = 'none';
+  const anything = AVAILABILITY_DAYS.some(d => availDraft.hourly[d].size || availDraft.overnight[d]);
+  if (!anything) { errEl.textContent = "You haven't picked any hours or nights yet."; errEl.style.display = 'block'; return; }
+  const summary = AVAILABILITY_DAYS.map(d => {
+    const hours = [...availDraft.hourly[d]];
+    return `${AVAILABILITY_DAY_LABELS[d]}: ${hours.length ? summarizeHours(hours) : 'Not available'}${availDraft.overnight[d] ? ' + overnight' : ''}`;
+  }).join('\n');
+  if (!confirm(`Submit this availability?\n\n${summary}\n\nAfter submitting, changes go through a schedule change request.`)) return;
+
+  btn.disabled = true; btn.textContent = 'Submitting...';
+  try {
+    const hourlyAvailability = Object.fromEntries(AVAILABILITY_DAYS.map(d => [d, [...availDraft.hourly[d]].sort((a, b) => a - b)]));
+    const res = await httpsCallable(fns, 'submitWalkerAvailability')({ hourlyAvailability, overnightAvailability: availDraft.overnight });
+    const { hourlyAvailability: h, overnightAvailability: o, availability: a } = res.data;
+    walkerDoc = { ...walkerDoc, hourlyAvailability: h, overnightAvailability: o, availability: a, availabilityConfirmedAt: new Date() };
+    availDraft = null;
+    renderAvailabilitySetup();
+    renderSchedule();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (e) {
+    errEl.textContent = e.message || 'Something went wrong. Please try again.';
+    errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Submit Availability';
+  }
+};
 
 // Time off is whole days: a first/last date pair (last defaults to first).
 // Schedule changes stay free text.

@@ -175,8 +175,16 @@ Existence of a document at `admins/{uid}` **is** the admin authorization check �
     fri: array<string>
     sat: array<string>
     sun: array<string>
+  }                               // DERIVED from hourlyAvailability once that exists (walkSlotsFromHours)
+  hourlyAvailability: object {    // start hours of free one-hour blocks, 7..21 (7am–10pm), per day
+    mon: array<number>            // e.g. [7, 8, 16] = 7–9am and 4–5pm. See walker-availability.js.
+    ...                           // tue..sun same shape
   }
-  availableForOvernights: boolean
+  overnightAvailability: object { mon: boolean, ... }  // per night of the week
+  availabilityConfirmedAt: timestamp  // set when the walker submits their one-time form
+                                      // (submitWalkerAvailability); admin clears it to let them redo it
+  availabilitySetBy: string       // "walker" when self-submitted
+  availableForOvernights: boolean // legacy blanket flag; fallback when overnightAvailability is absent
 }
 ```
 

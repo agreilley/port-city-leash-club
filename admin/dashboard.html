@@ -1244,6 +1244,7 @@ import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalk
 // those stay separate, see buildApplicationAvailabilityGrid and
 // buildScreeningAvailabilityGrid below.
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
+import { AVAILABILITY_DAYS, AVAILABILITY_HOURS, hourLabel, hourBlockLabel, visitSlotCoverage, availabilityDayKey, normalizeAvailability } from '../walker-availability.js';
 import { VISIT_SLOTS, VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, defaultSlotsForCount, buildStaySchedule, groupStayScheduleByDay, stayRowLabel } from '../visit-slots.js';
 import { calculateEarnings, isCheckinType, visitWalkerId, overnightWalkerIds, calculateVisitCovers, overnightPayoutShare, overnightTipShare, isOvernightPayee, overnightClaimFor } from '../walker-pricing.js';
 import { showError } from '/js/status.js';
@@ -3932,22 +3933,33 @@ window.openOvernightModal = (overnightId) => {
 function visitWalkerSelectHTML(o, v, walkers) {
   const def = (o.walkerId || '').trim();
   const cur = (v.walkerId || '').trim();
-  const defName = walkers.find(w => w.id === def)?.name;
+  const defWalker = walkers.find(w => w.id === def);
+  const defName = defWalker?.name;
   const isCover = cur && cur !== def;
   const opts = walkers
     .filter(w => w.id !== def && (w.status === 'active' || w.id === cur))
-    .map(w => {
-      const off = walkerOffOn(w, v.date);
-      return `<option value="${w.id}" ${w.id === cur ? 'selected' : ''}>${escapeHtml(w.name)}${off ? ' (off)' : ''}</option>`;
-    }).join('');
+    .map(w => `<option value="${w.id}" ${w.id === cur ? 'selected' : ''}>${escapeHtml(w.name)}${walkerVisitNote(w, v)}</option>`).join('');
   return `<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
     <span style="font-size:12px;color:var(--text-light);">Walker</span>
     <select style="flex:1;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:4px 6px;font-size:12px;font-family:'DM Sans',sans-serif;${isCover ? 'font-weight:600;color:var(--navy);' : ''}"
       onchange="assignVisitWalker('${o.id}', '${v.id}', this.value, this)">
-      <option value="" ${isCover ? '' : 'selected'}>${def ? `Default (${escapeHtml(defName || def)})` : 'Default (none assigned)'}</option>
+      <option value="" ${isCover ? '' : 'selected'}>${def ? `Default (${escapeHtml(defName || def)})${defWalker ? walkerVisitNote(defWalker, v) : ''}` : 'Default (none assigned)'}</option>
       ${opts}
     </select>
   </div>`;
+}
+
+// Why a walker might not suit one visit, for the per-visit dropdown:
+// approved time off, then their hourly availability for that weekday vs
+// the visit's window (walker-availability.js). Blank when they're free or
+// haven't submitted hourly availability yet.
+function walkerVisitNote(w, v) {
+  if (walkerOffOn(w, v.date)) return ' (off)';
+  const hourly = w.availabilityConfirmedAt && w.hourlyAvailability;
+  const day = availabilityDayKey(v.date);
+  if (!hourly || !day) return '';
+  const cov = visitSlotCoverage(hourly[day], v.slot);
+  return cov === 'none' ? ' (not available then)' : cov === 'partial' ? ' (partly available)' : '';
 }
 
 // Sets one visit's walker, and keeps walkerIds (who can see this
@@ -4778,7 +4790,7 @@ window.openRequestItem = async (id) => {
   } else if (item.type === 'walker_schedule_request') {
     fields = [
       { label: 'Walker', value: item.walkerName || '–' },
-      { label: 'Request Type', value: item.requestType === 'time_off' ? 'Time Off' : 'Schedule Change' },
+      { label: 'Request Type', value: item.requestType === 'time_off' ? 'Time Off' : item.requestType === 'availability_submitted' ? 'Availability Submitted (already applied)' : 'Schedule Change' },
       ...(item.startDate ? [{ label: 'Dates', value: fmtTimeOffEntry({ start: item.startDate, end: item.endDate || item.startDate }) }] : []),
       { label: 'Details', value: item.message || '–' },
       ...(item.timeOffDecision ? [{ label: 'Decision', value: item.timeOffDecision === 'approved' ? 'Approved' : 'Declined' }] : []),
@@ -8142,14 +8154,45 @@ window.openWalkerDetail = (id) => {
       `).join('')}
     </div>`;
 
+  // Hourly availability (walker-availability.js) replaces the walk-slot
+  // grid above once the walker has submitted it from their dashboard. The
+  // old grid stays for anyone who hasn't yet. Saving the hourly grid
+  // re-derives the walk-slot `availability` the rest of admin still reads.
+  const hourly = walker.availabilityConfirmedAt && walker.hourlyAvailability;
+  const hourlyGridHTML = hourly ? `
+    <div style="overflow-x:auto;">
+      <div style="display:grid;grid-template-columns:44px repeat(${AVAILABILITY_HOURS.length},minmax(26px,1fr)) 44px;gap:3px;align-items:center;min-width:560px;">
+        <div></div>
+        ${AVAILABILITY_HOURS.map(h => `<div style="font-size:10px;color:var(--text-light);text-align:center;" title="${hourBlockLabel(h)}">${hourLabel(h).replace('am', 'a').replace('pm', 'p')}</div>`).join('')}
+        <div style="font-size:10px;color:var(--text-light);text-align:center;">Night</div>
+        ${AVAILABILITY_DAYS.map(day => `
+          <div style="font-size:12px;color:var(--navy);">${dayLabels[day].slice(0, 3)}</div>
+          ${AVAILABILITY_HOURS.map(h => `<label style="display:flex;justify-content:center;padding:5px 0;border:1px solid rgba(0,0,0,0.1);border-radius:3px;cursor:pointer;background:white;" title="${dayLabels[day]} ${hourBlockLabel(h)}">
+            <input type="checkbox" id="wh-${day}-${h}" ${(hourly[day] || []).includes(h) ? 'checked' : ''} style="accent-color:var(--seafoam);margin:0;">
+          </label>`).join('')}
+          <label style="display:flex;justify-content:center;padding:5px 0;border:1px solid rgba(0,0,0,0.1);border-radius:3px;cursor:pointer;background:white;" title="${dayLabels[day]} night">
+            <input type="checkbox" id="wh-${day}-overnight" ${isOvernightDayChecked(day) ? 'checked' : ''} style="accent-color:var(--seafoam);margin:0;">
+          </label>
+        `).join('')}
+      </div>
+    </div>` : '';
+  const submittedOn = walker.availabilityConfirmedAt?.toDate?.()?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
   document.getElementById('walkerDetailModalTitle').textContent = walker.name || 'Walker Details';
   document.getElementById('walkerDetailModalContent').innerHTML = `
     <div class="form-grid">${fieldHTML}</div>
     <hr class="modal-divider">
     <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Availability</div>
+    ${hourly ? `
+    <div style="font-size:12px;color:var(--text-light);margin-bottom:10px;">Hours free each day, 7am–10pm (each box is one hour), plus overnights. ${walker.availabilitySetBy === 'walker' && submittedOn ? `Submitted by ${escapeHtml(walker.name || 'the walker')} ${escapeHtml(submittedOn)}.` : ''}</div>
+    ${hourlyGridHTML}
+    <div id="wd-save-status" style="font-size:12px;color:var(--text-light);margin-top:10px;min-height:16px;"></div>
+    <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="saveWalkerHourlyAvailability('${walker.id}','${walker.uid}')">Save Availability</button>
+    <button class="btn-secondary" style="width:100%;margin-top:6px;font-size:12px;" onclick="reopenWalkerAvailability('${walker.id}','${walker.uid}')">Let ${escapeHtml(walker.name?.split(' ')[0] || 'walker')} fill it out again</button>` : `
+    <div style="font-size:12px;color:#92400E;background:#FEF3C7;border-radius:4px;padding:6px 8px;margin-bottom:10px;">Hasn't submitted hourly availability yet. They're prompted on their dashboard. Until then, this is the schedule in use.</div>
     ${gridHTML}
     <div id="wd-save-status" style="font-size:12px;color:var(--text-light);margin-top:10px;min-height:16px;"></div>
-    <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="saveWalkerSchedule('${walker.id}','${walker.uid}')">Save Schedule</button>
+    <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="saveWalkerSchedule('${walker.id}','${walker.uid}')">Save Schedule</button>`}
     <hr class="modal-divider">
     <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Time Off</div>
     <div id="wd-timeoff-list">${renderWalkerTimeOffList(walker, walkerTimeOff(walker))}</div>
@@ -8320,6 +8363,42 @@ window.saveWalkerSchedule = async (walkerId, uid) => {
   } catch (e) {
     statusEl.textContent = `Failed to save: ${e.message}`;
     statusEl.style.color = '#991B1B';
+  }
+};
+
+window.saveWalkerHourlyAvailability = async (walkerId, uid) => {
+  const statusEl = document.getElementById('wd-save-status');
+  const hourly = {}, overnight = {};
+  AVAILABILITY_DAYS.forEach(day => {
+    hourly[day] = AVAILABILITY_HOURS.filter(h => document.getElementById(`wh-${day}-${h}`).checked);
+    overnight[day] = document.getElementById(`wh-${day}-overnight`).checked;
+  });
+  statusEl.textContent = 'Saving...'; statusEl.style.color = 'var(--text-light)';
+  try {
+    const update = normalizeAvailability(hourly, overnight);
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'walkers', walkerId), update);
+    if (uid && uid !== walkerId && uid !== 'undefined') batch.update(doc(db, 'walkers', uid), update);
+    await batch.commit();
+    statusEl.textContent = 'Saved.'; statusEl.style.color = 'var(--green)';
+  } catch (e) {
+    statusEl.textContent = `Failed to save: ${e.message}`; statusEl.style.color = '#991B1B';
+  }
+};
+
+// Clears the "already submitted" lock so the walker's dashboard shows the
+// fill-it-out form again. What they had stays in effect until they resubmit.
+window.reopenWalkerAvailability = async (walkerId, uid) => {
+  if (!confirm("Show this walker the availability form again? Their current availability stays in effect until they submit a new one.")) return;
+  const statusEl = document.getElementById('wd-save-status');
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'walkers', walkerId), { availabilityConfirmedAt: deleteField() });
+    if (uid && uid !== walkerId && uid !== 'undefined') batch.update(doc(db, 'walkers', uid), { availabilityConfirmedAt: deleteField() });
+    await batch.commit();
+    closeModal('walkerDetailModal');
+  } catch (e) {
+    statusEl.textContent = `Failed: ${e.message}`; statusEl.style.color = '#991B1B';
   }
 };
 
