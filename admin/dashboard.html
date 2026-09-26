@@ -4623,11 +4623,26 @@ window.openRequestItem = async (id) => {
     // 'overnight') as well as the public form's direct SERVICE_PRICES keys —
     // same gap as renderServiceRequestReview's Service dropdown, same fix.
     const serviceInfo = SERVICE_PRICES[resolveServiceKey(item.service)];
+    // A member-portal request (portal-request-extras.html) is also
+    // type: 'service_request' but carries only memberId/memberName and
+    // addonExtraPet/addonMedication — contact details live on the member
+    // record. Same fallbacks the pending review screen already uses
+    // (renderServiceRequestReview), so confirming doesn't blank them out.
+    const srMember = item.memberId ? allMembers.find(m => m.id === (item.memberId || '').trim()) : null;
+    const srExtraPet = item.extraPet ?? item.addonExtraPet ?? false;
+    const srMedication = item.medication ?? item.addonMedication ?? false;
+    // The portal books drop-ins per day (visitSchedule), so a single
+    // visitsPerDay figure is only a stand-in there.
+    const srSchedule = Array.isArray(item.visitSchedule) ? item.visitSchedule : [];
+    const srCounts = [...new Set(srSchedule.map(v => v.visits))];
+    const srVisitsPerDay = srSchedule.length
+      ? (srCounts.length === 1 ? srCounts[0] : 'Varies by day')
+      : item.visitsPerDay;
     fields = [
-      { label: 'Owner Name', value: item.ownerName || '–' },
-      { label: 'Email', value: item.email || '–' },
-      { label: 'Phone', value: item.phone || '–' },
-      { label: 'Address', value: item.address || '–' },
+      { label: 'Owner Name', value: item.ownerName || srMember?.name || item.memberName || '–' },
+      { label: 'Email', value: item.email || srMember?.email || '–' },
+      { label: 'Phone', value: item.phone || srMember?.phone || '–' },
+      { label: 'Address', value: item.address || srMember?.address || '–' },
       { label: 'Service', value: serviceInfo?.name || item.service || '–' },
       { label: 'Start Date', value: fmtDate(item.startDate) },
       { label: 'End Date', value: fmtDate(item.endDate) },
@@ -4636,11 +4651,12 @@ window.openRequestItem = async (id) => {
       // types (e.g. Overnight Stay, priced flat per night) implies it
       // factored into the estimated total when it didn't.
       ...(resolveServiceKey(item.service) === 'drop-in-visit'
-        ? [{ label: 'Visits/Day', value: item.visitsPerDay || '–' }]
+        ? [{ label: 'Visits/Day', value: srVisitsPerDay || '–' }]
         : []),
-      { label: 'Multiple Pets', value: item.extraPet ? 'Yes' : 'No' },
-      { label: 'Medication Admin', value: item.medication ? 'Yes' : 'No' },
-      { label: 'Meet Greet Date/Time', value: item.meetGreetDateTime || '–' },
+      { label: 'Multiple Pets', value: srExtraPet ? 'Yes' : 'No' },
+      { label: 'Medication Admin', value: srMedication ? 'Yes' : 'No' },
+      // Existing members don't book a meet & greet.
+      ...(srMember && !item.meetGreetDateTime ? [] : [{ label: 'Meet Greet Date/Time', value: item.meetGreetDateTime || '–' }]),
       { label: 'Estimated Total', value: item.estimatedTotal ? `$${item.estimatedTotal}` : '–' },
       { label: 'Payment', value: item.paymentStatus ? item.paymentStatus.charAt(0).toUpperCase() + item.paymentStatus.slice(1) : 'Not yet confirmed' },
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
@@ -4892,10 +4908,14 @@ window.openRequestItem = async (id) => {
     let pendingResumePath = '';
     let pendingResumeName = '';
     if (item.type === 'service_request') {
-      extraHTML = `<hr class="modal-divider"><div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Pets</div>${renderPetDetailCards(item.dogs)}`;
+      // Portal requests carry no dogs[] — fall back to the member's own.
+      const srDogs = (Array.isArray(item.dogs) && item.dogs.length) ? item.dogs
+        : getMemberDogs(item.memberId ? allMembers.find(m => m.id === (item.memberId || '').trim()) : null);
+      extraHTML = `<hr class="modal-divider"><div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Pets</div>${renderPetDetailCards(srDogs)}`;
       extraHTML += buildAdditionalDetailsHTML(item, [
         'ownerName', 'email', 'phone', 'address', 'service', 'startDate', 'endDate', 'visitsPerDay',
-        'extraPet', 'medication', 'meetGreetDateTime', 'estimatedTotal', 'paymentStatus', 'status',
+        'extraPet', 'medication', 'addonExtraPet', 'addonMedication', 'memberName', 'visitSchedule',
+        'meetGreetDateTime', 'estimatedTotal', 'paymentStatus', 'status',
         'notes', 'attribution', 'createdAt',
       ]);
     } else if (item.type === 'membership_request' && item.memberId && Array.isArray(item.requestedWalkDays)) {
