@@ -33,15 +33,15 @@ export const VISIT_SLOT_LABELS = {
 // Chosen to spread a day's visits into distinct, non-overlapping windows a
 // member can actually picture: a morning let-out/feeding, a midday potty
 // break, an evening feeding/walk, and a last-out just before bed for a dog
-// that needs one more trip out overnight. Ranges are deliberately wide
-// (pet-sitting visits aren't scheduled to the hour the way a walk is) and
-// don't touch each other, so two adjacent slots on the same day never read
-// as the same visit twice.
+// that needs one more trip out overnight. Two-hour windows (set 2026-09-26)
+// that don't touch each other, so two adjacent slots on the same day never
+// read as the same visit twice. Separate from the walk windows in
+// time-slots.js on purpose — e.g. midday is 1–3pm here, not 11am–2pm.
 export const VISIT_SLOT_RANGES = {
-  morning: '7–10am',
-  midday: '11am–2pm',
-  evening: '5–8pm',
-  'last-out': '9–11pm',
+  morning: '7–9am',
+  midday: '1–3pm',
+  evening: '4–6pm',
+  'last-out': '8–10pm',
 };
 
 // Fail loudly at module load if the three exports ever disagree on which
