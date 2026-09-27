@@ -220,9 +220,8 @@
             </div>
           </div>
           <div class="field full" id="overnightExtrasField" style="display:none;">
-            <label>Extra Drop-In Visits <span style="font-weight:400;color:#7A7A7A;">(optional, $<span id="overnightExtraPrice"></span> per visit)</span></label>
-            <p style="font-size:13px;color:#7A7A7A;margin:0 0 6px;line-height:1.5;">Want more visits on a day, or coverage before you leave or after you're back? Add them here. We'll confirm the times with you.</p>
-            <div id="overnightExtrasRows"></div>
+          <label>Drop-In Visits</label>
+          <div id="overnightExtrasRows"></div>
           </div>
           <div class="field full" id="walkDateNote" style="display:none;font-size:13px;color:#C17B6F;line-height:1.5;"></div>
           <div class="field full" id="addonsField">
@@ -276,6 +275,7 @@
 </div><!-- end portal-container -->
 
 <script type="module">
+  import { createOvernightVisitPicker } from '/js/overnight-visit-picker.js';
   import { SERVICE_PRICES, calculateServiceTotal, calculateDropInScheduleTotal, calculateAddOnDropInTotal } from './pricing.js';
   import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
   import { showSuccess, showError } from '/js/status.js';
@@ -389,54 +389,13 @@
     updateSummary();
   };
 
-  // Overnight stay: extra paid drop-ins on top of each night's included
-  // mid-day visit — same grid, shape and pricing as service-request.html's
-  // syncOvernightExtrasRows (see that comment). Sent as
-  // requestedAddOnDropIns; admin's review pre-fills its Extra Drop-In
-  // Visits grid from it.
-  let _reqOvernightExtras = {};
-
-  function syncOvernightExtrasRows() {
-    const field = document.getElementById('overnightExtrasField');
-    const container = document.getElementById('overnightExtrasRows');
-    const startStr = document.getElementById('startDate').value;
-    const endStr = document.getElementById('endDate').value;
-    if (!startStr || !endStr || endStr <= startStr) {
-      field.style.display = 'none';
-      _reqOvernightExtras = {};
-      return;
-    }
-    const dates = [];
-    const cursor = new Date(`${startStr}T12:00:00`);
-    const end = new Date(`${endStr}T12:00:00`);
-    while (cursor <= end) {
-      dates.push(cursor.toISOString().slice(0, 10));
-      cursor.setDate(cursor.getDate() + 1);
-    }
-    const next = {};
-    dates.forEach(d => { next[d] = _reqOvernightExtras[d] || 0; });
-    _reqOvernightExtras = next;
-
-    field.style.display = 'flex';
-    container.innerHTML = dates.map(d => {
-      const label = new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:4px 0;border-bottom:1px solid rgba(0,0,0,0.05);">
-        <span style="font-size:13px;">${label}</span>
-        <input type="number" min="0" max="10" value="${_reqOvernightExtras[d]}" style="width:70px;" onchange="updateOvernightExtraCount('${d}', this.value)">
-      </div>`;
-    }).join('');
-  }
-
-  window.updateOvernightExtraCount = (dateStr, value) => {
-    _reqOvernightExtras[dateStr] = Math.min(10, Math.max(0, parseInt(value, 10) || 0));
-    updateSummary();
-  };
-
-  function overnightExtrasList() {
-    return Object.entries(_reqOvernightExtras)
-      .filter(([, visits]) => visits > 0)
-      .map(([date, visits]) => ({ date, visits }));
-  }
+  // Overnight stay: one picker for all the stay's drop-ins — included
+  // (one per night) and extra, see js/overnight-visit-picker.js.
+  const overnightPicker = createOvernightVisitPicker({
+    field: document.getElementById('overnightExtrasField'),
+    container: document.getElementById('overnightExtrasRows'),
+    onChange: () => updateSummary(),
+  });
 
   function updateServiceFields() {
     const service = document.getElementById('serviceSelect').value;
@@ -475,10 +434,7 @@
     const start   = document.getElementById('startDate').value;
 
     const noteEl = document.getElementById('walkDateNote');
-    if (service !== 'overnight') {
-      document.getElementById('overnightExtrasField').style.display = 'none';
-      _reqOvernightExtras = {};
-    }
+    if (service !== 'overnight') overnightPicker.reset();
     if (isWalkChoice(service)) {
       document.getElementById('visitScheduleField').style.display = 'none';
       _reqVisitSchedule = {};
@@ -505,7 +461,7 @@
     } else {
       document.getElementById('visitScheduleField').style.display = 'none';
       _reqVisitSchedule = {};
-      syncOvernightExtrasRows();
+      overnightPicker.sync(start, end);
     }
     // The per-day grid is the only source of visit counts now — this is the
     // sole branch for check-in; the else branch only runs for overnight or
@@ -523,7 +479,7 @@
       }));
       totalVisits = null;
     }
-    const extras = calculateAddOnDropInTotal({ addOnDropIns: overnightExtrasList() });
+    const extras = calculateAddOnDropInTotal({ addOnDropIns: service === 'overnight' ? overnightPicker.split().extras : [] });
     total += extras.total;
     window._lastEstimatedTotal = total;
     const base = breakdown[0]?.amount ?? 0;
@@ -653,9 +609,13 @@
         endDate:    localDateToTimestamp(endStr),
         visitsPerDay,
         visitSchedule,
-        // Overnight only — extra paid drop-ins requested on top of each
-        // night's included one; admin confirms them at review.
-        ...(isOvernight ? { requestedAddOnDropIns: overnightExtrasList() } : {}),
+        // Overnight only (js/overnight-visit-picker.js) — where each night's
+        // included drop-in goes, plus any paid extras; admin confirms both
+        // at review and picks the times.
+        ...(isOvernight ? {
+          requestedIncludedDropIns: overnightPicker.split().included,
+          requestedAddOnDropIns: overnightPicker.split().extras,
+        } : {}),
         notes:      document.querySelector('textarea[name=notes]')?.value || '',
         addonExtraPet:   document.getElementById('addonExtraPet')?.checked  || false,
         addonMedication: document.getElementById('addonMedication')?.checked || false,
@@ -677,8 +637,6 @@
       btn.textContent = 'Request Services'; btn.disabled = false;
     }
   }
-
-  document.getElementById('overnightExtraPrice').textContent = SERVICE_PRICES['drop-in-visit'].price;
 
   // Pre-select service from URL param
   const params = new URLSearchParams(window.location.search);

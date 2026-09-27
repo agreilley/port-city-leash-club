@@ -311,7 +311,7 @@ service cloud.firestore {
       function validService() {
         return request.resource.data.keys().hasOnly(
             ['type', 'service', 'startDate', 'endDate', 'timeSlot', 'notes', 'visitsPerDay', 'visitSchedule',
-             'requestedAddOnDropIns', 'extraPet', 'medication', 'dogs', 'ownerName', 'email', 'phone', 'address',
+             'requestedAddOnDropIns', 'requestedIncludedDropIns', 'extraPet', 'medication', 'dogs', 'ownerName', 'email', 'phone', 'address',
              'meetGreetDateTime', 'estimatedTotal', 'referredByCode', 'attribution', 'read', 'createdAt'])
           && validOwnerContact()
           && request.resource.data.notes is string && request.resource.data.notes.size() <= 10000
@@ -353,17 +353,20 @@ service cloud.firestore {
           && validRequestedAddOnDropIns();
       }
 
-      // Overnight stay's optional "Extra Drop-In Visits" grid
-      // (service-request.html / portal-request-extras.html
-      // syncOvernightExtrasRows) — [{date, visits}] for days the customer
-      // wants more than the included mid-day visit. Optional so older
-      // cached pages (and every non-overnight request) still pass. Only a
-      // request: admin confirms it on the review screen, and the charge is
-      // computed there, so no per-element check beyond the size cap.
+      // Overnight stay's Drop-In Visits picker (js/overnight-visit-picker.js,
+      // on service-request.html / portal-request-extras.html) — both
+      // [{date, visits}]: requestedIncludedDropIns is where each night's
+      // included visit goes, requestedAddOnDropIns the paid extras. Optional
+      // so older cached pages (and every non-overnight request) still pass.
+      // Only a request: admin confirms both on the review screen, and the
+      // charge is computed there, so no per-element check beyond the cap.
       function validRequestedAddOnDropIns() {
-        return !('requestedAddOnDropIns' in request.resource.data)
-          || (request.resource.data.requestedAddOnDropIns is list
-              && request.resource.data.requestedAddOnDropIns.size() <= 60);
+        return (!('requestedAddOnDropIns' in request.resource.data)
+            || (request.resource.data.requestedAddOnDropIns is list
+                && request.resource.data.requestedAddOnDropIns.size() <= 60))
+          && (!('requestedIncludedDropIns' in request.resource.data)
+            || (request.resource.data.requestedIncludedDropIns is list
+                && request.resource.data.requestedIncludedDropIns.size() <= 60));
       }
 
       // Source: careers.html:361 (submitApplication) + :442 resume spread.
@@ -568,7 +571,7 @@ service cloud.firestore {
         return exists(/databases/$(database)/documents/members/$(request.auth.uid))
           && request.resource.data.keys().hasOnly(
             ['type', 'memberId', 'memberName', 'service', 'startDate', 'endDate', 'timeSlot',
-             'visitsPerDay', 'visitSchedule', 'requestedAddOnDropIns', 'notes', 'addonExtraPet', 'addonMedication',
+             'visitsPerDay', 'visitSchedule', 'requestedAddOnDropIns', 'requestedIncludedDropIns', 'notes', 'addonExtraPet', 'addonMedication',
              'estimatedTotal', 'status', 'read', 'createdAt'])
           && request.resource.data.memberId == request.auth.uid
           && request.resource.data.memberName is string && request.resource.data.memberName.size() <= 200
