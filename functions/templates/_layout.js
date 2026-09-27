@@ -176,9 +176,11 @@ function stayPlanRows(stayPlan) {
 // about extras only when the stay actually has some.
 function stayPlanNote(addOnDropIns) {
   const extraVisits = (Array.isArray(addOnDropIns) ? addOnDropIns : []).reduce((sum, d) => sum + (Number(d?.visits) || 0), 0);
-  const base = 'Every night includes evening settling and overnight supervision in your home, plus a daytime drop-in visit.';
+  // "daytime", not the site's "mid-day": admin can place an included visit
+  // morning or evening, and the plan rows above name the actual slot.
+  const base = 'Every night includes evening settling and overnight supervision in your home, plus one daytime drop-in visit.';
   if (!extraVisits) return base;
-  return `${base} We've added ${extraVisits === 1 ? 'an extra drop-in visit' : 'extra drop-in visits'} to cover the rest of your trip.`;
+  return `${base} Your stay also includes ${extraVisits === 1 ? 'an extra drop-in visit' : `${spellSmallNumber(extraVisits).toLowerCase()} extra drop-in visits`}, shown in the plan above.`;
 }
 
 // "your dog's" (1) / "your dogs'" (2+) — works for "pet"/"pets" too.
