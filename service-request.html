@@ -390,6 +390,16 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           <label>Visits Per Day <span style="font-weight:400;color:var(--text-light);">(set how many visits each day needs — e.g. fewer on the day you're back)</span></label>
           <div id="visit-schedule-rows"></div>
         </div>
+        <div class="field full" id="overnight-included-field" style="display:none;">
+          <div style="background:var(--sand-light);border-radius:8px;padding:14px 16px;font-size:14px;line-height:1.55;color:var(--text-mid);">
+            <strong style="color:var(--navy);">What each overnight includes:</strong> 12 hours of overnight care in your home, plus one mid-day drop-in visit.
+          </div>
+        </div>
+        <div class="field full" id="overnight-extras-field" style="display:none;">
+          <label>Extra Drop-In Visits <span style="font-weight:400;color:var(--text-light);">(optional, $<span id="overnight-extra-price"></span> per visit)</span></label>
+          <p style="font-size:13px;color:var(--text-light);margin:0 0 6px;line-height:1.5;">Want more visits on a day, or coverage before you leave or after you're back? Add them here. We'll confirm the times with you.</p>
+          <div id="overnight-extras-rows"></div>
+        </div>
         <div class="field full" id="addons-field" style="display:none;">
           <label>Add-ons</label>
           <div class="checkbox-row">
@@ -738,7 +748,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 </footer>
 
 <script type="module">
-  import { SERVICE_PRICES as PRICES, calculateServiceTotal, calculateDropInScheduleTotal, isTravelDiscountService } from './pricing.js';
+  import { SERVICE_PRICES as PRICES, calculateServiceTotal, calculateDropInScheduleTotal, calculateAddOnDropInTotal, isTravelDiscountService } from './pricing.js';
   import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
   import { showSuccess, showError } from '/js/status.js';
 
@@ -831,6 +841,56 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     updateSummary();
   };
 
+  // Overnight stay: extra paid drop-ins on top of the one mid-day visit each
+  // night already includes — {[dateStr]: count}, every day of the stay
+  // including the return day, all defaulting to 0. Sent as
+  // requestedAddOnDropIns; admin's review pre-fills its Extra Drop-In
+  // Visits grid from it and picks the times (admin/dashboard.html). Priced
+  // the same way that grid is (calculateAddOnDropInTotal).
+  let _reqOvernightExtras = {};
+
+  function syncOvernightExtrasRows() {
+    const field = document.getElementById('overnight-extras-field');
+    const container = document.getElementById('overnight-extras-rows');
+    const startStr = startInput.value;
+    const endStr = endInput.value;
+    if (!startStr || !endStr || endStr <= startStr) {
+      field.style.display = 'none';
+      _reqOvernightExtras = {};
+      return;
+    }
+    const dates = [];
+    const cursor = new Date(`${startStr}T12:00:00`);
+    const end = new Date(`${endStr}T12:00:00`);
+    while (cursor <= end) {
+      dates.push(cursor.toISOString().slice(0, 10));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    const next = {};
+    dates.forEach(d => { next[d] = _reqOvernightExtras[d] || 0; });
+    _reqOvernightExtras = next;
+
+    field.style.display = 'flex';
+    container.innerHTML = dates.map(d => {
+      const label = new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:4px 0;border-bottom:1px solid rgba(0,0,0,0.05);">
+        <span style="font-size:13px;">${label}</span>
+        <input type="number" min="0" max="10" value="${_reqOvernightExtras[d]}" style="width:70px;" onchange="updateOvernightExtraCount('${d}', this.value)">
+      </div>`;
+    }).join('');
+  }
+
+  window.updateOvernightExtraCount = (dateStr, value) => {
+    _reqOvernightExtras[dateStr] = Math.min(10, Math.max(0, parseInt(value, 10) || 0));
+    updateSummary();
+  };
+
+  function overnightExtrasList() {
+    return Object.entries(_reqOvernightExtras)
+      .filter(([, visits]) => visits > 0)
+      .map(([date, visits]) => ({ date, visits }));
+  }
+
   function updateServiceFields() {
     const service = serviceSelect.value;
     const isWalk      = service === 'standard-walk' || service === 'extended-walk';
@@ -838,6 +898,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     document.getElementById('end-date-field').style.display  = isWalk ? 'none' : 'flex';
     document.getElementById('time-slot-field').style.display = isWalk ? 'flex' : 'none';
     document.getElementById('addons-field').style.display    = isPetSitting ? 'flex' : 'none';
+    document.getElementById('overnight-included-field').style.display = service === 'overnight-stay' ? 'flex' : 'none';
     // Clear any stale date error (e.g. an end-date message when switching to a walk)
     dateError.style.display = 'none';
     updateSummary();
@@ -858,6 +919,12 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     } else {
       document.getElementById('visit-schedule-field').style.display = 'none';
       _reqVisitSchedule = {};
+    }
+    if (service === 'overnight-stay') {
+      syncOvernightExtrasRows();
+    } else {
+      document.getElementById('overnight-extras-field').style.display = 'none';
+      _reqOvernightExtras = {};
     }
     // True once a valid drop-in date range exists (syncReqVisitScheduleRows
     // populated at least one row) — the per-day grid is the only source of
@@ -882,6 +949,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       }));
       totalVisits = null;
     }
+    const extras = calculateAddOnDropInTotal({ addOnDropIns: overnightExtrasList() });
+    grandTotal += extras.total;
     const serviceTotal = breakdown[0]?.amount ?? info.price;
     const extraPetLine = breakdown.find(b => b.label === 'Multiple pets');
     const medsLine = breakdown.find(b => b.label === 'Medication admin');
@@ -901,6 +970,9 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     }
     if (medsLine) {
       lines += `<div class="order-line"><span>Medication admin${!isWalk && days > 1 ? ` &times; ${days}` : ''}</span><strong>$${medsLine.amount}</strong></div>`;
+    }
+    if (extras.total) {
+      lines += `<div class="order-line"><span>Extra drop-in visits &times; ${extras.totalVisits}</span><strong>$${extras.total}</strong></div>`;
     }
 
     // Referral discount preview — display only. Recomputed on every
@@ -1022,6 +1094,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     });
   }
 
+  document.getElementById('overnight-extra-price').textContent = PRICES['drop-in-visit'].price;
   updateServiceFields();
 
   // Clear a contact field's inline error as soon as it's filled in.
@@ -1179,6 +1252,10 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         // confirmed schedule already uses, so admin's review can seed
         // directly from this.
         visitSchedule: Object.entries(_reqVisitSchedule).map(([date, visits]) => ({ date, visits })),
+        // Overnight stay only: extra paid drop-ins the customer asked for on
+        // top of each night's included one — [] otherwise. A request, not a
+        // booking; admin confirms them on the review screen.
+        requestedAddOnDropIns: serviceSelect.value === 'overnight-stay' ? overnightExtrasList() : [],
         extraPet: document.getElementById('addon-extra-pet')?.checked || false,
         medication: document.getElementById('addon-medication')?.checked || false,
         dogs: collectDogs(),

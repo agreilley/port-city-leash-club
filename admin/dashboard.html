@@ -4831,6 +4831,7 @@ window.openRequestItem = async (id) => {
         : []),
       { label: 'Multiple Pets', value: srExtraPet ? 'Yes' : 'No' },
       { label: 'Medication Admin', value: srMedication ? 'Yes' : 'No' },
+      ...(requestedAddOnDropInsSummary(item) ? [{ label: 'Extra Drop-Ins Requested', value: requestedAddOnDropInsSummary(item) }] : []),
       // Existing members don't book a meet & greet.
       ...(srMember && !item.meetGreetDateTime ? [] : [{ label: 'Meet Greet Date/Time', value: item.meetGreetDateTime || '–' }]),
       { label: 'Estimated Total', value: item.estimatedTotal ? `$${item.estimatedTotal}` : '–' },
@@ -4852,6 +4853,7 @@ window.openRequestItem = async (id) => {
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
       { label: 'Multiple Pets', value: item.addonExtraPet ? 'Yes' : 'No' },
       { label: 'Medication Admin', value: item.addonMedication ? 'Yes' : 'No' },
+      ...(requestedAddOnDropInsSummary(item) ? [{ label: 'Extra Drop-Ins Requested', value: requestedAddOnDropInsSummary(item) }] : []),
       { label: 'Estimated Total', value: item.estimatedTotal ? `$${item.estimatedTotal}` : '–' },
       { label: 'Payment', value: item.paymentStatus ? item.paymentStatus.charAt(0).toUpperCase() + item.paymentStatus.slice(1) : 'Not yet confirmed' },
       { label: 'Notes', value: item.notes || '–' },
@@ -5096,7 +5098,7 @@ window.openRequestItem = async (id) => {
       extraHTML = `<hr class="modal-divider"><div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:8px;">Pets</div>${renderPetDetailCards(srDogs)}`;
       extraHTML += buildAdditionalDetailsHTML(item, [
         'ownerName', 'email', 'phone', 'address', 'service', 'startDate', 'endDate', 'visitsPerDay',
-        'extraPet', 'medication', 'addonExtraPet', 'addonMedication', 'memberName', 'visitSchedule',
+        'extraPet', 'medication', 'addonExtraPet', 'addonMedication', 'memberName', 'visitSchedule', 'requestedAddOnDropIns',
         'meetGreetDateTime', 'estimatedTotal', 'paymentStatus', 'status',
         'notes', 'attribution', 'createdAt',
       ]);
@@ -5139,7 +5141,7 @@ window.openRequestItem = async (id) => {
       if (item.type === 'overnight_request') {
         extraHTML += buildAdditionalDetailsHTML(item, [
           'memberId', 'memberName', 'service', 'startDate', 'endDate', 'status',
-          'addonExtraPet', 'addonMedication', 'estimatedTotal', 'paymentStatus', 'notes',
+          'addonExtraPet', 'addonMedication', 'estimatedTotal', 'paymentStatus', 'notes', 'requestedAddOnDropIns',
         ]);
       }
     } else if (item.type === 'application') {
@@ -5796,6 +5798,26 @@ window.updateAddOnDropInSlot = (dateStr, index, slot) => {
   if (entry) entry.slots[index] = slot; // scheduling only, no recalc
 };
 
+// The customer's own extra-visit request (service-request.html /
+// portal-request-extras.html send requestedAddOnDropIns: [{date, visits}])
+// seeds this grid on open — times default like any added row, and admin
+// can change or zero anything before confirming. Rows outside the
+// reviewed date range are dropped by syncAddOnDropInRows.
+function seedAddOnDropInsFromRequest(item) {
+  const seeded = {};
+  (Array.isArray(item.requestedAddOnDropIns) ? item.requestedAddOnDropIns : []).forEach(({ date, visits }) => {
+    const count = Math.min(10, Math.max(0, parseInt(visits, 10) || 0));
+    if (date && count) seeded[date] = { count, slots: defaultOvernightSlotsForCount(count) };
+  });
+  return seeded;
+}
+
+function requestedAddOnDropInsSummary(item) {
+  const list = Array.isArray(item.requestedAddOnDropIns) ? item.requestedAddOnDropIns.filter(d => d && d.visits > 0) : [];
+  if (!list.length) return '';
+  return list.map(d => `${new Date(`${d.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}: ${d.visits}`).join(', ');
+}
+
 // [{date, visits, slots}] for days with at least one visit, date order —
 // the exact shape markDatesConfirmed expects.
 function addOnDropInList() {
@@ -5814,8 +5836,9 @@ function withAddOnDropIns(raw) {
   return { ...raw, total: raw.total + addOn.total, breakdown: [...raw.breakdown, ...addOn.breakdown] };
 }
 
-function addOnDropInFieldHTML() {
-  return `<div class="form-field" id="rev-addon-dropins-field" style="display:none;grid-column:1 / -1;"><label>Extra Drop-In Visits <span style="font-weight:400;color:var(--text-light);">(charged per visit, added to the total above)</span></label><div id="rev-addon-dropins"></div></div>`;
+function addOnDropInFieldHTML(item) {
+  const asked = item ? requestedAddOnDropInsSummary(item) : '';
+  return `<div class="form-field" id="rev-addon-dropins-field" style="display:none;grid-column:1 / -1;"><label>Extra Drop-In Visits <span style="font-weight:400;color:var(--text-light);">(charged per visit, added to the total above)</span></label>${asked ? `<div style="font-size:12px;color:#92400E;background:#FEF3C7;border-radius:4px;padding:6px 8px;margin-bottom:6px;">Customer asked for extras: ${escapeHtml(asked)}. Pre-filled below. Adjust before confirming.</div>` : ''}<div id="rev-addon-dropins"></div></div>`;
 }
 
 function setAddOnDropInFieldVisible(visible) {
@@ -5886,7 +5909,7 @@ function renderServiceRequestReview(item) {
   _reviewTotalTouched = false;
   _reviewVisitSchedule = {};
   _reviewOvernightVisitSchedule = {};
-  _reviewAddOnDropIns = {};
+  _reviewAddOnDropIns = seedAddOnDropInsFromRequest(item);
   _reviewItemVisitsPerDay = parseInt(item.visitsPerDay, 10) || 1;
   _reviewItemVisitSchedule = {};
   (item.visitSchedule || []).forEach(({ date, visits }) => {
@@ -5922,7 +5945,7 @@ function renderServiceRequestReview(item) {
       </div>
       ${visitScheduleFieldHTML()}
       ${overnightVisitScheduleFieldHTML()}
-      ${addOnDropInFieldHTML()}
+      ${addOnDropInFieldHTML(item)}
       <div class="form-field"><label>Start Date</label><input type="date" id="rev-start" value="${escapeHtml(toDateInputValue(item.startDate))}" onchange="reviewRecalcService()"></div>
       <div class="form-field" id="rev-end-field"><label>End Date</label><input type="date" id="rev-end" value="${escapeHtml(toDateInputValue(item.endDate))}" onchange="reviewRecalcService()"></div>
       <div class="form-field" id="rev-timeslot-field" style="display:none;"><label>Time Slot</label>
@@ -6056,7 +6079,7 @@ function renderOvernightReview(item) {
   _reviewMemberId = item.memberId || null;
   _reviewVisitSchedule = {};
   _reviewOvernightVisitSchedule = {};
-  _reviewAddOnDropIns = {};
+  _reviewAddOnDropIns = seedAddOnDropInsFromRequest(item);
   _reviewItemVisitsPerDay = parseInt(item.visitsPerDay, 10) || 1;
   _reviewItemVisitSchedule = {};
   (item.visitSchedule || []).forEach(({ date, visits }) => {
@@ -6076,7 +6099,7 @@ function renderOvernightReview(item) {
       </div>
       ${visitScheduleFieldHTML()}
       ${overnightVisitScheduleFieldHTML()}
-      ${addOnDropInFieldHTML()}
+      ${addOnDropInFieldHTML(item)}
       <div class="form-field"><label>Start Date</label><input type="date" id="rev-start" value="${escapeHtml(toDateInputValue(item.startDate))}" onchange="reviewRecalcOvernight()"></div>
       <div class="form-field"><label>End Date</label><input type="date" id="rev-end" value="${escapeHtml(toDateInputValue(item.endDate))}" onchange="reviewRecalcOvernight()"></div>
     </div>
@@ -8958,6 +8981,7 @@ function mgOwnerInfoHTML(req) {
     if (Array.isArray(req.visitSchedule) && req.visitSchedule.length) {
       out.push(row('Visits', req.visitSchedule.map(v => `${v.date}: ${v.visits}`).join(', ')));
     }
+    out.push(row('Extra drop-ins', requestedAddOnDropInsSummary(req)));
     const addons = [req.extraPet && 'Multiple pets', req.medication && 'Medication'].filter(Boolean).join(', ');
     out.push(row('Add-ons', addons));
     out.push(row('Estimate', req.estimatedTotal ? `$${req.estimatedTotal}` : ''));

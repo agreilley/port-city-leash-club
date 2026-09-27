@@ -311,7 +311,7 @@ service cloud.firestore {
       function validService() {
         return request.resource.data.keys().hasOnly(
             ['type', 'service', 'startDate', 'endDate', 'timeSlot', 'notes', 'visitsPerDay', 'visitSchedule',
-             'extraPet', 'medication', 'dogs', 'ownerName', 'email', 'phone', 'address',
+             'requestedAddOnDropIns', 'extraPet', 'medication', 'dogs', 'ownerName', 'email', 'phone', 'address',
              'meetGreetDateTime', 'estimatedTotal', 'referredByCode', 'attribution', 'read', 'createdAt'])
           && validOwnerContact()
           && request.resource.data.notes is string && request.resource.data.notes.size() <= 10000
@@ -349,7 +349,21 @@ service cloud.firestore {
           // never touched it (overnight, or a single-day check-in with
           // nothing to vary). Same no-per-element-check convention as dogs
           // above; 60 covers any realistic date range with headroom.
-          && request.resource.data.visitSchedule is list && request.resource.data.visitSchedule.size() <= 60;
+          && request.resource.data.visitSchedule is list && request.resource.data.visitSchedule.size() <= 60
+          && validRequestedAddOnDropIns();
+      }
+
+      // Overnight stay's optional "Extra Drop-In Visits" grid
+      // (service-request.html / portal-request-extras.html
+      // syncOvernightExtrasRows) — [{date, visits}] for days the customer
+      // wants more than the included mid-day visit. Optional so older
+      // cached pages (and every non-overnight request) still pass. Only a
+      // request: admin confirms it on the review screen, and the charge is
+      // computed there, so no per-element check beyond the size cap.
+      function validRequestedAddOnDropIns() {
+        return !('requestedAddOnDropIns' in request.resource.data)
+          || (request.resource.data.requestedAddOnDropIns is list
+              && request.resource.data.requestedAddOnDropIns.size() <= 60);
       }
 
       // Source: careers.html:361 (submitApplication) + :442 resume spread.
@@ -554,7 +568,7 @@ service cloud.firestore {
         return exists(/databases/$(database)/documents/members/$(request.auth.uid))
           && request.resource.data.keys().hasOnly(
             ['type', 'memberId', 'memberName', 'service', 'startDate', 'endDate', 'timeSlot',
-             'visitsPerDay', 'visitSchedule', 'notes', 'addonExtraPet', 'addonMedication',
+             'visitsPerDay', 'visitSchedule', 'requestedAddOnDropIns', 'notes', 'addonExtraPet', 'addonMedication',
              'estimatedTotal', 'status', 'read', 'createdAt'])
           && request.resource.data.memberId == request.auth.uid
           && request.resource.data.memberName is string && request.resource.data.memberName.size() <= 200
@@ -576,7 +590,8 @@ service cloud.firestore {
           // syncReqVisitScheduleRows) — same shape/cap as validService()'s
           // visitSchedule above; always [] for overnight and walks, since
           // neither has a per-day-visits concept at all.
-          && request.resource.data.visitSchedule is list && request.resource.data.visitSchedule.size() <= 60;
+          && request.resource.data.visitSchedule is list && request.resource.data.visitSchedule.size() <= 60
+          && validRequestedAddOnDropIns();
       }
       // Overnight/check-in date range and visitsPerDay — unchanged from
       // before walks were added, just split out of the main function.

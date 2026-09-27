@@ -214,6 +214,16 @@
             <label>Time of Day</label>
             <select id="timeSlotSelect" name="time-slot" onchange="updateSummary()"></select>
           </div>
+          <div class="field full" id="overnightIncludedField" style="display:none;">
+            <div style="background:var(--sand-light);border-radius:8px;padding:14px 16px;font-size:14px;line-height:1.55;color:var(--text-mid);">
+              <strong style="color:var(--navy);">What each overnight includes:</strong> 12 hours of overnight care in your home, plus one mid-day drop-in visit.
+            </div>
+          </div>
+          <div class="field full" id="overnightExtrasField" style="display:none;">
+            <label>Extra Drop-In Visits <span style="font-weight:400;color:#7A7A7A;">(optional, $<span id="overnightExtraPrice"></span> per visit)</span></label>
+            <p style="font-size:13px;color:#7A7A7A;margin:0 0 6px;line-height:1.5;">Want more visits on a day, or coverage before you leave or after you're back? Add them here. We'll confirm the times with you.</p>
+            <div id="overnightExtrasRows"></div>
+          </div>
           <div class="field full" id="walkDateNote" style="display:none;font-size:13px;color:#C17B6F;line-height:1.5;"></div>
           <div class="field full" id="addonsField">
             <label>Add-ons</label>
@@ -266,7 +276,7 @@
 </div><!-- end portal-container -->
 
 <script type="module">
-  import { SERVICE_PRICES, calculateServiceTotal, calculateDropInScheduleTotal } from './pricing.js';
+  import { SERVICE_PRICES, calculateServiceTotal, calculateDropInScheduleTotal, calculateAddOnDropInTotal } from './pricing.js';
   import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
   import { showSuccess, showError } from '/js/status.js';
 
@@ -379,6 +389,55 @@
     updateSummary();
   };
 
+  // Overnight stay: extra paid drop-ins on top of each night's included
+  // mid-day visit — same grid, shape and pricing as service-request.html's
+  // syncOvernightExtrasRows (see that comment). Sent as
+  // requestedAddOnDropIns; admin's review pre-fills its Extra Drop-In
+  // Visits grid from it.
+  let _reqOvernightExtras = {};
+
+  function syncOvernightExtrasRows() {
+    const field = document.getElementById('overnightExtrasField');
+    const container = document.getElementById('overnightExtrasRows');
+    const startStr = document.getElementById('startDate').value;
+    const endStr = document.getElementById('endDate').value;
+    if (!startStr || !endStr || endStr <= startStr) {
+      field.style.display = 'none';
+      _reqOvernightExtras = {};
+      return;
+    }
+    const dates = [];
+    const cursor = new Date(`${startStr}T12:00:00`);
+    const end = new Date(`${endStr}T12:00:00`);
+    while (cursor <= end) {
+      dates.push(cursor.toISOString().slice(0, 10));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    const next = {};
+    dates.forEach(d => { next[d] = _reqOvernightExtras[d] || 0; });
+    _reqOvernightExtras = next;
+
+    field.style.display = 'flex';
+    container.innerHTML = dates.map(d => {
+      const label = new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:4px 0;border-bottom:1px solid rgba(0,0,0,0.05);">
+        <span style="font-size:13px;">${label}</span>
+        <input type="number" min="0" max="10" value="${_reqOvernightExtras[d]}" style="width:70px;" onchange="updateOvernightExtraCount('${d}', this.value)">
+      </div>`;
+    }).join('');
+  }
+
+  window.updateOvernightExtraCount = (dateStr, value) => {
+    _reqOvernightExtras[dateStr] = Math.min(10, Math.max(0, parseInt(value, 10) || 0));
+    updateSummary();
+  };
+
+  function overnightExtrasList() {
+    return Object.entries(_reqOvernightExtras)
+      .filter(([, visits]) => visits > 0)
+      .map(([date, visits]) => ({ date, visits }));
+  }
+
   function updateServiceFields() {
     const service = document.getElementById('serviceSelect').value;
     const isCheckin = service === 'checkin';
@@ -389,6 +448,7 @@
     document.getElementById('addonsField').style.display   = isWalk ? 'none' : 'flex';
     document.getElementById('timeSlotField').style.display = isWalk ? 'flex' : 'none';
     document.getElementById('startDateLabel').textContent  = isWalk ? 'Walk Date' : 'Start Date';
+    document.getElementById('overnightIncludedField').style.display = service === 'overnight' ? 'flex' : 'none';
     if (isWalk) {
       document.getElementById('endDate').value = '';
       document.getElementById('addonExtraPet').checked = false;
@@ -415,6 +475,10 @@
     const start   = document.getElementById('startDate').value;
 
     const noteEl = document.getElementById('walkDateNote');
+    if (service !== 'overnight') {
+      document.getElementById('overnightExtrasField').style.display = 'none';
+      _reqOvernightExtras = {};
+    }
     if (isWalkChoice(service)) {
       document.getElementById('visitScheduleField').style.display = 'none';
       _reqVisitSchedule = {};
@@ -441,6 +505,7 @@
     } else {
       document.getElementById('visitScheduleField').style.display = 'none';
       _reqVisitSchedule = {};
+      syncOvernightExtrasRows();
     }
     // The per-day grid is the only source of visit counts now — this is the
     // sole branch for check-in; the else branch only runs for overnight or
@@ -458,6 +523,8 @@
       }));
       totalVisits = null;
     }
+    const extras = calculateAddOnDropInTotal({ addOnDropIns: overnightExtrasList() });
+    total += extras.total;
     window._lastEstimatedTotal = total;
     const base = breakdown[0]?.amount ?? 0;
     const extraPetLine = breakdown.find(b => b.label === 'Multiple pets');
@@ -470,6 +537,7 @@
     let lines = `<div class="summary-line"><span>${name}${qtyLabel ? ' · ' + qtyLabel : ''}</span><strong>$${base}</strong></div>`;
     if (extraPetLine) lines += `<div class="summary-line"><span>Multiple pets</span><strong>$${extraPetLine.amount}</strong></div>`;
     if (medsLine)     lines += `<div class="summary-line"><span>Medication admin</span><strong>$${medsLine.amount}</strong></div>`;
+    if (extras.total) lines += `<div class="summary-line"><span>Extra drop-in visits × ${extras.totalVisits}</span><strong>$${extras.total}</strong></div>`;
 
     const priceEl = document.getElementById('summaryPrice');
     const detailEl = document.getElementById('summaryDetails');
@@ -585,6 +653,9 @@
         endDate:    localDateToTimestamp(endStr),
         visitsPerDay,
         visitSchedule,
+        // Overnight only — extra paid drop-ins requested on top of each
+        // night's included one; admin confirms them at review.
+        ...(isOvernight ? { requestedAddOnDropIns: overnightExtrasList() } : {}),
         notes:      document.querySelector('textarea[name=notes]')?.value || '',
         addonExtraPet:   document.getElementById('addonExtraPet')?.checked  || false,
         addonMedication: document.getElementById('addonMedication')?.checked || false,
@@ -606,6 +677,8 @@
       btn.textContent = 'Request Services'; btn.disabled = false;
     }
   }
+
+  document.getElementById('overnightExtraPrice').textContent = SERVICE_PRICES['drop-in-visit'].price;
 
   // Pre-select service from URL param
   const params = new URLSearchParams(window.location.search);
