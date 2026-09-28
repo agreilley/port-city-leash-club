@@ -180,7 +180,109 @@ function stayPlanNote(addOnDropIns) {
   // morning or evening, and the plan rows above name the actual slot.
   const base = 'Every night includes evening settling and overnight supervision in your home, plus one daytime drop-in visit.';
   if (!extraVisits) return base;
-  return `${base} Your stay also includes ${extraVisits === 1 ? 'an extra drop-in visit' : `${spellSmallNumber(extraVisits).toLowerCase()} extra drop-in visits`}, shown in the plan above.`;
+  return `${base} Your stay also includes ${extraVisits === 1 ? 'an extra drop-in visit' : `${spellSmallNumber(extraVisits).toLowerCase()} extra drop-in visits`}, shown in your schedule above.`;
+}
+
+// "$345" for whole dollars, "$12.50" otherwise; negatives as "−$25".
+function fmtMoney(n) {
+  const v = Math.round((Number(n) || 0) * 100) / 100;
+  const abs = Math.abs(v);
+  const str = Number.isInteger(abs) ? `$${abs}` : `$${abs.toFixed(2)}`;
+  return v < 0 ? `−${str}` : str;
+}
+
+// Itemized order block — built server-side (buildStayOrder, functions/
+// index.js) as { lines: [{label, detail?, amount}], total, totalLabel }.
+// Each line is label + optional muted detail on the left, amount right-
+// aligned; a rule, then the total in bold. Same SAND card as
+// renderBlockHtml so it sits naturally among the other blocks.
+function renderOrderHtml({ eyebrow, order }) {
+  const lineRows = (order.lines || []).map((l) => `
+            <tr>
+              <td style="padding:0 12px 12px 0;font-family:${BODY_FONT};font-size:14px;line-height:1.4;color:${NAVY};vertical-align:top;">
+                <strong>${escapeHtml(l.label)}</strong>${l.detail ? `<br><span style="font-size:13px;color:#5B6470;">${escapeHtml(l.detail)}</span>` : ''}
+              </td>
+              <td align="right" style="padding:0 0 12px;font-family:${BODY_FONT};font-size:14px;line-height:1.4;color:${NAVY};vertical-align:top;white-space:nowrap;">${escapeHtml(fmtMoney(l.amount))}</td>
+            </tr>`).join('');
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:${SAND};border-radius:4px;margin:28px 0;">
+      <tr>
+        <td style="padding:24px;">
+          <p style="margin:0 0 16px;font-family:${BODY_FONT};font-size:12px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:${NAVY};">${escapeHtml(eyebrow)}</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${lineRows}
+            <tr><td colspan="2" style="border-top:1px solid rgba(13,27,42,0.2);font-size:1px;line-height:1px;padding:0 0 12px;">&nbsp;</td></tr>
+            <tr>
+              <td style="font-family:${BODY_FONT};font-size:16px;font-weight:700;color:${NAVY};">${escapeHtml(order.totalLabel || 'Total')}</td>
+              <td align="right" style="font-family:${BODY_FONT};font-size:16px;font-weight:700;color:${NAVY};white-space:nowrap;">${escapeHtml(fmtMoney(order.total))}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  `;
+}
+
+function renderOrderText({ eyebrow, order }) {
+  const lines = [eyebrow.toUpperCase(), ''];
+  (order.lines || []).forEach((l) => lines.push(`${l.label}${l.detail ? ` (${l.detail})` : ''}: ${fmtMoney(l.amount)}`));
+  lines.push(`${order.totalLabel || 'Total'}: ${fmtMoney(order.total)}`);
+  return lines.join('\n');
+}
+
+// An overnight stay's plan (buildStayPlan) as a schedule: one row per day,
+// short day label on the left, then that day's items stacked one per line
+// on the right: how many drop-in visits, how many extra (paid) ones so they
+// match the order block above, then overnight care. No visit times, by
+// decision: the customer sees counts, and times are coordinated directly.
+function stayScheduleDays(stayPlan) {
+  const count = (n, noun) => (n === 1 ? noun.charAt(0).toUpperCase() + noun.slice(1) : `${n} ${noun}s`);
+  return (Array.isArray(stayPlan) ? stayPlan : []).map((day) => {
+    const visits = day.visits || [];
+    const included = visits.filter((v) => !v.extra).length;
+    const extra = visits.length - included;
+    const items = [];
+    if (included) items.push({ text: count(included, 'drop-in visit') });
+    if (extra) items.push({ text: count(extra, 'extra drop-in visit') });
+    if (day.overnight) items.push({ text: 'Overnight care' });
+    if (!items.length) items.push({ text: 'Stay ends', muted: true });
+    let label = day.date;
+    if (typeof day.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day.date)) {
+      const [y, m, d] = day.date.split('-').map(Number);
+      label = new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    }
+    return { label, items };
+  });
+}
+
+function renderScheduleHtml({ eyebrow, stayPlan }) {
+  const days = stayScheduleDays(stayPlan);
+  const rows = days.map((day, i) => `
+            <tr>
+              <td width="88" style="padding:${i ? '12px' : '0'} 12px 12px 0;${i ? 'border-top:1px solid rgba(13,27,42,0.12);' : ''}font-family:${BODY_FONT};font-size:14px;font-weight:700;line-height:1.5;color:${NAVY};vertical-align:top;white-space:nowrap;">${escapeHtml(day.label)}</td>
+              <td style="padding:${i ? '12px' : '0'} 0 12px;${i ? 'border-top:1px solid rgba(13,27,42,0.12);' : ''}font-family:${BODY_FONT};font-size:14px;line-height:1.5;color:${NAVY};vertical-align:top;">
+                ${day.items.map((it) => `<div${it.muted ? ' style="color:#5B6470;"' : ''}>${escapeHtml(it.text)}</div>`).join('')}
+              </td>
+            </tr>`).join('');
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:${SAND};border-radius:4px;margin:28px 0 0;">
+      <tr>
+        <td style="padding:24px;">
+          <p style="margin:0 0 16px;font-family:${BODY_FONT};font-size:12px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:${NAVY};">${escapeHtml(eyebrow)}</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}
+          </table>
+        </td>
+      </tr>
+    </table>
+  `;
+}
+
+function renderScheduleText({ eyebrow, stayPlan }) {
+  const lines = [eyebrow.toUpperCase(), ''];
+  stayScheduleDays(stayPlan).forEach((day) => {
+    lines.push(day.label);
+    day.items.forEach((it) => lines.push(`  - ${it.text}`));
+  });
+  return lines.join('\n');
 }
 
 // "your dog's" (1) / "your dogs'" (2+) — works for "pet"/"pets" too.
@@ -354,6 +456,7 @@ module.exports = {
   NAVY, SEAFOAM, SAND, SAND_LIGHT, CORAL, HEADING_FONT, BODY_FONT, SIGNOFF_NAME, TEAM_SIGNOFF,
   escapeHtml, formatCalendarDate, formatMeetGreetDate, formatMeetGreetSlot, formatWalkTimeSlot, formatDateRange,
   joinNames, meetClosingLine, pluralNoun, possessive, spellSmallNumber, addOnDropInRows, stayPlanRows, stayPlanNote,
+  fmtMoney, renderOrderHtml, renderOrderText, renderScheduleHtml, renderScheduleText,
   renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml,
   renderCodeBlockHtml, renderCodeBlockText,
   wrapHtml, wrapText,

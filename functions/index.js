@@ -5382,6 +5382,61 @@ function buildStayPlan(overnight) {
   return plan;
 }
 
+// An overnight stay's itemized order for the confirmation emails
+// (renderOrderHtml, functions/templates/_layout.js): the nights, each
+// pet-sitting add-on, any extra drop-ins, then discounts, and a total that
+// always equals what's actually charged. Line prices are re-derived from
+// pricing.js the same way admin/dashboard.html priced them; if admin
+// overrode the total on the review screen, the difference shows as a
+// "Price adjustment" line rather than silently not adding up.
+// referralDiscountApplied/creditApplied come from chargeCustomerCard, so
+// they're only known for a charge that already ran (the public form's
+// immediate charge) — a scheduled charge lists the confirmed total.
+async function buildStayOrder({
+  startDate, endDate, extraPet, medication, addOnDropIns, totalDollars,
+  travelDiscountPercent = 0, referralDiscountApplied = 0, creditApplied = 0, totalLabel = 'Total',
+}) {
+  const {
+    SERVICE_PRICES, EXTRA_PET_FEE, MEDICATION_FEE, calculateServiceTotal, calculateAddOnDropInTotal, applyTravelDiscount,
+  } = await import('./pricing.js');
+  const start = startDate?.toDate ? startDate.toDate() : null;
+  const end = endDate?.toDate ? endDate.toDate() : null;
+  if (!start || !end) return null;
+  const round = (n) => Math.round(n * 100) / 100;
+  const stay = calculateServiceTotal({ serviceKey: 'overnight-stay', startDate: start, endDate: end, extraPet, medication });
+  const nights = stay.days;
+  const perNight = (fee) => `${nights} ${nights === 1 ? 'night' : 'nights'} \u00d7 $${fee}`;
+  const monthDay = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' });
+  const lines = [{
+    label: 'Overnight stay',
+    detail: `${monthDay(start)} to ${monthDay(end)} \u00b7 ${perNight(SERVICE_PRICES['overnight-stay'].price)}`,
+    amount: stay.breakdown[0].amount,
+  }];
+  const petLine = stay.breakdown.find((b) => b.label === 'Multiple pets');
+  const medLine = stay.breakdown.find((b) => b.label === 'Medication admin');
+  if (petLine) lines.push({ label: 'Multiple pets', detail: perNight(EXTRA_PET_FEE), amount: petLine.amount });
+  if (medLine) lines.push({ label: 'Medication administration', detail: perNight(MEDICATION_FEE), amount: medLine.amount });
+  const addOn = calculateAddOnDropInTotal({ addOnDropIns });
+  if (addOn.total) {
+    lines.push({
+      label: 'Extra drop-in visits',
+      detail: `${addOn.totalVisits} ${addOn.totalVisits === 1 ? 'visit' : 'visits'} \u00d7 $${SERVICE_PRICES['drop-in-visit'].price}`,
+      amount: addOn.total,
+    });
+  }
+  let expected = stay.total + addOn.total;
+  if (travelDiscountPercent > 0) {
+    const d = applyTravelDiscount(expected, [], travelDiscountPercent);
+    lines.push({ label: `Friends and family discount (${travelDiscountPercent}%)`, amount: -d.discountAmount });
+    expected = d.total;
+  }
+  const confirmed = typeof totalDollars === 'number' ? totalDollars : expected;
+  if (Math.abs(confirmed - expected) >= 0.005) lines.push({ label: 'Price adjustment', amount: round(confirmed - expected) });
+  if (referralDiscountApplied > 0) lines.push({ label: 'Referral credit', amount: -referralDiscountApplied });
+  if (creditApplied > 0) lines.push({ label: 'Account credit', amount: -creditApplied });
+  return { lines, total: round(confirmed - referralDiscountApplied - creditApplied), totalLabel };
+}
+
 async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, reviewed) {
   const { SERVICE_PRICES, resolveServiceKey } = await import('./pricing.js');
   const isOvernightRequest = sub.type === 'overnight_request';
@@ -5620,17 +5675,21 @@ async function runServiceOrOvernightCharge(sub, submissionId, memberId, reviewed
   // Immediate charge — walk, or overnight-stay via the public form.
   // amountInDollars <= 0 means nothing to charge (no card, or admin zeroed
   // it out) — chargeAndTrackPayment's exact contract, preserved here.
-  let paymentStatus, chargeError = null;
+  let paymentStatus, chargeError = null, creditApplied = 0, referralDiscountApplied = 0;
   if (reviewed.amountInDollars > 0) {
     const stripe = stripeClient(STRIPE_SECRET_KEY.value());
     const description = serviceChargeDescription(reviewed.service, sub, SERVICE_PRICES, resolveServiceKey);
     try {
-      await chargeCustomerCard(stripe, subRef, sub, {
+      const charge = await chargeCustomerCard(stripe, subRef, sub, {
         chargeKey: submissionId,
         amountInDollars: reviewed.amountInDollars,
         description,
       });
       paymentStatus = 'charged';
+      // Passed on so the confirmation email's itemized order shows the
+      // credit the charge actually took (buildStayOrder).
+      creditApplied = charge?.creditApplied || 0;
+      referralDiscountApplied = charge?.referralDiscountApplied || 0;
     } catch (e) {
       paymentStatus = 'failed';
       chargeError = e.message;
@@ -5646,7 +5705,7 @@ async function runServiceOrOvernightCharge(sub, submissionId, memberId, reviewed
   // matching confirmServiceRequest/confirmOvernight's original posture),
   // so without returning it here, this failure mode would only ever show
   // via the older paymentStatus badge, never reach Needs Attention.
-  return { paymentStatus, chargeScheduledFor: null, chargeError };
+  return { paymentStatus, chargeScheduledFor: null, chargeError, creditApplied, referralDiscountApplied };
 }
 
 // Dispatches to whichever of the three existing sendBookingConfirmedEmail
@@ -5692,12 +5751,29 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
   // runs in markDatesConfirmed, before finalize sends this). Best-effort:
   // a failed read just omits the plan, never blocks the email.
   let stayPlan = null;
+  let order = null;
   if (serviceKey === 'overnight-stay') {
     try {
       const snap = await db.collection('overnights').where('submissionId', '==', submissionId).limit(1).get();
       if (!snap.empty) stayPlan = buildStayPlan(snap.docs[0].data());
     } catch (e) {
       console.error(`sendServiceOrOvernightConfirmationEmail: couldn't build stay plan for ${submissionId}:`, e.message);
+    }
+    // Same best-effort posture: a failure falls back to the plain rows.
+    try {
+      order = await buildStayOrder({
+        startDate: reviewed.startDate, endDate: reviewed.endDate,
+        extraPet: !!(reviewed.extraPet ?? reviewed.addonExtraPet),
+        medication: !!(reviewed.medication ?? reviewed.addonMedication),
+        addOnDropIns: reviewed.addOnDropIns,
+        totalDollars: reviewed.amountInDollars,
+        travelDiscountPercent: reviewed.travelDiscountApplied ? (reviewed.travelDiscountPercent || 0) : 0,
+        referralDiscountApplied: chargeResult.referralDiscountApplied || 0,
+        creditApplied: chargeResult.creditApplied || 0,
+        totalLabel: chargeResult.paymentStatus === 'charged' ? 'Total charged' : 'Total',
+      });
+    } catch (e) {
+      console.error(`sendServiceOrOvernightConfirmationEmail: couldn't build order for ${submissionId}:`, e.message);
     }
   }
 
@@ -5713,6 +5789,7 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
       visitSchedule: isCheckin ? reviewed.visitSchedule : null,
       addOnDropIns: reviewed.addOnDropIns || null,
       stayPlan,
+      order,
       needsCard, addCardUrl,
     };
   } else if (isWalk) {
@@ -5736,6 +5813,7 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
       unitNoun: 'night',
       addOnDropIns: reviewed.addOnDropIns || null,
       stayPlan,
+      order,
       needsCard, addCardUrl,
     };
   }
@@ -6470,6 +6548,28 @@ exports.resendBookingConfirmationEmail = onCall({
     // template — see sendServiceOrOvernightConfirmationEmail's identical
     // isOvernightRequest-or-isCheckin branch above.
     const isCheckin = record.serviceType === 'drop-in-visit' || record.serviceType === 'checkin';
+    // Same itemized order as the original send. The overnights doc doesn't
+    // keep the discount percent, so it's read back from the submission;
+    // any mismatch still reconciles via buildStayOrder's adjustment line.
+    let order = null;
+    if (!isCheckin) {
+      try {
+        let travelDiscountPercent = 0;
+        if (record.travelDiscountApplied && record.submissionId) {
+          const subSnap = await db.collection('submissions').doc(record.submissionId).get();
+          travelDiscountPercent = subSnap.data()?.travelDiscountPercent || 0;
+        }
+        order = await buildStayOrder({
+          startDate: record.startDate, endDate: record.endDate,
+          extraPet: !!record.extraPet, medication: !!record.medication,
+          addOnDropIns: record.addOnDropIns,
+          totalDollars: typeof record.confirmedTotalCents === 'number' ? record.confirmedTotalCents / 100 : undefined,
+          travelDiscountPercent,
+        });
+      } catch (e) {
+        console.error(`resendBookingConfirmation: couldn't build order for overnight ${id}:`, e.message);
+      }
+    }
     template = 'portal-reservation-confirmed';
     data = {
       firstName, petNames,
@@ -6481,6 +6581,7 @@ exports.resendBookingConfirmationEmail = onCall({
       visitSchedule: isCheckin ? record.visitSchedule || null : null,
       addOnDropIns: record.addOnDropIns || null,
       stayPlan: isCheckin ? null : buildStayPlan(record),
+      order,
       needsCard, addCardUrl,
     };
   }

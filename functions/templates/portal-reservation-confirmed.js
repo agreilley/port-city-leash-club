@@ -26,6 +26,9 @@
 //   addOnDropIns: array<{date: 'YYYY-MM-DD', visits: number}> | null,
 //     // overnight stay only — paid drop-ins admin added; each listed as its
 //     // own line item under the stay
+//   order: { lines: [{label, detail?, amount}], total, totalLabel } | null,
+//     // overnight stay only — itemized order (buildStayOrder); replaces the
+//     // plain Service/Dates/Total rows when present
 //   stayPlan: array<{date, visits: [{slot, extra}], overnight}> | null,
 //     // overnight stay only — day-by-day plan from the booked visits
 //   needsCard: boolean,            // true when there's no card on file yet —
@@ -37,6 +40,7 @@
 
 const {
   escapeHtml, formatDateRange, formatCalendarDate, joinNames, pluralNoun, TEAM_SIGNOFF, addOnDropInRows, stayPlanRows, stayPlanNote,
+  renderOrderHtml, renderOrderText, renderScheduleHtml, renderScheduleText,
   renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
@@ -74,10 +78,14 @@ function subject() {
 function html(data) {
   const names = joinNames(data.petNames) || 'your pets';
 
-  const reservationBlock = renderBlockHtml({
-    eyebrow: 'Your reservation',
-    rows: reservationRows(data).map(r => ({ label: r.label, value: escapeHtml(r.value) })),
-  });
+  // Overnight stays carry an itemized order (buildStayOrder); drop-in
+  // reservations keep the plain Service/Dates/Total rows.
+  const reservationBlock = data.order
+    ? renderOrderHtml({ eyebrow: 'Your reservation', order: data.order })
+    : renderBlockHtml({
+      eyebrow: 'Your reservation',
+      rows: reservationRows(data).map(r => ({ label: r.label, value: escapeHtml(r.value) })),
+    });
 
   const scheduleBlock = Array.isArray(data.visitSchedule) && data.visitSchedule.length
     ? renderBlockHtml({ eyebrow: 'Visit schedule', rows: visitScheduleRows(data.visitSchedule).map(r => ({ label: r.label, value: escapeHtml(r.value) })) })
@@ -85,7 +93,7 @@ function html(data) {
 
   const planRows = stayPlanRows(data.stayPlan);
   const planSection = planRows.length ? `
-    <div style="margin-top:20px;">${renderBlockHtml({ eyebrow: 'Your stay', rows: planRows.map(r => ({ label: r.label, value: escapeHtml(r.value) })) })}</div>
+    ${renderScheduleHtml({ eyebrow: 'Your schedule', stayPlan: data.stayPlan })}
     <p style="margin:20px 0 0;">${escapeHtml(stayPlanNote(data.addOnDropIns))}</p>
   ` : '';
 
@@ -122,10 +130,9 @@ function text(data) {
     '',
     `Your pet sitting reservation for ${names} is confirmed. Here's what to expect.`,
     '',
-    renderBlockText({
-      eyebrow: 'Your reservation',
-      rows: reservationRows(data),
-    }),
+    data.order
+      ? renderOrderText({ eyebrow: 'Your reservation', order: data.order })
+      : renderBlockText({ eyebrow: 'Your reservation', rows: reservationRows(data) }),
     '',
   ];
 
@@ -138,7 +145,7 @@ function text(data) {
 
   if (stayPlanRows(data.stayPlan).length) {
     lines.push(
-      renderBlockText({ eyebrow: 'Your stay', rows: stayPlanRows(data.stayPlan) }),
+      renderScheduleText({ eyebrow: 'Your schedule', stayPlan: data.stayPlan }),
       '',
       stayPlanNote(data.addOnDropIns),
       '',
