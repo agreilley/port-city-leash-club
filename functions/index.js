@@ -5694,7 +5694,24 @@ async function runServiceOrOvernightCharge(sub, submissionId, memberId, reviewed
         .where('submissionId', '==', submissionId)
         .limit(1)
         .get();
-      if (!overnightSnap.empty) chargeScheduledFor = overnightSnap.docs[0].data().chargeScheduledFor || null;
+      if (!overnightSnap.empty) {
+        const overnightDoc = overnightSnap.docs[0];
+        const o = overnightDoc.data();
+        chargeScheduledFor = o.chargeScheduledFor || null;
+        // A public-form overnight confirmed before 2026-09-27 was charged at
+        // confirm, so its reservation was written with chargePending: false
+        // and no charge date. If that charge failed, admin's Retry lands
+        // here now, and without this nothing would ever charge it. Put it
+        // on the cron (due now, so the next run within 15 minutes charges
+        // it), but only when neither the submission nor the reservation
+        // was ever charged.
+        const everCharged = sub.paymentStatus === 'charged' || sub.lastChargeAttempt?.status === 'charged'
+          || o.chargeAttempt?.status === 'charged';
+        if (!o.chargePending && !chargeScheduledFor && !everCharged && (o.confirmedTotalCents || 0) > 0) {
+          chargeScheduledFor = Timestamp.now();
+          await overnightDoc.ref.set({ chargePending: true, chargeScheduledFor }, { merge: true });
+        }
+      }
     } catch (e) {
       console.error(`runServiceOrOvernightCharge: failed to read back chargeScheduledFor for ${submissionId}:`, e.message);
     }

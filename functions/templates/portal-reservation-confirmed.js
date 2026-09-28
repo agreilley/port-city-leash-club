@@ -103,7 +103,8 @@ function chargeSentence(data) {
   const date = formatCalendarDate(data.chargeDateStr) || data.chargeDateStr;
   return data.alreadyCharged
     ? `Your card was charged ${fmtDollars(chargeDollars(data))}${date ? ` on ${date}` : ''}.`
-    : `Your card will be charged ${fmtDollars(chargeDollars(data))} on ${date}.`;
+    : date ? `Your card will be charged ${fmtDollars(chargeDollars(data))} on ${date}.`
+    : `Your card will be charged ${fmtDollars(chargeDollars(data))}.`;
 }
 
 function subject() {
