@@ -8,9 +8,13 @@
 // pricing.js — deliberately a separate table since they're different
 // numbers for the same service (the business's margin).
 //
-// No holiday surcharge — decided against on 2026-08-27, not an
-// oversight. It is not listed on the walker Rate Card and does not
-// need to be added; do not re-introduce it without a new decision.
+// Holiday pay: decided against on 2026-08-27, then adopted 2026-09-27
+// alongside the customer holiday rate (pricing.js's HOLIDAY_RATE_PERCENT).
+// A booking confirmed with holiday dates carries a `holidayRate` stamp
+// ({percent, dates}); the walker gets that percent on top of their own pay
+// for holiday nights and holiday drop-in visits. Never on walks, and never
+// on Multiple Pets / Medication fees. Bookings without the stamp (anything
+// requested before the rate started) pay exactly as before.
 //
 // MIRRORED INTO functions/walker-pricing.js — Cloud Functions (walk/overnight
 // completion triggers, payout generation) can only deploy files inside
@@ -20,6 +24,23 @@
 // generated copy — edit here, never there.
 
 import { getDaysBetween } from './pricing.js';
+
+const cents = (n) => Math.round(n * 100) / 100;
+
+// The stamped holiday dates and percent on a booking, or null.
+function holidayStamp(overnight) {
+  const h = overnight?.holidayRate;
+  const pct = Number(h?.percent) || 0;
+  const dates = Array.isArray(h?.dates) ? h.dates : [];
+  return pct > 0 && dates.length ? { pct, dates: new Set(dates) } : null;
+}
+
+// Holiday pay for one visit on this booking: the drop-in rate times the
+// percent when the visit's date is a stamped holiday, else 0.
+export function holidayVisitPay(overnight, dateStr) {
+  const h = holidayStamp(overnight);
+  return h && h.dates.has(dateStr) ? cents(WALKER_RATES.checkin * h.pct / 100) : 0;
+}
 
 export const WALKER_RATES = {
   standard: 16,
@@ -91,9 +112,26 @@ export function calculateOvernightPayout(overnight) {
   const extraPetTotal = overnight.extraPet ? WALKER_EXTRA_PET_FEE * days : 0;
   const medicationTotal = overnight.medication ? WALKER_MEDICATION_FEE * days : 0;
 
+  // Holiday pay (holidayRate stamp): the percent on each holiday night
+  // (by the date the night starts) and each holiday drop-in visit.
+  let holidayTotal = 0;
+  const h = holidayStamp(overnight);
+  if (h) {
+    if (key === 'overnight') {
+      const startStr = start instanceof Date ? start.toISOString().slice(0, 10) : '';
+      const endStr = end instanceof Date ? end.toISOString().slice(0, 10) : '';
+      const nights = [...h.dates].filter(d => d >= startStr && d < endStr).length;
+      holidayTotal += nights * WALKER_RATES.overnight * h.pct / 100;
+      addOnDays.forEach(d => { if (h.dates.has(d.date)) holidayTotal += Number(d.visits) * WALKER_RATES.checkin * h.pct / 100; });
+    } else if (hasVisitSchedule) {
+      overnight.visitSchedule.forEach(d => { if (h.dates.has(d.date)) holidayTotal += (Number(d.visits) || 0) * WALKER_RATES.checkin * h.pct / 100; });
+    }
+    holidayTotal = cents(holidayTotal);
+  }
+
   return {
-    total: base + addOnDropInBase + extraPetTotal + medicationTotal,
-    key, base, extraPetTotal, medicationTotal, days, units, addOnDropInVisits, addOnDropInBase,
+    total: cents(base + addOnDropInBase + extraPetTotal + medicationTotal + holidayTotal),
+    key, base, extraPetTotal, medicationTotal, days, units, addOnDropInVisits, addOnDropInBase, holidayTotal,
   };
 }
 
@@ -145,7 +183,7 @@ export function calculateVisitCovers(overnight) {
     return id && id !== def ? id : '';
   };
   const covers = {};
-  const cover = (id) => (covers[id] ||= { visits: 0, baseTotal: 0, dropInTotal: 0, extraPetTotal: 0, medicationTotal: 0, amount: 0 });
+  const cover = (id) => (covers[id] ||= { visits: 0, baseTotal: 0, dropInTotal: 0, extraPetTotal: 0, medicationTotal: 0, holidayTotal: 0, amount: 0 });
 
   visits.forEach(v => {
     const id = coverOf(v);
@@ -154,6 +192,7 @@ export function calculateVisitCovers(overnight) {
     c.visits++;
     if (isCheckin) c.baseTotal += WALKER_RATES.checkin;
     else c.dropInTotal += WALKER_RATES.checkin;
+    c.holidayTotal = cents(c.holidayTotal + holidayVisitPay(overnight, v.date));
   });
 
   if (isCheckin && (overnight.extraPet || overnight.medication)) {
@@ -167,7 +206,7 @@ export function calculateVisitCovers(overnight) {
     });
   }
 
-  Object.values(covers).forEach(c => { c.amount = c.baseTotal + c.dropInTotal + c.extraPetTotal + c.medicationTotal; });
+  Object.values(covers).forEach(c => { c.amount = cents(c.baseTotal + c.dropInTotal + c.extraPetTotal + c.medicationTotal + c.holidayTotal); });
   return covers;
 }
 
@@ -178,21 +217,21 @@ export function liveOvernightPayout(overnight) {
   const p = calculateOvernightPayout(overnight);
   return {
     rateKey: p.key, baseTotal: p.base, addOnDropInBaseTotal: p.addOnDropInBase,
-    extraPetTotal: p.extraPetTotal, medicationTotal: p.medicationTotal, amount: p.total,
+    extraPetTotal: p.extraPetTotal, medicationTotal: p.medicationTotal, holidayTotal: p.holidayTotal, amount: p.total,
     covers: calculateVisitCovers(overnight),
   };
 }
 
 // One walker's share of a reservation's payout, from a payout in the
 // stamped shape (overnight.payout, or liveOvernightPayout). Returns
-// { baseTotal, dropInTotal, extraPetTotal, medicationTotal, amount }:
-// baseTotal files under the reservation's own rateKey, dropInTotal under
-// Drop-In Visit. A payout with no `covers` (every reservation stamped
+// { baseTotal, dropInTotal, extraPetTotal, medicationTotal, holidayTotal,
+// amount }: baseTotal files under the reservation's own rateKey,
+// dropInTotal under Drop-In Visit, holidayTotal under Holiday Pay. A payout with no `covers` (every reservation stamped
 // before overrides existed) is paid whole to the default, as it always was.
 // The default gets the payout minus every cover. If the default changed
 // after stamping and the new default was a covering walker, they get both.
 export function overnightPayoutShare(overnight, walkerId, payout = overnight?.payout) {
-  const share = { baseTotal: 0, dropInTotal: 0, extraPetTotal: 0, medicationTotal: 0, amount: 0 };
+  const share = { baseTotal: 0, dropInTotal: 0, extraPetTotal: 0, medicationTotal: 0, holidayTotal: 0, amount: 0 };
   if (!payout || !walkerId) return share;
   const covers = payout.covers || {};
   const sum = (field) => Object.values(covers).reduce((s, c) => s + (Number(c[field]) || 0), 0);
@@ -201,11 +240,13 @@ export function overnightPayoutShare(overnight, walkerId, payout = overnight?.pa
     const extraPetTotal = Math.max(0, (payout.extraPetTotal || 0) - sum('extraPetTotal'));
     const medicationTotal = Math.max(0, (payout.medicationTotal || 0) - sum('medicationTotal'));
     const dropInTotal = Math.max(0, (payout.addOnDropInBaseTotal || 0) - sum('dropInTotal'));
+    const holidayTotal = cents(Math.max(0, (payout.holidayTotal || 0) - sum('holidayTotal')));
     // Whatever's left after the covers is the default's base — for an
     // overnight stay that's the night rate less any covered included
     // check-ins, which is why this isn't just baseTotal minus covers' base.
-    const baseTotal = Math.max(0, (payout.amount || 0) - sum('amount') - extraPetTotal - medicationTotal - dropInTotal);
+    const baseTotal = cents(Math.max(0, (payout.amount || 0) - sum('amount') - extraPetTotal - medicationTotal - dropInTotal - holidayTotal));
     share.baseTotal += baseTotal;
+    share.holidayTotal += holidayTotal;
     share.dropInTotal += dropInTotal;
     share.extraPetTotal += extraPetTotal;
     share.medicationTotal += medicationTotal;
@@ -216,8 +257,9 @@ export function overnightPayoutShare(overnight, walkerId, payout = overnight?.pa
     share.dropInTotal += own.dropInTotal || 0;
     share.extraPetTotal += own.extraPetTotal || 0;
     share.medicationTotal += own.medicationTotal || 0;
+    share.holidayTotal += own.holidayTotal || 0;
   }
-  share.amount = share.baseTotal + share.dropInTotal + share.extraPetTotal + share.medicationTotal;
+  share.amount = cents(share.baseTotal + share.dropInTotal + share.extraPetTotal + share.medicationTotal + share.holidayTotal);
   return share;
 }
 
@@ -314,6 +356,7 @@ export function calculateEarnings(completedWalks, completedOvernights, walkerId)
     overnight: { label: 'Overnight Stay', count: 0, total: 0 },
     extraPet: { label: 'Multiple Pets', count: 0, total: 0 },
     medication: { label: 'Medication Admin', count: 0, total: 0 },
+    holiday: { label: 'Holiday Pay', count: 0, total: 0 },
   };
   let total = 0;
 
@@ -332,20 +375,22 @@ export function calculateEarnings(completedWalks, completedOvernights, walkerId)
       // generation will actually split (a pre-overrides stamp has none).
       const live = liveOvernightPayout(o);
       const payout = o.payout ? { ...live, covers: o.payout.covers || {} } : live;
-      const { baseTotal, dropInTotal, extraPetTotal, medicationTotal } = overnightPayoutShare(o, walkerId, payout);
+      const { baseTotal, dropInTotal, extraPetTotal, medicationTotal, holidayTotal } = overnightPayoutShare(o, walkerId, payout);
       if (baseTotal) { breakdown[live.rateKey].count++; breakdown[live.rateKey].total += baseTotal; total += baseTotal; }
       if (dropInTotal) { breakdown.checkin.count++; breakdown.checkin.total += dropInTotal; total += dropInTotal; }
       if (extraPetTotal) { breakdown.extraPet.count++; breakdown.extraPet.total += extraPetTotal; total += extraPetTotal; }
       if (medicationTotal) { breakdown.medication.count++; breakdown.medication.total += medicationTotal; total += medicationTotal; }
+      if (holidayTotal) { breakdown.holiday.count++; breakdown.holiday.total = cents(breakdown.holiday.total + holidayTotal); total = cents(total + holidayTotal); }
       return;
     }
-    const { key, base, extraPetTotal, medicationTotal, addOnDropInBase } = calculateOvernightPayout(o);
+    const { key, base, extraPetTotal, medicationTotal, addOnDropInBase, holidayTotal } = calculateOvernightPayout(o);
     breakdown[key].count++;
     breakdown[key].total += base;
     total += base;
     if (addOnDropInBase) { breakdown.checkin.count++; breakdown.checkin.total += addOnDropInBase; total += addOnDropInBase; }
     if (extraPetTotal) { breakdown.extraPet.count++; breakdown.extraPet.total += extraPetTotal; total += extraPetTotal; }
     if (medicationTotal) { breakdown.medication.count++; breakdown.medication.total += medicationTotal; total += medicationTotal; }
+    if (holidayTotal) { breakdown.holiday.count++; breakdown.holiday.total = cents(breakdown.holiday.total + holidayTotal); total = cents(total + holidayTotal); }
   });
 
   return { total, breakdown, walkCount: (completedWalks || []).length, overnightCount: (completedOvernights || []).length };

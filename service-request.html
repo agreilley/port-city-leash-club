@@ -748,7 +748,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
 <script type="module">
   import { createOvernightVisitPicker } from '/js/overnight-visit-picker.js';
-  import { SERVICE_PRICES as PRICES, calculateServiceTotal, calculateDropInScheduleTotal, calculateAddOnDropInTotal, isTravelDiscountService } from './pricing.js';
+  import { SERVICE_PRICES as PRICES, calculateServiceTotal, calculateDropInScheduleTotal, calculateAddOnDropInTotal, isTravelDiscountService, calculateHolidaySurcharge, HOLIDAY_RATE_PERCENT } from './pricing.js';
   import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
   import { showSuccess, showError } from '/js/status.js';
 
@@ -905,6 +905,14 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     }
     const extras = calculateAddOnDropInTotal({ addOnDropIns: service === 'overnight-stay' ? overnightPicker.split().extras : [] });
     grandTotal += extras.total;
+    // Holiday rate (pricing.js) — pet sitting on holiday dates only. Never
+    // discounted, so the Friends & Family preview below leaves it out.
+    const holiday = calculateHolidaySurcharge({
+      serviceKey: service, startDate: startInput.value, endDate: endInput.value,
+      dropInSchedule: scheduleActive ? _reqVisitSchedule : null, visitsPerDay: DEFAULT_VISITS_PER_DAY,
+      addOnDropIns: service === 'overnight-stay' ? overnightPicker.split().extras : null,
+    });
+    grandTotal += holiday.total;
     const serviceTotal = breakdown[0]?.amount ?? info.price;
     const extraPetLine = breakdown.find(b => b.label === 'Multiple pets');
     const medsLine = breakdown.find(b => b.label === 'Medication admin');
@@ -927,6 +935,9 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     }
     if (extras.total) {
       lines += `<div class="order-line"><span>Extra drop-in visits &times; ${extras.totalVisits}</span><strong>$${extras.total}</strong></div>`;
+    }
+    if (holiday.total) {
+      lines += `<div class="order-line"><span>Holiday rate (+${HOLIDAY_RATE_PERCENT}%)</span><strong>$${holiday.total}</strong></div>`;
     }
 
     // Referral discount preview — display only. Recomputed on every
@@ -969,7 +980,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           // totals (always true here: every SERVICE_PRICES entry and both
           // add-on fees are whole-dollar amounts, so preDiscountTotalCents
           // is always an exact multiple of 100).
-          previewDiscountCents = Math.round(preDiscountTotalCents * window._referralPreviewDiscountPercent / 100);
+          previewDiscountCents = Math.round((preDiscountTotalCents - Math.round(holiday.total * 100)) * window._referralPreviewDiscountPercent / 100);
           previewLineLabel = 'Friends and family discount (estimate)';
           previewNoteText = 'Applied to drop-in visits and overnight stays. Final amount is confirmed when we schedule your reservation.';
         }

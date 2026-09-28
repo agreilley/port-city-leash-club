@@ -276,7 +276,7 @@
 
 <script type="module">
   import { createOvernightVisitPicker } from '/js/overnight-visit-picker.js';
-  import { SERVICE_PRICES, calculateServiceTotal, calculateDropInScheduleTotal, calculateAddOnDropInTotal } from './pricing.js';
+  import { SERVICE_PRICES, calculateServiceTotal, calculateDropInScheduleTotal, calculateAddOnDropInTotal, calculateHolidaySurcharge, HOLIDAY_RATE_PERCENT } from './pricing.js';
   import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
   import { showSuccess, showError } from '/js/status.js';
 
@@ -481,6 +481,13 @@
     }
     const extras = calculateAddOnDropInTotal({ addOnDropIns: service === 'overnight' ? overnightPicker.split().extras : [] });
     total += extras.total;
+    // Holiday rate (pricing.js) — pet sitting on holiday dates only.
+    const holiday = calculateHolidaySurcharge({
+      serviceKey: service, startDate: start, endDate: end,
+      dropInSchedule: scheduleActive ? _reqVisitSchedule : null, visitsPerDay: DEFAULT_VISITS_PER_DAY,
+      addOnDropIns: service === 'overnight' ? overnightPicker.split().extras : null,
+    });
+    total += holiday.total;
     window._lastEstimatedTotal = total;
     const base = breakdown[0]?.amount ?? 0;
     const extraPetLine = breakdown.find(b => b.label === 'Multiple pets');
@@ -494,6 +501,7 @@
     if (extraPetLine) lines += `<div class="summary-line"><span>Multiple pets</span><strong>$${extraPetLine.amount}</strong></div>`;
     if (medsLine)     lines += `<div class="summary-line"><span>Medication admin</span><strong>$${medsLine.amount}</strong></div>`;
     if (extras.total) lines += `<div class="summary-line"><span>Extra drop-in visits × ${extras.totalVisits}</span><strong>$${extras.total}</strong></div>`;
+    if (holiday.total) lines += `<div class="summary-line"><span>Holiday rate (+${HOLIDAY_RATE_PERCENT}%)</span><strong>$${holiday.total}</strong></div>`;
 
     const priceEl = document.getElementById('summaryPrice');
     const detailEl = document.getElementById('summaryDetails');

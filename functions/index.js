@@ -5393,7 +5393,7 @@ function buildStayPlan(overnight) {
 // they're only known for a charge that already ran (the public form's
 // immediate charge) — a scheduled charge lists the confirmed total.
 async function buildStayOrder({
-  startDate, endDate, extraPet, medication, addOnDropIns, totalDollars,
+  startDate, endDate, extraPet, medication, addOnDropIns, totalDollars, holidayRate = null,
   travelDiscountPercent = 0, referralDiscountApplied = 0, creditApplied = 0, totalLabel = 'Total',
 }) {
   const {
@@ -5429,6 +5429,15 @@ async function buildStayOrder({
     const d = applyTravelDiscount(expected, [], travelDiscountPercent);
     lines.push({ label: `Friends and family discount (${travelDiscountPercent}%)`, amount: -d.discountAmount });
     expected = d.total;
+  }
+  // Holiday rate — after the discount, which never applies to it.
+  if (holidayRate?.amount > 0) {
+    const parts = [
+      ...(holidayRate.nights ? [`${holidayRate.nights} ${holidayRate.nights === 1 ? 'night' : 'nights'}`] : []),
+      ...(holidayRate.visits ? [`${holidayRate.visits} ${holidayRate.visits === 1 ? 'visit' : 'visits'}`] : []),
+    ];
+    lines.push({ label: 'Holiday rate', detail: `+${holidayRate.percent}% on ${parts.join(' and ')}`, amount: holidayRate.amount });
+    expected = round(expected + holidayRate.amount);
   }
   const confirmed = typeof totalDollars === 'number' ? totalDollars : expected;
   if (Math.abs(confirmed - expected) >= 0.005) lines.push({ label: 'Price adjustment', amount: round(confirmed - expected) });
@@ -5615,6 +5624,9 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
       // rejects them for anything else). Unlike overnightVisitPlan, this IS
       // persisted: calculateOvernightPayout pays the walker for these.
       ...(reviewed.addOnDropIns ? { addOnDropIns: reviewed.addOnDropIns } : {}),
+      // Holiday rate stamp (markDatesConfirmed) — calculateOvernightPayout
+      // pays the walker's holiday percent off these dates.
+      ...(reviewed.holidayRate ? { holidayRate: reviewed.holidayRate } : {}),
       // Per-visit tracking — see generateOvernightVisits' own comment for
       // why this is safe to write in the same create call rather than a
       // follow-up update (no payout/pricing field above depends on it).
@@ -5766,6 +5778,7 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
         extraPet: !!(reviewed.extraPet ?? reviewed.addonExtraPet),
         medication: !!(reviewed.medication ?? reviewed.addonMedication),
         addOnDropIns: reviewed.addOnDropIns,
+        holidayRate: reviewed.holidayRate || null,
         totalDollars: reviewed.amountInDollars,
         travelDiscountPercent: reviewed.travelDiscountApplied ? (reviewed.travelDiscountPercent || 0) : 0,
         referralDiscountApplied: chargeResult.referralDiscountApplied || 0,
@@ -6422,6 +6435,27 @@ exports.markDatesConfirmed = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KE
     if (!addOnDropIns.length) addOnDropIns = null;
   }
 
+  // Holiday rate (pricing.js): which holiday dates this booking touches and
+  // what the surcharge came to, for a request submitted after the rate
+  // started. Stamped onto the booking so walker pay and the confirmation
+  // email read the dates in force at confirmation, never a later edit of
+  // HOLIDAY_WINDOWS. Like everything else here it doesn't re-check the
+  // client's amountInDollars (which already includes it).
+  let holidayRate = null;
+  {
+    const { calculateHolidaySurcharge, isHolidayRateRequest } = await import('./pricing.js');
+    const h = calculateHolidaySurcharge({
+      serviceKey: service || sub.service,
+      startDate: startDate ? isoDateStr(startDate.toDate()) : null,
+      endDate: endDate ? isoDateStr(endDate.toDate()) : null,
+      dropInSchedule: Array.isArray(visitSchedule) ? visitSchedule : null,
+      visitsPerDay: parseInt(sub.visitsPerDay, 10) || 1,
+      addOnDropIns,
+      eligible: isHolidayRateRequest(sub.createdAt),
+    });
+    if (h.total > 0) holidayRate = { percent: h.percent, dates: h.dates, nights: h.nights, visits: h.visits, amount: h.total };
+  }
+
   const reviewed = {
     service: service || sub.service,
     startDate, endDate,
@@ -6457,6 +6491,7 @@ exports.markDatesConfirmed = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KE
     // overnights doc, since finalizeSubmissionIfReady rebuilds the
     // confirmation email from the submission, not from this object.
     addOnDropIns,
+    holidayRate,
   };
 
   await runServiceOrOvernightBookingDoc(sub, submissionId, sub.memberId, reviewed);
@@ -6563,6 +6598,7 @@ exports.resendBookingConfirmationEmail = onCall({
           startDate: record.startDate, endDate: record.endDate,
           extraPet: !!record.extraPet, medication: !!record.medication,
           addOnDropIns: record.addOnDropIns,
+          holidayRate: record.holidayRate || null,
           totalDollars: typeof record.confirmedTotalCents === 'number' ? record.confirmedTotalCents / 100 : undefined,
           travelDiscountPercent,
         });
@@ -7314,6 +7350,9 @@ exports.onOvernightCompleted = onDocumentUpdated({
         // Drop-In Visit instead of inflating the Overnight Stay line.
         addOnDropInVisits: payout.addOnDropInVisits,
         addOnDropInBaseTotal: payout.addOnDropInBase,
+        // Holiday pay (holidayRate stamp) — included in amount, stamped
+        // separately so it can be filed under its own Holiday Pay line.
+        holidayTotal: payout.holidayTotal || 0,
         amount: payout.total,
         ...(Object.keys(covers).length ? { covers } : {}),
         stampedAt: FieldValue.serverTimestamp(),
@@ -7603,6 +7642,7 @@ function buildPayoutCounts(walkSnaps, overnightSnaps, walkerId, { overnightPayou
     standard: { count: 0, total: 0 }, extended: { count: 0, total: 0 },
     checkin: { count: 0, total: 0 }, overnight: { count: 0, total: 0 },
     extraPet: { count: 0, total: 0 }, medication: { count: 0, total: 0 },
+    holiday: { count: 0, total: 0 },
     tips: { count: 0, total: 0 },
   };
   walkSnaps.forEach(snap => {
@@ -7619,6 +7659,7 @@ function buildPayoutCounts(walkSnaps, overnightSnaps, walkerId, { overnightPayou
     if (share.dropInTotal) { counts.checkin.count++; counts.checkin.total += share.dropInTotal; }
     if (share.extraPetTotal) { counts.extraPet.count++; counts.extraPet.total += share.extraPetTotal; }
     if (share.medicationTotal) { counts.medication.count++; counts.medication.total += share.medicationTotal; }
+    if (share.holidayTotal) { counts.holiday.count++; counts.holiday.total = Math.round((counts.holiday.total + share.holidayTotal) * 100) / 100; }
     const tipAmount = overnightTipShare(o, walkerId);
     if (tipAmount) { counts.tips.count++; counts.tips.total += tipAmount; }
   });

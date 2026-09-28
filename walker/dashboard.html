@@ -395,6 +395,7 @@ import { initializeFirestore, memoryLocalCache, collection, query, where, onSnap
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { calculateEarnings, WALKER_RATES, WALKER_EXTRA_PET_FEE, WALKER_MEDICATION_FEE, visitWalkerId, isOvernightPayee, overnightClaimFor, overnightTipShare } from '../walker-pricing.js';
+import { HOLIDAY_RATE_PERCENT } from '../pricing.js';
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
 import { AVAILABILITY_DAYS, AVAILABILITY_DAY_LABELS, AVAILABILITY_HOURS, hourLabel, hourBlockLabel, summarizeHours } from '../walker-availability.js';
 import { VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, buildStaySchedule, groupStayScheduleByDay, stayRowLabel } from '../visit-slots.js';
@@ -2002,6 +2003,8 @@ function renderEarnings() {
     ['Overnight Stay (per night)', WALKER_RATES.overnight],
     ['Multiple Pets (per night)', WALKER_EXTRA_PET_FEE],
     ['Medication Admin (per night)', WALKER_MEDICATION_FEE],
+    // Holiday pay — see HOLIDAY_RATE_PERCENT/HOLIDAY_WINDOWS, pricing.js.
+    ['Holiday dates (drop-ins and overnights)', `+${HOLIDAY_RATE_PERCENT}%`],
   ];
 
   container.innerHTML = `
@@ -2031,7 +2034,7 @@ function renderEarnings() {
       ${rateRows.map(([label, rate], i) => `
       <div style="display:flex;justify-content:space-between;padding:14px 18px;${i < rateRows.length - 1 ? 'border-bottom:1px solid rgba(0,0,0,0.05);' : ''}">
         <span style="font-size:14px;color:var(--navy);">${label}</span>
-        <span style="font-size:14px;font-weight:600;color:var(--navy);"><span style="font-family:'DM Sans',sans-serif;">$</span>${rate}</span>
+        <span style="font-size:14px;font-weight:600;color:var(--navy);">${typeof rate === 'number' ? `<span style="font-family:'DM Sans',sans-serif;">$</span>` : ''}${rate}</span>
       </div>`).join('')}
     </div>
   `;

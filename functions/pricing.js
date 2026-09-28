@@ -213,6 +213,139 @@ export function calculateAddOnDropInTotal({ addOnDropIns } = {}) {
   return { ...r, breakdown: r.breakdown.map((b) => ({ ...b, label })) };
 }
 
+// ── Holiday rate (pet sitting only, decided 2026-09-27) ──
+// Overnight stays and drop-in visits (standalone, or extra drop-ins on a
+// stay) cost HOLIDAY_RATE_PERCENT more on holiday dates. Walks never do.
+// Only the base service price goes up — Multiple Pets / Medication fees
+// don't. An overnight counts by the date its night starts; a drop-in by
+// the date of the visit. The walker gets the same percentage on top of
+// their own pay for that work (walker-pricing.js, holidayWalkerPay).
+//
+// HOLIDAY_WINDOWS are exact dates, first and last day included, entered
+// once a year (holidays move). The admin dashboard warns when the last
+// window is close (holidayWindowsRunningOut). Only requests submitted on or
+// after HOLIDAY_RATE_START_MS pay it; bookings made before keep their price.
+// At confirmation the dates that applied are stamped onto the booking
+// (markDatesConfirmed, functions/index.js) so editing this list later never
+// changes an existing booking's price or walker pay.
+export const HOLIDAY_RATE_PERCENT = 20;
+export const HOLIDAY_RATE_START_MS = Date.parse('2026-09-27T04:00:00Z');
+export const HOLIDAY_WINDOWS = [
+  { name: 'Thanksgiving', start: '2026-11-26', end: '2026-11-29' },
+  { name: 'Christmas and New Year', start: '2026-12-24', end: '2027-01-03' },
+  { name: 'Memorial Day', start: '2027-05-28', end: '2027-05-31' },
+  { name: 'Fourth of July', start: '2027-07-02', end: '2027-07-05' },
+  { name: 'Labor Day', start: '2027-09-03', end: '2027-09-06' },
+];
+
+export function isHolidayDate(dateStr) {
+  return HOLIDAY_WINDOWS.some((w) => dateStr >= w.start && dateStr <= w.end);
+}
+
+// True when the request was submitted on/after the holiday rate started.
+// createdAt may be a Firestore Timestamp, a Date, ms, or missing — a
+// request with no timestamp yet (the public form's own live estimate,
+// before submit) counts as new.
+export function isHolidayRateRequest(createdAt) {
+  if (createdAt == null) return true;
+  const ms = typeof createdAt.toMillis === 'function' ? createdAt.toMillis()
+    : typeof createdAt.seconds === 'number' ? createdAt.seconds * 1000
+    : typeof createdAt._seconds === 'number' ? createdAt._seconds * 1000
+    : new Date(createdAt).getTime();
+  return Number.isFinite(ms) && ms >= HOLIDAY_RATE_START_MS;
+}
+
+// Days before the last window ends that admin starts seeing the reminder.
+export function holidayWindowsRunningOut(now = new Date(), warnDays = 90) {
+  const last = HOLIDAY_WINDOWS.map((w) => w.end).sort().pop();
+  if (!last) return { runningOut: true, lastEnd: null };
+  const cutoff = new Date(now.getTime() + warnDays * 86400000).toISOString().slice(0, 10);
+  return { runningOut: last < cutoff, lastEnd: last };
+}
+
+function toDateStr(d) {
+  if (!d) return '';
+  if (typeof d === 'string') return d.slice(0, 10);
+  const date = typeof d.toDate === 'function' ? d.toDate() : new Date(d);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+}
+
+function dateStrsBetween(startStr, endStr, inclusiveEnd) {
+  const out = [];
+  if (!startStr || !endStr) return out;
+  const cursor = new Date(`${startStr}T12:00:00Z`);
+  const end = new Date(`${endStr}T12:00:00Z`);
+  while (inclusiveEnd ? cursor <= end : cursor < end) {
+    out.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return out;
+}
+
+// The holiday surcharge for one booking, before any discount. Returns
+// { total, breakdown, dates, nights, visits, percent }:
+//  - dates: every holiday date in the booking (start to return day) — what
+//    gets stamped for walker pay. nights/visits: how many units were bumped.
+//  - dropInSchedule: a drop-in booking's per-day counts, as {date: count}
+//    or [{date, visits}]. Without it, visitsPerDay applies to every day.
+//  - addOnDropIns: an overnight stay's extra drop-ins, [{date, visits}].
+//  - eligible: false (a request from before the start) prices at 0.
+// Walks and unknown services always return 0.
+export function calculateHolidaySurcharge({
+  serviceKey, startDate, endDate, dropInSchedule = null, visitsPerDay = 1, addOnDropIns = null, eligible = true,
+} = {}) {
+  const none = { total: 0, breakdown: [], dates: [], nights: 0, visits: 0, percent: HOLIDAY_RATE_PERCENT };
+  const key = resolveServiceKey(serviceKey);
+  if (!eligible || (key !== 'overnight-stay' && key !== 'drop-in-visit')) return none;
+  const startStr = toDateStr(startDate);
+  const endStr = toDateStr(endDate) || startStr;
+  if (!startStr) return none;
+
+  const dates = dateStrsBetween(startStr, endStr, true).filter(isHolidayDate);
+  if (!dates.length) return none;
+  const holiday = new Set(dates);
+  const bump = (price) => Math.round(price * HOLIDAY_RATE_PERCENT) / 100;
+  const dropInBump = bump(SERVICE_PRICES['drop-in-visit'].price);
+
+  let nights = 0;
+  let visits = 0;
+  if (key === 'overnight-stay') {
+    nights = dateStrsBetween(startStr, endStr, false).filter((d) => holiday.has(d)).length;
+    (addOnDropIns || []).forEach((d) => { if (holiday.has(d?.date)) visits += Number(d.visits) || 0; });
+  } else if (dropInSchedule) {
+    const entries = Array.isArray(dropInSchedule)
+      ? dropInSchedule.map((d) => [d?.date, d?.visits])
+      : Object.entries(dropInSchedule).map(([date, v]) => [date, typeof v === 'object' && v ? v.count : v]);
+    entries.forEach(([date, count]) => { if (holiday.has(date)) visits += Number(count) || 0; });
+  } else {
+    visits = dates.length * Math.max(Number(visitsPerDay) || 1, 1);
+  }
+
+  const total = Math.round((nights * bump(SERVICE_PRICES['overnight-stay'].price) + visits * dropInBump) * 100) / 100;
+  if (!total) return { ...none, dates };
+  const parts = [
+    ...(nights ? [`${nights} night${nights === 1 ? '' : 's'}`] : []),
+    ...(visits ? [`${visits} visit${visits === 1 ? '' : 's'}`] : []),
+  ];
+  return {
+    total,
+    breakdown: [{ label: `Holiday rate (+${HOLIDAY_RATE_PERCENT}%, ${parts.join(' and ')})`, amount: total }],
+    dates, nights, visits, percent: HOLIDAY_RATE_PERCENT,
+  };
+}
+
+// A pre-discount total plus its holiday surcharge. Call AFTER any Friends
+// & Family discount: that discount comes off the normal price only, and
+// the holiday rate is always charged in full.
+export function withHolidaySurcharge(priced, holiday) {
+  if (!holiday?.total) return priced;
+  return {
+    ...priced,
+    total: Math.round((priced.total + holiday.total) * 100) / 100,
+    breakdown: [...(priced.breakdown || []), ...holiday.breakdown],
+  };
+}
+
 // The ONE place discount eligibility is decided — used by both the
 // discount-application call sites (admin/dashboard.html) and the
 // server-side assertion (functions/index.js's chargeCustomerCard), so they

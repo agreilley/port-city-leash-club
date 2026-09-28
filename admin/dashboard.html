@@ -477,6 +477,7 @@
       <button class="btn-primary" onclick="openAddMemberModal()">+ Add Member</button>
     </div>
   </div>
+  <div id="holidayWindowsNotice" style="display:none;margin:0 0 16px;padding:10px 14px;border-radius:8px;background:#FEF3C7;border:1px solid #F0D28A;color:#92400E;font-size:13px;"></div>
 
   <div class="content">
 
@@ -1261,7 +1262,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { getStorage, ref as storageRef, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
-import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalkExtensionTotal, WALK_EXTENSION_PRICE, EXTRA_PET_FEE, MEDICATION_FEE, applyTravelDiscount, isTravelDiscountService, calculateAddOnDropInTotal } from '../pricing.js';
+import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalkExtensionTotal, WALK_EXTENSION_PRICE, EXTRA_PET_FEE, MEDICATION_FEE, applyTravelDiscount, isTravelDiscountService, calculateAddOnDropInTotal, calculateHolidaySurcharge, withHolidaySurcharge, isHolidayRateRequest, holidayWindowsRunningOut } from '../pricing.js';
 // Walk time-of-day slot: keys + base label + clock range, shared with every
 // other page that shows or picks one (see time-slots.js's own header
 // comment). Deliberately NOT the careers/screening availability grids —
@@ -1390,6 +1391,21 @@ function memberDogNames(member) {
 // banner — computed client-side, no stored flag. Vet is complete once its two
 // required fields are set; emergencyContacts is complete once at least one
 // contact has all three required fields.
+// Holiday rate dates (HOLIDAY_WINDOWS, pricing.js) are entered by hand once
+// a year. Past the last one, holiday bookings silently price as normal
+// days, so this nags from 90 days out.
+function renderHolidayWindowsNotice() {
+  const el = document.getElementById('holidayWindowsNotice');
+  if (!el) return;
+  const { runningOut, lastEnd } = holidayWindowsRunningOut();
+  el.style.display = runningOut ? 'block' : 'none';
+  if (runningOut) {
+    const last = lastEnd ? new Date(`${lastEnd}T12:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'none';
+    el.innerHTML = `<strong>Holiday dates need updating.</strong> The last holiday rate date on file is ${last}. Add next year's holiday dates (HOLIDAY_WINDOWS in pricing.js) so holiday bookings are charged the holiday rate.`;
+  }
+}
+renderHolidayWindowsNotice();
+
 function isMemberProfileIncomplete(member) {
   const vet = member?.vet || {};
   const vetComplete = !!(vet.practiceName && vet.phone);
@@ -5592,9 +5608,12 @@ function setVisitScheduleFieldVisible(visible) {
 function computeAndRenderDropInPricing(extraPet, medication, travelDiscountPercent) {
   syncVisitScheduleRows(_reviewItemVisitsPerDay);
   const raw = computeDropInVisitTotal(extraPet, medication);
-  const { total, breakdown } = travelDiscountPercent > 0
+  const discounted = travelDiscountPercent > 0
     ? applyTravelDiscount(raw.total, raw.breakdown, travelDiscountPercent)
     : raw;
+  const { total, breakdown } = withHolidaySurcharge(discounted, reviewHolidaySurcharge(
+    'drop-in-visit', document.getElementById('rev-start')?.value, document.getElementById('rev-end')?.value,
+  ));
   renderReviewBreakdown(breakdown, total);
   return total;
 }
@@ -5851,6 +5870,20 @@ function withAddOnDropIns(raw) {
   return { ...raw, total: raw.total + addOn.total, breakdown: [...raw.breakdown, ...addOn.breakdown] };
 }
 
+// Holiday rate (pricing.js) for the booking open in the review modal —
+// 0 for a request submitted before the rate started. Added AFTER any
+// Friends & Family discount (withHolidaySurcharge), never discounted.
+let _reviewHolidayEligible = false;
+function reviewHolidaySurcharge(service, startDate, endDate) {
+  const key = resolveServiceKey(service);
+  return calculateHolidaySurcharge({
+    serviceKey: key, startDate, endDate,
+    dropInSchedule: key === 'drop-in-visit' ? _reviewVisitSchedule : null,
+    addOnDropIns: key === 'overnight-stay' ? addOnDropInList() : null,
+    eligible: _reviewHolidayEligible,
+  });
+}
+
 function addOnDropInFieldHTML(item) {
   const asked = item ? requestedAddOnDropInsSummary(item) : '';
   return `<div class="form-field" id="rev-addon-dropins-field" style="display:none;grid-column:1 / -1;"><label>Extra Drop-In Visits <span style="font-weight:400;color:var(--text-light);">(charged per visit, added to the total above)</span></label>${asked ? `<div style="font-size:12px;color:#92400E;background:#FEF3C7;border-radius:4px;padding:6px 8px;margin-bottom:6px;">Customer asked for extras: ${escapeHtml(asked)}. Pre-filled below. Adjust before confirming.</div>` : ''}<div id="rev-addon-dropins"></div></div>`;
@@ -5925,6 +5958,7 @@ function renderServiceRequestReview(item) {
   _reviewVisitSchedule = {};
   _reviewOvernightVisitSchedule = seedIncludedDropInsFromRequest(item);
   _reviewAddOnDropIns = seedAddOnDropInsFromRequest(item);
+  _reviewHolidayEligible = isHolidayRateRequest(item.createdAt);
   _reviewItemVisitsPerDay = parseInt(item.visitsPerDay, 10) || 1;
   _reviewItemVisitSchedule = {};
   (item.visitSchedule || []).forEach(({ date, visits }) => {
@@ -6074,9 +6108,9 @@ window.reviewRecalcService = () => {
     // allowlist (isTravelDiscountService), not just "not drop-in" and not a
     // unit check — see that function's own comment in pricing.js for why.
     const isTravelService = isTravelDiscountService(service);
-    const applied = (isTravelService && travelDiscountPercent > 0)
+    const applied = withHolidaySurcharge((isTravelService && travelDiscountPercent > 0)
       ? applyTravelDiscount(raw.total, raw.breakdown, travelDiscountPercent)
-      : raw;
+      : raw, reviewHolidaySurcharge(service, startDate, endDate));
     total = applied.total;
     renderReviewBreakdown(applied.breakdown, applied.total);
   }
@@ -6095,6 +6129,7 @@ function renderOvernightReview(item) {
   _reviewVisitSchedule = {};
   _reviewOvernightVisitSchedule = seedIncludedDropInsFromRequest(item);
   _reviewAddOnDropIns = seedAddOnDropInsFromRequest(item);
+  _reviewHolidayEligible = isHolidayRateRequest(item.createdAt);
   _reviewItemVisitsPerDay = parseInt(item.visitsPerDay, 10) || 1;
   _reviewItemVisitSchedule = {};
   (item.visitSchedule || []).forEach(({ date, visits }) => {
@@ -6192,9 +6227,9 @@ window.reviewRecalcOvernight = () => {
     const raw = withAddOnDropIns(
       calculateServiceTotal({ serviceKey: service, startDate, endDate, extraPet, medication }),
     );
-    const applied = travelDiscountPercent > 0
+    const applied = withHolidaySurcharge(travelDiscountPercent > 0
       ? applyTravelDiscount(raw.total, raw.breakdown, travelDiscountPercent)
-      : raw;
+      : raw, reviewHolidaySurcharge(service, startDate, endDate));
     total = applied.total;
     renderReviewBreakdown(applied.breakdown, applied.total);
     syncOvernightVisitScheduleRows();
@@ -6379,7 +6414,8 @@ window.confirmRequestDates = async (submissionId, item) => {
         const r = isCheckin
           ? computeDropInVisitTotal(extraPet, medication)
           : withAddOnDropIns(calculateServiceTotal({ serviceKey: service, startDate: startDateStr, endDate: endDateStr, extraPet, medication }));
-        const applied = travelDiscountPercent > 0 ? applyTravelDiscount(r.total, r.breakdown, travelDiscountPercent) : r;
+        const applied = withHolidaySurcharge(travelDiscountPercent > 0 ? applyTravelDiscount(r.total, r.breakdown, travelDiscountPercent) : r,
+          reviewHolidaySurcharge(service, startDateStr, endDateStr));
         amountInDollars = applied.total; unitCount = isCheckin ? r.totalVisits : r.unitCount;
         travelDiscountApplied = travelDiscountPercent > 0;
         travelDiscountPercentApplied = travelDiscountApplied ? travelDiscountPercent : 0;
@@ -6403,7 +6439,8 @@ window.confirmRequestDates = async (submissionId, item) => {
         travelDiscountPercentApplied = travelDiscountApplied ? travelDiscountPercent : 0;
       } else {
         const r = computeDropInVisitTotal(extraPet, medication);
-        const applied = travelDiscountPercent > 0 ? applyTravelDiscount(r.total, r.breakdown, travelDiscountPercent) : r;
+        const applied = withHolidaySurcharge(travelDiscountPercent > 0 ? applyTravelDiscount(r.total, r.breakdown, travelDiscountPercent) : r,
+          reviewHolidaySurcharge(service, startDateStr, endDateStr));
         amountInDollars = applied.total; unitCount = r.totalVisits;
         travelDiscountApplied = travelDiscountPercent > 0;
         travelDiscountPercentApplied = travelDiscountApplied ? travelDiscountPercent : 0;
@@ -6417,7 +6454,8 @@ window.confirmRequestDates = async (submissionId, item) => {
       // "not drop-in" and not a unit check (see isTravelDiscountService's
       // own comment in pricing.js).
       const isTravelService = isTravelDiscountService(service);
-      const applied = (isTravelService && travelDiscountPercent > 0) ? applyTravelDiscount(r.total, r.breakdown, travelDiscountPercent) : r;
+      const applied = withHolidaySurcharge((isTravelService && travelDiscountPercent > 0) ? applyTravelDiscount(r.total, r.breakdown, travelDiscountPercent) : r,
+        reviewHolidaySurcharge(service, startDateStr, endDateStr));
       amountInDollars = applied.total; unitCount = r.unitCount;
       travelDiscountApplied = isTravelService && travelDiscountPercent > 0;
       travelDiscountPercentApplied = travelDiscountApplied ? travelDiscountPercent : 0;

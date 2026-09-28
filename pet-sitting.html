@@ -383,6 +383,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     </div>
 
     <p style="text-align:center;font-size:13px;color:var(--text-light);margin-top:24px;">Medication administration (+$<span id="fee-medication"></span>) and additional pets (+$<span id="fee-extrapet"></span>) are available as add-ons.</p>
+    <p style="text-align:center;font-size:13px;color:var(--text-light);margin-top:8px;">Holiday rates are <span id="holiday-pct"></span>% higher: <span id="holiday-dates"></span>.</p>
 
   </div>
 </section>
@@ -693,7 +694,18 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   });
 </script>
 <script type="module">
-  import { SERVICE_PRICES, MEDICATION_FEE, EXTRA_PET_FEE } from './pricing.js';
+  import { SERVICE_PRICES, MEDICATION_FEE, EXTRA_PET_FEE, HOLIDAY_RATE_PERCENT, HOLIDAY_WINDOWS } from './pricing.js';
+  // Upcoming holiday windows only, e.g. "Thanksgiving (Nov 26–29)".
+  {
+    const today = new Date().toISOString().slice(0, 10);
+    const md = (d) => new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const range = (w) => w.start.slice(0, 7) === w.end.slice(0, 7)
+      ? `${md(w.start)}\u2013${Number(w.end.slice(8))}` : `${md(w.start)}\u2013${md(w.end)}`;
+    const upcoming = HOLIDAY_WINDOWS.filter(w => w.end >= today).map(w => `${w.name} (${range(w)})`);
+    document.getElementById('holiday-pct').textContent = HOLIDAY_RATE_PERCENT;
+    document.getElementById('holiday-dates').textContent = upcoming.join(', ');
+    if (!upcoming.length) document.getElementById('holiday-pct').parentElement.style.display = 'none';
+  }
   document.getElementById('price-dropin').textContent = '$' + SERVICE_PRICES['drop-in-visit'].price;
   document.getElementById('price-overnight').textContent = '$' + SERVICE_PRICES['overnight-stay'].price;
   document.getElementById('fee-medication').textContent = MEDICATION_FEE;
