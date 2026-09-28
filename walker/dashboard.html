@@ -1911,8 +1911,8 @@ function renderEarnings() {
   // (chargeWalkTip's 'overnight' case), not per-visit — but visits[] is
   // still checked too, for any older record that predates that change.
   function tipAmount(tip) { return tip?.chargeStatus === 'charged' ? tip.amountCents / 100 : 0; }
-  // This walker's tips only — the reservation tip goes to the default
-  // walker, not to someone who covered a visit (overnightTipShare).
+  // This walker's tips only — the reservation tip is split by each walker's
+  // share of the pay (overnightTipShare).
   function overnightTipAmount(o) {
     return overnightTipShare(o, me);
   }
@@ -1952,11 +1952,7 @@ function renderEarnings() {
   let tipTotal = 0, tipCount = 0;
   completedWalks.forEach(w => { const t = tipAmount(w.tip); if (t) { tipTotal += t; tipCount++; } });
   completedOvernights.forEach(o => {
-    if ((o.walkerId || '').trim() === me) { const t = tipAmount(o.tip); if (t) { tipTotal += t; tipCount++; } }
-    (o.visits || []).forEach(v => {
-      if (visitWalkerId(v, o) !== me) return;
-      const vt = tipAmount(v.tip); if (vt) { tipTotal += vt; tipCount++; }
-    });
+    const t = overnightTipAmount(o); if (t) { tipTotal += t; tipCount++; }
   });
 
   function fmtPeriod(p) {

@@ -238,11 +238,58 @@ export function overnightClaimFor(overnight, walkerId) {
   return overnight?.payoutIds?.[walkerId] || null;
 }
 
-// Tips on this reservation that go to this walker. The reservation-wide tip
-// goes to the default. An older per-visit tip goes to whoever did the visit.
+// Reservation-wide tips charged from this moment on are split between the
+// walkers by their share of the reservation's pay (overnightTipSplit).
+// Earlier tips stay whole with the default walker, as they were paid, so
+// a covering walker can't pick up a share of a tip already paid out.
+export const PROPORTIONAL_TIP_START_MS = Date.parse('2026-09-27T04:00:00Z');
+
+function tipChargedAtMs(tip) {
+  const at = tip?.chargedAt;
+  if (!at) return 0;
+  if (typeof at.toMillis === 'function') return at.toMillis();
+  if (typeof at.seconds === 'number') return at.seconds * 1000;
+  if (typeof at._seconds === 'number') return at._seconds * 1000;
+  return new Date(at).getTime() || 0;
+}
+
+// The reservation-wide tip as { [walkerId]: dollars }. Each payee gets the
+// tip in proportion to their share of the reservation's pay: $15 and $5 of
+// pay split a $20 tip $15/$5. Worked in cents, largest remainder first, so
+// the shares always add up to the exact tip; a tie goes to the default.
+// Reads the stamped payout (tips only exist on completed reservations),
+// falling back to a live one. Empty when the tip isn't charged.
+export function overnightTipSplit(overnight) {
+  const tip = overnight?.tip;
+  if (tip?.chargeStatus !== 'charged' || !(tip.amountCents > 0)) return {};
+  const def = (overnight?.walkerId || '').trim();
+  if (tipChargedAtMs(tip) < PROPORTIONAL_TIP_START_MS) {
+    return def ? { [def]: tip.amountCents / 100 } : {};
+  }
+  const payout = overnight.payout || liveOvernightPayout(overnight);
+  const payees = [...new Set([def, ...Object.keys(payout.covers || {})].filter(Boolean))];
+  const weights = payees.map(id => Math.max(0, overnightPayoutShare(overnight, id, payout).amount));
+  const totalWeight = weights.reduce((s, w) => s + w, 0);
+  if (!totalWeight) return def ? { [def]: tip.amountCents / 100 } : {};
+
+  const exact = weights.map(w => (tip.amountCents * w) / totalWeight);
+  const cents = exact.map(Math.floor);
+  let left = tip.amountCents - cents.reduce((s, c) => s + c, 0);
+  payees.map((id, i) => i)
+    .sort((a, b) => (exact[b] - cents[b]) - (exact[a] - cents[a]) || weights[b] - weights[a] || a - b)
+    .forEach(i => { if (left > 0) { cents[i]++; left--; } });
+
+  const split = {};
+  payees.forEach((id, i) => { if (cents[i]) split[id] = cents[i] / 100; });
+  return split;
+}
+
+// Tips on this reservation that go to this walker: their share of the
+// reservation-wide tip (overnightTipSplit), plus any older per-visit tip
+// on a visit they did.
 export function overnightTipShare(overnight, walkerId) {
   const charged = (tip) => (tip?.chargeStatus === 'charged' ? tip.amountCents / 100 : 0);
-  let total = walkerId && walkerId === (overnight?.walkerId || '').trim() ? charged(overnight?.tip) : 0;
+  let total = walkerId ? (overnightTipSplit(overnight)[walkerId] || 0) : 0;
   (Array.isArray(overnight?.visits) ? overnight.visits : []).forEach(v => {
     if (visitWalkerId(v, overnight) === walkerId) total += charged(v.tip);
   });
