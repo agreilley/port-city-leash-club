@@ -5567,13 +5567,22 @@ function syncVisitScheduleRows(defaultVisits) {
 // actually open" without guessing from DOM shape.
 let _reviewRecalcFn = null;
 
+// A day's visit times after its count changes: the times already picked
+// stay put (a shrink drops the last ones), and each added visit takes the
+// next default time for the new count that the day isn't already using.
+// The day is then listed in time-of-day order. Used by all three review
+// grids so a count change never wipes a time admin already chose.
+function resizeSlots(slots, count, defaults) {
+  const kept = (slots || []).slice(0, count);
+  const unused = [...defaults];
+  kept.forEach(slot => { const i = unused.indexOf(slot); if (i !== -1) unused.splice(i, 1); });
+  return [...kept, ...unused.slice(0, count - kept.length)]
+    .sort((a, b) => VISIT_SLOTS.indexOf(a) - VISIT_SLOTS.indexOf(b));
+}
+
 window.updateVisitScheduleCount = (dateStr, value) => {
   const count = Math.max(0, parseInt(value, 10) || 0);
-  // Regenerates slots from scratch on every count change rather than
-  // preserving prior per-visit picks — simpler than reconciling "which of
-  // the old slots survive a shrink/grow," and the admin can still re-pick
-  // any slot afterward before confirming.
-  _reviewVisitSchedule[dateStr] = { count, slots: defaultSlotsForCount(count) };
+  _reviewVisitSchedule[dateStr] = { count, slots: resizeSlots(_reviewVisitSchedule[dateStr]?.slots, count, defaultSlotsForCount(count)) };
   _reviewRecalcFn?.();
 };
 
@@ -5721,7 +5730,7 @@ function syncOvernightVisitScheduleRows() {
 // price recalculation.
 window.updateOvernightVisitScheduleCount = (dateStr, value) => {
   const count = Math.max(0, parseInt(value, 10) || 0);
-  _reviewOvernightVisitSchedule[dateStr] = { count, slots: defaultOvernightSlotsForCount(count) };
+  _reviewOvernightVisitSchedule[dateStr] = { count, slots: resizeSlots(_reviewOvernightVisitSchedule[dateStr]?.slots, count, defaultOvernightSlotsForCount(count)) };
   syncOvernightVisitScheduleRows();
 };
 
@@ -5811,7 +5820,7 @@ function syncAddOnDropInRows() {
 
 window.updateAddOnDropInCount = (dateStr, value) => {
   const count = Math.min(10, Math.max(0, parseInt(value, 10) || 0));
-  _reviewAddOnDropIns[dateStr] = { count, slots: defaultOvernightSlotsForCount(count) };
+  _reviewAddOnDropIns[dateStr] = { count, slots: resizeSlots(_reviewAddOnDropIns[dateStr]?.slots, count, defaultOvernightSlotsForCount(count)) };
   _reviewRecalcFn?.(); // priced — re-syncs rows and recomputes the total
 };
 
