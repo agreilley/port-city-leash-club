@@ -210,6 +210,7 @@
             <label>End Date</label>
             <input type="date" id="endDate" name="end-date" onchange="updateSummary()">
           </div>
+          <div class="field full" id="holidayNotice" style="display:none;background:#FEF3C7;border:1px solid #F0D28A;color:#92400E;border-radius:8px;padding:10px 14px;font-size:13px;line-height:1.5;"></div>
           <div class="field" id="timeSlotField" style="display:none;">
             <label>Time of Day</label>
             <select id="timeSlotSelect" name="time-slot" onchange="updateSummary()"></select>
@@ -434,6 +435,7 @@
     const start   = document.getElementById('startDate').value;
 
     const noteEl = document.getElementById('walkDateNote');
+    document.getElementById('holidayNotice').style.display = 'none';
     if (service !== 'overnight') overnightPicker.reset();
     if (isWalkChoice(service)) {
       document.getElementById('visitScheduleField').style.display = 'none';
@@ -488,6 +490,9 @@
       addOnDropIns: service === 'overnight' ? overnightPicker.split().extras : null,
     });
     total += holiday.total;
+    const holidayNotice = document.getElementById('holidayNotice');
+    holidayNotice.style.display = holiday.total ? 'block' : 'none';
+    holidayNotice.textContent = holiday.total ? `Your dates include a holiday. Pet sitting on holidays is ${HOLIDAY_RATE_PERCENT}% more, and it's included in your estimate.` : '';
     window._lastEstimatedTotal = total;
     const base = breakdown[0]?.amount ?? 0;
     const extraPetLine = breakdown.find(b => b.label === 'Multiple pets');

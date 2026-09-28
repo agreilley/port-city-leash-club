@@ -380,6 +380,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           <label for="end-date">End Date</label>
           <input id="end-date" name="end-date" type="date">
         </div>
+        <div class="field full" id="holidayNotice" style="display:none;background:#FEF3C7;border:1px solid #F0D28A;color:#92400E;border-radius:8px;padding:10px 14px;font-size:13px;line-height:1.5;"></div>
         <div class="field" id="time-slot-field">
           <label for="time-slot">Time Slot</label>
           <!-- Populated by the module script below, from time-slots.js. -->
@@ -865,6 +866,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   function updateSummary() {
     const service  = serviceSelect.value;
     const info     = PRICES[service];
+    document.getElementById('holidayNotice').style.display = 'none';
     if (!info) return;
 
     const isWalk    = service === 'standard-walk' || service === 'extended-walk';
@@ -913,6 +915,9 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       addOnDropIns: service === 'overnight-stay' ? overnightPicker.split().extras : null,
     });
     grandTotal += holiday.total;
+    const holidayNotice = document.getElementById('holidayNotice');
+    holidayNotice.style.display = holiday.total ? 'block' : 'none';
+    holidayNotice.textContent = holiday.total ? `Your dates include a holiday. Pet sitting on holidays is ${HOLIDAY_RATE_PERCENT}% more, and it's included in your estimate.` : '';
     const serviceTotal = breakdown[0]?.amount ?? info.price;
     const extraPetLine = breakdown.find(b => b.label === 'Multiple pets');
     const medsLine = breakdown.find(b => b.label === 'Medication admin');
