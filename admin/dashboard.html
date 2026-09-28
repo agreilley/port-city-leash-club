@@ -5371,11 +5371,10 @@ window.openRequestItem = async (id) => {
       ? () => declineOvernightRequest(item.id, item)
       : () => declineServiceRequest(item.id, item);
   } else if (isUnresolvedServiceRequest) {
-    // Check-ins schedule the charge for 24 hours out (see
-    // runServiceOrOvernightCharge, functions/index.js) rather than charging
-    // now — walks and anonymous overnight-stay bookings still charge
-    // immediately, so they keep the original label.
-    actionBtn.textContent = resolveServiceKey(item.service) === 'drop-in-visit' ? 'Confirm and schedule charge' : 'Confirm & Charge';
+    // Pet sitting (drop-ins and overnight stays) schedules the charge for 24
+    // hours out (see runServiceOrOvernightCharge, functions/index.js) rather
+    // than charging now — only a walk still charges immediately.
+    actionBtn.textContent = SERVICE_PRICES[resolveServiceKey(item.service)]?.unit === 'night' ? 'Confirm and schedule charge' : 'Confirm & Charge';
     actionBtn.style.display = 'block';
     actionBtn.onclick = () => confirmRequestDates(item.id, item);
     declineBtn.style.display = 'block';
@@ -6367,7 +6366,7 @@ window.confirmRequestDates = async (submissionId, item) => {
     }
   }
   const isOvernightRequest = item.type === 'overnight_request';
-  const originalLabel = isOvernightRequest || resolveServiceKey(item.service) === 'drop-in-visit'
+  const originalLabel = isOvernightRequest || SERVICE_PRICES[resolveServiceKey(item.service)]?.unit === 'night'
     ? 'Confirm and schedule charge' : 'Confirm & Charge';
   btn.textContent = 'Confirming…'; btn.disabled = true;
   try {

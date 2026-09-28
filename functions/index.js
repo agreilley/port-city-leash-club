@@ -1143,6 +1143,68 @@ exports.cancelOvernightReservation = onCall({ secrets: [RESEND_API_KEY] }, async
 // billing via createAuthenticatedSetupIntent, and referral-field copying
 // moved to completeMeetGreetAndCreateAccount — see its own comment.
 
+// What a charge of amountInCentsRequested would take off for this member,
+// from their billing doc: pendingReferralCredit first, then (only before
+// their first payment is recorded) the new-member referral discount. The
+// ONE place this math lives — chargeCustomerCard charges with it and the
+// confirmation emails preview it (previewChargeCredits), so an email can't
+// promise a different credit than the charge takes. Pure reads, commits
+// nothing.
+//
+// New-member referral discount — a separate mechanism from
+// pendingReferralCredit (that one only ever holds a balance from a PRIOR
+// completed payment; a brand-new Travel-tier member has nothing pending yet). Decided fresh right
+// here, a pure read that commits nothing (see resolveNewMemberReferralDiscount),
+// so a retried/failed charge safely re-evaluates instead of trusting a stale
+// decision. Gated on billingData.referralCreditChecked: once this member's
+// first-payment outcome has ever been recorded, every later chargeSavedCard
+// call (a returning Travel-tier client's next booking) must never re-discount
+// them again. Capped at 50% of the ORIGINAL requested amount — never more than
+// half off any one charge — and separately bounded by whatever's left after
+// the pendingReferralCredit application above, so the two mechanisms can never
+// combine to charge less than $0. Applies ONLY to this one charge: whatever
+// the cap leaves unclaimed is forfeited, not carried forward or credited
+// later — a $25 drop-in visit against a $50 code caps the discount at
+// $12.50, and the other $37.50 is simply gone. Deliberate: the code's full
+// face value was never a guarantee, only an upper bound on this charge.
+async function computeChargeCredits(memberId, billingData, amountInCentsRequested) {
+  let creditAppliedCents = 0;
+  const pendingCredit = billingData.pendingReferralCredit || 0;
+  if (pendingCredit > 0) {
+    creditAppliedCents = Math.min(Math.round(pendingCredit * 100), amountInCentsRequested);
+  }
+  let referralDiscount = null;
+  let discountCents = 0;
+  if (!billingData.referralCreditChecked) {
+    const memberSnap = await db.collection('members').doc(memberId).get();
+    const memberData = memberSnap.data();
+    if (memberData) {
+      referralDiscount = await resolveNewMemberReferralDiscount(memberId, billingData, memberData);
+      if (referralDiscount.decision === 'approved') {
+        const cappedAtHalf = Math.floor(amountInCentsRequested / 2);
+        const remainingAfterPendingCredit = Math.max(0, amountInCentsRequested - creditAppliedCents);
+        discountCents = Math.min(referralDiscount.discountCents, cappedAtHalf, remainingAfterPendingCredit);
+      }
+    }
+  }
+  return { creditAppliedCents, discountCents, referralDiscount };
+}
+
+// The credits a not-yet-run charge is expected to take, in dollars, for a
+// confirmation email. Best-effort: a failed read previews no credit rather
+// than blocking the email. The real charge re-decides at charge time, so if
+// something else uses the credit first, it can come out smaller than shown.
+async function previewChargeCredits(memberId, amountInDollars) {
+  try {
+    const billingData = (await billingRef(memberId).get()).data() || {};
+    const { creditAppliedCents, discountCents } = await computeChargeCredits(memberId, billingData, Math.round((amountInDollars || 0) * 100));
+    return { creditApplied: creditAppliedCents / 100, referralDiscountApplied: discountCents / 100 };
+  } catch (e) {
+    console.error(`previewChargeCredits: couldn't preview credits for ${memberId}:`, e.message);
+    return { creditApplied: 0, referralDiscountApplied: 0 };
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Core one-time-charge logic, extracted from chargeSavedCard below so it can
 // be shared with chargeScheduledReservations (the 24h-delayed reservation
@@ -1270,42 +1332,7 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
   // this charge's own amount (never a negative charge, never over-applies).
   // Cents throughout to avoid floating-point drift on the subtraction.
   const amountInCentsRequested = Math.round(amountInDollars * 100);
-  let creditAppliedCents = 0;
-  const pendingCredit = billingData.pendingReferralCredit || 0;
-  if (pendingCredit > 0) {
-    creditAppliedCents = Math.min(Math.round(pendingCredit * 100), amountInCentsRequested);
-  }
-
-  // New-member referral discount — a separate mechanism from pendingReferralCredit
-  // above (that one only ever holds a balance from a PRIOR completed payment; a
-  // brand-new Travel-tier member has nothing pending yet). Decided fresh right
-  // here, a pure read that commits nothing (see resolveNewMemberReferralDiscount),
-  // so a retried/failed charge safely re-evaluates instead of trusting a stale
-  // decision. Gated on billingData.referralCreditChecked: once this member's
-  // first-payment outcome has ever been recorded, every later chargeSavedCard
-  // call (a returning Travel-tier client's next booking) must never re-discount
-  // them again. Capped at 50% of the ORIGINAL requested amount — never more than
-  // half off any one charge — and separately bounded by whatever's left after
-  // the pendingReferralCredit application above, so the two mechanisms can never
-  // combine to charge less than $0. Applies ONLY to this one charge: whatever
-  // the cap leaves unclaimed is forfeited, not carried forward or credited
-  // later — a $25 drop-in visit against a $50 code caps the discount at
-  // $12.50, and the other $37.50 is simply gone. Deliberate: the code's full
-  // face value was never a guarantee, only an upper bound on this charge.
-  let referralDiscount = null;
-  let discountCents = 0;
-  if (!billingData.referralCreditChecked) {
-    const memberSnap = await db.collection('members').doc(memberId).get();
-    const memberData = memberSnap.data();
-    if (memberData) {
-      referralDiscount = await resolveNewMemberReferralDiscount(memberId, billingData, memberData);
-      if (referralDiscount.decision === 'approved') {
-        const cappedAtHalf = Math.floor(amountInCentsRequested / 2);
-        const remainingAfterPendingCredit = Math.max(0, amountInCentsRequested - creditAppliedCents);
-        discountCents = Math.min(referralDiscount.discountCents, cappedAtHalf, remainingAfterPendingCredit);
-      }
-    }
-  }
+  const { creditAppliedCents, discountCents, referralDiscount } = await computeChargeCredits(memberId, billingData, amountInCentsRequested);
 
   const chargeAmountInCents = amountInCentsRequested - creditAppliedCents - discountCents;
   const creditApplied = creditAppliedCents / 100;
@@ -5207,13 +5234,12 @@ exports.applyReferralCodeToMember = onCall({}, async (request) => {
 // from confirmServiceRequest/confirmOvernight (admin/dashboard.html):
 //   (a) service_request, walk            -> walks/{id} doc, charged immediately
 //   (b) service_request, drop-in-visit   -> overnights/{id} doc, charge deferred 24h (cron)
-//   (c) service_request, overnight-stay  -> overnights/{id} doc, charged immediately
-//       (the public form's overnight stay. It used to get NO doc at all,
-//       which is why a confirmed one was invisible on the admin calendar,
-//       on the walker dashboard, and in payouts — fixed 2026-09-22. Its
-//       charge timing is unchanged: immediate, NOT the 24h cron, which is
-//       why its doc alone carries chargePending: false. See the comment
-//       inside runServiceOrOvernightBookingDoc.)
+//   (c) service_request, overnight-stay  -> overnights/{id} doc, charge deferred 24h (cron)
+//       (the public form's overnight stay. It used to get NO doc at all —
+//       fixed 2026-09-22 — and was charged immediately until 2026-09-27,
+//       which failed for every new client without a card yet and was
+//       never retried once they added one. See the comment inside
+//       runServiceOrOvernightBookingDoc.)
 //   (d) overnight_request (any service)  -> overnights/{id} doc, charge deferred 24h (cron)
 // Pricing itself is NOT re-derived here — amountInDollars/visitSchedule
 // arrive via `reviewed`, already computed client-side by the admin's
@@ -5543,9 +5569,6 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
   // generated no payout. Writing the doc puts it on the same footing as the
   // identical stay booked through the member portal.
   //
-  // What stays different is WHO charges it, and that difference is the
-  // reason this can't simply reuse the branch wholesale — see isCronCharged.
-  //
   // Guarded on unit === 'night' (plus isOvernightRequest unconditionally,
   // whose reviewed.service can legitimately be absent — see the serviceType
   // line below, which already falls back for exactly that case) rather than
@@ -5555,26 +5578,18 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
   // calendar as an overnight and pay a walker the overnight rate for a
   // service nobody priced.
   if (isOvernightRequest || serviceInfo?.unit === 'night') {
-    // Charge ownership, and the only field-level difference between the two
-    // kinds of reservation this branch now writes:
-    //   - cron-charged (drop-in via either form, any overnight_request):
-    //     24-hour window before the card is touched, same as today — the
-    //     member has a real chance to change plans.
-    //     chargeScheduledReservations (unchanged) is what actually charges
-    //     it once chargeScheduledFor passes; runServiceOrOvernightCharge
-    //     does nothing for this case beyond recording
-    //     paymentStatus: 'scheduled'.
-    //   - public-form overnight stay: charged IMMEDIATELY by
-    //     runServiceOrOvernightCharge, exactly as it is today — this fix
-    //     deliberately does not move that customer's charge timing.
-    // So that second kind must never carry chargePending: true, or the cron
-    // would charge a card that was already charged minutes earlier. Every
-    // chargePending reader is an equality filter on `true`
-    // (chargeScheduledReservations' query, the card-removal guard in
-    // requestCardRemoval, portal-account.html's own notices), so writing
-    // false keeps the field's shape consistent while staying invisible to
-    // all of them.
-    const isCronCharged = isCheckin || isOvernightRequest;
+    // Every reservation this branch writes is charged by the cron
+    // (chargeScheduledReservations) 24 hours after confirming: the member
+    // gets a window to change plans before their card is touched, and a
+    // member who hasn't added a card yet is retried automatically (backoff
+    // over about a week) instead of failing once at confirm with nothing
+    // retrying it after they add one. The public form's overnight stay was
+    // charged immediately until 2026-09-27; it moved to the cron for exactly
+    // that no-card-yet case (a new client can't add a card until after the
+    // meet and greet). runServiceOrOvernightCharge only records
+    // paymentStatus: 'scheduled' for all of these, so nothing charges them
+    // twice.
+    const isCronCharged = true;
     const chargeScheduledFor = isCronCharged
       ? Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000))
       : null;
@@ -5663,7 +5678,9 @@ async function runServiceOrOvernightCharge(sub, submissionId, memberId, reviewed
   const isCheckin = serviceKey === 'drop-in-visit';
   const subRef = db.collection('submissions').doc(submissionId);
 
-  if (isCheckin || isOvernightRequest) {
+  // Every pet-sitting reservation (anything with an overnights doc — see
+  // runServiceOrOvernightBookingDoc) is charged by the cron, never here.
+  if (isCheckin || isOvernightRequest || SERVICE_PRICES[serviceKey]?.unit === 'night') {
     await subRef.set({ paymentStatus: 'scheduled' }, { merge: true });
     // The real chargeScheduledFor was already computed and persisted onto
     // the overnights doc by runServiceOrOvernightBookingDoc, which runs
@@ -5684,7 +5701,7 @@ async function runServiceOrOvernightCharge(sub, submissionId, memberId, reviewed
     return { paymentStatus: 'scheduled', chargeScheduledFor };
   }
 
-  // Immediate charge — walk, or overnight-stay via the public form.
+  // Immediate charge — a walk.
   // amountInDollars <= 0 means nothing to charge (no card, or admin zeroed
   // it out) — chargeAndTrackPayment's exact contract, preserved here.
   let paymentStatus, chargeError = null, creditApplied = 0, referralDiscountApplied = 0;
@@ -5762,6 +5779,15 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
   // overnights doc already exists by now (runServiceOrOvernightBookingDoc
   // runs in markDatesConfirmed, before finalize sends this). Best-effort:
   // a failed read just omits the plan, never blocks the email.
+  // Credits the charge takes: known exactly for a charge that already ran;
+  // for a scheduled one (every pet-sitting reservation), previewed from the
+  // member's billing doc with the same math the charge will use.
+  const isScheduledCharge = chargeResult.paymentStatus === 'scheduled';
+  const credits = isScheduledCharge
+    ? await previewChargeCredits(memberId, reviewed.amountInDollars)
+    : { creditApplied: chargeResult.creditApplied || 0, referralDiscountApplied: chargeResult.referralDiscountApplied || 0 };
+  const hasCredits = credits.creditApplied > 0 || credits.referralDiscountApplied > 0;
+
   let stayPlan = null;
   let order = null;
   if (serviceKey === 'overnight-stay') {
@@ -5781,9 +5807,9 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
         holidayRate: reviewed.holidayRate || null,
         totalDollars: reviewed.amountInDollars,
         travelDiscountPercent: reviewed.travelDiscountApplied ? (reviewed.travelDiscountPercent || 0) : 0,
-        referralDiscountApplied: chargeResult.referralDiscountApplied || 0,
-        creditApplied: chargeResult.creditApplied || 0,
-        totalLabel: chargeResult.paymentStatus === 'charged' ? 'Total charged' : 'Total',
+        referralDiscountApplied: credits.referralDiscountApplied,
+        creditApplied: credits.creditApplied,
+        totalLabel: chargeResult.paymentStatus === 'charged' ? 'Total charged' : hasCredits ? 'Total to be charged' : 'Total',
       });
     } catch (e) {
       console.error(`sendServiceOrOvernightConfirmationEmail: couldn't build order for ${submissionId}:`, e.message);
@@ -5791,13 +5817,15 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
   }
 
   let template, data;
-  if (isOvernightRequest || isCheckin) {
+  if (isOvernightRequest || isCheckin || serviceKey === 'overnight-stay') {
     template = 'portal-reservation-confirmed';
     data = {
       firstName, petNames,
       serviceLabel: serviceInfo?.name || reviewed.service,
       startDateStr, endDateStr,
       totalDollars: reviewed.amountInDollars,
+      creditApplied: credits.creditApplied,
+      referralDiscountApplied: credits.referralDiscountApplied,
       chargeDateStr: chargeResult.chargeScheduledFor?.toDate ? isoDateStr(chargeResult.chargeScheduledFor.toDate()) : null,
       visitSchedule: isCheckin ? reviewed.visitSchedule : null,
       addOnDropIns: reviewed.addOnDropIns || null,
@@ -5815,8 +5843,9 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
       needsCard, addCardUrl,
     };
   } else {
-    // overnight-stay via the public service_request form — the third,
-    // no-doc, immediate-charge branch from section 2.
+    // No longer reached by any known service: the public form's overnight
+    // stay moved to portal-reservation-confirmed above when it moved to the
+    // scheduled charge (2026-09-27). Kept for an unrecognized night service.
     template = 'portal-service-confirmed';
     data = {
       firstName, petNames,
@@ -6586,21 +6615,40 @@ exports.resendBookingConfirmationEmail = onCall({
     // Same itemized order as the original send. The overnights doc doesn't
     // keep the discount percent, so it's read back from the submission;
     // any mismatch still reconciles via buildStayOrder's adjustment line.
+    let subData = null;
+    if (record.submissionId) {
+      try {
+        subData = (await db.collection('submissions').doc(record.submissionId).get()).data() || null;
+      } catch (e) {
+        console.error(`resendBookingConfirmation: couldn't read submission for overnight ${id}:`, e.message);
+      }
+    }
+    const confirmedTotal = typeof record.confirmedTotalCents === 'number' ? record.confirmedTotalCents / 100 : null;
+    // Once the charge has run, the credits it actually took are on whichever
+    // doc it charged: the reservation (the scheduled charge), or the
+    // submission for a public-form overnight charged at confirm before
+    // 2026-09-27. Before that, previewed the same way as the original send.
+    const chargedDoc = record.chargeAttempt?.status === 'charged' ? record
+      : (!record.chargePending && subData?.lastChargeAttempt?.status === 'charged') ? subData
+      : null;
+    const credits = chargedDoc
+      ? { creditApplied: chargedDoc.referralCreditApplied || 0, referralDiscountApplied: chargedDoc.referralDiscountApplied || 0 }
+      : await previewChargeCredits(record.memberId, confirmedTotal || 0);
+    const hasCredits = credits.creditApplied > 0 || credits.referralDiscountApplied > 0;
+    const chargedAt = chargedDoc?.lastChargedAt?.toDate ? chargedDoc.lastChargedAt.toDate() : null;
     let order = null;
     if (!isCheckin) {
       try {
-        let travelDiscountPercent = 0;
-        if (record.travelDiscountApplied && record.submissionId) {
-          const subSnap = await db.collection('submissions').doc(record.submissionId).get();
-          travelDiscountPercent = subSnap.data()?.travelDiscountPercent || 0;
-        }
         order = await buildStayOrder({
           startDate: record.startDate, endDate: record.endDate,
           extraPet: !!record.extraPet, medication: !!record.medication,
           addOnDropIns: record.addOnDropIns,
           holidayRate: record.holidayRate || null,
-          totalDollars: typeof record.confirmedTotalCents === 'number' ? record.confirmedTotalCents / 100 : undefined,
-          travelDiscountPercent,
+          totalDollars: confirmedTotal ?? undefined,
+          travelDiscountPercent: record.travelDiscountApplied ? (subData?.travelDiscountPercent || 0) : 0,
+          referralDiscountApplied: credits.referralDiscountApplied,
+          creditApplied: credits.creditApplied,
+          totalLabel: chargedDoc ? 'Total charged' : hasCredits ? 'Total to be charged' : 'Total',
         });
       } catch (e) {
         console.error(`resendBookingConfirmation: couldn't build order for overnight ${id}:`, e.message);
@@ -6612,8 +6660,12 @@ exports.resendBookingConfirmationEmail = onCall({
       serviceLabel: SERVICE_PRICES[record.serviceType]?.name || record.serviceType,
       startDateStr: record.startDate?.toDate ? isoDateStr(record.startDate.toDate()) : null,
       endDateStr: record.endDate?.toDate ? isoDateStr(record.endDate.toDate()) : null,
-      totalDollars: typeof record.confirmedTotalCents === 'number' ? record.confirmedTotalCents / 100 : null,
-      chargeDateStr: record.chargeScheduledFor?.toDate ? isoDateStr(record.chargeScheduledFor.toDate()) : null,
+      totalDollars: confirmedTotal,
+      creditApplied: credits.creditApplied,
+      referralDiscountApplied: credits.referralDiscountApplied,
+      alreadyCharged: !!chargedDoc,
+      chargeDateStr: chargedAt ? isoDateStr(chargedAt)
+        : record.chargeScheduledFor?.toDate ? isoDateStr(record.chargeScheduledFor.toDate()) : null,
       visitSchedule: isCheckin ? record.visitSchedule || null : null,
       addOnDropIns: record.addOnDropIns || null,
       stayPlan: isCheckin ? null : buildStayPlan(record),

@@ -19,7 +19,12 @@
 //   serviceLabel: string,          // e.g. "Drop-In Visit" | "Overnight Stay"
 //   startDateStr: string,          // 'YYYY-MM-DD'
 //   endDateStr: string,            // 'YYYY-MM-DD'
-//   totalDollars: number,
+//   totalDollars: number,          // the confirmed price, before credits
+//   creditApplied: number,         // account credit the charge takes (0 if none)
+//   referralDiscountApplied: number, // new-member referral discount (0 if none)
+//     // both previewed from the member's billing doc for a charge not yet
+//     // run (previewChargeCredits), or what a charge that ran actually took
+//   alreadyCharged: boolean,       // resend after the charge ran — past tense
 //   chargeDateStr: string,         // 'YYYY-MM-DD' — matches chargeScheduledFor
 //   visitSchedule: array<{date: 'YYYY-MM-DD', visits: number}> | null,
 //     // check-in only; null/absent for overnight stays — no per-day block rendered
@@ -58,8 +63,24 @@ function visitScheduleRows(visitSchedule) {
   }));
 }
 
+// What the card is (or was) charged: the order's total when there is one
+// (it already has the credits taken off), else the price less credits.
+function chargeDollars(data) {
+  if (data.order) return data.order.total;
+  const net = (data.totalDollars || 0) - (data.creditApplied || 0) - (data.referralDiscountApplied || 0);
+  return Math.max(0, Math.round(net * 100) / 100);
+}
+
+function creditRows(data) {
+  return [
+    ...(data.referralDiscountApplied > 0 ? [{ label: 'Referral credit', value: `\u2212${fmtDollars(data.referralDiscountApplied)}` }] : []),
+    ...(data.creditApplied > 0 ? [{ label: 'Account credit', value: `\u2212${fmtDollars(data.creditApplied)}` }] : []),
+  ];
+}
+
 // Service/Dates/Total normally; with add-on drop-ins, one line item per
-// service instead (the stay, then each drop-in day), then the Total.
+// service instead (the stay, then each drop-in day), then the Total. Any
+// credits are listed under the Total, then what's actually charged.
 function reservationRows(data) {
   const dropIns = addOnDropInRows(data.addOnDropIns);
   const head = dropIns.length
@@ -68,7 +89,21 @@ function reservationRows(data) {
       { label: 'Service', value: data.serviceLabel || '' },
       { label: 'Dates', value: formatDateRange(data.startDateStr, data.endDateStr) },
     ];
-  return [...head, { label: 'Total', value: fmtDollars(data.totalDollars) }];
+  const credits = creditRows(data);
+  if (!credits.length) return [...head, { label: 'Total', value: fmtDollars(data.totalDollars) }];
+  return [
+    ...head,
+    { label: 'Total', value: fmtDollars(data.totalDollars) },
+    ...credits,
+    { label: data.alreadyCharged ? 'Total charged' : 'Total to be charged', value: fmtDollars(chargeDollars(data)) },
+  ];
+}
+
+function chargeSentence(data) {
+  const date = formatCalendarDate(data.chargeDateStr) || data.chargeDateStr;
+  return data.alreadyCharged
+    ? `Your card was charged ${fmtDollars(chargeDollars(data))}${date ? ` on ${date}` : ''}.`
+    : `Your card will be charged ${fmtDollars(chargeDollars(data))} on ${date}.`;
 }
 
 function subject() {
@@ -98,10 +133,10 @@ function html(data) {
   ` : '';
 
   const billingHtml = data.needsCard ? `
-    <p style="margin:20px 0 0;">We don't have a card on file for you yet — add one so we can process the ${escapeHtml(fmtDollars(data.totalDollars))} charge for this reservation.</p>
+    <p style="margin:20px 0 0;">We don't have a card on file for you yet — add one so we can process the ${escapeHtml(fmtDollars(chargeDollars(data)))} charge for this reservation.</p>
     ${renderButtonHtml({ href: data.addCardUrl, label: 'Add Your Card' })}
   ` : `
-    <p style="margin:20px 0 0;">Your card will be charged ${escapeHtml(fmtDollars(data.totalDollars))} on ${escapeHtml(formatCalendarDate(data.chargeDateStr) || data.chargeDateStr)}.</p>
+    <p style="margin:20px 0 0;">${escapeHtml(chargeSentence(data))}</p>
     <p style="margin:20px 0 0;">If your plans change, reservations cancelled within 48 hours of the start date may still be charged. This is the same policy that applies to scheduled walks.</p>
   `;
 
@@ -154,14 +189,14 @@ function text(data) {
 
   if (data.needsCard) {
     lines.push(
-      `We don't have a card on file for you yet — add one so we can process the ${fmtDollars(data.totalDollars)} charge for this reservation.`,
+      `We don't have a card on file for you yet — add one so we can process the ${fmtDollars(chargeDollars(data))} charge for this reservation.`,
       '',
       `Add your card: ${data.addCardUrl}`,
       '',
     );
   } else {
     lines.push(
-      `Your card will be charged ${fmtDollars(data.totalDollars)} on ${formatCalendarDate(data.chargeDateStr) || data.chargeDateStr}.`,
+      chargeSentence(data),
       '',
       `If your plans change, reservations cancelled within 48 hours of the start date may still be charged. This is the same policy that applies to scheduled walks.`,
       '',
