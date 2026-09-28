@@ -176,13 +176,11 @@ function stayPlanRows(stayPlan) {
 // about extras only when the stay actually has some.
 function stayPlanNote(addOnDropIns) {
   const extraVisits = (Array.isArray(addOnDropIns) ? addOnDropIns : []).reduce((sum, d) => sum + (Number(d?.visits) || 0), 0);
-  // "One drop-in visit per night", not "one daytime/mid-day visit each
-  // day": a customer can put a stay's included visits on any day and at
-  // any time (e.g. both on the first day, one of them in the evening), and
-  // the schedule above shows where they landed.
-  const base = 'Every night includes evening settling and overnight supervision in your home. Your stay comes with one drop-in visit per night, on the days shown above.';
+  // "daytime", not the site's "mid-day": admin can place an included visit
+  // morning or evening, and the plan rows above name the actual slot.
+  const base = 'Every night includes evening settling and overnight supervision in your home, plus one daytime drop-in visit.';
   if (!extraVisits) return base;
-  return `${base} It also includes ${extraVisits === 1 ? 'an extra drop-in visit' : `${spellSmallNumber(extraVisits).toLowerCase()} extra drop-in visits`}.`;
+  return `${base} Your stay also includes ${extraVisits === 1 ? 'an extra drop-in visit' : `${spellSmallNumber(extraVisits).toLowerCase()} extra drop-in visits`}, shown in your schedule above.`;
 }
 
 // "$345" for whole dollars, "$12.50" otherwise; negatives as "−$25".
