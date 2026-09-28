@@ -105,7 +105,22 @@ service cloud.firestore {
     match /walks/{id} {
       allow read, write: if isAdmin();
 
-      allow read, update: if isWalker() && resource.data.walkerId == myWalkerId();
+      allow read: if isWalker() && resource.data.walkerId == myWalkerId();
+
+      // Walker writes are limited to what walker/dashboard.html actually
+      // writes: completeWalk (status, completedAt, notes, photoUrls, walkerId,
+      // walkerName) and the later addWalkPhoto / saveWalkNote. Everything
+      // else — payout, tip, feedback, date, timeSlot, extension fields,
+      // memberId — is admin/Cloud-Function-only. walkerId may only be
+      // re-stamped with the walker's own ID, and status may only move to
+      // 'completed' (never back, never to anything else).
+      allow update: if isWalker()
+        && resource.data.walkerId == myWalkerId()
+        && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'completedAt', 'notes', 'photoUrls', 'walkerId', 'walkerName'])
+        && request.resource.data.walkerId == myWalkerId()
+        && (request.resource.data.get('status', null) == resource.data.get('status', null)
+            || request.resource.data.status == 'completed');
 
       allow read: if request.auth != null && resource.data.memberId == request.auth.uid;
 
@@ -659,14 +674,34 @@ service cloud.firestore {
       allow read, write: if isAdmin();
       allow read: if request.auth != null && resource.data.memberId == request.auth.uid;
 
-      // Same shape as the walks walker-scoping rule — unrestricted field
-      // access on their own assigned overnight, matching how completeWalk()
-      // already writes multiple fields freely on walks.
-      allow read, update: if isWalker() && resource.data.walkerId == myWalkerId();
+      // Walker writes are limited to what walker/dashboard.html's visit
+      // transaction (updateVisit: completeVisit / addVisitPhoto /
+      // saveVisitNote) writes: the whole `visits` array, plus status and
+      // completedAt when the last visit closes out the reservation. Charge,
+      // pricing, payout, tip, holiday and assignment fields are
+      // admin/Cloud-Function-only. status may only move to 'completed', and
+      // the number of visits can't change.
+      // STOPGAP: rules can't inspect individual array entries, so a walker
+      // can still edit fields inside other visits (e.g. visits[].walkerId,
+      // which drives cover pay) or set status 'completed' before every visit
+      // is done. Closing that needs visit writes moved to a Cloud Function.
+      function walkerOvernightUpdateAllowed() {
+        return request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['visits', 'status', 'completedAt'])
+          && (request.resource.data.get('status', null) == resource.data.get('status', null)
+              || request.resource.data.status == 'completed')
+          && request.resource.data.get('visits', []).size() == resource.data.get('visits', []).size();
+      }
+
+      allow read: if isWalker() && resource.data.walkerId == myWalkerId();
+      allow update: if isWalker() && resource.data.walkerId == myWalkerId()
+        && walkerOvernightUpdateAllowed();
       // A walker covering individual visits (visits[].walkerId) is listed
       // in walkerIds (kept in sync by admin's assign functions), and gets
       // the same access so they can see and complete those visits.
-      allow read, update: if isWalker() && myWalkerId() in resource.data.get('walkerIds', []);
+      allow read: if isWalker() && myWalkerId() in resource.data.get('walkerIds', []);
+      allow update: if isWalker() && myWalkerId() in resource.data.get('walkerIds', [])
+        && walkerOvernightUpdateAllowed();
     }
 
     match /conversations/{id} {
