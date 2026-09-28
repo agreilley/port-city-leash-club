@@ -1,0 +1,22 @@
+# Files that are part of the repo but not the website. Vercel serves the
+# repo root as-is (vercel.json outputDirectory "."), so anything not listed
+# here is publicly downloadable. Leading "/" anchors to the repo root.
+# vercel.json is deliberately NOT listed: Vercel reads its config from it.
+
+# Cloud Functions source, email templates, package manifests
+/functions
+
+# Firebase config and security rules (deployed separately via firebase deploy)
+/firebase.json
+/.firebaserc
+/firestore.rules
+/firestore.indexes.json
+/storage.rules
+
+# Internal docs and local-only tooling
+/*.md
+/docs
+/dev
+/.claude
+/.gitignore
+/.vercelignore
