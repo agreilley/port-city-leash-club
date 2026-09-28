@@ -44,7 +44,7 @@
 // }
 
 const {
-  escapeHtml, formatDateRange, formatCalendarDate, joinNames, pluralNoun, TEAM_SIGNOFF, addOnDropInRows, stayPlanRows, stayPlanNote,
+  escapeHtml, formatDateRange, formatCalendarDate, joinNames, pluralNoun, possessive, TEAM_SIGNOFF, addOnDropInRows, stayPlanRows, stayPlanNote,
   renderOrderHtml, renderOrderText, renderScheduleHtml, renderScheduleText,
   renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
@@ -107,6 +107,15 @@ function chargeSentence(data) {
     : `Your card will be charged ${fmtDollars(chargeDollars(data))}.`;
 }
 
+// Same two lines portal-service-confirmed (the public form's old overnight
+// email) always carried, so moving those bookings onto this email didn't
+// lose them.
+const ROUTINE_LINE = `We'll follow your usual routine for feeding, walks, and any medications, and we'll send you updates along the way so you can relax and enjoy your trip.`;
+function closingLine(data) {
+  const petCount = (data.petNames || []).filter(Boolean).length || 1;
+  return `If anything about your ${possessive(petCount, 'pet', 'pets')} care has changed, you can update their profile anytime in the portal. And if you have any questions, just reply here and it'll come straight to us.`;
+}
+
 function subject() {
   return 'Your pet sitting reservation is confirmed';
 }
@@ -147,8 +156,9 @@ function html(data) {
     ${reservationBlock}
     ${scheduleBlock}
     ${planSection}
+    <p style="margin:20px 0 0;">${escapeHtml(ROUTINE_LINE)}</p>
     ${billingHtml}
-    <p style="margin:20px 0 0;">If you have any questions, just reply to this email.</p>
+    <p style="margin:20px 0 0;">${escapeHtml(closingLine(data))}</p>
     ${renderSignoffHtml(TEAM_SIGNOFF)}
   `;
 
@@ -188,6 +198,8 @@ function text(data) {
     );
   }
 
+  lines.push(ROUTINE_LINE, '');
+
   if (data.needsCard) {
     lines.push(
       `We don't have a card on file for you yet — add one so we can process the ${fmtDollars(chargeDollars(data))} charge for this reservation.`,
@@ -205,7 +217,7 @@ function text(data) {
   }
 
   lines.push(
-    `If you have any questions, just reply to this email.`,
+    closingLine(data),
     '',
     TEAM_SIGNOFF,
   );
