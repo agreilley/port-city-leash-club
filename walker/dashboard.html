@@ -66,9 +66,9 @@
   .walk-status.completed { background: var(--sand); color: var(--text-light); }
   .walk-status.today { background: rgba(193,123,111,0.12); color: var(--rust); }
   .type-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; margin-left: 6px; vertical-align: middle; }
-  .type-badge.walk { background: var(--green-light); color: var(--green); }
-  .type-badge.dropin { background: #E4E9EE; color: #1C2F42; }
-  .type-badge.overnight { background: #E8F4F0; color: #2D7A5E; }
+  .type-badge.walk { background: #EBF5EF; color: #1A5C30; }
+  .type-badge.dropin { background: #FDEBDD; color: #B04A0C; }
+  .type-badge.overnight { background: #E6EEFB; color: #1E4E8C; }
   .empty-state { text-align: center; padding: 60px; color: var(--text-light); }
   .empty-state-title { font-size: 16px; font-weight: 500; color: var(--text-mid); margin-bottom: 8px; }
 
@@ -92,8 +92,22 @@
   .my-walk-chip .chip-time { font-weight: 700; margin-right: 4px; }
   .my-walk-chip .chip-time-short { display: none; }
   .my-walk-chip.walk { background: #EBF5EF; color: #1A5C30; border-left: 3px solid #1A5C30; }
-  .my-walk-chip.dropin { background: #E6EEFB; color: #1E4E8C; border-left: 3px solid #1E4E8C; }
-  .my-walk-chip.overnight { background: #F1E9F7; color: #5B2A86; border-left: 3px solid #5B2A86; }
+  .my-walk-chip.dropin { background: #FDEBDD; color: #B04A0C; border-left: 3px solid #B04A0C; }
+  .my-walk-chip.overnight { background: #E6EEFB; color: #1E4E8C; border-left: 3px solid #1E4E8C; }
+
+  /* Quick reference: what each assignment type involves, under the calendar */
+  .quick-ref { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 20px 24px; margin-top: 20px; }
+  .quick-ref-title { font-family: 'Cormorant Garamond', serif; font-size: 22px; font-weight: 300; color: var(--navy); margin-bottom: 14px; }
+  .quick-ref-item { padding: 8px 0 8px 12px; margin-bottom: 8px; font-size: 14px; line-height: 1.5; }
+  .quick-ref-item.walk { border-left: 3px solid #1A5C30; }
+  .quick-ref-item.dropin { border-left: 3px solid #B04A0C; }
+  .quick-ref-item.overnight { border-left: 3px solid #1E4E8C; }
+  .quick-ref-group { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-light); margin: 16px 0 8px; }
+  .quick-ref-group span { text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .quick-ref-label { font-weight: 600; color: var(--navy); }
+  .quick-ref-text { color: var(--text-mid); }
+  .quick-ref-note { margin-top: 12px; padding: 12px 14px; background: var(--sand); border-radius: 6px; font-size: 13px; line-height: 1.5; color: var(--text-mid); }
+  .quick-ref-note strong { color: var(--navy); }
 
   /* One-time hourly availability setup (renderAvailabilitySetup) */
   .avail-day { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 14px 16px; margin-bottom: 10px; }
@@ -288,11 +302,31 @@
             <div style="width:12px;height:12px;border-radius:3px;background:#EBF5EF;border:1px solid #1A5C30;"></div> Walk
           </div>
           <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-light);">
-            <div style="width:12px;height:12px;border-radius:3px;background:#E6EEFB;border:1px solid #1E4E8C;"></div> Drop-In Visit
+            <div style="width:12px;height:12px;border-radius:3px;background:#FDEBDD;border:1px solid #B04A0C;"></div> Drop-In Visit
           </div>
           <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-light);">
-            <div style="width:12px;height:12px;border-radius:3px;background:#F1E9F7;border:1px solid #5B2A86;"></div> Overnight
+            <div style="width:12px;height:12px;border-radius:3px;background:#E6EEFB;border:1px solid #1E4E8C;"></div> Overnight
           </div>
+        </div>
+      </div>
+
+      <div class="quick-ref">
+        <div class="quick-ref-title">Quick Reference</div>
+        <div class="quick-ref-item walk">
+          <div class="quick-ref-label">Walks</div>
+          <div class="quick-ref-text">30 minutes, from the time you arrive until the time you leave.</div>
+        </div>
+        <div class="quick-ref-group">Pet Sitting <span>— two options</span></div>
+        <div class="quick-ref-item dropin">
+          <div class="quick-ref-label">Drop-Ins</div>
+          <div class="quick-ref-text">20 minutes. Includes feeding (if needed), fresh water, and a potty break or quick walk.</div>
+        </div>
+        <div class="quick-ref-item overnight">
+          <div class="quick-ref-label">Overnights</div>
+          <div class="quick-ref-text">12 hours of overnight care plus a drop-in visit. The client schedules drop-ins where they're needed and may add more if needed.</div>
+        </div>
+        <div class="quick-ref-note">
+          <strong>Timing:</strong> the time frame on each assignment is the general window for the visit. Click into the details to check for anything more specific (e.g., breakfast needs to be at 7am).
         </div>
       </div>
     </div>
@@ -1722,7 +1756,7 @@ function renderSchedule() {
           <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
             ${isOff ? '<span style="font-size:12px;color:var(--text-light);">Off</span>' : ''}
             ${hours.length ? `<span style="background:var(--green-light);color:var(--green);font-size:11px;font-weight:500;padding:3px 10px;border-radius:12px;">${escapeHtml(summarizeHours(hours))}</span>` : ''}
-            ${onOvernight ? '<span style="background:#F1E9F7;color:#5B2A86;font-size:11px;font-weight:500;padding:3px 10px;border-radius:12px;">Overnight</span>' : ''}
+            ${onOvernight ? '<span style="background:#E6EEFB;color:#1E4E8C;font-size:11px;font-weight:500;padding:3px 10px;border-radius:12px;">Overnight</span>' : ''}
           </div>
         </div>`;
       }).join('')
