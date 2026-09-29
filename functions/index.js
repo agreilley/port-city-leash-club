@@ -2238,19 +2238,35 @@ exports.dismissBillingReview = onCall({}, async (request) => {
   // is what the sweep and the button both read, so that is what stops them;
   // the status is for whoever reads the doc afterward.
   //
-  // Every pending reservation for this member, not just one: the dashboard
-  // only ever surfaces the first match, so a member with two failed
-  // reservations would otherwise leave the second silently armed.
+  // Every pending reservation for this member whose charge has actually
+  // FAILED, not just one: the dashboard only ever surfaces the first match,
+  // so a member with two failed reservations would otherwise leave the
+  // second silently armed. Reservations that haven't failed — typically
+  // future ones whose chargeScheduledFor hasn't arrived — are left pending
+  // so they still charge on schedule; clearing those would mean they're
+  // never charged at all.
+  //
+  // "Failed" = either failure marker is present. chargeRetry.count is
+  // written by chargeScheduledReservations on EVERY failed sweep attempt,
+  // including failures that never reach Stripe (no stripeCustomerId — the
+  // most common cause), where chargeCustomerCard writes nothing.
+  // chargeAttempt.status 'failed' covers failures recorded before chargeRetry
+  // existed and failed manual retries via retryReservationCharge. Neither is
+  // ever written on a reservation that hasn't been attempted yet.
   if (priorReason === 'reservation_charge_failed') {
     const pendingSnap = await db.collection('overnights')
       .where('memberId', '==', memberId)
       .where('chargePending', '==', true)
       .get();
     for (const resDoc of pendingSnap.docs) {
+      const resData = resDoc.data() || {};
       // Never touch one that genuinely charged — a sweep succeeding between
       // the failure and this dismissal is unlikely but not impossible, and
       // overwriting a real 'charged' record would lose the PaymentIntent id.
-      if (resDoc.data()?.chargeAttempt?.status === 'charged') continue;
+      if (resData.chargeAttempt?.status === 'charged') continue;
+      const hasFailed = (resData.chargeRetry?.count || 0) > 0
+        || resData.chargeAttempt?.status === 'failed';
+      if (!hasFailed) continue;
       await resDoc.ref.set({
         chargePending: false,
         chargeAttempt: {
