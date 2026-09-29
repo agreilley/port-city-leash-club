@@ -3090,6 +3090,15 @@ async function runChargeCurrentMonthWalks(memberId) {
     },
   }, { merge: true });
 
+  // Mark the walks this charge paid for, so the next 1st's catch-up
+  // (billableWalksInMonth) doesn't bill them again. Per walk and non-fatal:
+  // the card is already charged, so a failed mark is logged, not thrown.
+  await Promise.all(days.map(day => {
+    const dateStr = `${periodKey}-${String(day).padStart(2, '0')}`;
+    return db.collection('walks').doc(`${memberId}_${dateStr}`).update({ billedPeriod: periodKey })
+      .catch(e => console.error(`runChargeCurrentMonthWalks: failed to mark ${memberId}_${dateStr} billed:`, e.message));
+  }));
+
   // Unreachable from this function — referralDiscount is permanently null
   // (see the comment where it's declared above), so this block can never
   // run here. Retained rather than deleted so this function's shape stays
@@ -3220,12 +3229,41 @@ exports.previewChargeCurrentMonthWalks = onCall({ secrets: [STRIPE_SECRET_KEY] }
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// 3c. Recalculate every active member's walk-day count for the month that's
-//    just starting and push it to their Stripe subscription item. Runs at
+// 3c. Count every active member's walks on the calendar for the month that's
+//    just starting and push that to their Stripe subscription item. Runs at
 //    12:05 AM ET on the 1st — ~18 hours before Stripe actually generates
 //    that month's invoice, at the 6:00 PM ET billing_cycle_anchor set in
 //    createMembershipSubscription.
+//
+//    Bills the calendar, not defaultWalkDays: the 25th reminder email asks
+//    members to review next month's walks, and any move or removal made
+//    before the 1st has to show up in the charge.
 // ─────────────────────────────────────────────────────────────────────────
+
+// Walks billed through the monthly subscription for one member and month.
+// billedPeriod is the paid/unpaid mark: set on every walk once it's billed
+// (here, or runChargeCurrentMonthWalks for a first partial month), so a walk
+// is charged exactly once whichever way it's moved between months:
+//   - moved to a later month after being billed: marked, so skipped there.
+//   - moved into a month that's already been billed: unmarked, so caught up
+//     here on the next 1st (hence "on or before" this month, not just in it).
+// Excluded: cancelled, and one-off walks (submissionId — extra walks and
+// one-time service walks are charged on their own). Admin "Add Walk" walks
+// count. A walk already marked with THIS period still counts, so a re-run
+// on the same 1st bills the same set.
+async function billableWalksInMonth(memberId, year, monthIndex) {
+  const periodKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+  const monthEnd = new Date(Date.UTC(year, monthIndex + 1, 1));
+  const snap = await db.collection('walks').where('memberId', '==', memberId).get();
+  return snap.docs.filter(d => {
+    const w = d.data();
+    const date = w.date?.toDate?.();
+    if (!date || date >= monthEnd) return false;
+    if (w.status === 'cancelled' || w.submissionId) return false;
+    return !w.billedPeriod || w.billedPeriod === periodKey;
+  });
+}
+
 exports.syncMonthlyWalkQuantities = onSchedule({
   schedule: '5 0 1 * *',
   timeZone: 'America/New_York',
@@ -3239,6 +3277,7 @@ exports.syncMonthlyWalkQuantities = onSchedule({
   const now = new Date();
   const year = now.getUTCFullYear();
   const month = now.getUTCMonth();
+  const periodKey = `${year}-${String(month + 1).padStart(2, '0')}`;
 
   const membersSnap = await db.collection('members').where('status', '==', 'active').get();
 
@@ -3250,18 +3289,32 @@ exports.syncMonthlyWalkQuantities = onSchedule({
     const billingData = (await billingRef(memberDoc.id).get()).data() || {};
     if (!billingData.stripeSubscriptionItemId) continue; // flag set but subdoc absent — skip, don't throw
 
-    // A member starting partway through THIS month is billed only from
-    // their start date; every later month bills in full (membershipStartDate
-    // is then in the past, so fromDay falls back to 1).
-    const fromDay = firstBilledMonthFromDay(member.membershipStartDate, year, month);
-    const quantity = countWalkDaysInMonth(member.defaultWalkDays, year, month, fromDay);
+    // Walk docs already start at a mid-month member's start date
+    // (generateMonthlyWalks uses the same firstBilledMonthFromDay), so the
+    // calendar count needs no separate proration.
+    let walks;
+    try {
+      walks = await billableWalksInMonth(memberDoc.id, year, month);
+    } catch (e) {
+      console.error(`Failed to count walks for member ${memberDoc.id}:`, e.message);
+      continue;
+    }
     try {
       await stripe.subscriptionItems.update(billingData.stripeSubscriptionItemId, {
-        quantity,
+        quantity: walks.length,
         proration_behavior: 'none',
       });
     } catch (e) {
       console.error(`Failed to sync walk quantity for member ${memberDoc.id}:`, e.message);
+      continue;
+    }
+    // Mark what was billed (see billableWalksInMonth).
+    try {
+      const batch = db.batch();
+      walks.forEach(d => batch.update(d.ref, { billedPeriod: periodKey }));
+      await batch.commit();
+    } catch (e) {
+      console.error(`Failed to stamp billedPeriod for member ${memberDoc.id}:`, e.message);
     }
   }
 });
