@@ -7646,15 +7646,21 @@ window.openMemberDetail = async (id) => {
   // chargeCustomerCard throws before ever writing chargeAttempt when the
   // member has no stripeCustomerId at all (the single most common cause of
   // this exact flag), so that field is often never set even though the
-  // charge genuinely failed. needsReviewReason already being
-  // 'reservation_charge_failed' is itself the proof a failure happened —
-  // chargePending alone is enough to find which reservation it was.
-  const failedOvernight = billing.needsReviewReason === 'reservation_charge_failed'
-    ? allOvernights.find(o => o.memberId === member.id && o.chargePending)
-    : null;
-  const retryChargeHTML = failedOvernight
-    ? `<button class="btn-secondary" id="retryReservationChargeBtn" style="display:block;margin-top:8px;padding:4px 12px;font-size:12px;" onclick="retryReservationCharge('${failedOvernight.id}')">Retry Charge${typeof failedOvernight.confirmedTotalCents === 'number' ? ` ($${(failedOvernight.confirmedTotalCents / 100).toFixed(2)})` : ''}</button>`
-    : '';
+  // charge genuinely failed. chargePending alone is NOT enough to find
+  // which reservation it was, though: a member's future reservations are
+  // chargePending too, until they come due. So match on the failure
+  // markers retryReservationCharge itself requires — chargeRetry.count
+  // (written by the sweep on every failure, including ones that never
+  // reached Stripe) or chargeAttempt.status 'failed' — and offer one button
+  // per failed reservation, labelled by start date.
+  const failedOvernights = billing.needsReviewReason === 'reservation_charge_failed'
+    ? allOvernights.filter(o => o.memberId === member.id && o.chargePending
+        && o.chargeAttempt?.status !== 'charged'
+        && ((o.chargeRetry?.count || 0) > 0 || o.chargeAttempt?.status === 'failed'))
+    : [];
+  const retryChargeHTML = failedOvernights.map(o =>
+    `<button class="btn-secondary" id="retryReservationChargeBtn-${escapeHtml(o.id)}" style="display:block;margin-top:8px;padding:4px 12px;font-size:12px;" onclick="retryReservationCharge('${escapeHtml(o.id)}')">Retry Charge — ${escapeHtml(fmtReviewDate(o.startDate))}${typeof o.confirmedTotalCents === 'number' ? ` ($${(o.confirmedTotalCents / 100).toFixed(2)})` : ''}</button>`
+  ).join('');
   const reviewDismissHTML = billing.needsReview ? `
     <div style="font-size:12px;color:#b45309;background:#fffbeb;border-radius:6px;padding:8px 12px;margin-top:4px;margin-bottom:12px;">
       ${escapeHtml(reviewInfo.title)}
@@ -7892,7 +7898,7 @@ window.retryReservationCharge = async (overnightId) => {
     `Only continue if you have NOT already charged this manually in Stripe. If you have, this would charge them twice.`
   );
   if (!confirmed) return;
-  const btn = document.getElementById('retryReservationChargeBtn');
+  const btn = document.getElementById(`retryReservationChargeBtn-${overnightId}`);
   if (btn) { btn.textContent = 'Charging…'; btn.disabled = true; }
   try {
     const retryReservationChargeFn = httpsCallable(fns, 'retryReservationCharge');

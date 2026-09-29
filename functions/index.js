@@ -1880,6 +1880,16 @@ exports.retryReservationCharge = onCall({ secrets: [STRIPE_SECRET_KEY] }, async 
   if (data.chargeAttempt?.status === 'resolved_externally') {
     throw new HttpsError('failed-precondition', 'This reservation was already settled outside the app — it was marked resolved when its review flag was dismissed. Charging here would double-charge the member.');
   }
+  // Only a reservation whose scheduled charge has actually FAILED can be
+  // retried — the same failure markers dismissBillingReview keys off
+  // (chargeRetry.count from the sweep, which also covers failures that never
+  // reached Stripe; chargeAttempt.status 'failed' for older and manual-retry
+  // failures). Without this, a reservation that simply isn't due yet could be
+  // charged early from here; it will charge on schedule by itself.
+  const hasFailed = (data.chargeRetry?.count || 0) > 0 || data.chargeAttempt?.status === 'failed';
+  if (!hasFailed) {
+    throw new HttpsError('failed-precondition', "This reservation's charge hasn't failed — it will charge automatically when it's due. Nothing to retry.");
+  }
   // Pacing rail — see MANUAL_CHARGE_RETRY_MIN_MINUTES. This function
   // previously had no gap at all: it was safe only by accident, because the
   // constant idempotency key made a rapid re-click replay the cached decline
