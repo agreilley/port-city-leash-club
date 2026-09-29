@@ -48,6 +48,7 @@
   .stat-label { font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-light); margin-bottom: 8px; }
   .stat-value { font-family: 'Cormorant Garamond', serif; font-size: 36px; font-weight: 300; color: var(--navy); line-height: 1; }
   .stat-sub { font-size: 12px; color: var(--text-light); margin-top: 4px; }
+  .stat-of { font-size: 0.6em; color: var(--text-light); }
 
   /* WALK LIST */
   .section-title { font-family: 'Cormorant Garamond', serif; font-size: 24px; font-weight: 300; color: var(--navy); margin-bottom: 16px; }
@@ -264,9 +265,9 @@
     <div class="view active" id="view-upcoming">
       <div id="availabilityBanner"></div>
       <div class="stats-row">
-        <div class="stat-card"><div class="stat-label">This Week</div><div class="stat-value" id="stat-week">–</div><div class="stat-sub">Walks scheduled</div></div>
-        <div class="stat-card"><div class="stat-label">This Month</div><div class="stat-value" id="stat-month">–</div><div class="stat-sub">Total walks</div></div>
-        <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value" id="stat-completed">–</div><div class="stat-sub">All time</div></div>
+        <div class="stat-card"><div class="stat-label">Visits Completed</div><div class="stat-value" id="stat-visits">–</div><div class="stat-sub"><span class="stat-month-name"></span> · walks, drop-ins &amp; overnights</div></div>
+        <div class="stat-card"><div class="stat-label">Earned</div><div class="stat-value" id="stat-earned">–</div><div class="stat-sub"><span class="stat-month-name"></span> · estimate, before tips</div></div>
+        <div class="stat-card"><div class="stat-label">Tips</div><div class="stat-value" id="stat-tips">–</div><div class="stat-sub"><span class="stat-month-name"></span></div></div>
       </div>
       <div class="section-title">Upcoming Walks</div>
       <div id="upcomingList"><div style="text-align:center;padding:40px;color:var(--text-light);">Loading...</div></div>
@@ -783,24 +784,58 @@ function loadData() {
 }
 
 // ── STATS ─────────────────────────────────────────────────────────────────────
+// This month at a glance: visits done vs. scheduled, estimated pay, and
+// tips. A "visit" is any time the walker is at the house: each walk, each
+// drop-in (including an overnight's included drop-in), and each overnight
+// night — so a night plus its drop-in is two. Nights come from
+// buildStaySchedule (default walker only, never a covering walker) and have
+// no completion status of their own, so a night counts as done once the
+// stay is completed or the night's date is behind us. Cancelled/skipped
+// items are left out of both sides. Pay and tips for a stay land in the month
+// the stay ends, the same unit calculateEarnings/payouts work in; walks by
+// their own date. Pay is a live estimate like Upcoming Payout, not a paid
+// figure (see renderEarnings).
 function renderStats() {
   const now = new Date();
-  const weekEnd = new Date(now); weekEnd.setDate(weekEnd.getDate() + 7);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const thisWeek = myWalks.filter(w => { const d = w.date?.toDate?.() || new Date(w.date); return d >= now && d <= weekEnd; });
-  const thisMonth = myWalks.filter(w => { const d = w.date?.toDate?.() || new Date(w.date); return d >= monthStart && d <= monthEnd; });
-  // "Completed · All time" reads as covering all of this walker's completed
-  // work, but only ever counted myWalks — a completed check-in/overnight
-  // visit (tracked inside myOvernights[].visits[], not its own walks doc)
-  // never counted at all, so a walker who'd only ever done pet-sitting
-  // visits saw a flatly wrong "0" here. Flattened the same way
-  // renderTodaysVisits already does.
-  const completedWalks = myWalks.filter(w => w.status === 'completed').length;
-  const completedVisits = myOvernights.reduce((sum, o) => sum + (Array.isArray(o.visits) ? o.visits.filter(v => v.status === 'completed').length : 0), 0);
-  document.getElementById('stat-week').textContent = thisWeek.length;
-  document.getElementById('stat-month').textContent = thisMonth.length;
-  document.getElementById('stat-completed').textContent = completedWalks + completedVisits;
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const inMonth = (d) => d && walkDateStr(d).slice(0, 7) === monthKey;
+  const live = (x) => x.status !== 'cancelled' && x.status !== 'skipped';
+  const localMonth = (val) => {
+    if (!val) return null;
+    if (typeof val === 'string') return val.slice(0, 7);
+    const d = val.toDate ? val.toDate() : new Date(val);
+    return isNaN(d) ? null : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  };
+  const me = walkerDoc?.id;
+
+  const monthWalks = myWalks.filter(w => live(w) && inMonth(w.date));
+  const today = todayDateStr();
+  const monthVisits = myOvernights.filter(live).flatMap(o => {
+    const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
+    return buildStaySchedule(o, isCheckin, { nights: !o._covering })
+      .filter(row => row.kind === 'night'
+        ? row.date.slice(0, 7) === monthKey
+        : live(row.visit) && inMonth(row.visit.date))
+      .map(row => row.kind === 'night'
+        ? { done: o.status === 'completed' || row.date < today }
+        : { done: row.visit.status === 'completed' });
+  });
+  const scheduled = monthWalks.length + monthVisits.length;
+  const done = monthWalks.filter(w => w.status === 'completed').length
+    + monthVisits.filter(v => v.done).length;
+
+  const doneWalks = monthWalks.filter(w => w.status === 'completed');
+  const doneStays = myOvernightDocs.filter(o => o.status === 'completed' && localMonth(o.endDate) === monthKey);
+  const earned = calculateEarnings(doneWalks, doneStays, me).total;
+  const tips = doneWalks.reduce((sum, w) => sum + (w.tip?.chargeStatus === 'charged' ? w.tip.amountCents / 100 : 0), 0)
+    + doneStays.reduce((sum, o) => sum + overnightTipShare(o, me), 0);
+
+  const monthName = now.toLocaleString('en-US', { month: 'long' });
+  const money = (n) => `$${Number.isInteger(n) ? n : n.toFixed(2)}`;
+  document.querySelectorAll('.stat-month-name').forEach(el => { el.textContent = monthName; });
+  document.getElementById('stat-visits').innerHTML = `${done}<span class="stat-of">/${scheduled}</span>`;
+  document.getElementById('stat-earned').textContent = money(earned);
+  document.getElementById('stat-tips').textContent = money(tips);
 }
 
 function getDogNames(member) {
