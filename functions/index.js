@@ -8157,6 +8157,7 @@ const REQUEST_TYPE_LABELS = {
   pause_membership: 'Membership pause request',
   vacation_hold_refund: 'Vacation hold refund request',
   tier_change: 'Membership tier change request',
+  meet_greet: 'Meet & greet added in the admin portal',
   dog_update: 'Dog roster update',
   overnight_request: 'Overnight / drop-in request',
   walker_incident: 'Walker incident report',

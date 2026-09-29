@@ -153,6 +153,7 @@
   .request-type.dogupdate { background: #FEF3C7; color: #92400E; }
   .request-type.walkerincident { background: #FFF0EE; color: #8B2E22; }
   .request-type.walkerschedulerequest { background: #EEF2FF; color: #3730A3; }
+  .request-type.meetgreet { background: #FDF2F8; color: #9D174D; }
   .request-name { font-size: 14px; font-weight: 500; color: var(--navy); }
   .request-preview { font-size: 13px; color: var(--text-mid); line-height: 1.5; }
   .request-time { font-size: 11px; color: var(--text-light); margin-left: auto; }
@@ -665,7 +666,10 @@
         <div class="table-card">
           <div class="table-header">
             <div class="table-title">Meet & Greet Availability</div>
-            <div style="font-size:12px;color:var(--text-light);">Click a date to add or edit time slots</div>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+              <div style="font-size:12px;color:var(--text-light);">Click a date to add or edit time slots</div>
+              <button class="btn-primary" style="padding:6px 12px;font-size:12px;" onclick="mgAddOpen()">+ Add meet &amp; greet</button>
+            </div>
           </div>
           <div style="padding:20px;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
@@ -1215,6 +1219,31 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD MEET & GREET MODAL — for someone who wants a meet & greet before
+     filling out a request form. Creates a type 'meet_greet' submission
+     (mgAddSave); once their real request comes in, it's linked from that
+     request's "No meet & greet booked" box (mgLinkSave). -->
+<div class="modal-overlay" id="mgAddModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('mgAddModal')">×</button>
+    <div class="modal-title">Add a Meet &amp; Greet</div>
+    <div class="form-grid">
+      <div class="form-field"><label>Name *</label><input type="text" id="mga-name" placeholder="Owner's name"></div>
+      <div class="form-field"><label>Phone</label><input type="tel" id="mga-phone" placeholder="Optional"></div>
+      <div class="form-field full"><label>Address *</label><input type="text" id="mga-address" placeholder="Street, city"></div>
+      <div class="form-field full"><label>Email</label><input type="email" id="mga-email" placeholder="Optional"></div>
+      <div class="form-field"><label>Date *</label><input type="date" id="mga-date" onchange="mgFillAdminTimes('mga-date', 'mga-time')"></div>
+      <div class="form-field"><label>Time *</label><select id="mga-time"></select></div>
+      <div class="form-field full"><label>Notes</label><textarea id="mga-notes" rows="2" placeholder="Dog, service they're interested in, how they found us..."></textarea></div>
+    </div>
+    <div style="font-size:12px;color:var(--text-light);margin-top:10px;">No email is sent to them. It shows in Requests until you link it to their request (or close it).</div>
+    <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn-secondary" onclick="closeModal('mgAddModal')">Cancel</button>
+      <button class="btn-primary" id="mga-save" onclick="mgAddSave()">Book meet &amp; greet</button>
     </div>
   </div>
 </div>
@@ -3170,7 +3199,7 @@ function renderRequests() {
     container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📬</div><div class="empty-state-title">${emptyMsg}</div></div>`;
     return;
   }
-  const typeLabels = { membership_request: 'Membership', service_request: 'Service', application: 'Application', walker_screening: 'Screening', contact: 'Contact', dog_update: 'Dog Update', overnight_request: 'Overnight', walker_incident: 'Incident', walker_schedule_request: 'Schedule', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Hold Refund', waitlist: 'Waitlist', walk_extension_reassignment: 'Extension Update' };
+  const typeLabels = { membership_request: 'Membership', service_request: 'Service', application: 'Application', walker_screening: 'Screening', contact: 'Contact', dog_update: 'Dog Update', overnight_request: 'Overnight', walker_incident: 'Incident', walker_schedule_request: 'Schedule', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Hold Refund', waitlist: 'Waitlist', walk_extension_reassignment: 'Extension Update', meet_greet: 'Meet & Greet' };
   // overnight_request also covers a drop-in visit booked through that same form
   // (service: 'checkin') — typeLabels alone can't tell those apart, so check
   // item.service for this one type before falling back to the type-keyed map.
@@ -3194,6 +3223,7 @@ function renderRequests() {
     let preview;
     if (item.type === 'walker_incident') preview = escapeHtml((item.message || '').slice(0, 80));
     else if (item.type === 'pause_membership') preview = `${shortDate(item.pauseStartDate)} – ${shortDate(item.pauseEndDate)}`; // shortDate() output is always a safe locale date string
+    else if (item.type === 'meet_greet') preview = escapeHtml([mgWhenLabel(item), item.address].filter(Boolean).join(' · '));
     else if (item.type === 'vacation_hold_refund') preview = `${escapeHtml(item.cancelledWalkCount || 0)} walk${item.cancelledWalkCount === 1 ? '' : 's'} · ${item.status === 'needs_review' ? "refund couldn't be computed" : `suggested $${escapeHtml(item.suggestedRefundAmount || 0)}`}`;
     else if (isMembershipUpgradeRequest(item)) {
       const requester = allMembers.find(m => m.id === item.memberId);
@@ -4756,7 +4786,7 @@ window.openRequestItem = async (id) => {
   }
 
   // Build clean field list based on submission type
-  const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', walker_screening: 'Walker Screening', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report', walker_schedule_request: 'Walker Schedule Request', reschedule: 'Walk Reschedule Request', walk_extension: 'Walk Extension Request', walk_extension_reassignment: 'Walk Extension Update', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Vacation Hold Refund', waitlist: 'Waitlist Signup' };
+  const typeLabels = { membership_request: 'Membership Request', service_request: 'Service Request', application: 'Walker Application', walker_screening: 'Walker Screening', contact: 'Contact Message', dog_update: 'Dog Roster Update', overnight_request: 'Overnight Request', walker_incident: 'Walker Incident Report', walker_schedule_request: 'Walker Schedule Request', reschedule: 'Walk Reschedule Request', walk_extension: 'Walk Extension Request', walk_extension_reassignment: 'Walk Extension Update', pause_membership: 'Vacation Hold', vacation_hold_refund: 'Vacation Hold Refund', waitlist: 'Waitlist Signup', meet_greet: 'Meet & Greet (no request yet)' };
   // overnight_request also covers a drop-in visit booked through that same form
   // (service: 'checkin') — check item.service before falling back to the type-keyed map.
   // Portal-submitted "Become a Member" requests carry a memberId but none of
@@ -4785,6 +4815,19 @@ window.openRequestItem = async (id) => {
     // renders instead.
     fields = [
       { label: 'Status', value: item.status || '–' },
+      { label: 'Created At', value: fmtDate(item.createdAt) },
+    ];
+  } else if (item.type === 'meet_greet') {
+    const linkedTo = item.linkedToSubmissionId && allRequests.find(r => r.id === item.linkedToSubmissionId);
+    fields = [
+      { label: 'Name', value: item.ownerName || '–' },
+      { label: 'Phone', value: item.phone || '–' },
+      { label: 'Email', value: item.email || '–' },
+      { label: 'Address', value: item.address || '–' },
+      { label: 'Meet & Greet', value: mgWhenLabel(item) || (item.meetGreetCanceledDateTime ? `Canceled (was ${item.meetGreetCanceledDateTime})` : '–') },
+      { label: 'Notes', value: item.notes || '–' },
+      { label: 'Status', value: item.status === 'resolved' && item.linkedToSubmissionId ? 'Linked to request' : item.status === 'declined' ? 'Closed' : 'Waiting on their request' },
+      ...(item.linkedToSubmissionId ? [{ label: 'Linked To', value: linkedTo ? `${linkedTo.ownerName || linkedTo.name || 'Request'} (${linkedTo.type === 'membership_request' ? 'Membership' : 'Service'})` : item.linkedToSubmissionId }] : []),
       { label: 'Created At', value: fmtDate(item.createdAt) },
     ];
   } else if (item.type === 'membership_request') {
@@ -5210,6 +5253,7 @@ window.openRequestItem = async (id) => {
   const actionBtn = document.getElementById('requestActionBtn');
   const declineBtn = document.getElementById('requestDeclineBtn');
   declineBtn.style.display = 'none';
+  declineBtn.textContent = 'Decline';
   // Reset the gate on every open — it only applies to membership_request
   // and net-new service_request now, and a previously-opened request must
   // not leave the button enabled here.
@@ -5329,6 +5373,15 @@ window.openRequestItem = async (id) => {
       : "Account created — waiting on the member to add a card in their portal. Billing starts automatically once they do.";
     declineBtn.style.display = 'block';
     declineBtn.onclick = () => declineMembershipRequest(item.id);
+  } else if (item.type === 'meet_greet' && item.status === 'pending') {
+    // Linking happens from the real request's side (renderRequestMgScheduler),
+    // so the only action here is giving up on it.
+    actionBtn.style.display = 'none';
+    statusNote.style.display = 'block';
+    statusNote.textContent = "When their request form comes in, open it and use \"Link an existing meet & greet\" to move this booking and your notes onto it.";
+    declineBtn.textContent = 'Close';
+    declineBtn.style.display = 'block';
+    declineBtn.onclick = () => mgPlaceholderClose(item.id);
   } else if (item.type === 'application' && item.status !== 'confirmed') {
     actionBtn.textContent = 'Add as Walker'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => { closeModal('requestModal'); openAddWalkerModal(item, item.id); };
@@ -8706,6 +8759,7 @@ function initAvailability() {
         name: data.ownerName || data.name || 'Unknown',
         kind: data.type === 'membership_request'
           ? 'Membership'
+          : data.type === 'meet_greet' ? 'No request yet'
           : (SERVICE_PRICES[resolveServiceKey(data.service)]?.name || data.service || 'Request'),
       });
     });
@@ -9034,7 +9088,9 @@ function mgOwnerInfoHTML(req) {
   out.push(row('Address', req.address));
 
   out.push('<h4>What they asked for</h4>');
-  if (req.type === 'membership_request') {
+  if (req.type === 'meet_greet') {
+    out.push('<div class="mg-row" style="color:var(--text-light);">No request form yet.</div>');
+  } else if (req.type === 'membership_request') {
     out.push(row('Service', 'Membership'));
     out.push(row('Days', req.days));
     out.push(row('Time window', req.timeWindow));
@@ -9055,7 +9111,7 @@ function mgOwnerInfoHTML(req) {
     out.push(row('Estimate', req.estimatedTotal ? `$${req.estimatedTotal}` : ''));
   }
   out.push(row('Access notes', req.accessNotes));
-  out.push(row('Care notes', req.notes));
+  out.push(row(req.type === 'meet_greet' ? 'Notes' : 'Care notes', req.notes));
 
   const pets = Array.isArray(req.dogs) ? req.dogs : [];
   if (pets.length) {
@@ -9321,14 +9377,53 @@ function renderRequestMgScheduler(item) {
       <button class="btn-primary" style="padding:6px 12px;font-size:12px;" onclick="mgSchedSave('${item.id}')">Schedule meet &amp; greet</button>
     </div>
     <div style="font-size:11px;color:var(--text-light);margin-top:6px;">No email is sent — this only books it on the backend.</div>
+    ${mgLinkSectionHTML(item)}
   </div>`;
   host.style.display = 'block';
   mgSchedFillTimes();
 }
 
-window.mgSchedFillTimes = () => {
-  const dateStr = document.getElementById('mgSchedDate')?.value;
-  const select = document.getElementById('mgSchedTime');
+// Dropdown of meet & greets added from the Availability tab (type
+// 'meet_greet') that haven't been linked to a request yet. A likely match
+// (same email, phone digits, or name) is pre-selected.
+function mgLinkSectionHTML(item) {
+  const open = allRequests.filter(r => r.type === 'meet_greet' && r.status === 'pending');
+  if (!open.length) return '';
+  const digits = v => String(v || '').replace(/\D/g, '').slice(-10);
+  const norm = v => String(v || '').trim().toLowerCase();
+  const itemName = norm(item.ownerName || item.name);
+  const isMatch = r => (item.email && norm(r.email) === norm(item.email))
+    || (digits(item.phone).length === 10 && digits(r.phone) === digits(item.phone))
+    || (itemName && norm(r.ownerName) === itemName);
+  const sorted = [...open].sort((a, b) => isMatch(b) - isMatch(a));
+  const match = sorted.find(isMatch);
+  const options = sorted.map(r => {
+    const label = [r.ownerName || 'Unknown', mgWhenLabel(r) || 'no time booked', r.address].filter(Boolean).join(' · ');
+    return `<option value="${escapeHtml(r.id)}"${r === match ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+  }).join('');
+  return `<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(0,0,0,0.08);">
+    <div style="font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);margin-bottom:8px;">Or link an existing meet &amp; greet</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <select id="mgLinkSelect" style="flex:2;min-width:200px;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:6px 8px;font-size:12px;font-family:'DM Sans',sans-serif;">
+        ${match ? '' : '<option value="">Pick one…</option>'}${options}
+      </select>
+      <button class="btn-primary" style="padding:6px 12px;font-size:12px;" onclick="mgLinkSave('${item.id}')">Link</button>
+    </div>
+    <div style="font-size:11px;color:var(--text-light);margin-top:6px;">${match ? 'Looks like a match. ' : ''}Moves the date/time and your notes onto this request.</div>
+  </div>`;
+}
+
+// "Tue, Oct 7 at 10:00am" from a submission's meetGreetDateTime, or ''.
+function mgWhenLabel(item) {
+  const [dateStr, ...rest] = String(item?.meetGreetDateTime || '').split(' ');
+  return dateStr && rest.length ? avFmt(dateStr, rest.join(' ')) : '';
+}
+
+window.mgSchedFillTimes = () => mgFillAdminTimes('mgSchedDate', 'mgSchedTime');
+
+window.mgFillAdminTimes = (dateId, selectId) => {
+  const dateStr = document.getElementById(dateId)?.value;
+  const select = document.getElementById(selectId);
   if (!select) return;
   if (!dateStr) { select.innerHTML = '<option value="">Pick a date</option>'; return; }
   const booked = getBookedSlots(dateStr);
@@ -9371,6 +9466,139 @@ window.mgSchedSave = async (submissionId) => {
     renderRequestMgNotes(item);
   } catch (e) {
     alert('Could not schedule the meet & greet: ' + e.message);
+  }
+};
+
+// ── Meet & greet with no request yet ─────────────────────────────────
+// Someone who wants a meet & greet before filling out a request form.
+// Stored as a submissions doc of type 'meet_greet' so it flows through
+// everything a normal booking does (Availability tab, Cancel/Reschedule,
+// Notes, the public-calendar mirror, onNewSubmission's Gmail alert — no
+// customer email, dispatchSubmissionEmail has no case for this type).
+// Stays 'pending' in Requests until linked to their real request
+// (mgLinkSave → 'resolved') or closed (mgPlaceholderClose → 'declined').
+window.mgAddOpen = () => {
+  if (!window._avInit) { window._avInit = true; initAvailability(); }
+  ['mga-name', 'mga-phone', 'mga-address', 'mga-email', 'mga-notes'].forEach(id => { document.getElementById(id).value = ''; });
+  const dateEl = document.getElementById('mga-date');
+  dateEl.min = mgLocalToday();
+  dateEl.value = avSelectedDate && avSelectedDate >= mgLocalToday() ? avSelectedDate : mgLocalToday();
+  mgFillAdminTimes('mga-date', 'mga-time');
+  document.getElementById('mga-save').disabled = false;
+  document.getElementById('mgAddModal').classList.add('open');
+  document.getElementById('mga-name').focus();
+};
+
+window.mgAddSave = async () => {
+  const val = id => document.getElementById(id).value.trim();
+  const ownerName = val('mga-name'), address = val('mga-address');
+  const dateStr = val('mga-date'), slot = val('mga-time');
+  if (!ownerName || !address) { alert('Name and address are required.'); return; }
+  if (!dateStr || !slot) { alert('Pick a date and time.'); return; }
+  const btn = document.getElementById('mga-save');
+  btn.disabled = true;
+  try {
+    // Fresh check against the mirror in case the listeners haven't caught up.
+    const avSnap = await getDoc(doc(db, 'meet_greet_availability', dateStr));
+    if ((avSnap.data()?.bookings || []).includes(slot)) {
+      alert(`${avFmt(dateStr, slot)} is already booked. Pick another time.`);
+      mgFillAdminTimes('mga-date', 'mga-time');
+      btn.disabled = false;
+      return;
+    }
+    const batch = writeBatch(db);
+    batch.set(doc(collection(db, 'submissions')), {
+      type: 'meet_greet',
+      ownerName,
+      address,
+      phone: val('mga-phone'),
+      email: val('mga-email'),
+      notes: val('mga-notes'),
+      meetGreetDateTime: `${dateStr} ${slot}`,
+      meetGreetScheduledByAdminAt: serverTimestamp(),
+      adminCreated: true,
+      status: 'pending',
+      read: true,
+      createdAt: serverTimestamp(),
+    });
+    batch.set(doc(db, 'meet_greet_availability', dateStr), { bookings: arrayUnion(slot) }, { merge: true });
+    await batch.commit();
+    closeModal('mgAddModal');
+    avSelectDate(dateStr);
+  } catch (e) {
+    btn.disabled = false;
+    alert('Could not add the meet & greet: ' + e.message);
+  }
+};
+
+// Moves a 'meet_greet' placeholder's booking onto the real request: the
+// request takes over meetGreetDateTime (the mirror slot stays held — same
+// slot, new holder), notes carry over into meetGreetNotes/{requestId}, and
+// the placeholder is marked resolved with a pointer to the request.
+window.mgLinkSave = async (requestId) => {
+  const item = allRequests.find(r => r.id === requestId);
+  const placeholderId = document.getElementById('mgLinkSelect')?.value;
+  const ph = allRequests.find(r => r.id === placeholderId);
+  if (!item || !ph) { alert('Pick a meet & greet to link.'); return; }
+  const name = item.ownerName || item.name || 'this request';
+  const when = mgWhenLabel(ph);
+  if (!confirm(`Link ${ph.ownerName}'s meet & greet${when ? ` (${when})` : ''} to ${name}'s request?\n\nNo email is sent.`)) return;
+  try {
+    const [phNotesSnap, reqNotesSnap] = await Promise.all([
+      getDoc(doc(db, 'meetGreetNotes', ph.id)),
+      getDoc(doc(db, 'meetGreetNotes', item.id)),
+    ]);
+    const phText = phNotesSnap.exists() ? (phNotesSnap.data().text || '').trim() : '';
+    const reqText = reqNotesSnap.exists() ? (reqNotesSnap.data().text || '').trim() : '';
+    const bookingNote = ph.notes ? `Note from booking: ${ph.notes}` : '';
+    const text = [reqText, bookingNote, phText].filter(Boolean).join('\n\n');
+
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'submissions', item.id), {
+      meetGreetDateTime: ph.meetGreetDateTime || '',
+      meetGreetScheduledByAdminAt: serverTimestamp(),
+      meetGreetLinkedFrom: ph.id,
+    });
+    batch.update(doc(db, 'submissions', ph.id), {
+      status: 'resolved',
+      linkedToSubmissionId: item.id,
+      linkedAt: serverTimestamp(),
+      meetGreetLinkedDateTime: ph.meetGreetDateTime || '',
+      meetGreetDateTime: '',
+    });
+    if (text) {
+      batch.set(doc(db, 'meetGreetNotes', item.id), {
+        submissionId: item.id,
+        ownerName: item.ownerName || item.name || '',
+        meetGreetDateTime: ph.meetGreetDateTime || '',
+        text,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    }
+    await batch.commit();
+    item.meetGreetDateTime = ph.meetGreetDateTime || '';
+    renderRequestMgNotes(item);
+  } catch (e) {
+    alert('Could not link the meet & greet: ' + e.message);
+  }
+};
+
+// Gives up on a placeholder whose person never sent a request. A future
+// slot reopens on the public calendar; a past one is left as history.
+window.mgPlaceholderClose = async (id) => {
+  const ph = allRequests.find(r => r.id === id);
+  if (!ph) return;
+  const b = avFindBooking(id);
+  const upcoming = b && b.dateStr >= mgLocalToday();
+  if (!confirm(`Close ${ph.ownerName || 'this'} meet & greet without a request?${upcoming ? `\n\nThe ${avFmt(b.dateStr, b.slot)} slot reopens on the public calendar.` : ''}\n\nNo email is sent.`)) return;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'submissions', id), { status: 'declined', closedAt: serverTimestamp() });
+    if (upcoming) avMirrorRelease(batch, b.dateStr, b.slot, id);
+    await batch.commit();
+    closeModal('requestModal');
+  } catch (e) {
+    alert('Could not close it: ' + e.message);
   }
 };
 
