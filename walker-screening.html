@@ -49,6 +49,10 @@
   .form-section:first-child { border-top: none; padding-top: 0; margin-top: 0; }
   .section-label { font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 18px; }
   .field-hint { font-size: 12px; color: var(--text-light); margin: -6px 0 14px; line-height: 1.5; }
+  .holiday-ref { background: var(--sand); border-radius: 6px; padding: 12px 16px; font-size: 13px; color: var(--text-mid); line-height: 1.6; }
+  .holiday-ref-title { font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-light); margin-bottom: 4px; }
+  .holiday-ref ul { list-style: none; margin: 0; padding: 0; }
+  .holiday-ref strong { font-weight: 500; color: var(--navy); }
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field.full { grid-column: 1 / -1; }
@@ -189,6 +193,25 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
             <div class="h-scroll">
               <div id="availGrid" style="display:grid;grid-template-columns:110px repeat(5,1fr);gap:6px;min-width:640px;"><!-- header + rows injected by JS from SCREEN_DAYS / SCREEN_SLOTS --></div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Weekend & holiday coverage (optional free text). Holiday ranges match
+           HOLIDAY_WINDOWS in pricing.js for the rest of 2026. -->
+      <div class="form-section">
+        <div class="section-label">Weekends &amp; Holidays</div>
+        <div class="form-grid">
+          <div class="field full">
+            <label>Are there any weekends or holidays between now and the end of 2026 when you won't be available? If so, please list the dates. If you're available for all of them, you can leave this blank.</label>
+            <div class="holiday-ref">
+              <div class="holiday-ref-title">Our holidays</div>
+              <ul>
+                <li><strong>Thanksgiving:</strong> Nov 26&ndash;29</li>
+                <li><strong>Christmas &amp; New Year:</strong> Dec 24&ndash;Jan 3</li>
+              </ul>
+            </div>
+            <textarea name="unavailable-dates" placeholder="e.g., Away Nov 26&ndash;29, and the weekend of Dec 12&ndash;13"></textarea>
           </div>
         </div>
       </div>
@@ -422,6 +445,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         ],
         // Required Yes/No radio; value is always 'Yes' or 'No' here.
         backgroundCheckConsent: document.querySelector('input[name="background-check"]:checked')?.value || '',
+        unavailableDates: val('textarea[name=unavailable-dates]'),
         additional: val('textarea[name=additional]'),
         read: false,
         createdAt: window._serverTimestamp(),

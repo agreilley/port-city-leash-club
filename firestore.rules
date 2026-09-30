@@ -437,13 +437,13 @@ service cloud.firestore {
       // (morning/early-afternoon/late-afternoon/evening/overnight); comfortLevels is a
       // map whose keys are the fixed screening items (matching COMFORT_ITEMS in
       // the page); references is a list of {name, contact}; backgroundCheckConsent
-      // is a required Yes/No; additional is optional free text.
+      // is a required Yes/No; unavailableDates and additional are optional free text.
       function validWalkerScreening() {
         return request.resource.data.keys().hasOnly(
             ['type', 'name', 'email', 'phone', 'availability', 'comfortLevels',
              'scenarioAggressive', 'scenarioTimeWindow', 'scenarioAccess',
              'writingSample', 'references', 'backgroundCheckConsent',
-             'additional', 'read', 'createdAt'])
+             'unavailableDates', 'additional', 'read', 'createdAt'])
           && request.resource.data.name is string && request.resource.data.name.size() <= 200
           && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
           && request.resource.data.availability is map
@@ -478,6 +478,10 @@ service cloud.firestore {
           // that don't send it still pass.
           && (!('additional' in request.resource.data)
               || (request.resource.data.additional is string && request.resource.data.additional.size() <= 10000))
+          // unavailableDates: optional free text (weekends/holidays they can't
+          // cover, added 2026-09-30); optional so cached pages still pass.
+          && (!('unavailableDates' in request.resource.data)
+              || (request.resource.data.unavailableDates is string && request.resource.data.unavailableDates.size() <= 10000))
           // References: exactly 2 entries, each a map with only {name, contact}
           // (both strings). Indexed access is safe because size() == 2 is checked
           // first and && short-circuits.
