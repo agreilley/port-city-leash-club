@@ -4715,14 +4715,14 @@ window.openRequestItem = async (id) => {
   }
 
   // Walker-screening availability grid. Deliberately SEPARATE from
-  // buildApplicationAvailabilityGrid (which is 3 slots for careers) — this one
-  // adds the 'overnight' column. Keeping them apart avoids the hardcoded-slot
+  // buildApplicationAvailabilityGrid — the two grids happen to share the same
+  // five slots today (evening added here 2026-09-29 to match careers). Keeping them apart avoids the hardcoded-slot
   // coupling where adding a slot to one grid silently breaks the other.
   function buildScreeningAvailabilityGrid(raw) {
     const dayKeys = ['mon','tue','wed','thu','fri','sat','sun'];
     const dayLabels = { mon:'Monday', tue:'Tuesday', wed:'Wednesday', thu:'Thursday', fri:'Friday', sat:'Saturday', sun:'Sunday' };
-    const slotKeys = ['morning','early-afternoon','late-afternoon','overnight'];
-    const slotLabels = { 'morning':'Morning', 'early-afternoon':'Early Afternoon', 'late-afternoon':'Late Afternoon', 'overnight':'Overnight' };
+    const slotKeys = ['morning','early-afternoon','late-afternoon','evening','overnight'];
+    const slotLabels = { 'morning':'Morning', 'early-afternoon':'Early Afternoon', 'late-afternoon':'Late Afternoon', 'evening':'Evening', 'overnight':'Overnight' };
     const norm = {};
     dayKeys.forEach(d => {
       const slots = (raw && Array.isArray(raw[d])) ? raw[d] : [];
@@ -5038,6 +5038,7 @@ window.openRequestItem = async (id) => {
       { label: 'Scenario · Access problem', value: item.scenarioAccess || '–' },
       { label: 'Writing Sample (Bailey walk)', value: item.writingSample || '–' },
       ...refRows,
+      { label: 'Anything Else', value: item.additional || '–' },
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
       { label: 'Submitted', value: fmtDate(item.createdAt) },
     ];

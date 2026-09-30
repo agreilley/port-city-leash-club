@@ -425,25 +425,25 @@ service cloud.firestore {
       }
 
       // Availability cells for the screening grid — its OWN slot set including
-      // 'overnight' (separate from the careers/application grid). Each day must
+      // 'evening' and 'overnight' (separate from the careers/application grid). Each day must
       // be a list containing only these slots.
       function validScreeningAvailDay(d) {
-        return d is list && d.hasOnly(['morning', 'early-afternoon', 'late-afternoon', 'overnight']);
+        return d is list && d.hasOnly(['morning', 'early-afternoon', 'late-afternoon', 'evening', 'overnight']);
       }
 
       // Source: walker-screening.html (submitScreening). An unlinked, shortlist-
       // only form — same anonymous-create posture as the four public forms.
       // availability is a map keyed by day, each a list of this grid's slots
-      // (morning/early-afternoon/late-afternoon/overnight); comfortLevels is a
+      // (morning/early-afternoon/late-afternoon/evening/overnight); comfortLevels is a
       // map whose keys are the fixed screening items (matching COMFORT_ITEMS in
       // the page); references is a list of {name, contact}; backgroundCheckConsent
-      // is a required Yes/No.
+      // is a required Yes/No; additional is optional free text.
       function validWalkerScreening() {
         return request.resource.data.keys().hasOnly(
             ['type', 'name', 'email', 'phone', 'availability', 'comfortLevels',
              'scenarioAggressive', 'scenarioTimeWindow', 'scenarioAccess',
              'writingSample', 'references', 'backgroundCheckConsent',
-             'read', 'createdAt'])
+             'additional', 'read', 'createdAt'])
           && request.resource.data.name is string && request.resource.data.name.size() <= 200
           && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
           && request.resource.data.availability is map
@@ -474,6 +474,10 @@ service cloud.firestore {
           && request.resource.data.scenarioAccess is string && request.resource.data.scenarioAccess.size() <= 10000
           && request.resource.data.writingSample is string && request.resource.data.writingSample.size() <= 10000
           && request.resource.data.backgroundCheckConsent in ['Yes', 'No']
+          // additional: optional free text (added 2026-09-29), so cached pages
+          // that don't send it still pass.
+          && (!('additional' in request.resource.data)
+              || (request.resource.data.additional is string && request.resource.data.additional.size() <= 10000))
           // References: exactly 2 entries, each a map with only {name, contact}
           // (both strings). Indexed access is safe because size() == 2 is checked
           // first and && short-circuits.

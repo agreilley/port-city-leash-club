@@ -181,9 +181,9 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         <p class="field-hint">Please complete this even if you already provided your availability on our website application.</p>
         <div class="form-grid">
           <div class="field full">
-            <label>Which days and times are you available? (select all that apply)</label>
+            <label>Which days and times are you available? (select all that apply, including the nights you could stay overnight)</label>
             <div style="overflow-x:auto;">
-              <div id="availGrid" style="display:grid;grid-template-columns:110px repeat(4,1fr);gap:6px;min-width:640px;"><!-- header + rows injected by JS from SCREEN_DAYS / SCREEN_SLOTS --></div>
+              <div id="availGrid" style="display:grid;grid-template-columns:110px repeat(5,1fr);gap:6px;min-width:640px;"><!-- header + rows injected by JS from SCREEN_DAYS / SCREEN_SLOTS --></div>
             </div>
           </div>
         </div>
@@ -264,6 +264,17 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         </div>
       </div>
 
+      <!-- Anything else (optional, same question as careers.html) -->
+      <div class="form-section">
+        <div class="section-label">Anything Else</div>
+        <div class="form-grid">
+          <div class="field full">
+            <label>Is there anything else you'd like us to know?</label>
+            <textarea name="additional" placeholder="Anything that would help us understand why you'd be a great fit..."></textarea>
+          </div>
+        </div>
+      </div>
+
       <div class="form-actions">
         <p class="microcopy">Your answers are reviewed by our team only.</p>
         <button type="submit" class="btn-submit">Submit Screening</button>
@@ -319,7 +330,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     { key: 'morning', label: 'Morning', sub: '8–11am' },
     { key: 'early-afternoon', label: 'Early Afternoon', sub: '11am–2pm' },
     { key: 'late-afternoon', label: 'Late Afternoon', sub: '2–5pm' },
-    { key: 'overnight', label: 'Overnight', sub: '12+ hrs' },
+    { key: 'evening', label: 'Evening', sub: '5–10pm' },
+    { key: 'overnight', label: 'Overnight', sub: '12+ hours' },
   ];
   (() => {
     const headerCell = s => `<div style="font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">${s.label}<br><span style="text-transform:none;letter-spacing:0;font-weight:400;">${s.sub}</span></div>`;
@@ -372,7 +384,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       const val = sel => document.querySelector(sel)?.value || '';
 
       // availability: {mon:[...], ...} using this page's local SCREEN_SLOTS
-      // (includes 'overnight'). Shape mirrors careers but is built independently.
+      // (includes 'evening' and 'overnight'). Shape mirrors careers but is built independently.
       const availability = (() => {
         const result = {};
         SCREEN_DAYS.forEach(([day]) => {
@@ -406,6 +418,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         ],
         // Required Yes/No radio; value is always 'Yes' or 'No' here.
         backgroundCheckConsent: document.querySelector('input[name="background-check"]:checked')?.value || '',
+        additional: val('textarea[name=additional]'),
         read: false,
         createdAt: window._serverTimestamp(),
       };
