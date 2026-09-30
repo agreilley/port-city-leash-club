@@ -3437,6 +3437,70 @@ exports.sendMonthlyScheduleReminders = onSchedule({
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// 3c-ii. Pet-sitting wrap-up email — 10am ET daily, a thank-you for every
+//    overnight stay / drop-in reservation that ENDED 2-4 days ago and is
+//    status 'completed' (functions/templates/stay-wrap-up.js). Normally
+//    that's the second morning after the stay ends (ends Saturday -> Monday
+//    10am), giving the family a day to settle back in first.
+//
+//    The window reaches back to 4 days, not just 2, so a stay whose
+//    last visit gets marked complete late still gets its email on the next
+//    run; the idempotencyKey (one per reservation) is what keeps the later
+//    runs from sending it again. Nothing is written back to the overnights
+//    doc, so none of the onDocumentUpdated triggers on it are touched.
+//
+//    endDate is a noon-UTC calendar-date stamp, so a UTC-day range over it
+//    selects exactly those calendar dates, same as the walks query above.
+// ─────────────────────────────────────────────────────────────────────────
+exports.sendStayWrapUpEmails = onSchedule({
+  schedule: '0 10 * * *',
+  timeZone: 'America/New_York',
+  secrets: [RESEND_API_KEY],
+}, async () => {
+  const { year, monthIndex, day } = easternTodayParts();
+  const snap = await db.collection('overnights')
+    .where('endDate', '>=', Timestamp.fromDate(new Date(Date.UTC(year, monthIndex, day - 4))))
+    .where('endDate', '<', Timestamp.fromDate(new Date(Date.UTC(year, monthIndex, day - 1))))
+    .get();
+
+  let sent = 0, skipped = 0, failed = 0;
+  for (const doc of snap.docs) {
+    const o = doc.data();
+    if (o.status !== 'completed' || !o.memberId || !o.endDate?.toDate) { skipped++; continue; }
+    const memberSnap = await db.collection('members').doc(o.memberId).get();
+    const member = memberSnap.exists ? memberSnap.data() : null;
+    if (!member?.email) { skipped++; continue; }
+
+    // Everyone who worked the stay, default walker first — a tip is split
+    // across all of them (proportional tip split), so all are named.
+    const walkerNames = [...new Set(
+      [o.walkerName, ...(Array.isArray(o.visits) ? o.visits.map((v) => v && v.walkerName) : [])]
+        .map((n) => (n || '').trim().split(/\s+/)[0])
+        .filter(Boolean)
+    )];
+
+    const result = await sendEmail({
+      to: member.email,
+      template: 'stay-wrap-up',
+      data: {
+        firstName: (member.name || '').trim().split(/\s+/)[0] || 'there',
+        petNames: (Array.isArray(member.dogs) && member.dogs.length
+          ? member.dogs.map((d) => d && d.name)
+          : [member.dogName]).filter(Boolean),
+        hasFeedback: !!o.feedback,
+        hasTip: !!o.tip,
+        walkerNames,
+        portalUrl: `${BUSINESS_PORTAL_ORIGIN}/portal-walk-history?overnight=${doc.id}`,
+      },
+      idempotencyKey: `stay-wrap-up:${doc.id}`,
+    });
+    if (result.ok) sent++;
+    else { failed++; console.error(`sendStayWrapUpEmails: overnights/${doc.id} failed: ${result.error}`); }
+  }
+  console.log(`sendStayWrapUpEmails: sent ${sent}, skipped ${skipped}, failed ${failed}`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // 3d-backfill. One-time cutover helper for the rolling two-month window
 // above: generates NEXT month for every currently active, subscribed
 // member, using the exact same selection/generation logic

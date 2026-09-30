@@ -59,6 +59,7 @@ const TEMPLATES = {
   'monthly-schedule-reminder': require('../templates/monthly-schedule-reminder'),
   'walk-reschedule-update': require('../templates/walk-reschedule-update'),
   'walk-extension-declined': require('../templates/walk-extension-declined'),
+  'stay-wrap-up': require('../templates/stay-wrap-up'),
 };
 
 const MAX_ATTEMPTS = 3;
