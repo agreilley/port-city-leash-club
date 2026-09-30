@@ -993,7 +993,7 @@ onAuthStateChanged(auth, async (user) => {
     // Fall through to the exact same guard every other visitor gets.
   }
 
-  if (!user) { authResolved = true; clearTimeout(authTimeoutId); window.location.href = 'portal-login.html'; return; }
+  if (!user) { authResolved = true; clearTimeout(authTimeoutId); window.location.href = 'portal-login.html?next=' + encodeURIComponent(location.pathname + location.search + location.hash); return; }
   viewedMemberId = user.uid;
   await loadAndSubscribe(viewedMemberId);
 });

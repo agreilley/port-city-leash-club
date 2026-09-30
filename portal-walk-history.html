@@ -965,7 +965,9 @@ const authTimeoutId = setTimeout(() => {
 }, 10000);
 
 onAuthStateChanged(auth, async (user) => {
-  if (!user) { authResolved = true; clearTimeout(authTimeoutId); window.location.href = 'portal-login.html'; return; }
+  // ?next= brings them back here (incl. ?overnight=/?walk= deep links from
+  // emails) after signing in, instead of dropping them on the dashboard.
+  if (!user) { authResolved = true; clearTimeout(authTimeoutId); window.location.href = 'portal-login.html?next=' + encodeURIComponent(location.pathname + location.search + location.hash); return; }
   const m = await requireMemberDoc(db, user.uid);
   authResolved = true;
   clearTimeout(authTimeoutId);

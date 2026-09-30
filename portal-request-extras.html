@@ -536,7 +536,7 @@
       // getFirestore(app) just retrieves that already-configured instance.
       const db = getFirestore(app);
       const user = auth.currentUser;
-      if (!user) { window.location.href = 'portal-login.html'; return; }
+      if (!user) { window.location.href = 'portal-login.html?next=' + encodeURIComponent(location.pathname + location.search + location.hash); return; }
 
       const service   = document.getElementById('serviceSelect')?.value || '';
       const startStr  = document.getElementById('startDate')?.value || '';
@@ -775,7 +775,7 @@
   }, 10000);
 
   onAuthStateChanged(auth, async (user) => {
-    if (!user) { authResolved = true; clearTimeout(authTimeoutId); window.location.href = 'portal-login.html'; return; }
+    if (!user) { authResolved = true; clearTimeout(authTimeoutId); window.location.href = 'portal-login.html?next=' + encodeURIComponent(location.pathname + location.search + location.hash); return; }
     const memberData = await requireMemberDoc(db, user.uid);
     authResolved = true;
     clearTimeout(authTimeoutId);

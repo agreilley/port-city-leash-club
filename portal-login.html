@@ -128,9 +128,20 @@ const auth = initializeAuth(app, {
   persistence: [browserLocalPersistence, browserSessionPersistence, inMemoryPersistence]
 });
 
-// If already logged in, go straight to dashboard
+// ?next= is the portal page that sent a signed-out visitor here (e.g. an
+// email's deep link to one stay's card), so they land back on it after
+// signing in instead of on the dashboard. Only same-site /portal-* paths
+// are honored, never a full URL, so this page can't be used as an open
+// redirect; anything else falls back to the dashboard as before.
+function afterLoginUrl() {
+  const next = new URLSearchParams(location.search).get('next') || '';
+  const ok = /^\/portal-[a-z0-9-]+(\.html)?(?:[?#].*)?$/i.test(next) && !/^\/portal-login\b/i.test(next);
+  return ok ? next : 'portal-dashboard.html';
+}
+
+// If already logged in, go straight to where they were headed
 onAuthStateChanged(auth, (user) => {
-  if (user) window.location.href = 'portal-dashboard.html';
+  if (user) window.location.href = afterLoginUrl();
 });
 
 const form = document.getElementById('loginForm');

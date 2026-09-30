@@ -731,7 +731,7 @@ const authTimeoutId = setTimeout(() => {
 }, 10000);
 
 onAuthStateChanged(auth, async (user) => {
-  if (!user) { authResolved = true; clearTimeout(authTimeoutId); window.location.href = 'portal-login.html'; return; }
+  if (!user) { authResolved = true; clearTimeout(authTimeoutId); window.location.href = 'portal-login.html?next=' + encodeURIComponent(location.pathname + location.search + location.hash); return; }
   userId = user.uid;
   memberData = await requireMemberDoc(db, user.uid);
   authResolved = true;
