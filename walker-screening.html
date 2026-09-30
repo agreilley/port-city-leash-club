@@ -133,6 +133,7 @@
 <script src="/js/meta-pixel.js" defer></script>
 <script src="/js/attribution.js" defer></script>
 <script src="/js/ga4.js" defer></script>
+<script src="/js/scroll-indicator.js" defer></script>
 </head>
 <body>
 <noscript><img height="1" width="1" style="display:none"
@@ -182,7 +183,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         <div class="form-grid">
           <div class="field full">
             <label>Which days and times are you available? (select all that apply, including the nights you could stay overnight)</label>
-            <div style="overflow-x:auto;">
+            <div class="h-scroll">
               <div id="availGrid" style="display:grid;grid-template-columns:110px repeat(5,1fr);gap:6px;min-width:640px;"><!-- header + rows injected by JS from SCREEN_DAYS / SCREEN_SLOTS --></div>
             </div>
           </div>
@@ -193,7 +194,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       <div class="form-section">
         <div class="section-label">Comfort &amp; Experience</div>
         <p class="field-hint">How comfortable are you with each of the following?</p>
-        <div style="overflow-x:auto;">
+        <div class="h-scroll">
           <table class="comfort-table">
             <thead>
               <tr>
