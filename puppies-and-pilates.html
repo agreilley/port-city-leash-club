@@ -227,7 +227,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       </div>
       <div class="event-fact">
         <span class="event-fact-label">Price</span>
-        <span class="event-fact-value">$35 per person</span>
+        <span class="event-fact-value">Sold out</span>
       </div>
     </div>
   </div>
@@ -303,12 +303,22 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   <!-- Ticket Form -->
   <div class="band band-sand band-form">
   <div class="form-intro" style="max-width:1100px;margin:0 auto 40px;">
-    <h2>Get Your Tickets</h2>
-    <p>$35 per person. Space is limited to 30 guests, so grab your spot before it fills up.</p>
+    <h2>Sold Out</h2>
   </div>
   <div class="form-shell">
     <div>
-      <form class="form-card" id="ticketForm" onsubmit="submitTicketForm(event)">
+      <!-- Sold out 2026-09-29 (all 30 spots). The ticket form below is kept but
+           hidden, and mountCard() is skipped. To reopen sales: remove this card,
+           drop style="display:none" from the form, restore mountCard(), the
+           "Get Your Tickets" heading and intro, and the hero Price fact.
+           The server-side capacity check (createEventTicketPaymentIntent)
+           enforces the 30 cap either way. -->
+      <div class="ticket-success" id="soldOut" style="display:block;">
+        <h3>Thank you!</h3>
+        <p>All 30 spots are taken. Email <a href="mailto:hello@portcityleashclub.com" style="color:var(--rust);">hello@portcityleashclub.com</a> if you'd like to hear about future events or be told if a spot opens up.</p>
+      </div>
+
+      <form class="form-card" id="ticketForm" onsubmit="submitTicketForm(event)" style="display:none;">
         <div data-status-container></div>
 
         <div class="honeypot-field" aria-hidden="true">
@@ -434,7 +444,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       if (el) el.textContent = event.error ? event.error.message : '';
     });
   }
-  mountCard();
+  // Sold out: form is hidden, so don't load the card field.
+  // mountCard();
 
   function showTicketSuccess(quantity, options) {
     document.getElementById('ticketForm').style.display = 'none';
