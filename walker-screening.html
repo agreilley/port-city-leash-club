@@ -197,13 +197,13 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         </div>
       </div>
 
-      <!-- Weekend & holiday coverage (optional free text). Holiday ranges match
+      <!-- Weekend & holiday coverage (required free text; "available for all" is a valid answer). Holiday ranges match
            HOLIDAY_WINDOWS in pricing.js for the rest of 2026. -->
       <div class="form-section">
         <div class="section-label">Weekends &amp; Holidays</div>
         <div class="form-grid">
           <div class="field full">
-            <label>Are there any weekends or holidays between now and the end of 2026 when you won't be available? If so, please list the dates. If you're available for all of them, you can leave this blank.</label>
+            <label>Are there any weekends or holidays between now and the end of 2026 when you won't be available? If so, please list the dates. If you're available for all of them, just let us know.</label>
             <div class="holiday-ref">
               <div class="holiday-ref-title">Our holidays</div>
               <ul>
@@ -211,7 +211,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
                 <li><strong>Christmas &amp; New Year:</strong> Dec 24&ndash;Jan 3</li>
               </ul>
             </div>
-            <textarea name="unavailable-dates" placeholder="e.g., Away Nov 26&ndash;29, and the weekend of Dec 12&ndash;13"></textarea>
+            <textarea name="unavailable-dates" required placeholder="e.g., Available for all of them, or: Away Nov 26&ndash;29 and the weekend of Dec 12&ndash;13"></textarea>
           </div>
         </div>
       </div>
@@ -241,15 +241,15 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         <div class="form-grid">
           <div class="field full">
             <label>You're walking a dog and it suddenly becomes aggressive toward another dog. What do you do?</label>
-            <textarea name="scenario-aggressive" placeholder="Walk us through your steps..."></textarea>
+            <textarea name="scenario-aggressive" required placeholder="Walk us through your steps..."></textarea>
           </div>
           <div class="field full">
             <label>Your assigned walks fall within a time window (e.g., Morning 8–11am). If something comes up and you might not make it within your window, what do you do?</label>
-            <textarea name="scenario-timewindow" placeholder="Walk us through your steps..."></textarea>
+            <textarea name="scenario-timewindow" required placeholder="Walk us through your steps..."></textarea>
           </div>
           <div class="field full">
             <label>You arrive for a walk and the key doesn't work, or you can't get into the building. What do you do?</label>
-            <textarea name="scenario-access" placeholder="Walk us through your steps..."></textarea>
+            <textarea name="scenario-access" required placeholder="Walk us through your steps..."></textarea>
           </div>
         </div>
       </div>
@@ -260,7 +260,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         <div class="form-grid">
           <div class="field full">
             <label>Write a sample text update as if you just finished a great 30-minute walk with a client's dog named Bailey.</label>
-            <textarea name="writing-sample" placeholder="Hi! Just wrapped up with Bailey..."></textarea>
+            <textarea name="writing-sample" required placeholder="Hi! Just wrapped up with Bailey..."></textarea>
           </div>
         </div>
       </div>
@@ -270,10 +270,10 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         <div class="section-label">References</div>
         <p class="field-hint">Please provide two references we can contact.</p>
         <div class="form-grid">
-          <div class="field"><label>Reference 1 name</label><input type="text" name="ref1-name" placeholder="Name"></div>
-          <div class="field"><label>Reference 1 phone or email</label><input type="text" name="ref1-contact" placeholder="Phone or email"></div>
-          <div class="field"><label>Reference 2 name</label><input type="text" name="ref2-name" placeholder="Name"></div>
-          <div class="field"><label>Reference 2 phone or email</label><input type="text" name="ref2-contact" placeholder="Phone or email"></div>
+          <div class="field"><label>Reference 1 name</label><input type="text" name="ref1-name" required placeholder="Name"></div>
+          <div class="field"><label>Reference 1 phone or email</label><input type="text" name="ref1-contact" required placeholder="Phone or email"></div>
+          <div class="field"><label>Reference 2 name</label><input type="text" name="ref2-name" required placeholder="Name"></div>
+          <div class="field"><label>Reference 2 phone or email</label><input type="text" name="ref2-contact" required placeholder="Phone or email"></div>
         </div>
       </div>
 
@@ -405,6 +405,14 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
   async function submitScreening(e) {
     e.preventDefault();
+    // Availability is required (at least one box). The other required fields
+    // use the native `required` attribute, which the browser checks before
+    // this handler runs; a checkbox grid can't express "at least one" that way.
+    if (!document.querySelector('#availGrid input:checked')) {
+      showScreeningNotification('Please select at least one day and time you\'re available.', true);
+      document.getElementById('availGrid').closest('.form-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
     const btn = e.target.querySelector('.btn-submit');
     btn.textContent = 'Submitting...'; btn.disabled = true;
     try {
