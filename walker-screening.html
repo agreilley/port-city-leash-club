@@ -60,6 +60,9 @@
   .radio-pill { display: flex; align-items: center; gap: 8px; border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; padding: 10px 16px; font-size: 13px; color: var(--text-mid); cursor: pointer; transition: border-color 0.15s, background 0.15s; }
   .radio-pill:hover { border-color: var(--seafoam); background: rgba(143,168,162,0.05); }
   .radio-pill input { width: auto; }
+  /* Availability grid checkboxes: undo the text-field width:100% + padding
+     above, which iOS Safari applies to checkboxes (pushing them left). */
+  #availGrid input[type=checkbox] { width: auto; padding: 0; }
 
   /* Comfort matrix */
   .comfort-table { border-collapse: collapse; width: 100%; min-width: 560px; }
