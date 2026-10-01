@@ -772,11 +772,13 @@
         <button class="referral-filter" onclick="filterReferralSource('member_referral', this)">Member Referral</button>
         <button class="referral-filter" onclick="filterReferralSource('email_capture', this)">Email Capture</button>
         <button class="referral-filter" onclick="filterReferralSource('friends_family', this)">Friends & Family</button>
+        <button class="referral-filter" onclick="filterReferralSource('event', this)">Event</button>
       </div>
       <div class="table-card">
         <div class="table-header">
           <div class="table-title">Referral Codes</div>
           <button class="btn-secondary" onclick="promptGenerateFriendsFamilyCode()" style="white-space:nowrap;margin-right:8px;">+ Friends & Family Code</button>
+          <button class="btn-secondary" onclick="promptGenerateEventCode()" style="white-space:nowrap;margin-right:8px;">+ Event Code</button>
           <input class="table-search" type="text" placeholder="Search building, agent, code..." oninput="filterReferralSearch(this.value)">
         </div>
         <div class="table-scroll">
@@ -2932,6 +2934,10 @@ const NEEDS_REVIEW_LABELS = {
     label: 'Possible self-referral',
     title: "This member's first payment looked like a possible self-referral (same phone number as whoever referred them) — no credit was issued automatically. Review manually.",
   },
+  event_code_already_redeemed: {
+    label: 'Duplicate event code',
+    title: 'This member used an event code that someone with the same phone number or email already redeemed on another account — event codes are one per person. No discount was applied automatically. Review manually.',
+  },
   single_use_code_already_redeemed: {
     label: 'Duplicate referral code',
     title: 'This member used a single-use referral code (a partner apartment/agent code or a homepage email-capture code) that was already redeemed by a different member — those codes are meant for one lead. No credit was issued automatically. Review manually.',
@@ -3414,7 +3420,7 @@ async function loadReferralCodes(isRefresh) {
   }
 }
 
-const REFERRAL_SOURCE_LABELS = { apartment: 'Apartment', agent: 'Agent', member_referral: 'Member Referral', email_capture: 'Email Capture', friends_family: 'Friends & Family', waitlist_accept: 'Waitlist Area Accepted' };
+const REFERRAL_SOURCE_LABELS = { apartment: 'Apartment', agent: 'Agent', member_referral: 'Member Referral', email_capture: 'Email Capture', friends_family: 'Friends & Family', waitlist_accept: 'Waitlist Area Accepted', event: 'Event' };
 const REFERRAL_REDEMPTION_STATUS_LABELS = { invited: 'Invited', flagged_review: 'Flagged for Review', credit_applied: 'Credit Applied' };
 
 function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : '–'; }
@@ -3430,6 +3436,7 @@ function referralCodeLabel(c) {
   if (c.source === 'email_capture') return c.submittedEmail || '–';
   if (c.source === 'friends_family') return c.notes || 'Friends & Family';
   if (c.source === 'waitlist_accept') return c.submittedEmail || '–';
+  if (c.source === 'event') return c.eventName || '–';
   return c.referrerName ? `Referred by ${c.referrerName}` : '–';
 }
 
@@ -3444,7 +3451,10 @@ function buildReferralRows() {
     // that field, and its true redemption count is however many
     // /redemptions docs reference it, so this only overrides the code doc's
     // own count for the type that has an authoritative one.
-    redemptionCount: c.source === 'friends_family' ? (c.redemptionCount || 0) : (countByCode[c.id] || 0),
+    // event codes keep the same kind of authoritative count (incremented
+    // only when a discount actually lands — see recordEventCodeClaims), so
+    // their column shows people who used it, not everyone who typed it in.
+    redemptionCount: (c.source === 'friends_family' || c.source === 'event') ? (c.redemptionCount || 0) : (countByCode[c.id] || 0),
     label: referralCodeLabel(c),
   }));
 }
@@ -3481,7 +3491,7 @@ function renderReferralCodesTable() {
       <td>${escapeHtml(r.label)}</td>
       <td><span class="status-badge ${r.status === 'active' ? 'active' : 'completed'}">${escapeHtml(capitalize(r.status))}</span></td>
       <td>${r.source === 'friends_family' ? `${r.redemptionCount} / ${r.maxRedemptions ?? '–'}` : r.redemptionCount}</td>
-      <td>${r.source === 'friends_family'
+      <td>${(r.source === 'friends_family' || r.source === 'event')
           ? '<span style="color:var(--text-light);">N/A</span>'
           : `<span class="status-badge ${r.creditIssued ? 'active' : 'pending'}">${r.creditIssued ? 'Yes' : 'No'}</span>`}</td>
     </tr>
@@ -3505,6 +3515,34 @@ window.promptGenerateFriendsFamilyCode = async () => {
     const generateFriendsFamilyCode = httpsCallable(fns, 'generateFriendsFamilyCode');
     const res = await generateFriendsFamilyCode({ maxRedemptions, notes });
     alert(`Code created: ${res.data.code}\n\n40% off travel services (overnight, drop-in, extra pet, medication), up to ${maxRedemptions} redemption${maxRedemptions === 1 ? '' : 's'}. Share it directly — it isn't emailed automatically.`);
+    loadReferralCodes(true);
+  } catch (e) {
+    alert(`Couldn't create the code: ${e.message}`);
+  }
+};
+
+// Event codes: one shared, admin-named code (e.g. printed on a postcard) —
+// a flat credit off a new client's first payment, once per person. Same
+// prompt()-based flow as Friends & Family above, for the same reason.
+window.promptGenerateEventCode = async () => {
+  const eventName = prompt('Event name (shown in the Referral Codes table)?', '');
+  if (!eventName || !eventName.trim()) return;
+  const code = prompt('Code people will type (4–20 letters or numbers, no spaces):', '');
+  if (!code || !code.trim()) return;
+  const amountStr = prompt('Discount amount in dollars (off a new client\'s first payment, never more than half of it):', '20');
+  if (amountStr === null) return;
+  const amount = Number(amountStr);
+  if (!Number.isInteger(amount) || amount < 1 || amount > 100) {
+    alert('Enter a whole dollar amount between 1 and 100.');
+    return;
+  }
+  const defaultExpiry = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toLocaleDateString('en-CA'); // YYYY-MM-DD
+  const expiresOn = prompt('Last day the code works (YYYY-MM-DD):', defaultExpiry);
+  if (!expiresOn) return;
+  try {
+    const generateEventCode = httpsCallable(fns, 'generateEventCode');
+    const res = await generateEventCode({ eventName, code, amountCents: amount * 100, expiresOn: expiresOn.trim() });
+    alert(`Code created: ${res.data.code}\n\n$${amount} off a new client's first payment (capped at half that payment), one per person, through ${res.data.expiresOn}.`);
     loadReferralCodes(true);
   } catch (e) {
     alert(`Couldn't create the code: ${e.message}`);
@@ -3543,10 +3581,17 @@ window.openReferralCodeDetail = (codeId) => {
   const fields = [
     { label: 'Code', value: code.code || code.id },
     { label: 'Source', value: REFERRAL_SOURCE_LABELS[code.source] || code.source || '–' },
-    { label: code.source === 'member_referral' ? 'Referrer' : code.source === 'email_capture' ? 'Email' : 'Building / Agent', value: referralCodeLabel(code) },
+    { label: code.source === 'member_referral' ? 'Referrer' : code.source === 'email_capture' ? 'Email' : code.source === 'event' ? 'Event' : 'Building / Agent', value: referralCodeLabel(code) },
     { label: 'Status', value: capitalize(code.status) },
-    { label: 'Credit Issued', value: code.creditIssued ? 'Yes' : 'No' },
-    { label: 'Redemptions', value: String(redemptions.length) },
+    ...(code.source === 'event' ? [
+      { label: 'Amount', value: typeof code.amountCents === 'number' ? `$${(code.amountCents / 100).toFixed(2)}` : '–' },
+      { label: 'Expires', value: code.expiresAt?.toDate ? code.expiresAt.toDate().toLocaleDateString() : '–' },
+      { label: 'Used', value: String(code.redemptionCount || 0) },
+      { label: 'Entered on a request', value: String(redemptions.length) },
+    ] : [
+      { label: 'Credit Issued', value: code.creditIssued ? 'Yes' : 'No' },
+      { label: 'Redemptions', value: String(redemptions.length) },
+    ]),
   ];
   const fieldHTML = fields.map(f =>
     `<div class="modal-field"><div class="modal-label">${escapeHtml(f.label)}</div><div class="modal-value">${escapeHtml(f.value)}</div></div>`

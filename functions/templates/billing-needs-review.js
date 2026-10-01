@@ -35,6 +35,10 @@ const REASON_INFO = {
     label: 'Possible self-referral',
     blurb: "This member's first payment looked like a possible self-referral, the same phone number as whoever referred them. No credit was issued automatically.",
   },
+  event_code_already_redeemed: {
+    label: 'Duplicate event code',
+    blurb: 'This member used an event code that someone with the same phone number or email already redeemed on another account. Event codes are one per person. No discount was applied automatically.',
+  },
   single_use_code_already_redeemed: {
     label: 'Duplicate referral code',
     blurb: 'This member used a single-use referral code (a partner apartment/agent code or a homepage email-capture code) that was already redeemed by a different member. No credit was issued automatically.',

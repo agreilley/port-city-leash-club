@@ -4153,6 +4153,26 @@ async function resolveNewMemberReferralDiscount(memberId, billingData, memberDat
     return { referredByCode, decision: 'flagged', flagReason: 'single_use_code_already_redeemed', discountCents: 0, isMemberReferral, referrerId: null };
   }
 
+  // Event codes (admin-named, e.g. a code printed on a postcard handed out
+  // at Puppies & Pilates) are shared by design — many people, but one
+  // redemption per PERSON, not just per account. The first-payment rule
+  // (referralCreditChecked) already stops one account using it twice; this
+  // stops the same phone number or email getting it again on a second
+  // account. eventClaims docs are only written once a redemption actually
+  // lands (recordEventCodeClaims), so a member whose own first charge failed
+  // and is retried finds only their own claims, or none.
+  let eventClaimKeys = null;
+  if (codeData.source === 'event') {
+    eventClaimKeys = eventCodeClaimKeys(memberData);
+    const claimsRef = db.collection('referralCodes').doc(referredByCode).collection('eventClaims');
+    const claimSnaps = await Promise.all(eventClaimKeys.map((k) => claimsRef.doc(k).get()));
+    const takenBy = claimSnaps.find((s) => s.exists && s.data().memberId !== memberId);
+    if (takenBy) {
+      console.warn(`resolveNewMemberReferralDiscount: event code ${referredByCode} was already redeemed by member ${takenBy.data().memberId} with the same phone or email — member ${memberId} flagged, no discount.`);
+      return { referredByCode, decision: 'flagged', flagReason: 'event_code_already_redeemed', discountCents: 0, isMemberReferral: false, referrerId: null };
+    }
+  }
+
   // Self-referral check: only meaningful for member_referral codes, which
   // have an actual referring member (referrerId) with their own phone
   // number to compare against. Partner (apartment/agent) codes have no
@@ -4180,7 +4200,40 @@ async function resolveNewMemberReferralDiscount(memberId, billingData, memberDat
     // that one charge).
     discountCents: codeData.amountCents ?? 5000,
     isMemberReferral, referrerId: isMemberReferral ? codeData.referrerId : null,
+    // Non-null only for event codes — tells both commit paths
+    // (finalizeNewMemberReferralDiscount, runFirstPaymentReferralCredit)
+    // to record this person's claim once the redemption lands.
+    eventClaimKeys,
   };
+}
+
+// The per-person identities an event-code redemption is recorded under:
+// the member's phone digits and lowercased email, each hashed so the
+// eventClaims doc ids carry no raw contact details. Either one matching a
+// claim held by a different member blocks the discount.
+function eventCodeClaimKeys(memberData) {
+  const hash = (v) => crypto.createHash('sha256').update(v).digest('hex');
+  const phone = memberData?.phoneDigits || normalizePhoneDigits(memberData?.phone);
+  const email = memberData?.emailNormalized || (typeof memberData?.email === 'string' ? memberData.email.trim().toLowerCase() : '');
+  const keys = [];
+  if (phone) keys.push(`phone_${hash(phone)}`);
+  if (email) keys.push(`email_${hash(email)}`);
+  return keys;
+}
+
+// Records an event-code redemption that just landed: one eventClaims doc per
+// identity key (what resolveNewMemberReferralDiscount checks against), plus
+// the code's own redemptionCount for the admin Referral Codes table. Both
+// callers only reach this once per member — referralCreditChecked is claimed
+// first — so the increment can't double-count a retry.
+async function recordEventCodeClaims(code, memberId, claimKeys) {
+  const codeRef = db.collection('referralCodes').doc(code);
+  const batch = db.batch();
+  claimKeys.forEach((k) => {
+    batch.set(codeRef.collection('eventClaims').doc(k), { memberId, claimedAt: FieldValue.serverTimestamp() });
+  });
+  batch.set(codeRef, { redemptionCount: FieldValue.increment(1) }, { merge: true });
+  await batch.commit();
 }
 
 // Post-charge commit for the pre-charge discount path (chargeCurrentMonthWalks,
@@ -4262,6 +4315,9 @@ async function finalizeNewMemberReferralDiscount(stripe, memberId, referralSubmi
       await db.collection('referralCodes').doc(discount.referredByCode)
         .collection('redemptions').doc(referralSubmissionId)
         .set({ status: 'credit_applied', creditIssued: true, discountAppliedCents: appliedDiscountCents }, { merge: true });
+    }
+    if (discount.eventClaimKeys) {
+      await recordEventCodeClaims(discount.referredByCode, memberId, discount.eventClaimKeys);
     }
 
     if (discount.isMemberReferral && discount.referrerId) {
@@ -4458,6 +4514,9 @@ async function runFirstPaymentReferralCredit(stripe, memberId, invoiceAmountPaid
       await db.collection('referralCodes').doc(discount.referredByCode)
         .collection('redemptions').doc(referralSubmissionId)
         .set({ status: 'credit_applied', creditIssued: true }, { merge: true });
+    }
+    if (discount.eventClaimKeys) {
+      await recordEventCodeClaims(discount.referredByCode, memberId, discount.eventClaimKeys);
     }
   } catch (e) {
     // Deliberately does NOT set creditIssued/credit_applied — see the
@@ -9207,6 +9266,76 @@ exports.generateFriendsFamilyCode = onCall({}, async (request) => {
 // Exposed directly, same reasoning as runGenerateReferralCode above.
 exports.runGenerateFriendsFamilyCode = runGenerateFriendsFamilyCode;
 
+// ── Event codes ─────────────────────────────────────────────────────────────
+// Admin-named, shared flat-credit codes for in-person marketing (a code
+// printed on a postcard at an event). Unlike every other code type the admin
+// picks the code itself, so it can't go through createReferralCodeDoc's
+// random-id path. Redemption reuses the ordinary flat-credit flow end to end
+// (validateReferralCode → referredByCode → first-payment discount, capped at
+// half that charge); the only event-specific rule is one redemption per
+// person, enforced in resolveNewMemberReferralDiscount.
+//
+// amountCents is required and always written — a flat code missing it falls
+// back to $50 everywhere (the `?? 5000` default), which must never happen
+// silently for a code printed with a different amount. Codes are upper-case
+// only (both public forms and validateReferralCode upper-case what's typed),
+// and the PCLC prefix stays reserved for generated codes.
+const EVENT_CODE_PATTERN = /^[A-Z0-9]{4,20}$/;
+const EVENT_CODE_MAX_AMOUNT_CENTS = 10000; // $100
+
+async function runGenerateEventCode(payload = {}) {
+  const code = typeof payload.code === 'string' ? payload.code.trim().toUpperCase() : '';
+  if (!EVENT_CODE_PATTERN.test(code)) {
+    throw new HttpsError('invalid-argument', 'The code must be 4–20 letters or numbers, with no spaces.');
+  }
+  if (code.startsWith('PCLC')) {
+    throw new HttpsError('invalid-argument', 'Codes starting with PCLC are reserved for automatically generated codes.');
+  }
+
+  const amountCents = payload.amountCents;
+  if (!Number.isInteger(amountCents) || amountCents < 100 || amountCents > EVENT_CODE_MAX_AMOUNT_CENTS) {
+    throw new HttpsError('invalid-argument', 'The amount must be between $1 and $100.');
+  }
+
+  // Expires at the end of the chosen day, Eastern time.
+  const expiresDate = parseIsoDateStrict(payload.expiresOn);
+  if (!expiresDate) throw new HttpsError('invalid-argument', 'The expiry date must be YYYY-MM-DD.');
+  const expiresAt = easternTimeToUtc(expiresDate.getUTCFullYear(), expiresDate.getUTCMonth(), expiresDate.getUTCDate(), 23, 59);
+  if (expiresAt.getTime() <= Date.now()) throw new HttpsError('invalid-argument', 'The expiry date must be in the future.');
+
+  const eventName = typeof payload.eventName === 'string' ? payload.eventName.trim().slice(0, 100) : '';
+  if (!eventName) throw new HttpsError('invalid-argument', 'An event name is required.');
+
+  try {
+    await db.collection('referralCodes').doc(code).create({
+      code,
+      source: 'event',
+      eventName,
+      amountCents,
+      expiresAt: Timestamp.fromDate(expiresAt),
+      redemptionCount: 0,
+      referrerId: null,
+      referrerName: null,
+      attribution: null,
+      createdAt: FieldValue.serverTimestamp(),
+      status: 'active',
+      creditIssued: false,
+    });
+  } catch (e) {
+    if (e.code === 6) throw new HttpsError('already-exists', `The code ${code} already exists.`); // gRPC ALREADY_EXISTS
+    throw e;
+  }
+
+  return { code, amountCents, expiresOn: payload.expiresOn, eventName };
+}
+
+exports.generateEventCode = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+  return runGenerateEventCode(request.data || {});
+});
+// Exposed directly, same reasoning as runGenerateReferralCode above.
+exports.runGenerateEventCode = runGenerateEventCode;
+
 const WAITLIST_AREA_AMOUNT_CENTS = 2000; // $20
 const WAITLIST_AREA_EXPIRY_MS = EMAIL_CAPTURE_EXPIRY_MS; // 90 days, same window as the homepage email-capture offer
 const WAITLIST_AREA_RADIUS_MI = 1;
@@ -9468,7 +9597,9 @@ exports.getMemberCreditBalance = onCall({ secrets: [STRIPE_SECRET_KEY] }, async 
 // exist yet for this unauthenticated caller. See resolveNewMemberReferralDiscount
 // for the real reuse check, at charge time, where a memberId is in hand.
 exports.validateReferralCode = onCall({}, async (request) => {
-  const code = typeof request.data?.code === 'string' ? request.data.code.trim() : '';
+  // Every code is upper-case (generated PCLC- codes and admin-named event
+  // codes alike), so a lower-case entry of a printed code still matches.
+  const code = typeof request.data?.code === 'string' ? request.data.code.trim().toUpperCase() : '';
   if (!code) return { valid: false, reason: null };
   const snap = await db.collection('referralCodes').doc(code).get();
   if (!snap.exists) return { valid: false, reason: 'not_found' };

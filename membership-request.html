@@ -460,7 +460,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   referralCodeInput.addEventListener('input', resetReferralCodeStatus);
 
   referralCodeInput.addEventListener('blur', async () => {
-    const code = referralCodeInput.value.trim();
+    const code = referralCodeInput.value.trim().toUpperCase();
     if (!code) { resetReferralCodeStatus(); return; }
     if (!window._validateReferralCode) return; // Firebase not ready yet — submit-time check still covers this
     const thisCheck = ++referralCodeCheckToken;
@@ -627,7 +627,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       // callable is the actual validation (referralCodes has no public read
       // rule), this only decides what gets attached to this submission.
       let referredByCode = null;
-      const enteredCode = document.getElementById('referralCode')?.value.trim() || '';
+      const enteredCode = document.getElementById('referralCode')?.value.trim().toUpperCase() || '';
       if (enteredCode && window._validateReferralCode) {
         try {
           const result = await window._validateReferralCode({ code: enteredCode });
