@@ -638,6 +638,158 @@ exports.getPaymentHistory = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (requ
   return { payments, upcomingSubscription };
 });
 
+// ─────────────────────────────────────────────────────────────────────────
+// Admin Revenue tab: one calendar year of Stripe balance transactions,
+// bucketed by month (America/New_York). Balance transactions rather than
+// charges/invoices because they're what actually lands in the bank — each
+// one carries its own Stripe fee and net, and refunds/disputes show up as
+// their own negative rows in the month they happened.
+//
+// Category comes from how each charge is created in this file: tips and
+// event tickets have fixed descriptions/metadata, membership charges are
+// either subscription invoices or carry metadata.periodKey, and pet sitting
+// descriptions name the service. Anything unrecognized lands in "Other
+// services" rather than being guessed at.
+//
+// Walker payouts aren't here — they're paid outside Stripe and the
+// dashboard already holds walkerPayments live, so it adds those client-side.
+// ─────────────────────────────────────────────────────────────────────────
+const REVENUE_INCLUDED_TYPES = new Set([
+  'charge', 'payment', 'refund', 'payment_refund', 'payment_failure_refund',
+  'adjustment', 'stripe_fee', 'stripe_fx_fee',
+]);
+
+function revenueCategoryForCharge(charge) {
+  if (!charge) return 'other';
+  const desc = String(charge.description || '').toLowerCase();
+  const meta = charge.metadata || {};
+  if (meta.eventId || desc.includes('puppies & pilates')) return 'events';
+  if (desc.includes('— tip') || desc.endsWith(' tip')) return 'tips';
+  if (charge.invoice || meta.periodKey || desc.includes('membership')) return 'memberships';
+  if (/overnight|drop-in|check-in|pet sitting|house sitting/.test(desc)) return 'petSitting';
+  return 'other';
+}
+
+function revenueClientForCharge(charge, customer) {
+  const customerId = charge?.customer || null;
+  const name = (customer && !customer.deleted && customer.name) || charge?.billing_details?.name || null;
+  const email = (customer && !customer.deleted && customer.email) || charge?.billing_details?.email || charge?.receipt_email || null;
+  return {
+    key: customerId || email || name || 'unknown',
+    name: name || email || 'Unknown client',
+    email: email || null,
+  };
+}
+
+exports.getRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeoutSeconds: 120 }, async (request) => {
+  await assertIsAdmin(request.auth);
+  const year = Number(request.data?.year);
+  if (!Number.isInteger(year) || year < 2024 || year > 2100) {
+    throw new HttpsError('invalid-argument', 'year must be a four-digit year.');
+  }
+
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+
+  // Jan 1 and the following Jan 1 are both in EST (UTC-5), so the year's
+  // boundaries in ET are 05:00 UTC.
+  const start = Math.floor(Date.UTC(year, 0, 1, 5) / 1000);
+  const end = Math.floor(Date.UTC(year + 1, 0, 1, 5) / 1000);
+  const monthFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit' });
+  const monthKeyOf = (unix) => monthFmt.format(new Date(unix * 1000)).slice(0, 7); // "YYYY-MM"
+
+  const txns = [];
+  await stripe.balanceTransactions.list({
+    created: { gte: start, lt: end },
+    limit: 100,
+    expand: ['data.source'],
+  }).autoPagingEach((t) => {
+    if (REVENUE_INCLUDED_TYPES.has(t.type)) txns.push(t);
+  });
+
+  // Refund rows point at the refund, not the charge — look the original
+  // charge up once each so the refund lands in the right category/client.
+  const refundChargeIds = [...new Set(txns
+    .filter(t => t.source && t.source.object === 'refund' && t.source.charge)
+    .map(t => (typeof t.source.charge === 'string' ? t.source.charge : t.source.charge.id)))];
+  const chargesById = {};
+  await Promise.all(refundChargeIds.map(async (id) => {
+    try {
+      chargesById[id] = await stripe.charges.retrieve(id);
+    } catch (e) {
+      console.error(`getRevenueReport: couldn't load charge ${id} for a refund:`, e.message);
+    }
+  }));
+
+  // Customer names, fetched once per customer rather than via a nested
+  // list expansion (refund/adjustment sources have no customer field).
+  const customerIds = new Set();
+  const chargeOf = (t) => {
+    if (t.source && t.source.object === 'charge') return t.source;
+    if (t.source && t.source.object === 'refund') {
+      const cid = typeof t.source.charge === 'string' ? t.source.charge : t.source.charge?.id;
+      return chargesById[cid] || null;
+    }
+    return null;
+  };
+  txns.forEach(t => { const ch = chargeOf(t); if (ch && typeof ch.customer === 'string') customerIds.add(ch.customer); });
+  const customersById = {};
+  await Promise.all([...customerIds].map(async (id) => {
+    try {
+      customersById[id] = await stripe.customers.retrieve(id);
+    } catch (e) {
+      console.error(`getRevenueReport: couldn't load customer ${id}:`, e.message);
+    }
+  }));
+
+  const emptyTotals = () => ({ grossCents: 0, refundCents: 0, adjustmentCents: 0, feeCents: 0, netCents: 0, chargeCount: 0 });
+  const months = {};
+  for (let m = 1; m <= 12; m++) {
+    months[`${year}-${String(m).padStart(2, '0')}`] = { ...emptyTotals(), categories: {}, clients: {} };
+  }
+
+  for (const t of txns) {
+    const month = months[monthKeyOf(t.created)];
+    if (!month) continue;
+
+    const charge = chargeOf(t);
+
+    const bucket = { grossCents: 0, refundCents: 0, adjustmentCents: 0 };
+    if (t.type === 'charge' || t.type === 'payment') {
+      bucket.grossCents = t.amount;
+      month.chargeCount += 1;
+    } else if (t.type === 'adjustment') {
+      bucket.adjustmentCents = t.amount;
+    } else if (t.type === 'stripe_fee' || t.type === 'stripe_fx_fee') {
+      // A standalone Stripe fee (e.g. Billing) — amount is negative.
+      month.feeCents += -t.amount;
+      month.netCents += t.net;
+      continue;
+    } else {
+      bucket.refundCents = t.amount; // negative
+    }
+
+    month.grossCents += bucket.grossCents;
+    month.refundCents += bucket.refundCents;
+    month.adjustmentCents += bucket.adjustmentCents;
+    month.feeCents += t.fee;
+    month.netCents += t.net;
+
+    const cat = t.type === 'adjustment' && !charge ? 'other' : revenueCategoryForCharge(charge);
+    const c = month.categories[cat] || (month.categories[cat] = { grossCents: 0, refundCents: 0, netCents: 0 });
+    c.grossCents += bucket.grossCents;
+    c.refundCents += bucket.refundCents + bucket.adjustmentCents;
+    c.netCents += t.net;
+
+    const client = revenueClientForCharge(charge, charge && customersById[charge.customer]);
+    const cl = month.clients[client.key] || (month.clients[client.key] = { name: client.name, email: client.email, grossCents: 0, refundCents: 0, chargeCount: 0 });
+    cl.grossCents += bucket.grossCents;
+    cl.refundCents += bucket.refundCents + bucket.adjustmentCents;
+    if (bucket.grossCents) cl.chargeCount += 1;
+  }
+
+  return { year, months, generatedAt: Date.now() };
+});
+
 // removeCardOnFile: detaches the caller's own saved card(s) from Stripe and
 // clears cardOnFile on their own billing doc.
 //

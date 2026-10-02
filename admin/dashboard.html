@@ -415,6 +415,10 @@
     Payouts
     <span class="badge" id="payoutsBadge" style="display:none;">0</span>
   </a>
+  <a class="nav-item" data-view="revenue" onclick="switchView('revenue')">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1.5 14.5h13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M3.5 11.5v-3M7 11.5V5M10.5 11.5V7.5M14 11.5V3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    Revenue
+  </a>
   <a class="nav-item" data-view="members" onclick="switchView('members')">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="6" cy="5" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M1 13c0-2.761 2.239-4.5 5-4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="11" cy="6" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M8.5 13c0-2.209 1.343-3.5 3-3.5s3 1.291 3 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     Members
@@ -850,6 +854,51 @@
     </div>
 
     <!-- EMAIL LOG VIEW -->
+    <!-- REVENUE VIEW (read-only; Stripe balance transactions via the
+         getRevenueReport callable, walker pay from walkerPayments) -->
+    <div class="view" id="view-revenue">
+      <div class="request-filters" style="align-items:center;">
+        <select id="revenueYear" onchange="loadRevenue()"></select>
+        <select id="revenuePeriod" onchange="renderRevenue()" style="margin-left:8px;"></select>
+        <span id="revenueStatus" style="margin-left:12px;font-size:12px;color:var(--text-light);"></span>
+      </div>
+      <div class="stats-row stats-row-3">
+        <div class="stat-card"><div class="stat-label">Gross</div><div class="stat-value" id="rev-gross">–</div><div class="stat-sub" id="rev-gross-sub">Charged to clients</div></div>
+        <div class="stat-card"><div class="stat-label">Refunds &amp; Stripe Fees</div><div class="stat-value" id="rev-deductions" style="color:var(--rust);">–</div><div class="stat-sub" id="rev-deductions-sub">&nbsp;</div></div>
+        <div class="stat-card"><div class="stat-label">Net</div><div class="stat-value" id="rev-net">–</div><div class="stat-sub">What reaches your bank</div></div>
+        <div class="stat-card"><div class="stat-label">Walker Pay</div><div class="stat-value" id="rev-walker">–</div><div class="stat-sub" id="rev-walker-sub">Paid out</div></div>
+        <div class="stat-card"><div class="stat-label">After Walker Pay</div><div class="stat-value" id="rev-after">–</div><div class="stat-sub">Net minus walker pay</div></div>
+        <div class="stat-card"><div class="stat-label">Charges</div><div class="stat-value" id="rev-count">–</div><div class="stat-sub">Successful payments</div></div>
+      </div>
+      <div class="table-card" style="margin-bottom:24px;">
+        <div class="table-header"><div class="table-title" id="revenueMonthsTitle">By Month</div></div>
+        <div class="table-scroll">
+        <table>
+          <thead><tr><th>Month</th><th>Gross</th><th>Refunds</th><th>Stripe Fees</th><th>Net</th><th>Walker Pay</th><th>After Walker Pay</th></tr></thead>
+          <tbody id="revenueMonthsTable"><tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
+        </table>
+        </div>
+      </div>
+      <div class="table-card" style="margin-bottom:24px;">
+        <div class="table-header"><div class="table-title">By Category</div></div>
+        <div class="table-scroll">
+        <table>
+          <thead><tr><th>Category</th><th>Gross</th><th>Refunds</th><th>Net</th></tr></thead>
+          <tbody id="revenueCategoryTable"></tbody>
+        </table>
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">By Client</div></div>
+        <div class="table-scroll">
+        <table>
+          <thead><tr><th>Client</th><th>Charges</th><th>Gross</th><th>Refunds</th><th>Total Paid</th></tr></thead>
+          <tbody id="revenueClientTable"></tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+
     <div class="view" id="view-emaillog">
       <div class="request-filters">
         <button class="emaillog-filter active" onclick="filterEmailLogStatus('all', this)">All</button>
@@ -1617,6 +1666,7 @@ function subscribePayouts() {
   onSnapshot(collection(db, 'walkerPayments'), snap => {
     allPayouts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderPayoutsView();
+    renderRevenue();
   });
 }
 
@@ -3654,6 +3704,135 @@ let currentEmailLogStatusFilter = 'all';
 function sortEmailLogDesc() {
   allEmailLog.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
 }
+
+// ── REVENUE ──────────────────────────────────────────────────────────────────
+// Stripe numbers come from getRevenueReport (functions/index.js), one year at
+// a time. Walker pay comes from allPayouts (already live via
+// subscribePayouts): paid payouts count in the month they were marked paid;
+// generated-but-unpaid ones are shown separately as pending, by period end.
+let revenueReport = null;
+const REVENUE_CATEGORY_LABELS = {
+  memberships: 'Memberships', petSitting: 'Pet sitting', tips: 'Tips', events: 'Events', other: 'Other services',
+};
+const revMonthFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit' });
+const revMonthKey = (date) => revMonthFmt.format(date).slice(0, 7);
+const revMoney = (cents) => {
+  const sign = cents < 0 ? '-' : '';
+  return sign + '$' + (Math.abs(cents) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+const revMonthName = (key) => new Date(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - 1, 1).toLocaleDateString('en-US', { month: 'long' });
+
+function initRevenue() {
+  const nowKey = revMonthKey(new Date());
+  const thisYear = Number(nowKey.slice(0, 4));
+  const yearSel = document.getElementById('revenueYear');
+  yearSel.innerHTML = '';
+  for (let y = thisYear; y >= 2026; y--) yearSel.insertAdjacentHTML('beforeend', `<option value="${y}">${y}</option>`);
+  loadRevenue(nowKey);
+}
+
+async function loadRevenue(selectKey) {
+  const year = Number(document.getElementById('revenueYear').value);
+  const status = document.getElementById('revenueStatus');
+  status.textContent = 'Loading from Stripe...';
+  try {
+    const fn = httpsCallable(fns, 'getRevenueReport');
+    const { data } = await fn({ year });
+    revenueReport = data;
+    const periodSel = document.getElementById('revenuePeriod');
+    const prev = selectKey || periodSel.value;
+    periodSel.innerHTML = '<option value="year">Full year</option>' +
+      Object.keys(data.months).map(k => `<option value="${k}">${revMonthName(k)}</option>`).join('');
+    periodSel.value = prev && (prev === 'year' || data.months[prev]) ? prev : 'year';
+    status.textContent = `Updated ${new Date(data.generatedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+    renderRevenue();
+  } catch (e) {
+    console.error('Failed to load revenue:', e.message);
+    status.textContent = "Couldn't load revenue from Stripe right now.";
+  }
+}
+window.loadRevenue = loadRevenue;
+
+function walkerPayByMonth() {
+  const paid = {}, pending = {};
+  allPayouts.forEach(p => {
+    if (p.status === 'paid' && p.paidAt?.toDate) {
+      const k = revMonthKey(p.paidAt.toDate());
+      paid[k] = (paid[k] || 0) + Math.round((p.total || 0) * 100);
+    } else if (p.status === 'pending' && p.periodEnd?.toDate) {
+      const k = revMonthKey(p.periodEnd.toDate());
+      pending[k] = (pending[k] || 0) + Math.round((p.total || 0) * 100);
+    }
+  });
+  return { paid, pending };
+}
+
+function renderRevenue() {
+  if (!revenueReport) return;
+  const period = document.getElementById('revenuePeriod').value;
+  const keys = Object.keys(revenueReport.months);
+  const selectedKeys = period === 'year' ? keys : [period];
+  const walker = walkerPayByMonth();
+
+  // Summary cards
+  const sum = (field) => selectedKeys.reduce((t, k) => t + (revenueReport.months[k][field] || 0), 0);
+  const gross = sum('grossCents'), refunds = sum('refundCents') + sum('adjustmentCents'), fees = sum('feeCents'), net = sum('netCents');
+  const walkerPaid = selectedKeys.reduce((t, k) => t + (walker.paid[k] || 0), 0);
+  const walkerPending = selectedKeys.reduce((t, k) => t + (walker.pending[k] || 0), 0);
+  document.getElementById('rev-gross').textContent = revMoney(gross);
+  document.getElementById('rev-gross-sub').textContent = period === 'year' ? `Charged to clients in ${revenueReport.year}` : `Charged to clients in ${revMonthName(period)}`;
+  document.getElementById('rev-deductions').textContent = revMoney(-(fees - refunds));
+  document.getElementById('rev-deductions-sub').textContent = `${revMoney(-refunds)} refunds · ${revMoney(fees)} fees`;
+  document.getElementById('rev-net').textContent = revMoney(net);
+  document.getElementById('rev-walker').textContent = revMoney(walkerPaid);
+  document.getElementById('rev-walker-sub').textContent = walkerPending ? `Paid out · ${revMoney(walkerPending)} more generated, not yet paid` : 'Paid out';
+  document.getElementById('rev-after').textContent = revMoney(net - walkerPaid);
+  document.getElementById('rev-count').textContent = String(sum('chargeCount'));
+
+  // Month table (always the whole year; the selected month is highlighted)
+  const nowKey = revMonthKey(new Date());
+  let tot = { g: 0, r: 0, f: 0, n: 0, w: 0 };
+  const rows = keys.filter(k => k <= nowKey).map(k => {
+    const m = revenueReport.months[k];
+    const r = m.refundCents + m.adjustmentCents, w = walker.paid[k] || 0;
+    tot.g += m.grossCents; tot.r += r; tot.f += m.feeCents; tot.n += m.netCents; tot.w += w;
+    const style = k === period ? ' style="background:var(--sand);font-weight:500;cursor:pointer;"' : ' style="cursor:pointer;"';
+    return `<tr${style} onclick="selectRevenuePeriod('${k}')"><td>${revMonthName(k)}</td><td>${revMoney(m.grossCents)}</td><td>${r ? revMoney(r) : '—'}</td><td>${revMoney(-m.feeCents)}</td><td>${revMoney(m.netCents)}</td><td>${w ? revMoney(-w) : '—'}</td><td>${revMoney(m.netCents - w)}</td></tr>`;
+  });
+  rows.push(`<tr style="font-weight:600;cursor:pointer;${period === 'year' ? 'background:var(--sand);' : ''}" onclick="selectRevenuePeriod('year')"><td>Year to date</td><td>${revMoney(tot.g)}</td><td>${tot.r ? revMoney(tot.r) : '—'}</td><td>${revMoney(-tot.f)}</td><td>${revMoney(tot.n)}</td><td>${tot.w ? revMoney(-tot.w) : '—'}</td><td>${revMoney(tot.n - tot.w)}</td></tr>`);
+  document.getElementById('revenueMonthsTitle').textContent = `By Month — ${revenueReport.year}`;
+  document.getElementById('revenueMonthsTable').innerHTML = rows.join('');
+
+  // Category + client tables for the selected period
+  const cats = {}, clients = {};
+  selectedKeys.forEach(k => {
+    const m = revenueReport.months[k];
+    Object.entries(m.categories).forEach(([c, v]) => {
+      const t = cats[c] || (cats[c] = { grossCents: 0, refundCents: 0, netCents: 0 });
+      t.grossCents += v.grossCents; t.refundCents += v.refundCents; t.netCents += v.netCents;
+    });
+    Object.entries(m.clients).forEach(([id, v]) => {
+      const t = clients[id] || (clients[id] = { name: v.name, email: v.email, grossCents: 0, refundCents: 0, chargeCount: 0 });
+      t.grossCents += v.grossCents; t.refundCents += v.refundCents; t.chargeCount += v.chargeCount;
+    });
+  });
+  const empty = (cols, msg) => `<tr><td colspan="${cols}" style="text-align:center;color:var(--text-light);padding:24px;">${msg}</td></tr>`;
+  const catRows = Object.keys(REVENUE_CATEGORY_LABELS).filter(c => cats[c]).map(c => {
+    const v = cats[c];
+    return `<tr><td>${REVENUE_CATEGORY_LABELS[c]}</td><td>${revMoney(v.grossCents)}</td><td>${v.refundCents ? revMoney(v.refundCents) : '—'}</td><td>${revMoney(v.netCents)}</td></tr>`;
+  });
+  document.getElementById('revenueCategoryTable').innerHTML = catRows.join('') || empty(4, 'No revenue in this period.');
+  const clientRows = Object.values(clients)
+    .sort((a, b) => (b.grossCents + b.refundCents) - (a.grossCents + a.refundCents))
+    .map(v => `<tr><td>${escapeHtml(v.name)}${v.email && v.email !== v.name ? `<div style="font-size:11px;color:var(--text-light);">${escapeHtml(v.email)}</div>` : ''}</td><td>${v.chargeCount}</td><td>${revMoney(v.grossCents)}</td><td>${v.refundCents ? revMoney(v.refundCents) : '—'}</td><td>${revMoney(v.grossCents + v.refundCents)}</td></tr>`);
+  document.getElementById('revenueClientTable').innerHTML = clientRows.join('') || empty(5, 'No revenue in this period.');
+}
+window.renderRevenue = renderRevenue;
+
+window.selectRevenuePeriod = (key) => {
+  document.getElementById('revenuePeriod').value = key;
+  renderRevenue();
+};
 
 async function loadEmailLog(isRefresh) {
   if (isRefresh) {
@@ -9717,7 +9896,7 @@ window.avSelectDate = avSelectDate;
 
 
 
-const viewTitles = { overview: 'Overview', calendar: 'Walk Calendar', walkers: 'Walkers', payouts: 'Payouts', members: 'Members', availability: 'Meet & Greet Availability', requests: 'Requests', reviews: 'Reviews', referrals: 'Referral Codes', events: 'Puppies & Pilates', conversations: 'Messages', emaillog: 'Email Log' };
+const viewTitles = { overview: 'Overview', calendar: 'Walk Calendar', walkers: 'Walkers', payouts: 'Payouts', revenue: 'Revenue', members: 'Members', availability: 'Meet & Greet Availability', requests: 'Requests', reviews: 'Reviews', referrals: 'Referral Codes', events: 'Puppies & Pilates', conversations: 'Messages', emaillog: 'Email Log' };
 window.toggleSidebar = (force) => {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebarOverlay');
@@ -9743,6 +9922,7 @@ window.switchView = (view) => {
   const btnRefreshReferrals = '<button class="btn-secondary" onclick="loadReferralCodes(true)">Refresh</button>';
   const btnRefreshEmailLog = '<button class="btn-secondary" onclick="loadEmailLog(true)">Refresh</button>';
   const btnRefreshEventTickets = '<button class="btn-secondary" onclick="loadEventTickets()">Refresh</button>';
+  const btnRefreshRevenue = '<button class="btn-secondary" onclick="loadRevenue()">Refresh</button>';
   const viewActions = {
     overview: btnSchedule + btnNewReservation + btnMember,
     calendar: btnSchedule + btnNewReservation,
@@ -9752,6 +9932,7 @@ window.switchView = (view) => {
     referrals: btnRefreshReferrals,
     events: btnRefreshEventTickets,
     emaillog: btnRefreshEmailLog,
+    revenue: btnRefreshRevenue,
   };
   actions.innerHTML = viewActions[view] || '';
 
@@ -9777,6 +9958,12 @@ window.switchView = (view) => {
   // Email Log: same load-once posture as Referral Codes, for the same
   // reason — a send history doesn't need to be live, and Refresh covers
   // "check again."
+  // Revenue: load once on first visit; Refresh / the year picker reload it.
+  if (view === 'revenue' && !window._revenueInit) {
+    window._revenueInit = true;
+    initRevenue();
+  }
+
   if (view === 'emaillog' && !window._emailLogInit) {
     window._emailLogInit = true;
     loadEmailLog();
