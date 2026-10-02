@@ -681,21 +681,39 @@ function revenueClientForCharge(charge, customer) {
   };
 }
 
+// Unix seconds for 00:00 America/New_York on a "YYYY-MM-DD" date. ET is
+// UTC-4 or UTC-5 depending on DST; try both and keep the one that really
+// lands on local midnight.
+function etMidnightUnix(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', hour: '2-digit', hourCycle: 'h23' });
+  for (const offset of [4, 5]) {
+    const ms = Date.UTC(y, m - 1, d, offset);
+    if (fmt.format(new Date(ms)) === '00') return Math.floor(ms / 1000);
+  }
+  return Math.floor(Date.UTC(y, m - 1, d, 5) / 1000);
+}
+
 exports.getRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeoutSeconds: 120 }, async (request) => {
   await assertIsAdmin(request.auth);
-  const year = Number(request.data?.year);
-  if (!Number.isInteger(year) || year < 2024 || year > 2100) {
-    throw new HttpsError('invalid-argument', 'year must be a four-digit year.');
+  // Inclusive ET calendar dates. The page does all the totalling and
+  // filtering (month/category/client, events in or out), so it only comes
+  // back here when the date range itself changes.
+  const { startDate, endDate } = request.data || {};
+  const isDate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  if (!isDate(startDate) || !isDate(endDate) || endDate < startDate) {
+    throw new HttpsError('invalid-argument', 'startDate and endDate must be YYYY-MM-DD, with endDate on or after startDate.');
+  }
+  const start = etMidnightUnix(startDate);
+  const endDay = new Date(`${endDate}T12:00:00Z`);
+  endDay.setUTCDate(endDay.getUTCDate() + 1);
+  const end = etMidnightUnix(endDay.toISOString().slice(0, 10));
+  if (end - start > 3 * 366 * 86400) {
+    throw new HttpsError('invalid-argument', 'Date range can be at most 3 years.');
   }
 
   const stripe = stripeClient(STRIPE_SECRET_KEY.value());
-
-  // Jan 1 and the following Jan 1 are both in EST (UTC-5), so the year's
-  // boundaries in ET are 05:00 UTC.
-  const start = Math.floor(Date.UTC(year, 0, 1, 5) / 1000);
-  const end = Math.floor(Date.UTC(year + 1, 0, 1, 5) / 1000);
-  const monthFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit' });
-  const monthKeyOf = (unix) => monthFmt.format(new Date(unix * 1000)).slice(0, 7); // "YYYY-MM"
+  const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
 
   const txns = [];
   await stripe.balanceTransactions.list({
@@ -720,9 +738,6 @@ exports.getRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeoutSeconds
     }
   }));
 
-  // Customer names, fetched once per customer rather than via a nested
-  // list expansion (refund/adjustment sources have no customer field).
-  const customerIds = new Set();
   const chargeOf = (t) => {
     if (t.source && t.source.object === 'charge') return t.source;
     if (t.source && t.source.object === 'refund') {
@@ -731,6 +746,10 @@ exports.getRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeoutSeconds
     }
     return null;
   };
+
+  // Customer names, fetched once per customer rather than via a nested
+  // list expansion (refund/adjustment sources have no customer field).
+  const customerIds = new Set();
   txns.forEach(t => { const ch = chargeOf(t); if (ch && typeof ch.customer === 'string') customerIds.add(ch.customer); });
   const customersById = {};
   await Promise.all([...customerIds].map(async (id) => {
@@ -741,53 +760,40 @@ exports.getRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeoutSeconds
     }
   }));
 
-  const emptyTotals = () => ({ grossCents: 0, refundCents: 0, adjustmentCents: 0, feeCents: 0, netCents: 0, chargeCount: 0 });
-  const months = {};
-  for (let m = 1; m <= 12; m++) {
-    months[`${year}-${String(m).padStart(2, '0')}`] = { ...emptyTotals(), categories: {}, clients: {} };
-  }
-
-  for (const t of txns) {
-    const month = months[monthKeyOf(t.created)];
-    if (!month) continue;
-
+  // One compact row per transaction. Amounts in cents; refund/adjustment
+  // amounts are negative, feeCents is positive (what Stripe kept).
+  const rows = txns.map((t) => {
     const charge = chargeOf(t);
-
-    const bucket = { grossCents: 0, refundCents: 0, adjustmentCents: 0 };
+    const row = {
+      date: dayFmt.format(new Date(t.created * 1000)),
+      grossCents: 0, refundCents: 0, adjustmentCents: 0,
+      feeCents: t.fee, netCents: t.net,
+      isCharge: false,
+      category: 'other',
+      clientKey: null, clientName: null, clientEmail: null,
+    };
     if (t.type === 'charge' || t.type === 'payment') {
-      bucket.grossCents = t.amount;
-      month.chargeCount += 1;
+      row.grossCents = t.amount;
+      row.isCharge = true;
     } else if (t.type === 'adjustment') {
-      bucket.adjustmentCents = t.amount;
+      row.adjustmentCents = t.amount;
     } else if (t.type === 'stripe_fee' || t.type === 'stripe_fx_fee') {
-      // A standalone Stripe fee (e.g. Billing) — amount is negative.
-      month.feeCents += -t.amount;
-      month.netCents += t.net;
-      continue;
+      // A standalone Stripe fee (e.g. Billing) — amount is negative, no client.
+      row.feeCents = -t.amount;
+      row.category = 'fees';
+      return row;
     } else {
-      bucket.refundCents = t.amount; // negative
+      row.refundCents = t.amount;
     }
-
-    month.grossCents += bucket.grossCents;
-    month.refundCents += bucket.refundCents;
-    month.adjustmentCents += bucket.adjustmentCents;
-    month.feeCents += t.fee;
-    month.netCents += t.net;
-
-    const cat = t.type === 'adjustment' && !charge ? 'other' : revenueCategoryForCharge(charge);
-    const c = month.categories[cat] || (month.categories[cat] = { grossCents: 0, refundCents: 0, netCents: 0 });
-    c.grossCents += bucket.grossCents;
-    c.refundCents += bucket.refundCents + bucket.adjustmentCents;
-    c.netCents += t.net;
-
+    row.category = t.type === 'adjustment' && !charge ? 'other' : revenueCategoryForCharge(charge);
     const client = revenueClientForCharge(charge, charge && customersById[charge.customer]);
-    const cl = month.clients[client.key] || (month.clients[client.key] = { name: client.name, email: client.email, grossCents: 0, refundCents: 0, chargeCount: 0 });
-    cl.grossCents += bucket.grossCents;
-    cl.refundCents += bucket.refundCents + bucket.adjustmentCents;
-    if (bucket.grossCents) cl.chargeCount += 1;
-  }
+    row.clientKey = client.key;
+    row.clientName = client.name;
+    row.clientEmail = client.email;
+    return row;
+  });
 
-  return { year, months, generatedAt: Date.now() };
+  return { startDate, endDate, rows, generatedAt: Date.now() };
 });
 
 // removeCardOnFile: detaches the caller's own saved card(s) from Stripe and

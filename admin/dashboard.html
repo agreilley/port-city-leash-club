@@ -139,8 +139,8 @@
 
   /* ── REQUESTS ── */
   .request-filters { display: flex; gap: 8px; margin-bottom: 20px; }
-  .request-filter, .request-status-filter, .conversation-filter, .conversation-category-filter, .referral-filter, .emaillog-filter, .review-filter, .event-ticket-filter { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
-  .request-filter.active, .request-status-filter.active, .conversation-filter.active, .conversation-category-filter.active, .referral-filter.active, .emaillog-filter.active, .review-filter.active, .event-ticket-filter.active { background: var(--navy); color: white; border-color: var(--navy); }
+  .request-filter, .request-status-filter, .conversation-filter, .conversation-category-filter, .referral-filter, .emaillog-filter, .review-filter, .event-ticket-filter, .revenue-filter { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
+  .request-filter.active, .request-status-filter.active, .conversation-filter.active, .conversation-category-filter.active, .referral-filter.active, .emaillog-filter.active, .review-filter.active, .event-ticket-filter.active, .revenue-filter.active { background: var(--navy); color: white; border-color: var(--navy); }
   .list-row { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 20px; margin-bottom: 12px; cursor: pointer; transition: box-shadow 0.15s; }
   .list-row:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
   .list-row.unread { border-left: 3px solid var(--rust); }
@@ -857,10 +857,23 @@
     <!-- REVENUE VIEW (read-only; Stripe balance transactions via the
          getRevenueReport callable, walker pay from walkerPayments) -->
     <div class="view" id="view-revenue">
-      <div class="request-filters" style="align-items:center;">
-        <select id="revenueYear" onchange="loadRevenue()"></select>
-        <select id="revenuePeriod" onchange="renderRevenue()" style="margin-left:8px;"></select>
-        <span id="revenueStatus" style="margin-left:12px;font-size:12px;color:var(--text-light);"></span>
+      <div class="request-filters" style="align-items:center;flex-wrap:wrap;">
+        <button class="revenue-filter" data-range="thisMonth" onclick="setRevenueRange('thisMonth')">This month</button>
+        <button class="revenue-filter" data-range="lastMonth" onclick="setRevenueRange('lastMonth')">Last month</button>
+        <button class="revenue-filter" data-range="thisQuarter" onclick="setRevenueRange('thisQuarter')">This quarter</button>
+        <button class="revenue-filter" data-range="ytd" onclick="setRevenueRange('ytd')">Year to date</button>
+        <button class="revenue-filter" data-range="lastYear" onclick="setRevenueRange('lastYear')">Last year</button>
+        <button class="revenue-filter" data-range="custom" onclick="setRevenueRange('custom')">Custom</button>
+      </div>
+      <div class="request-filters" style="align-items:center;flex-wrap:wrap;margin-top:-8px;">
+        <span id="revenueCustomRange" style="display:none;align-items:center;gap:6px;font-size:13px;color:var(--text-mid);">
+          <input type="date" id="revenueStart" onchange="applyRevenueCustomRange()"> to <input type="date" id="revenueEnd" onchange="applyRevenueCustomRange()">
+        </span>
+        <span id="revenueRangeLabel" style="font-size:13px;color:var(--text-mid);"></span>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-mid);margin-left:auto;cursor:pointer;">
+          <input type="checkbox" id="revenueIncludeEvents" checked onchange="renderRevenue()"> Include events
+        </label>
+        <span id="revenueStatus" style="font-size:12px;color:var(--text-light);"></span>
       </div>
       <div class="stats-row stats-row-3">
         <div class="stat-card"><div class="stat-label">Gross</div><div class="stat-value" id="rev-gross">–</div><div class="stat-sub" id="rev-gross-sub">Charged to clients</div></div>
@@ -3706,44 +3719,90 @@ function sortEmailLogDesc() {
 }
 
 // ── REVENUE ──────────────────────────────────────────────────────────────────
-// Stripe numbers come from getRevenueReport (functions/index.js), one year at
-// a time. Walker pay comes from allPayouts (already live via
-// subscribePayouts): paid payouts count in the month they were marked paid;
-// generated-but-unpaid ones are shown separately as pending, by period end.
+// Stripe rows come from getRevenueReport (functions/index.js), one row per
+// balance transaction, for the selected date range. Everything else —
+// month/category/client totals and the events filter — is done here, so
+// only a date-range change goes back to Stripe. Walker pay comes from
+// allPayouts (already live via subscribePayouts): paid payouts count on the
+// day they were marked paid; generated-but-unpaid ones are shown
+// separately as pending, by period end. Dates are ET calendar days.
 let revenueReport = null;
+let revenueRange = { preset: 'thisMonth', start: null, end: null };
 const REVENUE_CATEGORY_LABELS = {
-  memberships: 'Memberships', petSitting: 'Pet sitting', tips: 'Tips', events: 'Events', other: 'Other services',
+  memberships: 'Memberships', petSitting: 'Pet sitting', tips: 'Tips', events: 'Events', other: 'Other services', fees: 'Stripe account fees',
 };
-const revMonthFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit' });
-const revMonthKey = (date) => revMonthFmt.format(date).slice(0, 7);
+const revDayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
+const revDay = (date) => revDayFmt.format(date); // "YYYY-MM-DD"
 const revMoney = (cents) => {
   const sign = cents < 0 ? '-' : '';
   return sign + '$' + (Math.abs(cents) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
-const revMonthName = (key) => new Date(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - 1, 1).toLocaleDateString('en-US', { month: 'long' });
+const revMonthName = (key) => new Date(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+const revShortDate = (day) => new Date(`${day}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+const revIso = (y, m, d) => {
+  const dt = new Date(Date.UTC(y, m, d));
+  return dt.toISOString().slice(0, 10);
+};
 
-function initRevenue() {
-  const nowKey = revMonthKey(new Date());
-  const thisYear = Number(nowKey.slice(0, 4));
-  const yearSel = document.getElementById('revenueYear');
-  yearSel.innerHTML = '';
-  for (let y = thisYear; y >= 2026; y--) yearSel.insertAdjacentHTML('beforeend', `<option value="${y}">${y}</option>`);
-  loadRevenue(nowKey);
+function revenuePresetRange(preset) {
+  const today = revDay(new Date());
+  const y = Number(today.slice(0, 4)), m = Number(today.slice(5, 7)) - 1;
+  switch (preset) {
+    case 'lastMonth': return { start: revIso(y, m - 1, 1), end: revIso(y, m, 0) };
+    case 'thisQuarter': return { start: revIso(y, m - (m % 3), 1), end: today };
+    case 'ytd': return { start: revIso(y, 0, 1), end: today };
+    case 'lastYear': return { start: revIso(y - 1, 0, 1), end: revIso(y - 1, 11, 31) };
+    case 'thisMonth':
+    default: return { start: revIso(y, m, 1), end: today };
+  }
 }
 
-async function loadRevenue(selectKey) {
-  const year = Number(document.getElementById('revenueYear').value);
+function initRevenue() {
+  setRevenueRange('thisMonth');
+}
+
+window.setRevenueRange = (preset) => {
+  document.querySelectorAll('.revenue-filter').forEach(b => b.classList.toggle('active', b.dataset.range === preset));
+  const custom = document.getElementById('revenueCustomRange');
+  if (preset === 'custom') {
+    // Start the pickers on whatever range is showing now.
+    custom.style.display = 'flex';
+    document.getElementById('revenueRangeLabel').textContent = '';
+    if (revenueRange.start) {
+      document.getElementById('revenueStart').value = revenueRange.start;
+      document.getElementById('revenueEnd').value = revenueRange.end;
+    }
+    revenueRange.preset = 'custom';
+    return;
+  }
+  custom.style.display = 'none';
+  revenueRange = { preset, ...revenuePresetRange(preset) };
+  loadRevenue();
+};
+
+window.applyRevenueCustomRange = () => {
+  const start = document.getElementById('revenueStart').value;
+  const end = document.getElementById('revenueEnd').value;
+  if (!start || !end) return;
+  if (end < start) {
+    document.getElementById('revenueStatus').textContent = 'End date is before start date.';
+    return;
+  }
+  revenueRange = { preset: 'custom', start, end };
+  loadRevenue();
+};
+
+async function loadRevenue() {
+  if (!revenueRange.start) revenueRange = { preset: 'thisMonth', ...revenuePresetRange('thisMonth') };
+  const { start, end } = revenueRange;
   const status = document.getElementById('revenueStatus');
   status.textContent = 'Loading from Stripe...';
   try {
     const fn = httpsCallable(fns, 'getRevenueReport');
-    const { data } = await fn({ year });
+    const { data } = await fn({ startDate: start, endDate: end });
+    // A slower earlier request finishing late mustn't overwrite a newer range.
+    if (start !== revenueRange.start || end !== revenueRange.end) return;
     revenueReport = data;
-    const periodSel = document.getElementById('revenuePeriod');
-    const prev = selectKey || periodSel.value;
-    periodSel.innerHTML = '<option value="year">Full year</option>' +
-      Object.keys(data.months).map(k => `<option value="${k}">${revMonthName(k)}</option>`).join('');
-    periodSel.value = prev && (prev === 'year' || data.months[prev]) ? prev : 'year';
     status.textContent = `Updated ${new Date(data.generatedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
     renderRevenue();
   } catch (e) {
@@ -3753,68 +3812,80 @@ async function loadRevenue(selectKey) {
 }
 window.loadRevenue = loadRevenue;
 
-function walkerPayByMonth() {
-  const paid = {}, pending = {};
+function walkerPayInRange(start, end) {
+  const paidByMonth = {};
+  let paid = 0, pending = 0;
   allPayouts.forEach(p => {
     if (p.status === 'paid' && p.paidAt?.toDate) {
-      const k = revMonthKey(p.paidAt.toDate());
-      paid[k] = (paid[k] || 0) + Math.round((p.total || 0) * 100);
+      const day = revDay(p.paidAt.toDate());
+      if (day < start || day > end) return;
+      const cents = Math.round((p.total || 0) * 100);
+      paid += cents;
+      paidByMonth[day.slice(0, 7)] = (paidByMonth[day.slice(0, 7)] || 0) + cents;
     } else if (p.status === 'pending' && p.periodEnd?.toDate) {
-      const k = revMonthKey(p.periodEnd.toDate());
-      pending[k] = (pending[k] || 0) + Math.round((p.total || 0) * 100);
+      const day = revDay(p.periodEnd.toDate());
+      if (day < start || day > end) return;
+      pending += Math.round((p.total || 0) * 100);
     }
   });
-  return { paid, pending };
+  return { paid, pending, paidByMonth };
 }
 
 function renderRevenue() {
   if (!revenueReport) return;
-  const period = document.getElementById('revenuePeriod').value;
-  const keys = Object.keys(revenueReport.months);
-  const selectedKeys = period === 'year' ? keys : [period];
-  const walker = walkerPayByMonth();
+  const { startDate: start, endDate: end } = revenueReport;
+  const includeEvents = document.getElementById('revenueIncludeEvents').checked;
+  const rows = revenueReport.rows.filter(r => includeEvents || r.category !== 'events');
+  const walker = walkerPayInRange(start, end);
+
+  document.getElementById('revenueRangeLabel').textContent = revenueRange.preset === 'custom' ? '' : `${revShortDate(start)} – ${revShortDate(end)}`;
 
   // Summary cards
-  const sum = (field) => selectedKeys.reduce((t, k) => t + (revenueReport.months[k][field] || 0), 0);
+  const sum = (field) => rows.reduce((t, r) => t + (r[field] || 0), 0);
   const gross = sum('grossCents'), refunds = sum('refundCents') + sum('adjustmentCents'), fees = sum('feeCents'), net = sum('netCents');
-  const walkerPaid = selectedKeys.reduce((t, k) => t + (walker.paid[k] || 0), 0);
-  const walkerPending = selectedKeys.reduce((t, k) => t + (walker.pending[k] || 0), 0);
   document.getElementById('rev-gross').textContent = revMoney(gross);
-  document.getElementById('rev-gross-sub').textContent = period === 'year' ? `Charged to clients in ${revenueReport.year}` : `Charged to clients in ${revMonthName(period)}`;
+  document.getElementById('rev-gross-sub').textContent = includeEvents ? 'Charged to clients' : 'Charged to clients, excluding events';
   document.getElementById('rev-deductions').textContent = revMoney(-(fees - refunds));
   document.getElementById('rev-deductions-sub').textContent = `${revMoney(-refunds)} refunds · ${revMoney(fees)} fees`;
   document.getElementById('rev-net').textContent = revMoney(net);
-  document.getElementById('rev-walker').textContent = revMoney(walkerPaid);
-  document.getElementById('rev-walker-sub').textContent = walkerPending ? `Paid out · ${revMoney(walkerPending)} more generated, not yet paid` : 'Paid out';
-  document.getElementById('rev-after').textContent = revMoney(net - walkerPaid);
-  document.getElementById('rev-count').textContent = String(sum('chargeCount'));
+  document.getElementById('rev-walker').textContent = revMoney(walker.paid);
+  document.getElementById('rev-walker-sub').textContent = walker.pending ? `Paid out · ${revMoney(walker.pending)} more generated, not yet paid` : 'Paid out';
+  document.getElementById('rev-after').textContent = revMoney(net - walker.paid);
+  document.getElementById('rev-count').textContent = String(rows.filter(r => r.isCharge).length);
 
-  // Month table (always the whole year; the selected month is highlighted)
-  const nowKey = revMonthKey(new Date());
-  let tot = { g: 0, r: 0, f: 0, n: 0, w: 0 };
-  const rows = keys.filter(k => k <= nowKey).map(k => {
-    const m = revenueReport.months[k];
-    const r = m.refundCents + m.adjustmentCents, w = walker.paid[k] || 0;
-    tot.g += m.grossCents; tot.r += r; tot.f += m.feeCents; tot.n += m.netCents; tot.w += w;
-    const style = k === period ? ' style="background:var(--sand);font-weight:500;cursor:pointer;"' : ' style="cursor:pointer;"';
-    return `<tr${style} onclick="selectRevenuePeriod('${k}')"><td>${revMonthName(k)}</td><td>${revMoney(m.grossCents)}</td><td>${r ? revMoney(r) : '—'}</td><td>${revMoney(-m.feeCents)}</td><td>${revMoney(m.netCents)}</td><td>${w ? revMoney(-w) : '—'}</td><td>${revMoney(m.netCents - w)}</td></tr>`;
+  // Month table: every month the range touches (first/last may be partial)
+  const months = {};
+  for (let k = start.slice(0, 7); k <= end.slice(0, 7);) {
+    months[k] = { g: 0, r: 0, f: 0, n: 0 };
+    const [y, m] = k.split('-').map(Number);
+    k = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+  }
+  rows.forEach(r => {
+    const m = months[r.date.slice(0, 7)];
+    if (!m) return;
+    m.g += r.grossCents; m.r += r.refundCents + r.adjustmentCents; m.f += r.feeCents; m.n += r.netCents;
   });
-  rows.push(`<tr style="font-weight:600;cursor:pointer;${period === 'year' ? 'background:var(--sand);' : ''}" onclick="selectRevenuePeriod('year')"><td>Year to date</td><td>${revMoney(tot.g)}</td><td>${tot.r ? revMoney(tot.r) : '—'}</td><td>${revMoney(-tot.f)}</td><td>${revMoney(tot.n)}</td><td>${tot.w ? revMoney(-tot.w) : '—'}</td><td>${revMoney(tot.n - tot.w)}</td></tr>`);
-  document.getElementById('revenueMonthsTitle').textContent = `By Month — ${revenueReport.year}`;
-  document.getElementById('revenueMonthsTable').innerHTML = rows.join('');
+  const tot = { g: 0, r: 0, f: 0, n: 0, w: 0 };
+  const monthRows = Object.entries(months).map(([k, m]) => {
+    const w = walker.paidByMonth[k] || 0;
+    tot.g += m.g; tot.r += m.r; tot.f += m.f; tot.n += m.n; tot.w += w;
+    return `<tr><td>${revMonthName(k)}</td><td>${revMoney(m.g)}</td><td>${m.r ? revMoney(m.r) : '—'}</td><td>${revMoney(-m.f)}</td><td>${revMoney(m.n)}</td><td>${w ? revMoney(-w) : '—'}</td><td>${revMoney(m.n - w)}</td></tr>`;
+  });
+  if (monthRows.length > 1) {
+    monthRows.push(`<tr style="font-weight:600;background:var(--sand);"><td>Total</td><td>${revMoney(tot.g)}</td><td>${tot.r ? revMoney(tot.r) : '—'}</td><td>${revMoney(-tot.f)}</td><td>${revMoney(tot.n)}</td><td>${tot.w ? revMoney(-tot.w) : '—'}</td><td>${revMoney(tot.n - tot.w)}</td></tr>`);
+  }
+  document.getElementById('revenueMonthsTitle').textContent = 'By Month';
+  document.getElementById('revenueMonthsTable').innerHTML = monthRows.join('');
 
-  // Category + client tables for the selected period
+  // Category + client tables
   const cats = {}, clients = {};
-  selectedKeys.forEach(k => {
-    const m = revenueReport.months[k];
-    Object.entries(m.categories).forEach(([c, v]) => {
-      const t = cats[c] || (cats[c] = { grossCents: 0, refundCents: 0, netCents: 0 });
-      t.grossCents += v.grossCents; t.refundCents += v.refundCents; t.netCents += v.netCents;
-    });
-    Object.entries(m.clients).forEach(([id, v]) => {
-      const t = clients[id] || (clients[id] = { name: v.name, email: v.email, grossCents: 0, refundCents: 0, chargeCount: 0 });
-      t.grossCents += v.grossCents; t.refundCents += v.refundCents; t.chargeCount += v.chargeCount;
-    });
+  rows.forEach(r => {
+    const c = cats[r.category] || (cats[r.category] = { grossCents: 0, refundCents: 0, netCents: 0 });
+    c.grossCents += r.grossCents; c.refundCents += r.refundCents + r.adjustmentCents; c.netCents += r.netCents;
+    if (!r.clientKey) return;
+    const t = clients[r.clientKey] || (clients[r.clientKey] = { name: r.clientName, email: r.clientEmail, grossCents: 0, refundCents: 0, chargeCount: 0 });
+    t.grossCents += r.grossCents; t.refundCents += r.refundCents + r.adjustmentCents;
+    if (r.isCharge) t.chargeCount += 1;
   });
   const empty = (cols, msg) => `<tr><td colspan="${cols}" style="text-align:center;color:var(--text-light);padding:24px;">${msg}</td></tr>`;
   const catRows = Object.keys(REVENUE_CATEGORY_LABELS).filter(c => cats[c]).map(c => {
@@ -3828,11 +3899,6 @@ function renderRevenue() {
   document.getElementById('revenueClientTable').innerHTML = clientRows.join('') || empty(5, 'No revenue in this period.');
 }
 window.renderRevenue = renderRevenue;
-
-window.selectRevenuePeriod = (key) => {
-  document.getElementById('revenuePeriod').value = key;
-  renderRevenue();
-};
 
 async function loadEmailLog(isRefresh) {
   if (isRefresh) {
