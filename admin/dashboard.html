@@ -880,15 +880,15 @@
         <div class="stat-card"><div class="stat-label">Refunds &amp; Stripe Fees</div><div class="stat-value" id="rev-deductions" style="color:var(--rust);">–</div><div class="stat-sub" id="rev-deductions-sub">&nbsp;</div></div>
         <div class="stat-card"><div class="stat-label">Net</div><div class="stat-value" id="rev-net">–</div><div class="stat-sub">What reaches your bank</div></div>
         <div class="stat-card"><div class="stat-label">Walker Pay</div><div class="stat-value" id="rev-walker">–</div><div class="stat-sub" id="rev-walker-sub">Paid out</div></div>
-        <div class="stat-card"><div class="stat-label">After Walker Pay</div><div class="stat-value" id="rev-after">–</div><div class="stat-sub">Net minus walker pay</div></div>
-        <div class="stat-card"><div class="stat-label">Charges</div><div class="stat-value" id="rev-count">–</div><div class="stat-sub">Successful payments</div></div>
+        <div class="stat-card"><div class="stat-label">Other Expenses</div><div class="stat-value" id="rev-expenses">–</div><div class="stat-sub" id="rev-expenses-sub">From QuickBooks, entered below</div></div>
+        <div class="stat-card"><div class="stat-label">Profit</div><div class="stat-value" id="rev-profit">–</div><div class="stat-sub">Net minus walker pay and expenses</div></div>
       </div>
       <div class="table-card" style="margin-bottom:24px;">
         <div class="table-header"><div class="table-title" id="revenueMonthsTitle">By Month</div></div>
         <div class="table-scroll">
         <table>
-          <thead><tr><th>Month</th><th>Gross</th><th>Refunds</th><th>Stripe Fees</th><th>Net</th><th>Walker Pay</th><th>After Walker Pay</th></tr></thead>
-          <tbody id="revenueMonthsTable"><tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
+          <thead><tr><th>Month</th><th>Gross</th><th>Refunds</th><th>Stripe Fees</th><th>Net</th><th>Walker Pay</th><th>Other Expenses</th><th>Profit</th></tr></thead>
+          <tbody id="revenueMonthsTable"><tr><td colspan="8" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
         </table>
         </div>
       </div>
@@ -3727,6 +3727,8 @@ function sortEmailLogDesc() {
 // day they were marked paid; generated-but-unpaid ones are shown
 // separately as pending, by period end. Dates are ET calendar days.
 let revenueReport = null;
+// monthlyExpenses/{YYYY-MM} → cents, live once the tab is first opened.
+let monthlyExpenses = {};
 let revenueRange = { preset: 'thisMonth', start: null, end: null };
 const REVENUE_CATEGORY_LABELS = {
   memberships: 'Memberships', petSitting: 'Pet sitting', tips: 'Tips', events: 'Events', other: 'Other services', fees: 'Stripe account fees',
@@ -3758,8 +3760,35 @@ function revenuePresetRange(preset) {
 }
 
 function initRevenue() {
+  onSnapshot(collection(db, 'monthlyExpenses'), snap => {
+    monthlyExpenses = {};
+    snap.docs.forEach(d => { monthlyExpenses[d.id] = d.data().amountCents || 0; });
+    renderRevenue();
+  });
   setRevenueRange('thisMonth');
 }
+
+// Saves one month's expense total. Blank clears it (stored as 0).
+window.saveMonthlyExpense = async (monthKey, input) => {
+  const raw = input.value.trim().replace(/[$,]/g, '');
+  const dollars = raw === '' ? 0 : Number(raw);
+  if (!Number.isFinite(dollars) || dollars < 0) {
+    input.style.borderColor = 'var(--rust)';
+    return;
+  }
+  input.style.borderColor = '';
+  const amountCents = Math.round(dollars * 100);
+  if (amountCents === (monthlyExpenses[monthKey] || 0)) return;
+  try {
+    await setDoc(doc(db, 'monthlyExpenses', monthKey), {
+      amountCents, updatedAt: serverTimestamp(), updatedBy: auth.currentUser?.uid || null,
+    });
+  } catch (e) {
+    console.error('Failed to save expense:', e.message);
+    input.style.borderColor = 'var(--rust)';
+    alert("Couldn't save that expense: " + e.message);
+  }
+};
 
 window.setRevenueRange = (preset) => {
   document.querySelectorAll('.revenue-filter').forEach(b => b.classList.toggle('active', b.dataset.range === preset));
@@ -3850,8 +3879,8 @@ function renderRevenue() {
   document.getElementById('rev-net').textContent = revMoney(net);
   document.getElementById('rev-walker').textContent = revMoney(walker.paid);
   document.getElementById('rev-walker-sub').textContent = walker.pending ? `Paid out · ${revMoney(walker.pending)} more generated, not yet paid` : 'Paid out';
-  document.getElementById('rev-after').textContent = revMoney(net - walker.paid);
-  document.getElementById('rev-count').textContent = String(rows.filter(r => r.isCharge).length);
+  const chargeCount = rows.filter(r => r.isCharge).length;
+  document.getElementById('rev-gross-sub').textContent += ` · ${chargeCount} payment${chargeCount === 1 ? '' : 's'}`;
 
   // Month table: every month the range touches (first/last may be partial)
   const months = {};
@@ -3865,15 +3894,22 @@ function renderRevenue() {
     if (!m) return;
     m.g += r.grossCents; m.r += r.refundCents + r.adjustmentCents; m.f += r.feeCents; m.n += r.netCents;
   });
-  const tot = { g: 0, r: 0, f: 0, n: 0, w: 0 };
+  // Expenses are whole-month totals, so a month the range only partly
+  // covers still counts its full expense.
+  const tot = { g: 0, r: 0, f: 0, n: 0, w: 0, x: 0 };
   const monthRows = Object.entries(months).map(([k, m]) => {
     const w = walker.paidByMonth[k] || 0;
-    tot.g += m.g; tot.r += m.r; tot.f += m.f; tot.n += m.n; tot.w += w;
-    return `<tr><td>${revMonthName(k)}</td><td>${revMoney(m.g)}</td><td>${m.r ? revMoney(m.r) : '—'}</td><td>${revMoney(-m.f)}</td><td>${revMoney(m.n)}</td><td>${w ? revMoney(-w) : '—'}</td><td>${revMoney(m.n - w)}</td></tr>`;
+    const x = monthlyExpenses[k] || 0;
+    tot.g += m.g; tot.r += m.r; tot.f += m.f; tot.n += m.n; tot.w += w; tot.x += x;
+    const expenseInput = `<input type="text" inputmode="decimal" value="${x ? (x / 100).toFixed(2) : ''}" placeholder="$0.00" onchange="saveMonthlyExpense('${k}', this)" style="width:90px;padding:4px 6px;border:1px solid rgba(0,0,0,0.15);border-radius:4px;font:inherit;">`;
+    return `<tr><td>${revMonthName(k)}</td><td>${revMoney(m.g)}</td><td>${m.r ? revMoney(m.r) : '—'}</td><td>${revMoney(-m.f)}</td><td>${revMoney(m.n)}</td><td>${w ? revMoney(-w) : '—'}</td><td>${expenseInput}</td><td>${revMoney(m.n - w - x)}</td></tr>`;
   });
   if (monthRows.length > 1) {
-    monthRows.push(`<tr style="font-weight:600;background:var(--sand);"><td>Total</td><td>${revMoney(tot.g)}</td><td>${tot.r ? revMoney(tot.r) : '—'}</td><td>${revMoney(-tot.f)}</td><td>${revMoney(tot.n)}</td><td>${tot.w ? revMoney(-tot.w) : '—'}</td><td>${revMoney(tot.n - tot.w)}</td></tr>`);
+    monthRows.push(`<tr style="font-weight:600;background:var(--sand);"><td>Total</td><td>${revMoney(tot.g)}</td><td>${tot.r ? revMoney(tot.r) : '—'}</td><td>${revMoney(-tot.f)}</td><td>${revMoney(tot.n)}</td><td>${tot.w ? revMoney(-tot.w) : '—'}</td><td>${tot.x ? revMoney(-tot.x) : '—'}</td><td>${revMoney(tot.n - tot.w - tot.x)}</td></tr>`);
   }
+  document.getElementById('rev-expenses').textContent = revMoney(tot.x);
+  document.getElementById('rev-expenses-sub').textContent = tot.x ? 'From QuickBooks, entered below' : 'None entered yet — add them below';
+  document.getElementById('rev-profit').textContent = revMoney(net - walker.paid - tot.x);
   document.getElementById('revenueMonthsTitle').textContent = 'By Month';
   document.getElementById('revenueMonthsTable').innerHTML = monthRows.join('');
 
