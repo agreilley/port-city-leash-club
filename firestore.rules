@@ -682,20 +682,22 @@ service cloud.firestore {
       allow read, write: if isAdmin();
       allow read: if request.auth != null && resource.data.memberId == request.auth.uid;
 
-      // Walker writes are limited to what walker/dashboard.html's visit
-      // transaction (updateVisit: completeVisit / addVisitPhoto /
-      // saveVisitNote) writes: the whole `visits` array, plus status and
-      // completedAt when the last visit closes out the reservation. Charge,
+      // Walker writes are limited to what walker/dashboard.html's visit and
+      // night transactions (updateVisit / updateNight: complete, add photo,
+      // save note) write: the whole `visits` array or `nights` map, plus
+      // status and completedAt when the last piece closes out the
+      // reservation. Charge,
       // pricing, payout, tip, holiday and assignment fields are
       // admin/Cloud-Function-only. status may only move to 'completed', and
       // the number of visits can't change.
       // STOPGAP: rules can't inspect individual array entries, so a walker
-      // can still edit fields inside other visits (e.g. visits[].walkerId,
-      // which drives cover pay) or set status 'completed' before every visit
-      // is done. Closing that needs visit writes moved to a Cloud Function.
+      // can still edit fields inside other visits or nights (e.g.
+      // visits[].walkerId / nights[date].walkerId, which drive cover pay, or
+      // a night's 'skipped' status) or set status 'completed' before every
+      // visit and night is done. Closing that needs visit writes moved to a Cloud Function.
       function walkerOvernightUpdateAllowed() {
         return request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(['visits', 'status', 'completedAt'])
+                 .hasOnly(['visits', 'nights', 'status', 'completedAt'])
           && (request.resource.data.get('status', null) == resource.data.get('status', null)
               || request.resource.data.status == 'completed')
           && request.resource.data.get('visits', []).size() == resource.data.get('visits', []).size();

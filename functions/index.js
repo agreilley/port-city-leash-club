@@ -7847,7 +7847,6 @@ exports.onOvernightVisitCompleted = onDocumentUpdated({
   const overnightId = event.params.overnightId;
 
   const afterVisits = Array.isArray(after.visits) ? after.visits : [];
-  if (!afterVisits.length) return;
 
   const beforeById = new Map((Array.isArray(before.visits) ? before.visits : []).map(v => [v.id, v]));
 
@@ -7869,7 +7868,22 @@ exports.onOvernightVisitCompleted = onDocumentUpdated({
     if (prior?.status !== 'completed') return true;
     return !visitHasUpdate(prior);
   });
-  if (!notifiable.length) return;
+
+  // Nights (overnights/{id}.nights, keyed by night date — see
+  // stayNightDates in visit-slots.js) follow exactly the same rule, and get
+  // the same email with "Overnight" as the time. Completing a night is
+  // optional-update like a visit: no note and no photo means no email.
+  const afterNights = after.nights || {};
+  const beforeNights = before.nights || {};
+  const notifiableNights = Object.keys(afterNights).filter(date => {
+    const n = afterNights[date];
+    if (n?.status !== 'completed') return false;
+    if (!visitHasUpdate(n)) return false;
+    const prior = beforeNights[date];
+    if (prior?.status !== 'completed') return true;
+    return !visitHasUpdate(prior);
+  });
+  if (!notifiable.length && !notifiableNights.length) return;
 
   if (!after.memberId) return;
   const memberSnap = await db.collection('members').doc(after.memberId).get();
@@ -7949,6 +7963,32 @@ exports.onOvernightVisitCompleted = onDocumentUpdated({
         // can't silently take this whole trigger down with it.
         console.error(`onOvernightVisitCompleted: email threw unexpectedly for visit ${visit.id}:`, e.message);
       }
+    }
+  }
+
+  // Same email for a completed night. idempotencyKey is per night date.
+  for (const date of notifiableNights) {
+    if (!member.email) break;
+    const night = afterNights[date];
+    try {
+      await sendEmail({
+        to: member.email,
+        template: 'visit-completed',
+        data: {
+          firstName: (member.name || '').trim().split(/\s+/)[0] || 'there',
+          petNames,
+          serviceLabel,
+          dateStr: date,
+          slotLabel: 'Overnight',
+          note: night.note || '',
+          photoUrls: night.photoUrls || [],
+          portalUrl: `${BUSINESS_PORTAL_ORIGIN}/portal-walk-history?overnight=${overnightId}`,
+        },
+        idempotencyKey: `night-completed:${overnightId}:${date}`,
+      });
+    } catch (e) {
+      // Defense-in-depth only, same as the visit loop above.
+      console.error(`onOvernightVisitCompleted: email threw unexpectedly for night ${date}:`, e.message);
     }
   }
 });
@@ -8084,7 +8124,11 @@ function buildPayoutCounts(walkSnaps, overnightSnaps, walkerId, { overnightPayou
   overnightSnaps.forEach(snap => {
     const o = snap.data();
     const share = overnightPayoutShare(o, walkerId);
-    if (share.baseTotal) { counts[o.payout.rateKey].count++; counts[o.payout.rateKey].total += share.baseTotal; }
+    // Overnight Stay counts nights, not stays (same rule as calculateEarnings,
+    // walker-pricing.js); a default whose every night was covered is left
+    // with only the included check-ins, filed as Drop-In Visit.
+    const baseKey = o.payout.rateKey === 'overnight' && !share.nights ? 'checkin' : o.payout.rateKey;
+    if (share.baseTotal) { counts[baseKey].count += (baseKey === 'overnight' && share.nights) || 1; counts[baseKey].total += share.baseTotal; }
     if (share.dropInTotal) { counts.checkin.count++; counts.checkin.total += share.dropInTotal; }
     if (share.extraPetTotal) { counts.extraPet.count++; counts.extraPet.total += share.extraPetTotal; }
     if (share.medicationTotal) { counts.medication.count++; counts.medication.total += share.medicationTotal; }

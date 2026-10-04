@@ -439,7 +439,7 @@ import { calculateEarnings, WALKER_RATES, WALKER_EXTRA_PET_FEE, WALKER_MEDICATIO
 import { HOLIDAY_RATE_PERCENT } from '../pricing.js';
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
 import { AVAILABILITY_DAYS, AVAILABILITY_DAY_LABELS, AVAILABILITY_HOURS, hourLabel, hourBlockLabel, summarizeHours } from '../walker-availability.js';
-import { VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, buildStaySchedule, groupStayScheduleByDay, stayRowLabel } from '../visit-slots.js';
+import { VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, buildStaySchedule, groupStayScheduleByDay, stayRowLabel, stayNightDates, nightWalkerId, stayReadyToClose } from '../visit-slots.js';
 import { showError } from '/js/status.js';
 
 // ─── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────────────
@@ -475,9 +475,10 @@ const ALISON_PHONE = '(919) 368-0605';
 let walkerDoc = null;
 let myWalks = [];
 // myOvernights: this walker's view of each reservation — `visits` holds
-// only the visits they're doing, and `_covering` is true when another
+// only the visits they're doing, `_nights` the night dates they're doing
+// (nightWalkerId, visit-slots.js), and `_covering` is true when another
 // walker is the reservation's default and this one only covers some
-// visits. myOvernightDocs keeps the full docs, for pay (which needs every
+// visits or nights. myOvernightDocs keeps the full docs, for pay (which needs every
 // visit to split it) — never for rendering.
 let myOvernights = [];
 let myOvernightDocs = [];
@@ -731,9 +732,10 @@ function loadData() {
       ...o,
       _covering: (o.walkerId || '').trim() !== walkerDoc.id,
       visits: (Array.isArray(o.visits) ? o.visits : []).filter(v => visitWalkerId(v, o) === walkerDoc.id),
+      _nights: stayNightDates(o).filter(date => nightWalkerId(o, date) === walkerDoc.id),
     }))
-    // A reservation this walker once covered but no longer has any visits on.
-    .filter(o => !o._covering || o.visits.length)
+    // A reservation this walker once covered but no longer has any work on.
+    .filter(o => !o._covering || o.visits.length || o._nights.length)
     .sort((a,b) => {
       const da = a.startDate?.toDate?.() || new Date(a.startDate || 0);
       const db_ = b.startDate?.toDate?.() || new Date(b.startDate || 0);
@@ -791,10 +793,10 @@ function loadData() {
 // tips. A "visit" is any time the walker is at the house: each walk, each
 // drop-in (including an overnight's included drop-in), and each overnight
 // night — so a night plus its drop-in is two. Nights come from
-// buildStaySchedule (default walker only, never a covering walker) and have
-// no completion status of their own, so a night counts as done once the
-// stay is completed or the night's date is behind us. Cancelled/skipped
-// items are left out of both sides. Pay and tips for a stay land in the month
+// buildStaySchedule, only the ones this walker is doing. A night is done
+// once it's marked complete, or its stay was completed (stays closed before
+// nights were completable never marked theirs). Cancelled/skipped items are
+// left out of both sides. Pay and tips for a stay land in the month
 // the stay ends, the same unit calculateEarnings/payouts work in; walks by
 // their own date. Pay is a live estimate like Upcoming Payout, not a paid
 // figure (see renderEarnings).
@@ -812,15 +814,14 @@ function renderStats() {
   const me = walkerDoc?.id;
 
   const monthWalks = myWalks.filter(w => live(w) && inMonth(w.date));
-  const today = todayDateStr();
   const monthVisits = myOvernights.filter(live).flatMap(o => {
     const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
-    return buildStaySchedule(o, isCheckin, { nights: !o._covering })
+    return buildStaySchedule(o, isCheckin, { nightsFor: me })
       .filter(row => row.kind === 'night'
-        ? row.date.slice(0, 7) === monthKey
+        ? row.date.slice(0, 7) === monthKey && row.night?.status !== 'skipped'
         : live(row.visit) && inMonth(row.visit.date))
       .map(row => row.kind === 'night'
-        ? { done: o.status === 'completed' || row.date < today }
+        ? { done: o.status === 'completed' || row.night?.status === 'completed' }
         : { done: row.visit.status === 'completed' });
   });
   const scheduled = monthWalks.length + monthVisits.length;
@@ -950,9 +951,10 @@ function renderUpcoming() {
 // ── TODAY'S VISITS ───────────────────────────────────────────────────────────
 // Flattened from myOvernights[].visits (see generateOvernightVisits,
 // functions/index.js) — one row per individually-completable visit due
-// today, grouped by reservation. Completing every visit here IS what closes
-// out the reservation itself (see completeVisit's own allVisitsComplete
-// check) — there's no separate reservation-level completion action anymore.
+// today, grouped by reservation, plus tonight's night for whoever is doing
+// it. Completing every visit and night IS what closes out the reservation
+// itself (stayReadyToClose, visit-slots.js) — there's no separate
+// reservation-level completion action anymore.
 function renderTodaysVisits() {
   const section = document.getElementById('todaysVisitsSection');
   const container = document.getElementById('todaysVisitsList');
@@ -963,13 +965,15 @@ function renderTodaysVisits() {
       o,
       visits: (Array.isArray(o.visits) ? o.visits : [])
         .filter(v => v.status === 'expected' && walkDateStr(v.date) === todayDateStr()),
+      tonight: o.status !== 'completed' && o.status !== 'cancelled' && o._nights.includes(todayDateStr())
+        && !o.nights?.[todayDateStr()]?.status,
     }))
-    .filter(g => g.visits.length);
+    .filter(g => g.visits.length || g.tonight);
 
   if (!groups.length) { section.style.display = 'none'; return; }
   section.style.display = 'block';
 
-  container.innerHTML = groups.map(({ o, visits }) => {
+  container.innerHTML = groups.map(({ o, visits, tonight }) => {
     const member = allMembers.find(m => m.id === o.memberId);
     const petNames = escapeHtml(getDogNames(member) || o.dogName || 'Pet');
     const address = escapeHtml(member?.address || '–');
@@ -984,7 +988,13 @@ function renderTodaysVisits() {
         </div>
         <button class="btn-complete" style="width:auto;padding:8px 16px;" onclick="openVisitCompleteForm('${o.id}', '${v.id}')">Mark complete</button>
       </div>`;
-    }).join('');
+    }).join('') + (tonight ? `<div class="walk-card" style="align-items:center;">
+        <div style="flex:1;">
+          <div style="font-size:13px;color:var(--text-mid);">${address}</div>
+          <div style="font-size:13px;color:var(--text-light);">${todayDateStr()} · Overnight</div>
+        </div>
+        <button class="btn-complete" style="width:auto;padding:8px 16px;" onclick="openNightCompleteForm('${o.id}', '${todayDateStr()}')">Mark complete</button>
+      </div>` : '');
     return `<div style="margin-bottom:16px;">
       <div style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:6px;">${petNames} · ${escapeHtml(serviceLabel)}</div>
       ${rows}
@@ -1104,21 +1114,20 @@ window.completeVisit = async (overnightId, visitId) => {
       walkerId: walkerDoc?.id || '',
       walkerName: walkerDoc?.name || '',
     }), (visits, o) => {
-      // Completing the last outstanding visit also closes out the whole
-      // reservation, in this same write. This is now the ONLY way a
+      // Completing the last outstanding visit (and night — see
+      // stayReadyToClose) also closes out the whole reservation, in this
+      // same write. This is now the ONLY way a
       // reservation's own `status` reaches 'completed' — the old separate
       // reservation-level "Mark as Completed" button (completeOvernight) was
       // removed: it let a walker skip straight to closing the reservation
       // without ever completing the individual visits underneath it, which
       // still stamped payout (onOvernightCompleted, functions/index.js) with
       // no note/photo ever captured and no visit-completed email ever sent to
-      // the member. `visits.length` guards against an empty array (no visits
-      // generated at all) trivially satisfying .every() and auto-completing a
-      // reservation that was never really underway; the `o.status !==
+      // the member. stayReadyToClose refuses an empty stay (no visits or
+      // nights at all) so one never auto-completes; the `o.status !==
       // 'completed'` check keeps this a no-op on an already-closed one.
       // `visits` here is the whole reservation's, every walker's included.
-      const allVisitsComplete = visits.length > 0 && visits.every(v => v.status === 'completed');
-      return allVisitsComplete && o.status !== 'completed'
+      return stayReadyToClose({ ...o, visits }) && o.status !== 'completed'
         ? { status: 'completed', completedAt: serverTimestamp() }
         : {};
     });
@@ -1198,6 +1207,169 @@ window.saveVisitNote = async (overnightId, visitId) => {
   }
 };
 
+// ── NIGHTS ──────────────────────────────────────────────────────────────────
+// Each night of an overnight stay is completed like a visit: optional note
+// and photos (an update emails the owner — onOvernightVisitCompleted,
+// functions/index.js), and the last outstanding visit or night closes the
+// stay out. Nights live in the overnights doc's `nights` map keyed by date
+// (stayNightDates, visit-slots.js), written whole in a transaction like
+// `visits`. Photos share the stay's folder, prefixed `night-{date}_`.
+window.openNightCompleteForm = (overnightId, date) => {
+  const o = myOvernights.find(x => x.id === overnightId);
+  if (!o || !o._nights.includes(date)) return;
+  const night = o.nights?.[date] || {};
+  const member = allMembers.find(m => m.id === o.memberId);
+  // Unescaped — used only via .textContent below.
+  const petNames = getDogNames(member) || o.dogName || 'Pet';
+  const isCompleted = night.status === 'completed';
+  const isSkipped = night.status === 'skipped';
+  // A stay that closed before nights were completable never marked them;
+  // nothing to do on those.
+  const closedUnmarked = !night.status && o.status === 'completed';
+  const today = todayDateStr();
+  const canComplete = date <= today && !closedUnmarked && o.status !== 'cancelled';
+  const d = new Date(`${date}T12:00:00`);
+  const dateLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+  document.getElementById('walkModalTitle').textContent = `${petNames} · Overnight`;
+  document.getElementById('walkModalContent').innerHTML = `
+    ${renderDogProfiles(member)}
+    <div class="detail-row"><span class="detail-label">Owner</span><span class="detail-value">${escapeHtml(member?.name || o.memberName) || '–'}</span></div>
+    <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${escapeHtml(member?.address) || '–'}</span></div>
+    <div class="detail-row"><span class="detail-label">Parking</span><span class="detail-value">${escapeHtml(member?.parkingNotes) || 'None'}</span></div>
+    <div class="detail-row"><span class="detail-label">Entry Code</span><span class="detail-value">${escapeHtml(member?.entryCode) || 'None'}</span></div>
+    <div class="detail-row"><span class="detail-label">Access</span><span class="detail-value">${escapeHtml(member?.accessNotes) || 'None'}</span></div>
+    <div class="detail-row"><span class="detail-label">Care Notes</span><span class="detail-value">${escapeHtml(o.notes) || 'None'}</span></div>
+    <div class="detail-row"><span class="detail-label">Owner Notes</span><span class="detail-value">${escapeHtml(member?.ownerNotes) || 'None'}</span></div>
+    <div class="detail-row"><span class="detail-label">Internal Notes</span><span class="detail-value">${escapeHtml(member?.internalNotes) || 'None'}</span></div>
+    ${renderEmergencyBlock(member)}
+    <div class="detail-row"><span class="detail-label">Night of</span><span class="detail-value">${escapeHtml(dateLabel)}</span></div>
+    <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted || closedUnmarked ? '✓ Completed' : isSkipped ? "Didn't happen" : date === today ? 'Tonight' : date < today ? 'Past' : 'Scheduled'}</span></div>
+    ${isCompleted ? `
+      <div class="detail-row"><span class="detail-label">Note</span><span class="detail-value">${escapeHtml(night.note) || 'None'}</span></div>
+      ${completionPhotosHtml(night.photoUrls, null, 'Overnight photo')}
+      ${completionNoteEditorHtml('addNightNote', night.note, completionNeedsUpdate(night, night.note), `saveNightNote('${overnightId}', '${date}')`)}
+      ${walkPhotoCount(night) < MAX_COMPLETION_PHOTOS ? `
+        <div style="margin-top:12px;">
+          <label class="detail-label" style="display:block;margin-bottom:6px;">Add a photo</label>
+          <input type="file" id="addNightPhotoInput" accept="image/*" multiple style="width:100%;">
+          <div id="addNightPhotoError" style="color:#C17B6F;font-size:13px;margin-top:6px;display:none;"></div>
+          <button class="btn-complete" id="addNightPhotoBtn" style="margin-top:8px;" onclick="addNightPhoto('${overnightId}', '${date}')">Add Photo</button>
+        </div>
+      ` : ''}
+    ` : isSkipped || closedUnmarked ? '' : canComplete ? `
+      <div style="margin-top:16px;">
+        <label class="detail-label" style="display:block;margin-bottom:6px;">How'd it go? <span style="font-weight:400;color:#7A7A7A;">(optional, sent to the owner)</span></label>
+        <textarea id="completeNightNote" rows="2" placeholder="e.g. Ate dinner, last trip out at 9:30, settled in on the couch." style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;"></textarea>
+        <label class="detail-label" style="display:block;margin-top:10px;margin-bottom:6px;">Photos <span style="font-weight:400;color:#7A7A7A;">(up to 3)</span></label>
+        <input type="file" id="completeNightPhoto" accept="image/*" multiple style="width:100%;">
+        <div id="completeNightError" style="color:#C17B6F;font-size:13px;margin-top:6px;display:none;"></div>
+      </div>
+      <button class="btn-complete" id="completeNightBtn" onclick="completeNight('${overnightId}', '${date}')">Mark as Completed</button>
+    ` : `
+      <p style="margin-top:16px;font-size:13px;color:#7A7A7A;">You'll be able to mark this night complete starting the night it's scheduled.</p>
+    `}
+  `;
+  document.getElementById('walkModal').classList.add('open');
+};
+
+// Changes one night in an overnights doc's `nights` map, the night
+// counterpart to updateVisit: read fresh inside a transaction, since admin
+// or another walker may have just written the same doc.
+async function updateNight(overnightId, date, patch, extra) {
+  const ref = doc(db, 'overnights', overnightId);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error('This reservation no longer exists.');
+    const o = snap.data();
+    const nights = { ...(o.nights || {}), [date]: patch((o.nights || {})[date] || {}) };
+    tx.update(ref, { nights, ...(extra ? extra(nights, o) : {}) });
+  });
+}
+
+window.completeNight = async (overnightId, date) => {
+  const btn = document.getElementById('completeNightBtn');
+  const errEl = document.getElementById('completeNightError');
+  const note = document.getElementById('completeNightNote')?.value.trim() || '';
+  const fileInput = document.getElementById('completeNightPhoto');
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  errEl.style.display = 'none';
+
+  try {
+    const photoUrls = await uploadCompletionPhotos(fileInput?.files, `overnight-photos/${overnightId}`, `night-${date}_`);
+    // Timestamp.now(), not serverTimestamp() — see completeVisit; the
+    // sentinel isn't allowed nested in a map written whole like this either.
+    await updateNight(overnightId, date, n => ({
+      ...n,
+      status: 'completed',
+      completedAt: Timestamp.now(),
+      note,
+      photoUrls,
+      walkerId: walkerDoc?.id || '',
+      walkerName: walkerDoc?.name || '',
+    }), (nights, o) => (stayReadyToClose({ ...o, nights }) && o.status !== 'completed'
+      ? { status: 'completed', completedAt: serverTimestamp() }
+      : {}));
+    document.getElementById('walkModal').classList.remove('open');
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Mark as Completed';
+  }
+};
+
+window.addNightPhoto = async (overnightId, date) => {
+  const btn = document.getElementById('addNightPhotoBtn');
+  const errEl = document.getElementById('addNightPhotoError');
+  const fileInput = document.getElementById('addNightPhotoInput');
+  if (!fileInput?.files?.length) { errEl.textContent = 'Choose a photo first.'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Uploading…';
+  errEl.style.display = 'none';
+
+  try {
+    const o = myOvernights.find(x => x.id === overnightId);
+    const existing = Array.isArray(o?.nights?.[date]?.photoUrls) ? o.nights[date].photoUrls : [];
+    const newUrls = await uploadCompletionPhotos(Array.from(fileInput.files).slice(0, MAX_COMPLETION_PHOTOS - existing.length), `overnight-photos/${overnightId}`, `night-${date}_`);
+    const photoUrls = [...existing, ...newUrls];
+    await updateNight(overnightId, date, n => ({ ...n, photoUrls }));
+    if (o?.nights?.[date]) o.nights[date].photoUrls = photoUrls;
+    openNightCompleteForm(overnightId, date);
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Add Photo';
+  }
+};
+
+window.saveNightNote = async (overnightId, date) => {
+  const btn = document.getElementById('addNightNoteBtn');
+  const errEl = document.getElementById('addNightNoteError');
+  const note = document.getElementById('addNightNoteInput')?.value.trim() || '';
+  const o = myOvernights.find(x => x.id === overnightId);
+  if (!note && !o?.nights?.[date]?.note) { errEl.textContent = 'Type a note first.'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  errEl.style.display = 'none';
+
+  try {
+    await updateNight(overnightId, date, n => ({ ...n, note }));
+    if (o?.nights?.[date]) o.nights[date].note = note;
+    openNightCompleteForm(overnightId, date);
+  } catch (e) {
+    errEl.textContent = 'That note couldn\'t be saved — check your signal and try again.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Save Note';
+  }
+};
+
 // ── OVERNIGHT / CHECK-IN ASSIGNMENTS ────────────────────────────────────────────
 function renderOvernights() {
   const section = document.getElementById('overnightAssignmentsSection');
@@ -1217,7 +1389,7 @@ function renderOvernights() {
   const today = todayDateStr();
   const upcomingStays = myOvernights.filter(o => {
     if (o.status === 'completed' || o.status === 'cancelled') return false;
-    const hasVisitAhead = o.visits.some(v => walkIsOnOrAfterToday(v.date));
+    const hasVisitAhead = o.visits.some(v => walkIsOnOrAfterToday(v.date)) || o._nights.some(d => d >= today);
     if (o._covering) return hasVisitAhead;
     const endKey = localKey(o.endDate);
     return endKey ? endKey >= today : hasVisitAhead;
@@ -1245,7 +1417,7 @@ function renderOvernights() {
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
           <div style="font-size:16px;font-weight:600;color:var(--navy);">${dogNames}</div>
-          <div style="font-size:13px;color:var(--text-mid);">${memberName} · ${escapeHtml(o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin' ? 'Drop-In' : 'Overnight')}${o._covering ? ` · Covering ${o.visits.length} visit${o.visits.length === 1 ? '' : 's'}` : ''}</div>
+          <div style="font-size:13px;color:var(--text-mid);">${memberName} · ${escapeHtml(o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin' ? 'Drop-In' : 'Overnight')}${o._covering ? ` · Covering ${[o.visits.length ? `${o.visits.length} visit${o.visits.length === 1 ? '' : 's'}` : '', o._nights.length ? `${o._nights.length} night${o._nights.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' & ')}` : ''}</div>
           <div style="font-size:13px;color:var(--text-light);">${fmtDate(o.startDate)} – ${fmtDate(o.endDate)}${o.extraPet ? ' · Multiple pets' : ''}${o.medication ? ' · Medication' : ''}</div>
         </div>
         <span class="walk-status ${isCompleted ? 'completed' : 'scheduled'}">${isCompleted ? 'Completed' : 'Assigned'}</span>
@@ -1275,13 +1447,16 @@ window.openOvernightDetail = (overnightId) => {
   // Day-by-day schedule. For an overnight stay this includes a row per
   // night — o.visits alone is only the included midday check-ins, which
   // read as a couple of drop-ins rather than a stay.
-  // A walker covering only some visits sees just those, no night rows.
-  const scheduleHTML = groupStayScheduleByDay(buildStaySchedule(o, isCheckin, { nights: !o._covering })).map(day => {
+  // A walker covering only some visits or nights sees just those.
+  const scheduleHTML = groupStayScheduleByDay(buildStaySchedule(o, isCheckin, { nightsFor: walkerDoc.id })).map(day => {
     const d = new Date(`${day.date}T12:00:00`);
     const dateLabel = isNaN(d) ? day.date : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     const items = day.rows.map(row => {
       const label = escapeHtml(stayRowLabel(row, isCheckin, { showIncluded: false }));
-      if (row.kind === 'night') return `<div>${label}</div>`;
+      if (row.kind === 'night') {
+        const st = row.night?.status;
+        return `<div>${label} · ${st === 'completed' || (!st && isCompleted) ? '✓ Done' : st === 'skipped' ? "Didn't happen" : 'Expected'}</div>`;
+      }
       return `<div>${label} · ${row.visit.status === 'completed' ? '✓ Done' : 'Expected'}</div>`;
     }).join('');
     return `<div class="detail-row" style="align-items:flex-start;"><span class="detail-label">${escapeHtml(dateLabel)}</span><span class="detail-value">${items}</span></div>`;
@@ -1315,7 +1490,7 @@ window.openOvernightDetail = (overnightId) => {
     ${o.extraPet ? `<div class="detail-row"><span class="detail-label">Multiple Pets</span><span class="detail-value">Yes</span></div>` : ''}
     ${o.medication ? `<div class="detail-row"><span class="detail-label">Medication</span><span class="detail-value">Yes</span></div>` : ''}
     <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted ? '✓ Completed' : 'Assigned'}</span></div>
-    ${!isCompleted ? `<p style="margin-top:12px;font-size:13px;color:var(--text-light);">Complete each visit below to close this reservation out — it finishes itself once every visit is done.</p>` : ''}
+    ${!isCompleted ? `<p style="margin-top:12px;font-size:13px;color:var(--text-light);">${isCheckin ? 'Complete each visit to close this reservation out — it finishes itself once every visit is done.' : 'Complete each visit and night to close this stay out — it finishes itself once every one is done.'}</p>` : ''}
   `;
   document.getElementById('walkModal').classList.add('open');
 };
@@ -1354,9 +1529,8 @@ function renderCalendar() {
     // the overnight itself last. Every overnight/drop-in visit comes from
     // the reservation's visits[] (generateOvernightVisits,
     // functions/index.js), matched via walkDateStr (UTC-safe). Nights
-    // aren't in visits[], so they get their own chip — only for the
-    // reservation's default walker, since a walker covering a single visit
-    // isn't doing the night.
+    // aren't in visits[], so they get their own chip — only for whoever is
+    // doing that night (o._nights).
     const items = dayWalks.map(w => ({
       cls: 'walk', start: CAL_SLOT_START[w.timeSlot] ?? 99,
       time: WALK_TIME_SLOT_RANGES[w.timeSlot] || '', name: getDogNames(member_(w.memberId)),
@@ -1373,12 +1547,8 @@ function renderCalendar() {
           title: `${v.addOn ? 'Extra drop-in' : isCheckin ? 'Drop-in' : 'Drop-in (overnight stay)'} · ${VISIT_SLOT_LABELS[v.slot] || v.slot || ''}`,
           onclick: `openVisitCompleteForm('${o.id}', '${v.id}')`,
         }));
-      if (!isCheckin && !o._covering && o.status !== 'cancelled') {
-        const start = walkDateStr(o.startDate), end = walkDateStr(o.endDate);
-        // Nights run start date up to, not including, the return date.
-        if (start && end && start <= dayStr && dayStr < end) {
-          items.push({ cls: 'overnight', start: 100, time: 'Overnight', name: petNames, title: 'Overnight stay', onclick: `openOvernightDetail('${o.id}')` });
-        }
+      if (!isCheckin && o.status !== 'cancelled' && o._nights.includes(dayStr) && o.nights?.[dayStr]?.status !== 'skipped') {
+        items.push({ cls: 'overnight', start: 100, time: 'Overnight', name: petNames, title: 'Overnight stay', onclick: `openNightCompleteForm('${o.id}', '${dayStr}')` });
       }
     });
     const chips = items.sort((a, b) => a.start - b.start).map(it =>
@@ -1428,8 +1598,20 @@ function renderHistory() {
       .filter(v => walkIsBeforeToday(v.date) || v.status === 'completed')
       .map(v => ({ type: isCheckin ? 'dropin' : 'overnight', sortDate: v.date?.toDate?.() || new Date(v.date), onclick: `openVisitCompleteForm('${o.id}', '${v.id}')`, overnight: o, visit: v }));
   });
+  // Nights, same inclusion rule. A night on a stay that closed before
+  // nights were completable reads as completed, like the stay. Skipped
+  // nights are left out.
+  const today = todayDateStr();
+  const pastNights = myOvernights.flatMap(o => o._nights
+    .filter(date => o.nights?.[date]?.status !== 'skipped'
+      && (date < today || o.nights?.[date]?.status === 'completed'))
+    .map(date => ({
+      type: 'overnight', sortDate: new Date(`${date}T12:00:00`), onclick: `openNightCompleteForm('${o.id}', '${date}')`,
+      overnight: o, night: true,
+      done: o.nights?.[date]?.status === 'completed' || o.status === 'completed',
+    })));
 
-  const past = [...pastWalks, ...pastVisits].sort((a, b) => b.sortDate - a.sortDate);
+  const past = [...pastWalks, ...pastVisits, ...pastNights].sort((a, b) => b.sortDate - a.sortDate);
 
   if (!past.length) { container.innerHTML = '<div class="empty-state"><div class="empty-state-title">No care history yet</div></div>'; return; }
 
@@ -1452,7 +1634,7 @@ function renderHistory() {
       const member = allMembers.find(m => m.id === entry.overnight.memberId);
       dogName = getDogNames(member) || entry.overnight.dogName || 'Pet';
       ownerName = member?.name || entry.overnight.memberName || '–';
-      subLabel = VISIT_SLOT_LABELS[entry.visit.slot] || entry.visit.slot || '';
+      subLabel = entry.night ? 'Overnight' : (VISIT_SLOT_LABELS[entry.visit.slot] || entry.visit.slot || '');
     }
     return `<div class="walk-card" onclick="${entry.onclick}">
       <div class="walk-date-block">
@@ -1465,7 +1647,7 @@ function renderHistory() {
         <div class="walk-meta">${escapeHtml(ownerName)}</div>
         <div class="walk-slot">${escapeHtml(subLabel)}</div>
       </div>
-      <span class="walk-status completed">${(entry.type === 'walk' ? entry.walk.status : entry.visit.status) === 'completed' ? 'Completed' : 'Past'}</span>
+      <span class="walk-status completed">${(entry.night ? entry.done : (entry.type === 'walk' ? entry.walk.status : entry.visit.status) === 'completed') ? 'Completed' : 'Past'}</span>
     </div>`;
   }).join('');
 }

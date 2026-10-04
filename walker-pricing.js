@@ -24,6 +24,7 @@
 // generated copy — edit here, never there.
 
 import { getDaysBetween } from './pricing.js';
+import { stayNightDates, nightWalkerId } from './visit-slots.js';
 
 const cents = (n) => Math.round(n * 100) / 100;
 
@@ -54,6 +55,11 @@ export const WALKER_RATES = {
   // earlier session. Don't "simplify" this back down to $45.
   overnight: 65,
 };
+
+// What a walker covering just the NIGHT of an overnight stay earns: the
+// night rate less the included midday check-in, which is its own visit
+// (paid WALKER_RATES.checkin to whoever does it). Decided 2026-10-04.
+export const WALKER_NIGHT_COVER_RATE = WALKER_RATES.overnight - WALKER_RATES.checkin;
 
 export const WALKER_EXTRA_PET_FEE = 5;
 export const WALKER_MEDICATION_FEE = 5;
@@ -89,7 +95,12 @@ export function calculateOvernightPayout(overnight) {
   const key = isCheckinType(overnight.serviceType) ? 'checkin' : 'overnight';
   const start = overnight.startDate?.toDate ? overnight.startDate.toDate() : overnight.startDate;
   const end = overnight.endDate?.toDate ? overnight.endDate.toDate() : overnight.endDate;
-  const days = Math.max(getDaysBetween(start, end), 1);
+  // Nights admin marked as didn't happen (o.nights[date].status 'skipped')
+  // pay nothing — no night rate and no per-day pet/medication fees.
+  const skippedNights = key === 'overnight'
+    ? new Set(stayNightDates(overnight).filter(d => overnight.nights?.[d]?.status === 'skipped'))
+    : new Set();
+  const days = Math.max(Math.max(getDaysBetween(start, end), 1) - skippedNights.size, 0);
 
   const hasVisitSchedule = key === 'checkin' && Array.isArray(overnight.visitSchedule) && overnight.visitSchedule.length > 0;
   const units = hasVisitSchedule
@@ -120,7 +131,7 @@ export function calculateOvernightPayout(overnight) {
     if (key === 'overnight') {
       const startStr = start instanceof Date ? start.toISOString().slice(0, 10) : '';
       const endStr = end instanceof Date ? end.toISOString().slice(0, 10) : '';
-      const nights = [...h.dates].filter(d => d >= startStr && d < endStr).length;
+      const nights = [...h.dates].filter(d => d >= startStr && d < endStr && !skippedNights.has(d)).length;
       holidayTotal += nights * WALKER_RATES.overnight * h.pct / 100;
       addOnDays.forEach(d => { if (h.dates.has(d.date)) holidayTotal += Number(d.visits) * WALKER_RATES.checkin * h.pct / 100; });
     } else if (hasVisitSchedule) {
@@ -158,6 +169,10 @@ export function overnightWalkerIds(overnight) {
     const id = (v?.walkerId || '').trim();
     if (id) ids.add(id);
   });
+  Object.values(overnight?.nights || {}).forEach(n => {
+    const id = (n?.walkerId || '').trim();
+    if (id) ids.add(id);
+  });
   return [...ids];
 }
 
@@ -168,10 +183,14 @@ export function overnightWalkerIds(overnight) {
 //   that's the booking's own base unit (baseTotal). On an overnight stay
 //   it's filed as a drop-in (dropInTotal), included check-in or paid
 //   add-on alike; the night itself always stays with the default.
+// - Each covered NIGHT (o.nights[date].walkerId) pays WALKER_NIGHT_COVER_RATE,
+//   filed as the overnight base (baseTotal), plus that night's Multiple
+//   Pets / Medication fees and holiday pay on the cover rate. A skipped
+//   night pays nobody.
 // - Multiple Pets / Medication are per-day fees. On a drop-in booking, a
 //   day whose visits were ALL done by one covering walker moves that day's
 //   fees to them. A split day keeps them with the default. On an overnight
-//   stay they belong with the night, so they never move.
+//   stay they belong with the night, so they move only with a covered night.
 // The default's share is whatever the whole payout leaves after these (see
 // overnightPayoutShare), so the reservation's total never changes.
 export function calculateVisitCovers(overnight) {
@@ -183,7 +202,7 @@ export function calculateVisitCovers(overnight) {
     return id && id !== def ? id : '';
   };
   const covers = {};
-  const cover = (id) => (covers[id] ||= { visits: 0, baseTotal: 0, dropInTotal: 0, extraPetTotal: 0, medicationTotal: 0, holidayTotal: 0, amount: 0 });
+  const cover = (id) => (covers[id] ||= { visits: 0, nights: 0, baseTotal: 0, dropInTotal: 0, extraPetTotal: 0, medicationTotal: 0, holidayTotal: 0, amount: 0 });
 
   visits.forEach(v => {
     const id = coverOf(v);
@@ -194,6 +213,21 @@ export function calculateVisitCovers(overnight) {
     else c.dropInTotal += WALKER_RATES.checkin;
     c.holidayTotal = cents(c.holidayTotal + holidayVisitPay(overnight, v.date));
   });
+
+  if (!isCheckin) {
+    const h = holidayStamp(overnight);
+    stayNightDates(overnight).forEach(date => {
+      if (overnight.nights?.[date]?.status === 'skipped') return;
+      const id = nightWalkerId(overnight, date);
+      if (!id || id === def) return;
+      const c = cover(id);
+      c.nights++;
+      c.baseTotal += WALKER_NIGHT_COVER_RATE;
+      if (overnight.extraPet) c.extraPetTotal += WALKER_EXTRA_PET_FEE;
+      if (overnight.medication) c.medicationTotal += WALKER_MEDICATION_FEE;
+      if (h && h.dates.has(date)) c.holidayTotal = cents(c.holidayTotal + WALKER_NIGHT_COVER_RATE * h.pct / 100);
+    });
+  }
 
   if (isCheckin && (overnight.extraPet || overnight.medication)) {
     const byDate = {};
@@ -216,7 +250,7 @@ export function calculateVisitCovers(overnight) {
 export function liveOvernightPayout(overnight) {
   const p = calculateOvernightPayout(overnight);
   return {
-    rateKey: p.key, baseTotal: p.base, addOnDropInBaseTotal: p.addOnDropInBase,
+    rateKey: p.key, days: p.days, baseTotal: p.base, addOnDropInBaseTotal: p.addOnDropInBase,
     extraPetTotal: p.extraPetTotal, medicationTotal: p.medicationTotal, holidayTotal: p.holidayTotal, amount: p.total,
     covers: calculateVisitCovers(overnight),
   };
@@ -231,7 +265,7 @@ export function liveOvernightPayout(overnight) {
 // The default gets the payout minus every cover. If the default changed
 // after stamping and the new default was a covering walker, they get both.
 export function overnightPayoutShare(overnight, walkerId, payout = overnight?.payout) {
-  const share = { baseTotal: 0, dropInTotal: 0, extraPetTotal: 0, medicationTotal: 0, holidayTotal: 0, amount: 0 };
+  const share = { nights: 0, baseTotal: 0, dropInTotal: 0, extraPetTotal: 0, medicationTotal: 0, holidayTotal: 0, amount: 0 };
   if (!payout || !walkerId) return share;
   const covers = payout.covers || {};
   const sum = (field) => Object.values(covers).reduce((s, c) => s + (Number(c[field]) || 0), 0);
@@ -246,6 +280,8 @@ export function overnightPayoutShare(overnight, walkerId, payout = overnight?.pa
     // check-ins, which is why this isn't just baseTotal minus covers' base.
     const baseTotal = cents(Math.max(0, (payout.amount || 0) - sum('amount') - extraPetTotal - medicationTotal - dropInTotal - holidayTotal));
     share.baseTotal += baseTotal;
+    // Nights paid on the stay (payout.days) less the ones covered.
+    if (payout.rateKey === 'overnight') share.nights += Math.max(0, (Number(payout.days) || 0) - sum('nights'));
     share.holidayTotal += holidayTotal;
     share.dropInTotal += dropInTotal;
     share.extraPetTotal += extraPetTotal;
@@ -253,6 +289,7 @@ export function overnightPayoutShare(overnight, walkerId, payout = overnight?.pa
   }
   const own = covers[walkerId];
   if (own) {
+    share.nights += own.nights || 0;
     share.baseTotal += own.baseTotal || 0;
     share.dropInTotal += own.dropInTotal || 0;
     share.extraPetTotal += own.extraPetTotal || 0;
@@ -375,16 +412,20 @@ export function calculateEarnings(completedWalks, completedOvernights, walkerId)
       // generation will actually split (a pre-overrides stamp has none).
       const live = liveOvernightPayout(o);
       const payout = o.payout ? { ...live, covers: o.payout.covers || {} } : live;
-      const { baseTotal, dropInTotal, extraPetTotal, medicationTotal, holidayTotal } = overnightPayoutShare(o, walkerId, payout);
-      if (baseTotal) { breakdown[live.rateKey].count++; breakdown[live.rateKey].total += baseTotal; total += baseTotal; }
+      const { nights, baseTotal, dropInTotal, extraPetTotal, medicationTotal, holidayTotal } = overnightPayoutShare(o, walkerId, payout);
+      // Overnight Stay counts nights, not stays; a drop-in booking counts
+      // once. A default walker whose every night was covered is left with
+      // just the included check-ins, so that base files as Drop-In Visit.
+      const baseKey = live.rateKey === 'overnight' && !nights ? 'checkin' : live.rateKey;
+      if (baseTotal) { breakdown[baseKey].count += (baseKey === 'overnight' && nights) || 1; breakdown[baseKey].total += baseTotal; total += baseTotal; }
       if (dropInTotal) { breakdown.checkin.count++; breakdown.checkin.total += dropInTotal; total += dropInTotal; }
       if (extraPetTotal) { breakdown.extraPet.count++; breakdown.extraPet.total += extraPetTotal; total += extraPetTotal; }
       if (medicationTotal) { breakdown.medication.count++; breakdown.medication.total += medicationTotal; total += medicationTotal; }
       if (holidayTotal) { breakdown.holiday.count++; breakdown.holiday.total = cents(breakdown.holiday.total + holidayTotal); total = cents(total + holidayTotal); }
       return;
     }
-    const { key, base, extraPetTotal, medicationTotal, addOnDropInBase, holidayTotal } = calculateOvernightPayout(o);
-    breakdown[key].count++;
+    const { key, base, days, extraPetTotal, medicationTotal, addOnDropInBase, holidayTotal } = calculateOvernightPayout(o);
+    breakdown[key].count += (key === 'overnight' && days) || 1;
     breakdown[key].total += base;
     total += base;
     if (addOnDropInBase) { breakdown.checkin.count++; breakdown.checkin.total += addOnDropInBase; total += addOnDropInBase; }

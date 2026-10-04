@@ -92,33 +92,78 @@ export const VISIT_SLOTS_VERSION = checksum(JSON.stringify({ VISIT_SLOTS, VISIT_
 // paid add-on drop-ins), so a two-night stay listed nothing but two
 // "Midday" rows and read as two drop-ins. This interleaves a row for each
 // NIGHT (start date through the night before endDate — the departure day
-// has no night) after that day's visits, in slot order. Night rows are
-// display-only: they aren't completable and never feed pricing or payout.
+// has no night) after that day's visits, in slot order. Each night row
+// carries its `nights` entry (see stayNightDates below), or null when the
+// night hasn't been assigned or completed yet.
 //
 // A drop-in reservation has no nights, so pass isCheckin and it gets its
 // visit rows back unchanged. `startDate`/`endDate` may be Firestore
 // Timestamps, Dates, or 'YYYY-MM-DD' strings; visit dates are 'YYYY-MM-DD'.
-// Pass { nights: false } to leave out the night rows (a walker covering only
-// some of a stay's visits, who isn't doing the nights).
-export function buildStaySchedule(o, isCheckin, { nights = true } = {}) {
-  const toKey = (val) => {
-    if (!val) return null;
-    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
-    const d = val.toDate ? val.toDate() : new Date(val);
-    if (isNaN(d)) return null;
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  };
+// Pass { nights: false } to leave out the night rows, or { nightsFor:
+// walkerId } to keep only the nights that walker is doing (a walker
+// covering only some of a stay's work).
+export function buildStaySchedule(o, isCheckin, { nights = true, nightsFor = null } = {}) {
   const rows = (Array.isArray(o.visits) ? o.visits : [])
-    .map((visit) => ({ kind: 'visit', date: toKey(visit.date) || '', order: VISIT_SLOTS.indexOf(visit.slot), visit }));
-  const start = toKey(o.startDate);
-  const end = toKey(o.endDate);
-  if (!isCheckin && nights && start && end) {
-    const d = new Date(`${start}T12:00:00`);
-    for (let key = start; key < end; d.setDate(d.getDate() + 1), key = toKey(d)) {
-      rows.push({ kind: 'night', date: key, order: VISIT_SLOTS.length });
-    }
+    .map((visit) => ({ kind: 'visit', date: stayDateKey(visit.date) || '', order: VISIT_SLOTS.indexOf(visit.slot), visit }));
+  if (!isCheckin && nights) {
+    stayNightDates(o)
+      .filter((key) => !nightsFor || nightWalkerId(o, key) === nightsFor)
+      .forEach((key) => rows.push({ kind: 'night', date: key, order: VISIT_SLOTS.length, night: o.nights?.[key] || null }));
   }
   return rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.order - b.order));
+}
+
+// 'YYYY-MM-DD' for a stay date (Firestore Timestamp, Date, or already a
+// 'YYYY-MM-DD' string), read with local date parts.
+export function stayDateKey(val) {
+  if (!val) return null;
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+  const d = val.toDate ? val.toDate() : new Date(val);
+  if (isNaN(d)) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// ── Nights ──────────────────────────────────────────────────────────────
+// An overnight stay's nights run from the start date up to, not including,
+// the end date. Nights aren't generated up front like visits: the stay's
+// dates say which nights exist, and `o.nights` is a map keyed by night date
+// holding only what's been set on one: { walkerId, walkerName } when admin
+// assigns a cover, and { status: 'completed', completedAt, note, photoUrls,
+// walkerId, walkerName } once a walker completes it, or { status: 'skipped' }
+// when admin marks a night that didn't happen (paid $0). Since 2026-10-04 a
+// stay only closes (and its pay is stamped) once every night is completed or
+// skipped, same as every visit. Drop-in bookings have no nights.
+export function stayNightDates(o) {
+  const isCheckin = o?.serviceType === 'drop-in-visit' || o?.serviceType === 'checkin';
+  const start = stayDateKey(o?.startDate);
+  const end = stayDateKey(o?.endDate);
+  if (isCheckin || !start || !end) return [];
+  const dates = [];
+  const d = new Date(`${start}T12:00:00`);
+  for (let key = start; key < end; d.setDate(d.getDate() + 1), key = stayDateKey(d)) dates.push(key);
+  return dates;
+}
+
+// Who is doing (or did) this night: its cover if admin assigned one, else
+// the stay's default walker. Same rule as visitWalkerId (walker-pricing.js).
+export function nightWalkerId(o, date) {
+  return (o?.nights?.[date]?.walkerId || '').trim() || (o?.walkerId || '').trim();
+}
+
+export function nightIsDone(night) {
+  return night?.status === 'completed' || night?.status === 'skipped';
+}
+
+// Whether every visit and every night on a stay is done, i.e. the stay
+// can close. Used by every write that might finish the last piece (walker
+// completing a visit or night, admin skipping a night). Requires at least
+// one visit or night so an empty stay never closes itself.
+export function stayReadyToClose(o) {
+  const visits = Array.isArray(o?.visits) ? o.visits : [];
+  const nightDates = stayNightDates(o);
+  if (!visits.length && !nightDates.length) return false;
+  return visits.every((v) => v.status === 'completed')
+    && nightDates.every((date) => nightIsDone(o.nights?.[date]));
 }
 
 // buildStaySchedule's rows bucketed by date, in order — [{ date, rows }] —

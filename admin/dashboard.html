@@ -1363,7 +1363,7 @@ import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalk
 // buildScreeningAvailabilityGrid below.
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
 import { AVAILABILITY_DAYS, AVAILABILITY_HOURS, hourLabel, hourBlockLabel, rangeHours, summarizeHours, visitSlotCoverage, availabilityDayKey, normalizeAvailability } from '../walker-availability.js';
-import { VISIT_SLOTS, VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, defaultSlotsForCount, buildStaySchedule, groupStayScheduleByDay, stayRowLabel } from '../visit-slots.js';
+import { VISIT_SLOTS, VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, defaultSlotsForCount, buildStaySchedule, groupStayScheduleByDay, stayRowLabel, stayNightDates, nightWalkerId, nightIsDone, stayReadyToClose } from '../visit-slots.js';
 import { calculateEarnings, isCheckinType, visitWalkerId, overnightWalkerIds, calculateVisitCovers, overnightPayoutShare, overnightTipShare, isOvernightPayee, overnightClaimFor } from '../walker-pricing.js';
 import { showError } from '/js/status.js';
 
@@ -2490,11 +2490,12 @@ function walkerTimeOffConflicts(walkerId, startKey, endKey) {
       const m = allMembers.find(x => x.id === (o.memberId || '').trim());
       // Covering individual visits only: conflicts are those visits' days.
       if ((o.walkerId || '').trim() !== walkerId) {
-        const days = (o.visits || [])
-          .filter(v => visitWalkerId(v, o) === walkerId && v.status !== 'completed')
-          .map(v => dateKey(v.date)).filter(inRange).sort();
+        const days = [
+          ...(o.visits || []).filter(v => visitWalkerId(v, o) === walkerId && v.status !== 'completed').map(v => dateKey(v.date)),
+          ...stayNightDates(o).filter(d => nightWalkerId(o, d) === walkerId && !nightIsDone(o.nights?.[d])),
+        ].filter(inRange).sort();
         if (!days.length) return null;
-        return { kind: 'overnight', id: o.id, day: days[0], label: `${o.dogName || getMemberDogs(m)[0]?.name || m?.name || 'Reservation'} · covering ${days.length} visit${days.length === 1 ? '' : 's'}` };
+        return { kind: 'overnight', id: o.id, day: days[0], label: `${o.dogName || getMemberDogs(m)[0]?.name || m?.name || 'Reservation'} · covering ${days.length} visit${days.length === 1 ? '' : 's'}/night${days.length === 1 ? '' : 's'}` };
       }
       const s = dateKey(o.startDate), e = dateKey(o.endDate) || s;
       if (!s || e < startKey || s > endKey) return null;
@@ -4302,17 +4303,37 @@ window.openOvernightModal = (overnightId) => {
   // this screen showing it.
   const trackedVisits = Array.isArray(o.visits) ? o.visits : [];
   const completedVisitCount = trackedVisits.filter(v => v.status === 'completed').length;
-  const visitProgressHTML = trackedVisits.length ? `
+  const nightDates = stayNightDates(o);
+  const nightsDoneCount = nightDates.filter(d => nightIsDone(o.nights?.[d])).length;
+  const progressLabel = isCheckin
+    ? `${completedVisitCount} of ${trackedVisits.length} completed`
+    : `${completedVisitCount} of ${trackedVisits.length} visits, ${nightsDoneCount} of ${nightDates.length} nights done`;
+  const visitProgressHTML = trackedVisits.length || nightDates.length ? `
     <hr class="modal-divider">
-    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">${isCheckin ? 'Visits' : 'Stay schedule'} (${completedVisitCount} of ${trackedVisits.length} ${isCheckin ? '' : 'visits '}completed)</div>
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">${isCheckin ? 'Visits' : 'Stay schedule'} (${progressLabel})</div>
     ${groupStayScheduleByDay(buildStaySchedule(o, isCheckin)).map(day => `
       <div style="padding:10px 0 4px;border-bottom:1px solid rgba(0,0,0,0.06);">
         <div style="font-size:12px;font-weight:600;color:var(--text-mid);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">${fmtDate(day.date)}</div>
         ${day.rows.map(row => {
-          // Night rows (overnight stays only) aren't completable — they're
-          // there so the stay doesn't read as just its included check-ins.
+          // Night rows (overnight stays only): completed by the walker like
+          // a visit, coverable, and markable as didn't happen (paid $0).
           if (row.kind === 'night') {
-            return `<div style="padding:4px 0 6px;font-size:13px;color:var(--navy);">Overnight</div>`;
+            const n = row.night || {};
+            // Stays that closed before nights were completable never marked them.
+            const st = n.status || (isCompleted ? 'completed' : '');
+            const stLabel = st === 'completed' ? '✓ Completed' : st === 'skipped' ? "Didn't happen" : 'Expected';
+            const stColor = st === 'completed' ? 'var(--green)' : st === 'skipped' ? 'var(--rust)' : 'var(--text-light)';
+            return `<div style="padding:4px 0 6px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-size:13px;color:var(--navy);">Overnight</span>
+                <span style="font-size:12px;font-weight:500;color:${stColor};">${stLabel}</span>
+              </div>
+              ${nightWalkerSelectHTML(o, row.date, _walkers)}
+              ${!isCompleted && !n.status ? `<button class="btn-secondary" style="margin-top:6px;padding:4px 10px;font-size:12px;" onclick="setNightSkipped('${o.id}', '${row.date}', true)">Didn't happen</button>` : ''}
+              ${!isCompleted && n.status === 'skipped' ? `<button class="btn-secondary" style="margin-top:6px;padding:4px 10px;font-size:12px;" onclick="setNightSkipped('${o.id}', '${row.date}', false)">Undo didn't happen</button>` : ''}
+              ${n.note ? `<div style="font-size:12px;color:var(--text-mid);margin-top:4px;">${escapeHtml(n.note)}</div>` : ''}
+              ${completionPhotosHtml(n.photoUrls, null, 'Overnight photo', '160px')}
+            </div>`;
           }
           const v = row.visit;
           const isDone = v.status === 'completed';
@@ -4404,6 +4425,29 @@ function visitWalkerSelectHTML(o, v, walkers) {
   </div>`;
 }
 
+// Per-night walker override, the night counterpart to
+// visitWalkerSelectHTML. A covering walker earns WALKER_NIGHT_COVER_RATE
+// for the night (walker-pricing.js); the included check-in stays a visit
+// of its own with its own walker.
+function nightWalkerSelectHTML(o, date, walkers) {
+  const def = (o.walkerId || '').trim();
+  const cur = (o.nights?.[date]?.walkerId || '').trim();
+  const defWalker = walkers.find(w => w.id === def);
+  const isCover = cur && cur !== def;
+  const offNote = (w) => walkerOffOn(w, date) ? ' (off)' : '';
+  const opts = walkers
+    .filter(w => w.id !== def && (w.status === 'active' || w.id === cur))
+    .map(w => `<option value="${w.id}" ${w.id === cur ? 'selected' : ''}>${escapeHtml(w.name)}${offNote(w)}</option>`).join('');
+  return `<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+    <span style="font-size:12px;color:var(--text-light);">Walker</span>
+    <select style="flex:1;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:4px 6px;font-size:12px;font-family:'DM Sans',sans-serif;${isCover ? 'font-weight:600;color:var(--navy);' : ''}"
+      onchange="assignNightWalker('${o.id}', '${date}', this.value)">
+      <option value="" ${isCover ? '' : 'selected'}>${def ? `Default (${escapeHtml(defWalker?.name || def)})${defWalker ? offNote(defWalker) : ''}` : 'Default (none assigned)'}</option>
+      ${opts}
+    </select>
+  </div>`;
+}
+
 // Why a walker might not suit one visit, for the per-visit dropdown:
 // approved time off, then their hourly availability for that weekday vs
 // the visit's window (walker-availability.js). Blank when they're free or
@@ -4449,6 +4493,67 @@ window.assignVisitWalker = async (overnightId, visitId, walkerId, selectEl) => {
     return;
   }
   // allOvernights' listener re-renders the rest; refresh the open modal.
+  setTimeout(() => openOvernightModal(overnightId), 300);
+};
+
+// Sets one night's walker — assignVisitWalker's night counterpart, same
+// transaction, walkerIds and stamped-split handling. Choosing Default
+// clears the cover (and on a completed night, records the default did it).
+window.assignNightWalker = async (overnightId, date, walkerId) => {
+  const _walkers = window.allWalkers || allWalkers;
+  const walkerName = walkerId ? (_walkers.find(w => w.id === walkerId)?.name || '') : '';
+  try {
+    await runTransaction(db, async (tx) => {
+      const ref = doc(db, 'overnights', overnightId);
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error('Reservation not found.');
+      const o = snap.data();
+      const nights = { ...(o.nights || {}), [date]: { ...((o.nights || {})[date] || {}), walkerId, walkerName } };
+      const next = { ...o, nights };
+      const update = { nights, walkerIds: overnightWalkerIds(next), updatedAt: serverTimestamp() };
+      if (o.payout) {
+        const claimed = o.payoutId || Object.values(o.payoutIds || {}).some(Boolean);
+        if (claimed) throw new Error("This reservation's pay has already gone into a payout. Void that payout first to change who did a night.");
+        const covers = calculateVisitCovers(next);
+        update['payout.covers'] = Object.keys(covers).length ? covers : deleteField();
+      }
+      tx.update(ref, update);
+    });
+  } catch (e) {
+    alert('Could not change the walker: ' + e.message);
+  }
+  setTimeout(() => openOvernightModal(overnightId), 300);
+};
+
+// Marks a night that didn't happen (owner home early, etc.): pays $0 for
+// it (calculateOvernightPayout skips it) and counts as done for closing the
+// stay, so the stay can close and be paid without it. Only before the stay
+// is completed — after that its pay is stamped. Any customer refund is
+// separate and manual. Skipping the last open piece closes the stay.
+window.setNightSkipped = async (overnightId, date, skipped) => {
+  if (skipped && !confirm("Mark this night as didn't happen? No walker is paid for it. Any refund to the customer is separate.")) return;
+  try {
+    await runTransaction(db, async (tx) => {
+      const ref = doc(db, 'overnights', overnightId);
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error('Reservation not found.');
+      const o = snap.data();
+      if (o.status === 'completed') throw new Error('This stay is already completed and its pay is set.');
+      const cur = (o.nights || {})[date] || {};
+      if (skipped && cur.status) throw new Error('This night was already completed.');
+      const entry = { ...cur };
+      if (skipped) entry.status = 'skipped'; else delete entry.status;
+      const nights = { ...(o.nights || {}), [date]: entry };
+      const update = { nights, updatedAt: serverTimestamp() };
+      if (skipped && stayReadyToClose({ ...o, nights })) {
+        update.status = 'completed';
+        update.completedAt = serverTimestamp();
+      }
+      tx.update(ref, update);
+    });
+  } catch (e) {
+    alert('Could not update the night: ' + e.message);
+  }
   setTimeout(() => openOvernightModal(overnightId), 300);
 };
 
@@ -4501,6 +4606,11 @@ window.assignOvernightWalkerManual = async (overnightId) => {
 };
 
 window.markOvernightComplete = async (overnightId) => {
+  // Admin override: closes the stay (and stamps pay) whatever is still
+  // open. Unmarked nights are still paid, so say so.
+  const o = (window.allOvernights || allOvernights || []).find(x => x.id === overnightId);
+  const openNights = o ? stayNightDates(o).filter(d => !nightIsDone(o.nights?.[d])).length : 0;
+  if (openNights && !confirm(`${openNights} night${openNights === 1 ? " hasn't" : "s haven't"} been marked complete. Closing the stay pays ${openNights === 1 ? 'it' : 'them'} anyway. Mark a night "Didn't happen" first if it shouldn't be paid. Close the stay?`)) return;
   await updateDoc(doc(db, 'overnights', overnightId), { status: 'completed', completedAt: serverTimestamp() });
   closeModal('overnightModal');
 };

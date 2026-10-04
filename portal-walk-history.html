@@ -1050,11 +1050,20 @@ onAuthStateChanged(auth, async (user) => {
     const reservationRecords = overnightsData
       .map(o => {
         const completedVisits = (Array.isArray(o.visits) ? o.visits : []).filter(v => v.status === 'completed');
-        if (!completedVisits.length) return null; // nothing completed yet — no card
+        // Completed nights (o.nights, keyed by night date — see
+        // stayNightDates in visit-slots.js) show alongside the visits, each
+        // after that day's visits.
+        const completedNights = Object.entries(o.nights || {})
+          .filter(([, n]) => n?.status === 'completed')
+          .map(([date, n]) => ({ ...n, date, _night: true }));
+        if (!completedVisits.length && !completedNights.length) return null; // nothing completed yet — no card
 
         const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
         const serviceLabel = isCheckin ? 'Drop-In Visits' : 'Overnight Stay';
-        const sortedVisits = [...completedVisits].sort((a, b) => toJsDate(a.date) - toJsDate(b.date));
+        const dayKey = (u) => u._night ? u.date : toJsDate(u.date).toISOString().slice(0, 10);
+        const sortedVisits = [...completedVisits, ...completedNights]
+          .sort((a, b) => dayKey(a).localeCompare(dayKey(b)) || (a._night ? 1 : 0) - (b._night ? 1 : 0) || toJsDate(a.date) - toJsDate(b.date));
+        const nightDate = (u) => new Date(`${u.date}T12:00:00`);
         const isComplete = o.status === 'completed';
 
         return {
@@ -1064,14 +1073,17 @@ onAuthStateChanged(auth, async (user) => {
           // keeps surfacing near the top of the feed as new visits land,
           // rather than sitting wherever the LAST day happens to fall once
           // the whole thing is finally done.
-          sortDate: toJsDate(sortedVisits[sortedVisits.length - 1].date),
+          sortDate: (u => u._night ? nightDate(u) : toJsDate(u.date))(sortedVisits[sortedVisits.length - 1]),
           avatar: isCheckin ? '📍' : '🌙',
           walkerName: o.walkerName || 'Your Walker',
-          subLabel: completedVisits.length + ' visit' + (completedVisits.length === 1 ? '' : 's') + ' completed' + (isComplete ? '' : ' so far'),
+          subLabel: [
+            completedVisits.length ? completedVisits.length + ' visit' + (completedVisits.length === 1 ? '' : 's') : '',
+            completedNights.length ? completedNights.length + ' night' + (completedNights.length === 1 ? '' : 's') : '',
+          ].filter(Boolean).join(' and ') + ' completed' + (isComplete ? '' : ' so far'),
           badgeLabel: serviceLabel,
           visitUpdates: sortedVisits.map(v => ({
-            dateStr: toJsDate(v.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-            slotLabel: VISIT_SLOT_LABELS[v.slot] || v.slot || '',
+            dateStr: (v._night ? nightDate(v) : toJsDate(v.date)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            slotLabel: v._night ? 'Overnight' : (VISIT_SLOT_LABELS[v.slot] || v.slot || ''),
             note: v.note || '',
             photoUrls: Array.isArray(v.photoUrls) && v.photoUrls.length ? v.photoUrls : (v.photoUrl ? [v.photoUrl] : []),
           })),
