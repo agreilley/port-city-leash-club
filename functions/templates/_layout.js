@@ -50,13 +50,16 @@ const TEAM_SIGNOFF = 'The Port City Leash Club team';
 const HEADING_FONT = "'Cormorant Garamond', Georgia, 'Times New Roman', serif";
 const BODY_FONT = "'DM Sans', Helvetica, Arial, sans-serif";
 
-// Header logo — Sand-colored artwork on transparent, so it must only ever
-// sit on the navy header bar, never a light background. Asset is 480x76
-// (2x) for retina; width/height are set explicitly below since Outlook
-// collapses the row without an explicit height on the <img> itself.
-const LOGO_URL = 'https://portcityleashclub.com/email/logo.png';
-const LOGO_WIDTH = 240;
-const LOGO_HEIGHT = 38;
+// Header — the whole navy bar is one image (email/header.png, 1200x188 at
+// 2x: the Sand logo already composited onto Navy), not a transparent logo
+// sitting on a navy <td>. Gmail's iOS/Android dark mode recolors cell
+// backgrounds but never image pixels, so a navy <td> came out light blue
+// with the Sand logo vanishing into it. Baking the navy into the image
+// keeps the header identical in every client. width/height are explicit
+// since Outlook collapses the row without them.
+const HEADER_URL = 'https://portcityleashclub.com/email/header.png';
+const HEADER_WIDTH = 600;
+const HEADER_HEIGHT = 94;
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -399,6 +402,12 @@ function renderSignoffHtml(name, greeting) {
   `;
 }
 
+// Invisible filler after the preheader. Inbox and notification previews
+// keep reading past a short preheader into the body ("Hi Alison, Here's
+// an update..."), so the spacer fills the preview slot with blank
+// characters and the preheader stands alone.
+const PREHEADER_SPACER = '&#847;&zwnj;&nbsp;'.repeat(90);
+
 function wrapHtml({ preheader, bodyHtml }) {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -416,14 +425,14 @@ function wrapHtml({ preheader, bodyHtml }) {
 </style>
 </head>
 <body style="margin:0;padding:0;background-color:${SAND_LIGHT};">
-${preheader ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;opacity:0;">${escapeHtml(preheader)}</div>` : ''}
+${preheader ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;opacity:0;">${escapeHtml(preheader)}${PREHEADER_SPACER}</div>` : ''}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:${SAND_LIGHT};">
   <tr>
     <td align="center" style="padding:32px 16px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background-color:${SAND_LIGHT};border-radius:8px;border:1px solid rgba(13,27,42,0.08);">
         <tr>
-          <td align="center" style="background-color:${NAVY};padding:28px 0;border-radius:8px 8px 0 0;">
-            <img src="${LOGO_URL}" width="${LOGO_WIDTH}" height="${LOGO_HEIGHT}" alt="Port City Leash Club" style="display:block;margin:0 auto;border:0;outline:none;text-decoration:none;" />
+          <td align="center" style="background-color:${NAVY};padding:0;border-radius:8px 8px 0 0;font-size:0;line-height:0;">
+            <img src="${HEADER_URL}" width="${HEADER_WIDTH}" height="${HEADER_HEIGHT}" alt="Port City Leash Club" style="display:block;width:100%;max-width:${HEADER_WIDTH}px;height:auto;margin:0 auto;border:0;outline:none;text-decoration:none;border-radius:8px 8px 0 0;" />
           </td>
         </tr>
         <tr>

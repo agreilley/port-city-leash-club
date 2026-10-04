@@ -65,7 +65,7 @@ function html(data) {
   `;
 
   return wrapHtml({
-    preheader: `Here's an update on ${names} from today's ${(data.serviceLabel || 'visit').toLowerCase()}.`,
+    preheader: `From today's ${(data.serviceLabel || 'visit').toLowerCase()}.`,
     bodyHtml: body,
   });
 }
