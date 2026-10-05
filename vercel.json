@@ -3,6 +3,9 @@
   "outputDirectory": ".",
   "installCommand": "",
   "cleanUrls": true,
+  "rewrites": [
+    { "source": "/welcomehome/:slug", "destination": "/welcomehome" }
+  ],
   "redirects": [
     { "source": "/dev/(.*)", "destination": "/404", "permanent": false }
   ],
@@ -50,6 +53,12 @@
     },
     {
       "source": "/welcomehome",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/welcomehome/(.*)",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
       ]
