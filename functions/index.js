@@ -3610,6 +3610,13 @@ exports.sendMonthlyScheduleReminders = onSchedule({
 //    endDate is a noon-UTC calendar-date stamp, so a UTC-day range over it
 //    selects exactly those calendar dates, same as the walks query above.
 // ─────────────────────────────────────────────────────────────────────────
+// Families who should never get the wrap-up email, as [owner first name,
+// dog name] pairs (lowercase). Both have to match, so another Emily or
+// another Bo still gets theirs.
+const STAY_WRAP_UP_EXCLUDED = [
+  ['emily', 'bo'],
+];
+
 exports.sendStayWrapUpEmails = onSchedule({
   schedule: '0 10 * * *',
   timeZone: 'America/New_York',
@@ -3628,6 +3635,15 @@ exports.sendStayWrapUpEmails = onSchedule({
     const memberSnap = await db.collection('members').doc(o.memberId).get();
     const member = memberSnap.exists ? memberSnap.data() : null;
     if (!member?.email) { skipped++; continue; }
+
+    const ownerFirst = (member.name || '').trim().split(/\s+/)[0].toLowerCase();
+    const dogNames = (Array.isArray(member.dogs) ? member.dogs.map((d) => d && d.name) : [])
+      .concat(member.dogName || [])
+      .filter(Boolean)
+      .map((n) => n.trim().toLowerCase());
+    if (STAY_WRAP_UP_EXCLUDED.some(([owner, dog]) => owner === ownerFirst && dogNames.includes(dog))) {
+      skipped++; continue;
+    }
 
     // Everyone who worked the stay, default walker first — a tip is split
     // across all of them (proportional tip split), so all are named.
