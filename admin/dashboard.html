@@ -1988,6 +1988,13 @@ function subscribeMembers() {
   });
 }
 
+// Walkers offered in assignment dropdowns: deactivated walkers
+// (deactivateWalker) are hidden, except the one already selected so an old
+// record still shows who it belongs to.
+function assignableWalkers(walkers, keepId) {
+  return walkers.filter(w => w.status !== 'inactive' || (keepId && w.id === keepId));
+}
+
 function subscribeWalkers() {
   onSnapshot(collection(db, 'walkers'), snap => {
     const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -4352,7 +4359,7 @@ window.openOvernightModal = (overnightId) => {
 
   const walkerSelect = `<select id="manualOvernightWalkerSelect" style="width:100%;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:9px;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:10px;">
     <option value="">Select a walker...</option>
-    ${_walkers.map(w => { const off = walkerOffDaysBetween(w, o.startDate, o.endDate); return `<option value="${w.id}" ${w.id === (o.walkerId||'') ? 'selected' : ''}>${escapeHtml(w.name)}${off.length ? ` (off ${escapeHtml(fmtDateKeyRanges(off))})` : ''}</option>`; }).join('')}
+    ${assignableWalkers(_walkers, o.walkerId).map(w => { const off = walkerOffDaysBetween(w, o.startDate, o.endDate); return `<option value="${w.id}" ${w.id === (o.walkerId||'') ? 'selected' : ''}>${escapeHtml(w.name)}${off.length ? ` (off ${escapeHtml(fmtDateKeyRanges(off))})` : ''}</option>`; }).join('')}
   </select>`;
   const assignedOff = walker ? walkerOffDaysBetween(walker, o.startDate, o.endDate) : [];
 
@@ -4649,7 +4656,7 @@ window.openWalkModal = async (walkId) => {
   // this modal for the same reason as the requests modal/list earlier.
   const walkerSelect = `<select id="manualWalkerSelect" style="width:100%;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:9px;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:10px;">
     <option value="">Select a walker...</option>
-    ${_walkers.map(w => `<option value="${w.id}" ${w.id === (walk.walkerId||'') ? 'selected' : ''}>${escapeHtml(w.name)}${walkerOffOn(w, walk.date) ? ' (off)' : ''}</option>`).join('')}
+    ${assignableWalkers(_walkers, walk.walkerId).map(w => `<option value="${w.id}" ${w.id === (walk.walkerId||'') ? 'selected' : ''}>${escapeHtml(w.name)}${walkerOffOn(w, walk.date) ? ' (off)' : ''}</option>`).join('')}
   </select>`;
 
   const assignmentHTML = isAssigned ? `
@@ -4763,7 +4770,7 @@ window.openMemberWalkerModal = (memberId) => {
 
   const walkerSelect = `<select id="memberWalkerSelect" style="width:100%;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:9px;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:10px;">
     <option value="">Select a walker...</option>
-    ${allWalkers.map(w => { const o = offDates(w); return `<option value="${w.id}" ${w.id === currentId ? 'selected' : ''}>${escapeHtml(w.name)}${o.length ? ` (off ${escapeHtml(fmtDateKeyRanges(o))})` : ''}</option>`; }).join('')}
+    ${assignableWalkers(allWalkers, currentId).map(w => { const o = offDates(w); return `<option value="${w.id}" ${w.id === currentId ? 'selected' : ''}>${escapeHtml(w.name)}${o.length ? ` (off ${escapeHtml(fmtDateKeyRanges(o))})` : ''}</option>`; }).join('')}
   </select>`;
 
   const assignmentHTML = current ? `
@@ -7480,7 +7487,7 @@ function populateMemberSelect() {
 function populateWalkerSelect() {
   const sel = document.getElementById('wm-walker');
   const selected = sel.value;
-  sel.innerHTML = '<option value="">Unassigned</option>' + allWalkers.map(w => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join('');
+  sel.innerHTML = '<option value="">Unassigned</option>' + assignableWalkers(allWalkers, selected).map(w => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join('');
   sel.value = selected;
   refreshAddWalkWalkerLabels();
 }
@@ -7745,7 +7752,7 @@ window.openAddMemberModal = (prefill, submissionId) => {
   const sel = document.getElementById('am-walker');
   if (sel) {
     sel.innerHTML = '<option value="">Unassigned</option>' +
-      allWalkers.map(w => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join('');
+      assignableWalkers(allWalkers).map(w => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join('');
   }
 
   // Track the source submission (if converting from a request item) so saveMember()
@@ -8091,7 +8098,7 @@ window.openMemberDetail = async (id) => {
   // had no walks to assign one on and no way to set it at all.
   const assignedWalkerHTML = `<select id="md-walker" onchange="saveMemberWalker('${member.id}', this)" style="font-size:13px;padding:4px 6px;">
       <option value="">Unassigned</option>
-      ${allWalkers.map(w => `<option value="${w.id}" ${w.id === member.assignedWalkerId ? 'selected' : ''}>${escapeHtml(w.name)}</option>`).join('')}
+      ${assignableWalkers(allWalkers, member.assignedWalkerId).map(w => `<option value="${w.id}" ${w.id === member.assignedWalkerId ? 'selected' : ''}>${escapeHtml(w.name)}</option>`).join('')}
     </select>
     <div style="font-size:11px;color:var(--text-light);margin-top:3px;">Used for walks created from now on. Walks already scheduled keep their own walker.</div>`;
 
@@ -8877,8 +8884,34 @@ window.openWalkerDetail = (id) => {
     <button class="btn-secondary" style="width:100%;margin-top:6px;" onclick="addWalkerTimeOff('${walker.id}','${walker.uid}')">Add Time Off</button>
     <hr class="modal-divider">
     ${renderWalkerEarningsSection(walker)}
+    <hr class="modal-divider">
+    ${walker.status === 'inactive'
+      ? '<div style="font-size:13px;color:var(--text-light);">Deactivated. Can\'t log in and is hidden from assignment lists. History and payouts are kept.</div>'
+      : `<div id="wd-deactivate-status" style="font-size:12px;color:var(--text-light);min-height:16px;"></div>
+    <button class="btn-secondary" style="width:100%;margin-top:6px;color:var(--rust);" onclick="deactivateWalker('${walker.id}')">Deactivate walker</button>`}
   `;
   document.getElementById('walkerDetailModal').classList.add('open');
+};
+
+// Offboarding: blocks the walker's login (Auth disabled + sessions revoked)
+// and marks both walker docs inactive. Nothing is deleted — past walks,
+// Care History, and payouts keep working.
+window.deactivateWalker = async (walkerId) => {
+  const walker = allWalkers.find(w => w.id === walkerId);
+  if (!walker) return;
+  const upcoming = allWalks.filter(w => w.walkerId === walkerId && w.status === 'scheduled').length;
+  const warn = upcoming ? `\n\nThey still have ${upcoming} scheduled walk(s) — reassign those separately.` : '';
+  if (!confirm(`Deactivate ${walker.name}? They won't be able to log in and won't appear in assignment lists.${warn}`)) return;
+  const status = document.getElementById('wd-deactivate-status');
+  status.textContent = 'Deactivating…';
+  try {
+    await httpsCallable(fns, 'deactivateWalker')({ walkerId });
+    closeModal('walkerDetailModal');
+  } catch (e) {
+    console.error('deactivateWalker failed:', e);
+    status.textContent = `Couldn't deactivate: ${e.message}`;
+    status.style.color = 'var(--rust)';
+  }
 };
 
 // Upcoming time off (past entries hidden, not deleted), each with whatever

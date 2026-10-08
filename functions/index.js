@@ -5079,6 +5079,48 @@ async function sendGmailMessage({ to, subject, body, threadId, inReplyTo, refere
 //    from the admin portal's "Connect Gmail" button.
 // ─────────────────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────
+// deactivateWalker — offboarding (admin Walker Details → Deactivate).
+// Disables the walker's Auth account and revokes their refresh tokens so
+// they can't sign in again (an already-issued ID token still lives out its
+// ≤1h), then marks both walker docs (friendly walkerId + Auth UID copy, see
+// DATABASE_SCHEMA.md §walkers) status 'inactive'. Nothing is deleted: past
+// walks, Care History, and payouts all key off the friendly doc, and
+// generateWalkerPayout still works for any unpaid completed work.
+// ─────────────────────────────────────────────────────────────────────────
+exports.deactivateWalker = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { walkerId } = request.data || {};
+  if (!walkerId || typeof walkerId !== 'string') {
+    throw new HttpsError('invalid-argument', 'walkerId is required.');
+  }
+  const ref = db.collection('walkers').doc(walkerId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Walker not found.');
+  const uid = snap.data().uid || null;
+
+  if (uid) {
+    const { getAuth } = require('firebase-admin/auth');
+    try {
+      await getAuth().updateUser(uid, { disabled: true });
+      await getAuth().revokeRefreshTokens(uid);
+    } catch (e) {
+      // No Auth user means there's no login to block; still mark inactive.
+      if (e.code !== 'auth/user-not-found') throw e;
+    }
+  }
+
+  const update = { status: 'inactive', deactivatedAt: FieldValue.serverTimestamp() };
+  const batch = db.batch();
+  batch.update(ref, update);
+  if (uid && uid !== walkerId) {
+    const uidRef = db.collection('walkers').doc(uid);
+    if ((await uidRef.get()).exists) batch.update(uidRef, update);
+  }
+  await batch.commit();
+  return { walkerId, authDisabled: !!uid };
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // Onboarding email. Fires after a member is created (saveMember) or a
 // one-time service is confirmed for a new customer (confirmServiceRequest).
 // It welcomes them, confirms what they signed up for, and carries a
