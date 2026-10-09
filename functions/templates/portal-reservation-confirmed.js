@@ -147,7 +147,7 @@ function html(data) {
     ${renderButtonHtml({ href: data.addCardUrl, label: 'Add Your Card' })}
   ` : `
     <p style="margin:20px 0 0;">${escapeHtml(chargeSentence(data))}</p>
-    <p style="margin:20px 0 0;">If your plans change, reservations cancelled within 48 hours of the start date may still be charged. This is the same policy that applies to scheduled walks.</p>
+    <p style="margin:20px 0 0;">If your plans change, reservations canceled within 48 hours of the start date may still be charged. This is the same policy that applies to scheduled walks.</p>
   `;
 
   const body = `
@@ -211,7 +211,7 @@ function text(data) {
     lines.push(
       chargeSentence(data),
       '',
-      `If your plans change, reservations cancelled within 48 hours of the start date may still be charged. This is the same policy that applies to scheduled walks.`,
+      `If your plans change, reservations canceled within 48 hours of the start date may still be charged. This is the same policy that applies to scheduled walks.`,
       '',
     );
   }

@@ -811,6 +811,7 @@
         <button class="event-ticket-filter" onclick="filterEventTicketStatus('paid', this)">Paid</button>
         <button class="event-ticket-filter" onclick="filterEventTicketStatus('pending', this)">Pending</button>
         <button class="event-ticket-filter" onclick="filterEventTicketStatus('released', this)">Released / Expired</button>
+        <button class="event-ticket-filter" onclick="filterEventTicketStatus('cancelled', this)">Canceled</button>
       </div>
       <div class="table-card">
         <div class="table-header">
@@ -3067,6 +3068,9 @@ function renderBillingBadge(billing) {
     active: { cls: 'active', label: 'Active' },
     past_due: { cls: 'unassigned', label: 'Past Due' },
     canceled: { cls: 'completed', label: 'Canceled' },
+    // cancelMembership in functions/index.js writes the double-L spelling;
+    // the Stripe webhook writes Stripe's. Both are the same state.
+    cancelled: { cls: 'completed', label: 'Canceled' },
   }[billingStatus] || (billingStatus ? { cls: 'pending', label: billingStatus } : null);
   const statusBadge = display ? `<span class="status-badge ${display.cls}">${escapeHtml(display.label)}</span>` : '–';
   const reviewInfo = NEEDS_REVIEW_LABELS[needsReviewReason] || { label: 'Needs review', title: 'Referral credit issuance was skipped for this member and needs a manual look.' };
@@ -4147,7 +4151,13 @@ function fmtEventTicketDate(ts) {
   } catch { return '–'; }
 }
 
-const EVENT_TICKET_STATUS_LABELS = { paid: 'Paid', pending: 'Pending', released: 'Released', expired: 'Expired' };
+const EVENT_TICKET_STATUS_LABELS = { paid: 'Paid', pending: 'Pending', released: 'Released', expired: 'Expired', cancelled: 'Canceled' };
+
+// Tickets still coming, after any partial cancellations (cancelEventTicket
+// in functions/index.js records refundedQuantity rather than lowering quantity).
+function eventTicketActiveQty(t) {
+  return Math.max(0, (t.quantity || 0) - (t.refundedQuantity || 0));
+}
 const EVENT_TICKET_RELEASE_REASON_LABELS = {
   card_declined: 'Card declined',
   stripe_api_error: 'Checkout error (our side)',
@@ -4166,6 +4176,7 @@ function eventTicketStatusBadgeClass(status) {
 function filteredEventTickets() {
   let rows = allEventTickets;
   if (currentEventTicketStatusFilter === 'released') rows = rows.filter(t => t.status === 'released' || t.status === 'expired');
+  else if (currentEventTicketStatusFilter === 'cancelled') rows = rows.filter(t => t.status === 'cancelled' || (t.refundedQuantity || 0) > 0);
   else if (currentEventTicketStatusFilter !== 'all') rows = rows.filter(t => t.status === currentEventTicketStatusFilter);
   if (currentEventTicketSearch) {
     const q = currentEventTicketSearch.toLowerCase();
@@ -4179,7 +4190,7 @@ function renderEventTicketsTable() {
   if (!tbody) return;
 
   const paid = allEventTickets.filter(t => t.status === 'paid');
-  const paidSeats = paid.reduce((sum, t) => sum + (t.quantity || 0), 0);
+  const paidSeats = paid.reduce((sum, t) => sum + eventTicketActiveQty(t), 0);
   const summary = document.getElementById('eventTicketsSummary');
   if (summary) summary.textContent = `${paidSeats} / ${PUPPIES_PILATES_CAPACITY} seats sold to ${paid.length} guest${paid.length === 1 ? '' : 's'}.`;
 
@@ -4193,11 +4204,12 @@ function renderEventTicketsTable() {
       <td>${escapeHtml(t.name || '–')}</td>
       <td>${escapeHtml(t.email || '–')}</td>
       <td>${escapeHtml(t.phone || '–')}</td>
-      <td>${t.quantity || 0}</td>
-      <td>${typeof t.amountCents === 'number' ? `$${(t.amountCents / 100).toFixed(2)}` : '–'}</td>
+      <td>${t.refundedQuantity ? `${eventTicketActiveQty(t)}<div style="font-size:11px;color:var(--text-light);margin-top:2px;">of ${t.quantity}, ${t.refundedQuantity} canceled</div>` : (t.quantity || 0)}</td>
+      <td>${typeof t.amountCents === 'number' ? `$${(t.amountCents / 100).toFixed(2)}` : '–'}${t.refundedCents ? `<div style="font-size:11px;color:var(--text-light);margin-top:2px;">$${(t.refundedCents / 100).toFixed(2)} refunded</div>` : ''}</td>
       <td><span class="status-badge ${eventTicketStatusBadgeClass(t.status)}">${escapeHtml(EVENT_TICKET_STATUS_LABELS[t.status] || capitalize(t.status))}</span>${t.releaseReason ? `<div style="font-size:11px;color:var(--text-light);margin-top:2px;">${escapeHtml(EVENT_TICKET_RELEASE_REASON_LABELS[t.releaseReason] || t.releaseReason)}${t.releaseDetail ? `: ${escapeHtml(t.releaseDetail)}` : ''}</div>` : ''}</td>
       <td>${fmtEventTicketDate(t.createdAt)}</td>
-      <td>${t.status === 'paid' ? `<button class="btn-secondary" style="white-space:nowrap;padding:4px 10px;font-size:12px;" onclick="resendEventTicketEmail('${escapeHtml(t.id)}', this)">Resend Email</button>` : ''}</td>
+      <td style="white-space:nowrap;">${t.status === 'paid' ? `<button class="btn-secondary" style="white-space:nowrap;padding:4px 10px;font-size:12px;" onclick="resendEventTicketEmail('${escapeHtml(t.id)}', this)">Resend Email</button>
+        <button class="btn-secondary" style="white-space:nowrap;padding:4px 10px;font-size:12px;margin-left:4px;color:#b42318;" onclick="cancelEventTicketOrder('${escapeHtml(t.id)}', this)"${t.refundInProgress ? ' disabled title="Refund in progress"' : ''}>Cancel &amp; Refund</button>` : ''}</td>
     </tr>
   `).join('');
 }
@@ -4217,6 +4229,38 @@ window.resendEventTicketEmail = async (ticketId, btn) => {
     btn.textContent = 'Sent';
   } catch (e) {
     alert(`Couldn't resend: ${e.message}`);
+    btn.textContent = original;
+    btn.disabled = false;
+  }
+};
+
+// Cancels some or all of a paid order and refunds it to the original card
+// (cancelEventTicket in functions/index.js), then emails the guest.
+window.cancelEventTicketOrder = async (ticketId, btn) => {
+  const t = allEventTickets.find(x => x.id === ticketId);
+  if (!t) return;
+  const remaining = eventTicketActiveQty(t);
+  const perTicket = (t.amountCents || 0) / (t.quantity || 1);
+  let qty = 1;
+  if (remaining > 1) {
+    const input = prompt(`${t.name} has ${remaining} tickets. How many do you want to cancel? (1–${remaining})`, String(remaining));
+    if (input === null) return;
+    qty = Number(input.trim());
+    if (!Number.isInteger(qty) || qty < 1 || qty > remaining) { alert(`Enter a whole number from 1 to ${remaining}.`); return; }
+  }
+  const refund = `$${(perTicket * qty / 100).toFixed(2)}`;
+  if (!confirm(`Cancel ${qty} ticket${qty === 1 ? '' : 's'} for ${t.name} and refund ${refund} to their card?\n\nThey'll get a cancellation email. This can't be undone.`)) return;
+
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Refunding…';
+  try {
+    const cancel = httpsCallable(fns, 'cancelEventTicket');
+    const res = await cancel({ ticketId, quantity: qty });
+    if (!res.data.emailSent) alert(`Refunded ${refund}, but the cancellation email didn't send. Let ${t.name} know directly.`);
+    await loadEventTickets();
+  } catch (e) {
+    alert(`Couldn't cancel: ${e.message}`);
     btn.textContent = original;
     btn.disabled = false;
   }
@@ -4243,7 +4287,7 @@ window.exportEventTicketsCsv = () => {
   const rows = filteredEventTickets();
   if (!rows.length) { alert('No rows to export.'); return; }
 
-  const header = ['Name', 'Email', 'Phone', 'Quantity', 'Paid', 'Status', 'Purchased'];
+  const header = ['Name', 'Email', 'Phone', 'Quantity', 'Paid', 'Status', 'Purchased', 'Canceled Qty', 'Refunded'];
   const lines = [header.join(',')].concat(rows.map(t => [
     csvField(t.name || ''),
     csvField(t.email || ''),
@@ -4252,6 +4296,8 @@ window.exportEventTicketsCsv = () => {
     csvField(typeof t.amountCents === 'number' ? (t.amountCents / 100).toFixed(2) : ''),
     csvField(EVENT_TICKET_STATUS_LABELS[t.status] || t.status || ''),
     csvField(fmtEventTicketDate(t.createdAt)),
+    csvField(t.refundedQuantity || 0),
+    csvField(t.refundedCents ? (t.refundedCents / 100).toFixed(2) : ''),
   ].join(',')));
 
   const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -4582,7 +4628,7 @@ window.cancelOvernightReservation = async (overnightId) => {
     closeModal('overnightModal');
     const msg = document.createElement('div');
     msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#C17B6F;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
-    msg.textContent = 'Reservation cancelled';
+    msg.textContent = 'Reservation canceled';
     document.body.appendChild(msg);
     setTimeout(() => msg.remove(), 3000);
   } catch (e) {
@@ -5425,7 +5471,7 @@ window.openRequestItem = async (id) => {
     fields = [
       { label: 'Member', value: item.memberName || item.memberId || '–' },
       { label: 'Hold Window', value: `${fmtDate(item.pauseStartDate)} – ${fmtDate(item.pauseEndDate)}` },
-      { label: 'Cancelled Walks (Current Period)', value: (item.cancelledWalkDates || []).join(', ') || String(item.cancelledWalkCount || 0) },
+      { label: 'Canceled Walks (Current Period)', value: (item.cancelledWalkDates || []).join(', ') || String(item.cancelledWalkCount || 0) },
       { label: 'Suggested Refund', value: item.suggestedRefundAmount != null ? `$${item.suggestedRefundAmount}` : '–' },
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
       ...(item.refundId ? [{ label: 'Refund ID', value: item.refundId }, { label: 'Refunded Amount', value: item.refundedAmount != null ? `$${item.refundedAmount}` : '–' }] : []),
@@ -7435,7 +7481,7 @@ window.confirmVacationHoldRefund = async (submissionId, item) => {
   const btn = document.getElementById('requestActionBtn');
   const count = item.cancelledWalkCount || 0;
   const defaultAmount = item.suggestedRefundAmount || 0;
-  const amountStr = prompt(`Refund ${item.memberName || 'this member'} for ${count} cancelled walk${count === 1 ? '' : 's'} from their vacation hold. Amount in dollars:`, defaultAmount ? String(defaultAmount) : '');
+  const amountStr = prompt(`Refund ${item.memberName || 'this member'} for ${count} canceled walk${count === 1 ? '' : 's'} from their vacation hold. Amount in dollars:`, defaultAmount ? String(defaultAmount) : '');
   if (amountStr === null) return;
   const amountInDollars = parseFloat(amountStr);
   if (!(amountInDollars > 0)) return;
@@ -7443,7 +7489,7 @@ window.confirmVacationHoldRefund = async (submissionId, item) => {
   btn.textContent = 'Refunding…'; btn.disabled = true;
   try {
     const issueRefund = httpsCallable(fns, 'issueRefund');
-    await issueRefund({ submissionId, amountInDollars, description: `Vacation hold refund — ${count} cancelled walk${count === 1 ? '' : 's'}` });
+    await issueRefund({ submissionId, amountInDollars, description: `Vacation hold refund — ${count} canceled walk${count === 1 ? '' : 's'}` });
     await updateDoc(doc(db, 'submissions', submissionId), { read: true });
 
     closeModal('requestModal');
@@ -8582,7 +8628,7 @@ window.cancelMembershipForMember = async (memberId) => {
   try {
     const cancelMembership = httpsCallable(fns, 'cancelMembership');
     await cancelMembership({ memberId });
-    alert('Membership cancelled.');
+    alert('Membership canceled.');
   } catch (e) {
     alert(`Couldn't cancel: ${e.message}`);
   } finally {

@@ -56,6 +56,7 @@ const TEMPLATES = {
   'walk-completed': require('../templates/walk-completed'),
   'request-declined': require('../templates/request-declined'),
   'event-ticket-confirmed': require('../templates/event-ticket-confirmed'),
+  'event-ticket-cancelled': require('../templates/event-ticket-cancelled'),
   'monthly-schedule-reminder': require('../templates/monthly-schedule-reminder'),
   'walk-reschedule-update': require('../templates/walk-reschedule-update'),
   'walk-extension-declined': require('../templates/walk-extension-declined'),

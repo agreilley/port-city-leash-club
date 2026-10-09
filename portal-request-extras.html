@@ -330,7 +330,7 @@
     if (!dateStr || !_walkDates.has(dateStr)) return '';
     const label = new Date(`${dateStr}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     if (_walkDates.get(dateStr) === 'cancelled') {
-      return `${label} has a cancelled walk on file. Please pick another day, or <a href="portal-contact.html" style="color:inherit;">contact us</a> to reinstate it.`;
+      return `${label} has a canceled walk on file. Please pick another day, or <a href="portal-contact.html" style="color:inherit;">contact us</a> to reinstate it.`;
     }
     return `You already have a walk on ${label}. Please pick another day, or <a href="portal-extend-walk.html" style="color:inherit;">extend that walk to 45 minutes</a> instead.`;
   }

@@ -7,19 +7,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Puppies & Pilates | Port City Leash Club</title>
-<meta name="description" content="Join Port City Leash Club, Empower Method, and Alcove Beer Garden for a morning of Pilates, puppies from paws4people, and coffee. Saturday, October 10, 9-11 AM. $35 per person.">
+<meta name="description" content="Join Port City Leash Club, Empower Method, and Alcove Beer Garden for a morning of Pilates, puppies from paws4people, and coffee. Saturday, October 17, 9-11 AM. $35 per person.">
 <link rel="canonical" href="https://www.portcityleashclub.com/puppies-and-pilates">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.portcityleashclub.com/puppies-and-pilates">
 <meta property="og:site_name" content="Port City Leash Club">
 <meta property="og:title" content="Puppies & Pilates | Benefiting paws4people">
-<meta property="og:description" content="A morning of Pilates, puppies from paws4people, and coffee. Saturday, October 10, 9-11 AM at Alcove Beer Garden. $35 per person.">
+<meta property="og:description" content="A morning of Pilates, puppies from paws4people, and coffee. Saturday, October 17, 9-11 AM at Alcove Beer Garden. $35 per person.">
 <meta property="og:image" content="https://www.portcityleashclub.com/images/og-image.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Puppies & Pilates | Benefiting paws4people">
-<meta name="twitter:description" content="A morning of Pilates, puppies from paws4people, and coffee. Saturday, October 10, 9-11 AM at Alcove Beer Garden. $35 per person.">
+<meta name="twitter:description" content="A morning of Pilates, puppies from paws4people, and coffee. Saturday, October 17, 9-11 AM at Alcove Beer Garden. $35 per person.">
 <meta name="twitter:image" content="https://www.portcityleashclub.com/images/og-image.jpg">
 <script src="https://js.stripe.com/v3/"></script>
 <style>
@@ -46,6 +46,9 @@
   /* HERO */
   .page-hero { background: var(--sand-light); padding: 80px 48px 72px; border-bottom: 1px solid rgba(0,0,0,0.06); }
   .hero-inner { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
+  .date-change-notice { background: white; border-left: 3px solid var(--rust); border-radius: 4px; padding: 12px 16px; font-size: 14px; line-height: 1.6; color: var(--text-mid); margin-bottom: 24px; }
+  .date-change-notice strong { color: var(--navy); font-weight: 600; }
+  .new-date-tag { display: block; font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--rust); margin-bottom: 4px; }
   .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--rust); margin-bottom: 16px; }
   h1 { font-family: 'Cormorant Garamond', serif; font-size: 48px; font-weight: 300; line-height: 1.04; color: var(--navy); margin-bottom: 14px; }
   .presented-by { font-size: 14px; color: var(--navy); font-weight: 500; margin-bottom: 20px; }
@@ -211,6 +214,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 <div class="page-hero">
   <div class="hero-inner">
     <div>
+      <div class="date-change-notice"><strong>New date: Saturday, October 17.</strong> Rescheduled from October 10 because of the weather forecast. Already have tickets? They carry over automatically, so there's nothing you need to do.</div>
       <div class="eyebrow">An Event Benefiting paws4people</div>
       <h1>Puppies &amp; Pilates</h1>
       <div class="presented-by">Hosted by Port City Leash Club</div>
@@ -219,7 +223,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     <div class="event-facts">
       <div class="event-fact">
         <span class="event-fact-label">When</span>
-        <span class="event-fact-value">Saturday, October 10<br>9&ndash;11 AM</span>
+        <span class="event-fact-value"><span class="new-date-tag">New date</span>Saturday, October 17<br>9&ndash;11 AM</span>
       </div>
       <div class="event-fact">
         <span class="event-fact-label">Where</span>
@@ -227,7 +231,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       </div>
       <div class="event-fact">
         <span class="event-fact-label">Price</span>
-        <span class="event-fact-value">Sold out</span>
+        <span class="event-fact-value">$35 per person</span>
       </div>
     </div>
   </div>
@@ -303,22 +307,12 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   <!-- Ticket Form -->
   <div class="band band-sand band-form">
   <div class="form-intro" style="max-width:1100px;margin:0 auto 40px;">
-    <h2>Sold Out</h2>
+    <h2>Get Your Tickets</h2>
+    <p>$35 per person. Space is limited to 30 guests, so grab your spot before it fills up.</p>
   </div>
   <div class="form-shell">
     <div>
-      <!-- Sold out 2026-09-29 (all 30 spots). The ticket form below is kept but
-           hidden, and mountCard() is skipped. To reopen sales: remove this card,
-           drop style="display:none" from the form, restore mountCard(), the
-           "Get Your Tickets" heading and intro, and the hero Price fact.
-           The server-side capacity check (createEventTicketPaymentIntent)
-           enforces the 30 cap either way. -->
-      <div class="ticket-success" id="soldOut" style="display:block;">
-        <h3>Thank you!</h3>
-        <p>All 30 spots are taken. Email <a href="mailto:hello@portcityleashclub.com" style="color:var(--rust);">hello@portcityleashclub.com</a> if you'd like to hear about future events or be told if a spot opens up.</p>
-      </div>
-
-      <form class="form-card" id="ticketForm" onsubmit="submitTicketForm(event)" style="display:none;">
+      <form class="form-card" id="ticketForm" onsubmit="submitTicketForm(event)">
         <div data-status-container></div>
 
         <div class="honeypot-field" aria-hidden="true">
@@ -371,7 +365,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
       <div class="ticket-success" id="ticketSuccess">
         <h3>You're in!</h3>
-        <p id="ticketSuccessText">Your <span data-qty>1</span> ticket(s) are confirmed. Check your email for your confirmation and all the details &mdash; we can't wait to see you on October 10.</p>
+        <p id="ticketSuccessText">Your <span data-qty>1</span> ticket(s) are confirmed. Check your email for your confirmation and all the details &mdash; we can't wait to see you on October 17.</p>
       </div>
     </div>
 
@@ -444,8 +438,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       if (el) el.textContent = event.error ? event.error.message : '';
     });
   }
-  // Sold out: form is hidden, so don't load the card field.
-  // mountCard();
+  mountCard();
 
   function showTicketSuccess(quantity, options) {
     document.getElementById('ticketForm').style.display = 'none';
@@ -453,7 +446,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     successEl.querySelectorAll('[data-qty]').forEach(el => { el.textContent = quantity; });
     if (options && options.emailPending) {
       document.getElementById('ticketSuccessText').textContent =
-        `Your card was charged for ${quantity} ticket(s) — you're all set for October 10. We had trouble sending your confirmation email just now; if it doesn't arrive shortly, email hello@portcityleashclub.com and we'll resend it.`;
+        `Your card was charged for ${quantity} ticket(s) — you're all set for October 17. We had trouble sending your confirmation email just now; if it doesn't arrive shortly, email hello@portcityleashclub.com and we'll resend it.`;
     }
     successEl.style.display = 'block';
     successEl.scrollIntoView({ behavior: 'smooth', block: 'center' });

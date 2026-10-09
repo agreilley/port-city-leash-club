@@ -1275,10 +1275,10 @@ exports.cancelOvernightReservation = onCall({ secrets: [RESEND_API_KEY] }, async
   const data = snap.data();
   if (!data) throw new HttpsError('not-found', 'Reservation not found.');
   if (data.status === 'cancelled') {
-    throw new HttpsError('failed-precondition', 'This reservation was already cancelled.');
+    throw new HttpsError('failed-precondition', 'This reservation was already canceled.');
   }
   if (data.status === 'completed') {
-    throw new HttpsError('failed-precondition', "This reservation is already completed — it can't be cancelled.");
+    throw new HttpsError('failed-precondition', "This reservation is already completed — it can't be canceled.");
   }
   if (data.chargeAttempt?.status === 'charged') {
     throw new HttpsError('failed-precondition', 'This reservation was already charged — cancelling here would not refund it. Refund in Stripe first, then cancel.');
@@ -9231,8 +9231,9 @@ exports.generateEmailCaptureCode = onCall({ secrets: [RESEND_API_KEY] }, async (
 exports.runGenerateEmailCaptureCode = runGenerateEmailCaptureCode;
 
 // ---------------------------------------------------------------------------
-// Puppies & Pilates (Sat Oct 10, 2026) — one-off ticketed event benefiting
-// paws4people. This is a real-time $35/ticket purchase, not card-on-file
+// Puppies & Pilates (Sat Oct 17, 2026) — one-off ticketed event benefiting
+// paws4people. Moved from Oct 10 for weather; the event ID below keeps the
+// original date so existing tickets stay put. This is a real-time $35/ticket purchase, not card-on-file
 // storage, so it's a deliberate, narrowly-scoped exception to "no card
 // capture on public forms" (see the payment-model comment at the top of
 // this file): the card is charged once, immediately, for an already-priced
@@ -9472,6 +9473,97 @@ exports.resendEventTicketConfirmation = onCall({ secrets: [RESEND_API_KEY] }, as
   });
   if (!emailResult.ok) throw new HttpsError('internal', emailResult.error || 'Send failed.');
   return { ok: true };
+});
+
+// cancelEventTicket: admin-only cancel + refund of some or all of a paid
+// order, from admin/dashboard.html's Puppies & Pilates guest list. The
+// refund is per-ticket at the order's own price (amountCents / quantity),
+// never a client-supplied amount. A partial cancel keeps the order 'paid'
+// and records refundedQuantity/refundedCents; cancelling the last ticket
+// flips it to 'cancelled'. Cancelled seats come off ticketsReserved so the
+// capacity counter matches who's actually coming.
+//
+// refundInProgress is a lock against a double-click or two open tabs: it's
+// claimed in a transaction before Stripe is called and cleared after. The
+// Stripe idempotency key is pinned to the refundedQuantity the refund
+// started from, so even a retry after a crash between the refund and the
+// Firestore update replays the same refund instead of issuing a second
+// one. If a crash ever does strand the lock, clear refundInProgress on the
+// ticket doc in the Firestore console.
+exports.cancelEventTicket = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KEY] }, async (request) => {
+  await assertIsAdmin(request.auth);
+
+  const ticketId = typeof request.data?.ticketId === 'string' ? request.data.ticketId : '';
+  if (!ticketId) throw new HttpsError('invalid-argument', 'Missing ticketId.');
+  const cancelQty = Number(request.data?.quantity);
+  if (!Number.isInteger(cancelQty) || cancelQty < 1) throw new HttpsError('invalid-argument', 'Choose how many tickets to cancel.');
+
+  const ticketRef = eventTicketRef(PUPPIES_PILATES_EVENT_ID, ticketId);
+  let ticket;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ticketRef);
+    if (!snap.exists) throw new HttpsError('not-found', 'Ticket not found.');
+    ticket = snap.data();
+    if (ticket.status !== 'paid') throw new HttpsError('failed-precondition', 'Only paid tickets can be canceled.');
+    if (ticket.refundInProgress) throw new HttpsError('failed-precondition', 'A refund for this order is already in progress.');
+    if (!ticket.paymentIntentId) throw new HttpsError('failed-precondition', 'This order has no payment attached.');
+    const remaining = (ticket.quantity || 0) - (ticket.refundedQuantity || 0);
+    if (cancelQty > remaining) {
+      throw new HttpsError('invalid-argument', `This order only has ${remaining} ticket${remaining === 1 ? '' : 's'} left to cancel.`);
+    }
+    tx.set(ticketRef, { refundInProgress: true }, { merge: true });
+  });
+
+  const alreadyRefundedQty = ticket.refundedQuantity || 0;
+  const perTicketCents = Math.round((ticket.amountCents || 0) / (ticket.quantity || 1));
+  const refundCents = perTicketCents * cancelQty;
+
+  let refund;
+  try {
+    const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+    refund = await stripe.refunds.create({
+      payment_intent: ticket.paymentIntentId,
+      amount: refundCents,
+      reason: 'requested_by_customer',
+      metadata: { eventId: PUPPIES_PILATES_EVENT_ID, ticketId, cancelledQuantity: String(cancelQty) },
+    }, { idempotencyKey: `event-ticket-refund:${ticketId}:${alreadyRefundedQty}:${cancelQty}` });
+  } catch (e) {
+    await ticketRef.set({ refundInProgress: false }, { merge: true }).catch(() => {});
+    console.error(`cancelEventTicket: Stripe refund failed for ${ticketId}:`, e.message);
+    throw new HttpsError('internal', `Stripe refund failed: ${e.message}`);
+  }
+
+  const newRefundedQty = alreadyRefundedQty + cancelQty;
+  const fullyCancelled = newRefundedQty >= (ticket.quantity || 0);
+  await db.runTransaction(async (tx) => {
+    const evRef = eventRef(PUPPIES_PILATES_EVENT_ID);
+    const evSnap = await tx.get(evRef);
+    const reserved = evSnap.exists ? (evSnap.data().ticketsReserved || 0) : 0;
+    tx.set(evRef, { ticketsReserved: Math.max(0, reserved - cancelQty) }, { merge: true });
+    tx.set(ticketRef, {
+      status: fullyCancelled ? 'cancelled' : 'paid',
+      refundInProgress: false,
+      refundedQuantity: newRefundedQty,
+      refundedCents: (ticket.refundedCents || 0) + refundCents,
+      refunds: FieldValue.arrayUnion({ refundId: refund.id, quantity: cancelQty, amountCents: refundCents, at: new Date() }),
+      ...(fullyCancelled ? { cancelledAt: FieldValue.serverTimestamp() } : {}),
+    }, { merge: true });
+  });
+
+  const emailResult = await sendEmail({
+    to: ticket.email,
+    template: 'event-ticket-cancelled',
+    data: {
+      name: ticket.name,
+      cancelledQuantity: cancelQty,
+      refundCents,
+      remainingQuantity: (ticket.quantity || 0) - newRefundedQty,
+    },
+    idempotencyKey: `event-ticket-cancelled:${refund.id}`,
+  });
+  if (!emailResult.ok) console.error(`cancelEventTicket: cancellation email failed for ${ticketId}:`, emailResult.error);
+
+  return { ok: true, refundCents, fullyCancelled, emailSent: !!emailResult.ok };
 });
 
 const FRIENDS_FAMILY_DEFAULT_MAX_REDEMPTIONS = 1;

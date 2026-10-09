@@ -30,7 +30,7 @@ function html(data) {
     heading: `${data.quantity} ${ticketWord}`,
     rows: [
       { label: 'Event', value: 'Puppies &amp; Pilates' },
-      { label: 'When', value: 'Saturday, October 10 &middot; 9&ndash;11 AM' },
+      { label: 'When', value: 'Saturday, October 17 &middot; 9&ndash;11 AM' },
       { label: 'Where', value: 'Alcove Beer Garden' },
       { label: 'Paid', value: formatDollars(data.amountCents) },
     ],
@@ -51,7 +51,7 @@ function html(data) {
   `;
 
   return wrapHtml({
-    preheader: `${data.quantity} ${ticketWord} confirmed for Saturday, October 10.`,
+    preheader: `${data.quantity} ${ticketWord} confirmed for Saturday, October 17.`,
     bodyHtml: body,
   });
 }
@@ -68,7 +68,7 @@ function text(data) {
       heading: `${data.quantity} ${ticketWord}`,
       rows: [
         { label: 'Event', value: 'Puppies & Pilates' },
-        { label: 'When', value: 'Saturday, October 10 · 9–11 AM' },
+        { label: 'When', value: 'Saturday, October 17 · 9–11 AM' },
         { label: 'Where', value: 'Alcove Beer Garden' },
         { label: 'Paid', value: formatDollars(data.amountCents) },
       ],
