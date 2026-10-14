@@ -897,7 +897,7 @@
         <div class="table-header"><div class="table-title">By Category</div></div>
         <div class="table-scroll">
         <table>
-          <thead><tr><th>Category</th><th>Gross</th><th>Refunds</th><th>Net</th></tr></thead>
+          <thead><tr><th>Category</th><th>Gross</th><th>Refunds</th><th>Stripe Fees</th><th>Net</th></tr></thead>
           <tbody id="revenueCategoryTable"></tbody>
         </table>
         </div>
@@ -3928,8 +3928,8 @@ function renderRevenue() {
   // Category + client tables
   const cats = {}, clients = {};
   rows.forEach(r => {
-    const c = cats[r.category] || (cats[r.category] = { grossCents: 0, refundCents: 0, netCents: 0 });
-    c.grossCents += r.grossCents; c.refundCents += r.refundCents + r.adjustmentCents; c.netCents += r.netCents;
+    const c = cats[r.category] || (cats[r.category] = { grossCents: 0, refundCents: 0, feeCents: 0, netCents: 0 });
+    c.grossCents += r.grossCents; c.refundCents += r.refundCents + r.adjustmentCents; c.feeCents += r.feeCents; c.netCents += r.netCents;
     if (!r.clientKey) return;
     const t = clients[r.clientKey] || (clients[r.clientKey] = { name: r.clientName, email: r.clientEmail, grossCents: 0, refundCents: 0, chargeCount: 0 });
     t.grossCents += r.grossCents; t.refundCents += r.refundCents + r.adjustmentCents;
@@ -3938,9 +3938,9 @@ function renderRevenue() {
   const empty = (cols, msg) => `<tr><td colspan="${cols}" style="text-align:center;color:var(--text-light);padding:24px;">${msg}</td></tr>`;
   const catRows = Object.keys(REVENUE_CATEGORY_LABELS).filter(c => cats[c]).map(c => {
     const v = cats[c];
-    return `<tr><td>${REVENUE_CATEGORY_LABELS[c]}</td><td>${revMoney(v.grossCents)}</td><td>${v.refundCents ? revMoney(v.refundCents) : '—'}</td><td>${revMoney(v.netCents)}</td></tr>`;
+    return `<tr><td>${REVENUE_CATEGORY_LABELS[c]}</td><td>${revMoney(v.grossCents)}</td><td>${v.refundCents ? revMoney(v.refundCents) : '—'}</td><td>${v.feeCents ? revMoney(-v.feeCents) : '—'}</td><td>${revMoney(v.netCents)}</td></tr>`;
   });
-  document.getElementById('revenueCategoryTable').innerHTML = catRows.join('') || empty(4, 'No revenue in this period.');
+  document.getElementById('revenueCategoryTable').innerHTML = catRows.join('') || empty(5, 'No revenue in this period.');
   const clientRows = Object.values(clients)
     .sort((a, b) => (b.grossCents + b.refundCents) - (a.grossCents + a.refundCents))
     .map(v => `<tr><td>${escapeHtml(v.name)}${v.email && v.email !== v.name ? `<div style="font-size:11px;color:var(--text-light);">${escapeHtml(v.email)}</div>` : ''}</td><td>${v.chargeCount}</td><td>${revMoney(v.grossCents)}</td><td>${v.refundCents ? revMoney(v.refundCents) : '—'}</td><td>${revMoney(v.grossCents + v.refundCents)}</td></tr>`);
