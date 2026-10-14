@@ -74,6 +74,8 @@
   textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
   .btn-submit { margin-top: 24px; background: var(--rust); color: white; border: none; border-radius: 4px; padding: 14px 32px; font-size: 15px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: background 0.2s; }
   .btn-submit:hover { background: var(--rust-dark); }
+  /* Spam trap: off-screen rather than display:none, since some bots skip hidden inputs */
+  .hp-field { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 
   footer { background: var(--navy); border-top: 1px solid rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); padding: 48px; display: flex; justify-content: space-between; align-items: center; }
   .footer-brand { font-family: 'Cormorant Garamond', serif; font-size: 18px; font-weight: 400; color: white; line-height: 1.4; letter-spacing: 0; text-transform: none; }
@@ -203,6 +205,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           </div>
           <div class="field full"><label>Message</label><textarea name="message" placeholder="How can we help?" required></textarea></div>
         </div>
+        <!-- Spam trap: people never see or fill this; form-filling bots do -->
+        <div class="hp-field" aria-hidden="true"><label>Website</label><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
         <button type="submit" class="btn-submit">Send Message</button>
       </form>
     </div>
@@ -233,6 +237,13 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     e.preventDefault();
     const btn = e.target.querySelector('.btn-submit');
     btn.textContent = 'Sending...'; btn.disabled = true;
+    // Spam trap filled in: pretend it sent, but save nothing.
+    if (document.querySelector('input[name=website]')?.value) {
+      window._showSuccess("Message sent! We'll be in touch within 24 hours.");
+      e.target.reset();
+      btn.textContent = 'Send Message'; btn.disabled = false;
+      return;
+    }
     try {
       if (!(window._addDoc && window._collection && window._db)) {
         throw new Error('Firebase not ready');
