@@ -85,6 +85,15 @@
   .walk-chip.checkin { background: #E4E9EE; color: var(--navy-mid); }
   .walk-chip.completed { background: var(--sand); color: var(--text-light); }
   .walk-chip.walktype { background: var(--green-light); color: var(--green); cursor: default; }
+  /* Calendar chips: coloured by SERVICE, same palette as the walker
+     calendar, with the time window in bold at the front. Unassigned keeps
+     its red; done (completed walk/visit/night) dims the type colour. */
+  .walk-chip.c-walk      { background: #EBF5EF; color: #1A5C30; border-left: 3px solid #1A5C30; }
+  .walk-chip.c-dropin    { background: #FDEBDD; color: #B04A0C; border-left: 3px solid #B04A0C; }
+  .walk-chip.c-overnight { background: #E6EEFB; color: #1E4E8C; border-left: 3px solid #1E4E8C; }
+  .walk-chip.c-walk.unassigned, .walk-chip.c-dropin.unassigned, .walk-chip.c-overnight.unassigned { background: #FEE2E2; color: #991B1B; border-left-color: #991B1B; }
+  .walk-chip.done { opacity: 0.55; }
+  .walk-chip .chip-time { font-weight: 700; margin-right: 4px; }
   /* Bookings that exist on real dates but aren't scheduled yet — the meet &
      greet hasn't happened, so no walks/overnights doc exists (see the
      tentative map in renderCalendarDays). Dashed and unfilled so a day that
@@ -92,9 +101,9 @@
      equally-real commitments. Padding drops 1px to offset the border so
      these sit at the same height as the solid chips beside them. */
   .walk-chip.tentative { background: transparent; border: 1px dashed; padding: 1px 5px; }
-  .walk-chip.tentative.t-overnight { border-color: #2D7A5E; color: #2D7A5E; }
-  .walk-chip.tentative.t-checkin   { border-color: var(--navy-mid); color: var(--navy-mid); }
-  .walk-chip.tentative.t-walk      { border-color: #3730A3; color: #3730A3; }
+  .walk-chip.tentative.t-overnight { border-color: #1E4E8C; color: #1E4E8C; }
+  .walk-chip.tentative.t-checkin   { border-color: #B04A0C; color: #B04A0C; }
+  .walk-chip.tentative.t-walk      { border-color: #1A5C30; color: #1A5C30; }
   /* Pending reschedule: the walk chip keeps its slot colour on the ORIGINAL
      date (nothing has moved yet) with a dashed rust outline and a ↻ prefix;
      the requested date gets its own dashed rust "Requested" chip that opens
@@ -2710,6 +2719,11 @@ function renderCalendarDays() {
   });
   const reschedWhen = (date, slot) => [date ? date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : null, slot].filter(Boolean).join(', ');
 
+  // Start hour of each time window, only for ordering a day's chips
+  // (same as the walker calendar).
+  const CAL_SLOT_START = { morning: 8, 'early-afternoon': 11, 'late-afternoon': 14 };
+  const CAL_VISIT_START = { morning: 7, midday: 12, evening: 16, 'last-out': 20 };
+
   // Build overnight map: day → [overnight docs]. An array, not one doc per
   // day: two reservations routinely share a day (one stay ending as another
   // begins, or a check-in during someone else's overnight), and a single
@@ -2735,11 +2749,13 @@ function renderCalendarDays() {
       const wd = w.date?.toDate?.() || new Date(w.date);
       return wd.getFullYear() === calendarYear && wd.getMonth() === calendarMonth && wd.getDate() === d;
     });
-    const chips = dayWalks.map(w => {
+    // Bold time window at the front of every confirmed chip (see .chip-time).
+    const chipTime = (time) => time ? `<span class="chip-time">${escapeHtml(time)}</span>` : '';
+    const dayItems = dayWalks.map(w => {
       const member = allMembers.find(m => m.id === (w.memberId||'').trim());
       const wkId = (w.walkerId||'').trim();
       const walker = allWalkers.find(k => k.id === wkId);
-      const cls = !wkId ? 'unassigned' : (w.status === 'completed' ? 'completed' : w.timeSlot);
+      const cls = `c-walk${!wkId ? ' unassigned' : w.status === 'completed' ? ' done' : ''}`;
       const dogName = getMemberDogs(member)[0]?.name || member?.name?.split(' ')[0] || 'Walk';
       // ⚠ when the assigned walker has this day off (walker time off).
       const off = walker && w.status !== 'completed' && walkerOffOn(walker, dateStr);
@@ -2747,8 +2763,8 @@ function renderCalendarDays() {
       const label = escapeHtml(`${resched ? '\u21bb ' : ''}` + (walker ? `${off ? '⚠ ' : ''}${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`));
       let title = off ? `${label} · ${escapeHtml(walker.name.split(' ')[0])} is off this day` : label;
       if (resched) title += escapeHtml(` · Reschedule requested to ${reschedWhen(resched.newDate?.toDate?.(), WALK_TIME_SLOT_LABELS[resched.newTimeSlot] || resched.newTimeSlot) || 'a new date'}`);
-      return `<div class="walk-chip ${cls}${resched ? ' resched-pending' : ''}" onclick="openWalkModal('${w.id}')" title="${title}">${label}</div>`;
-    }).join('');
+      return { start: CAL_SLOT_START[w.timeSlot] ?? 99, html: `<div class="walk-chip ${cls}${resched ? ' resched-pending' : ''}" onclick="openWalkModal('${w.id}')" title="${title}">${chipTime(WALK_TIME_SLOT_RANGES[w.timeSlot])}${label}</div>` };
+    });
     // Same dog-name-plus-walker convention as the walk chip above, not the
     // owner's name — the overnights doc stamps its own dogName at creation
     // (which dog(s) is this reservation actually for), so that's preferred
@@ -2761,7 +2777,6 @@ function renderCalendarDays() {
     // or per-night cover, else the stay's default) — same breakdown as the
     // walker calendar. Skipped nights are left off. A reservation with no
     // visits[] yet falls back to a single chip for the day.
-    const overnightItems = [];
     (overnightMap[d] || []).forEach(o => {
       const oMember = allMembers.find(m => m.id === (o.memberId || '').trim());
       const oIsCheckin = isCheckinType(o.serviceType);
@@ -2770,24 +2785,25 @@ function renderCalendarDays() {
         const oWalker = wkId ? allWalkers.find(k => k.id === wkId) : null;
         const oOff = oWalker && !done && walkerOffOn(oWalker, dateStr);
         const who = oWalker ? `${oOff ? '⚠ ' : ''}${oDogName} / ${oWalker.name.split(' ')[0]}` : `${oDogName} · Unassigned`;
-        const label = escapeHtml(time ? `${time} ${who}` : who);
         const title = escapeHtml(`${who} · ${what}${oOff ? ` · ${oWalker.name.split(' ')[0]} is off this day` : ''}`);
-        overnightItems.push({ start, html: `<div class="walk-chip ${cls}" onclick="openOvernightModal('${o.id}')" title="${title}">${label}</div>` });
+        const state = !oWalker ? ' unassigned' : done ? ' done' : '';
+        dayItems.push({ start, html: `<div class="walk-chip ${cls}${state}" onclick="openOvernightModal('${o.id}')" title="${title}">${chipTime(time)}${escapeHtml(who)}</div>` });
       };
       if (!Array.isArray(o.visits)) {
-        push(oIsCheckin ? 'checkin' : 'overnight', 100, '', (o.walkerId || '').trim(), o.status === 'completed', oIsCheckin ? 'Drop-In Visit' : 'Overnight');
+        push(oIsCheckin ? 'c-dropin' : 'c-overnight', 100, oIsCheckin ? '' : 'Overnight', (o.walkerId || '').trim(), o.status === 'completed', oIsCheckin ? 'Drop-In Visit' : 'Overnight');
         return;
       }
       o.visits.filter(v => dateKey(v.date) === dateStr).forEach(v => push(
-        'checkin', VISIT_SLOTS.indexOf(v.slot) >= 0 ? VISIT_SLOTS.indexOf(v.slot) : 99,
+        'c-dropin', CAL_VISIT_START[v.slot] ?? 99,
         VISIT_SLOT_RANGES[v.slot] || '', visitWalkerId(v, o), v.status === 'completed',
         `${v.addOn ? 'Extra drop-in' : oIsCheckin ? 'Drop-in' : 'Drop-in (overnight stay)'}${VISIT_SLOT_LABELS[v.slot] ? ` · ${VISIT_SLOT_LABELS[v.slot]}` : ''}`,
       ));
       if (stayNightDates(o).includes(dateStr) && o.nights?.[dateStr]?.status !== 'skipped') {
-        push('overnight', 100, 'Night', nightWalkerId(o, dateStr), nightIsDone(o.nights?.[dateStr]), 'Overnight');
+        push('c-overnight', 100, 'Overnight', nightWalkerId(o, dateStr), nightIsDone(o.nights?.[dateStr]), 'Overnight');
       }
     });
-    const overnightChip = overnightItems.sort((a, b) => a.start - b.start).map(it => it.html).join('');
+    // Walks, drop-ins and nights in one list by start time, night last.
+    const chips = dayItems.sort((a, b) => a.start - b.start).map(it => it.html).join('');
     // Rendered last, below the confirmed work for the day, so what's
     // actually scheduled still reads first. Clicking opens the submission
     // itself (openRequestItem) rather than a walk/overnight modal — there
@@ -2831,12 +2847,12 @@ function renderCalendarDays() {
     const projectedChips = (projectedMap[d] || []).map(m => {
       const wkId = (m.assignedWalkerId || '').trim();
       const walker = wkId ? allWalkers.find(k => k.id === wkId) : null;
-      const cls = !walker ? 'unassigned' : (m.defaultTimeSlot || '');
+      const cls = `c-walk${!walker ? ' unassigned' : ''}`;
       const dogName = getMemberDogs(m)[0]?.name || m.name?.split(' ')[0] || 'Walk';
       const off = walker && walkerOffOn(walker, dateStr);
       const label = escapeHtml(walker ? `${off ? '⚠ ' : ''}${dogName} / ${walker.name.split(' ')[0]}` : `${dogName} · Unassigned`);
       const title = escapeHtml(`${dogName} · Membership confirmed · walk is created once the card is saved${off ? ` · ${walker.name.split(' ')[0]} is off this day` : ''}`);
-      return `<div class="walk-chip ${cls}" onclick="openMemberWalkerModal('${m.id}')" title="${title}">${label}</div>`;
+      return `<div class="walk-chip ${cls}" onclick="openMemberWalkerModal('${m.id}')" title="${title}">${chipTime(WALK_TIME_SLOT_RANGES[m.defaultTimeSlot])}${label}</div>`;
     }).join('');
     // Requested-date chips for pending reschedules — open the request itself,
     // where Approve / Decline live.
@@ -2849,7 +2865,7 @@ function renderCalendarDays() {
       const title = escapeHtml(`${rName} · Reschedule requested${r.newTimeSlot ? ` for ${WALK_TIME_SLOT_LABELS[r.newTimeSlot] || r.newTimeSlot}` : ''}${from ? ` · currently ${from}` : ''} · click to approve or decline`);
       return `<div class="walk-chip tentative t-resched" onclick="openRequestItem('${r.id}')" title="${title}">${label}</div>`;
     }).join('');
-    html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${overnightChip}${chips}${projectedChips}${tentativeChips}${reschedChips}</div>`;
+    html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}${projectedChips}${tentativeChips}${reschedChips}</div>`;
   }
 
   // Next month padding
