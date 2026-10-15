@@ -3675,6 +3675,194 @@ exports.sendStayWrapUpEmails = onSchedule({
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// 3c-iii. Walker schedule update: 5pm ET daily, one email per walker
+//    listing every walk, drop-in visit, and overnight night put on their
+//    schedule since the last update, and anything taken off it
+//    (functions/templates/walker-schedule-update.js). No email when nothing
+//    changed. Sent from Alison, and replies go to her.
+//
+//    "New" is a diff, not a timestamp: nothing records when a walker was
+//    assigned (generated walks inherit members.assignedWalkerId,
+//    updateWalkSchedule recreates walk docs, and covers live inside one
+//    overnights doc), so each run builds every walker's current upcoming
+//    assignments and compares them with the set they were last told about,
+//    stored at walkerAssignmentDigest/{walkerId}.notified as { key: item }.
+//    A key includes the date and slot, so a rescheduled walk reads as the
+//    new date added and the old one taken off.
+//
+//    Removed = in the notified set, dated today or later, no longer on this
+//    walker's schedule, and not completed/skipped (finishing work isn't a
+//    removal). That covers reassignment, a canceled stay, and deleted walks
+//    (vacation hold, schedule change). Anything assigned and then reassigned
+//    or canceled before 5pm was never sent, so it's never mentioned at all.
+//    Monthly walk generation on the 1st shows up as new that evening, by
+//    decision: those are real new assignments.
+//
+//    The very first run (collection empty) records everyone's current
+//    assignments without emailing, so launch doesn't send a backlog. After
+//    that, a walker with no state doc (a new hire) gets everything.
+//
+//    State is only updated after a successful send, so a failed send is
+//    retried with the same items (plus anything newer) the next day. The
+//    idempotencyKey is per walker per day, so a re-fired run can't double send.
+// ─────────────────────────────────────────────────────────────────────────
+async function buildWalkerAssignments(todayStr, todayTs) {
+  const { stayNightDates, nightWalkerId } = await import('./visit-slots.js');
+  const { visitWalkerId } = await import('./walker-pricing.js');
+  const byWalker = {};
+  const doneKeys = new Set();
+  const add = (walkerId, a) => {
+    const id = (walkerId || '').trim();
+    if (id) (byWalker[id] ||= []).push(a);
+  };
+
+  const walksSnap = await db.collection('walks').where('date', '>=', todayTs).get();
+  walksSnap.docs.forEach((d) => {
+    const w = d.data();
+    if (!w.date?.toDate) return;
+    const dateStr = isoDateStr(w.date.toDate());
+    const key = `walk:${d.id}:${dateStr}:${w.timeSlot || ''}`;
+    if (w.status === 'completed') doneKeys.add(key);
+    if (w.status !== 'scheduled') return;
+    add(w.walkerId, { key, dateStr, kind: 'walk', slot: w.timeSlot || null, memberId: w.memberId || null, fallbackName: null, fallbackDog: null });
+  });
+
+  const overnightsSnap = await db.collection('overnights').where('endDate', '>=', todayTs).get();
+  overnightsSnap.docs.forEach((d) => {
+    const o = d.data();
+    if (o.status !== 'confirmed' && o.status !== 'completed') return; // canceled: everything on it reads as removed
+    const stayDone = o.status === 'completed';
+    const base = { memberId: o.memberId || null, fallbackName: o.memberName || null, fallbackDog: o.dogName || null };
+    (Array.isArray(o.visits) ? o.visits : []).forEach((v) => {
+      if (!v || typeof v.date !== 'string' || v.date < todayStr) return;
+      const key = `visit:${d.id}:${v.id}:${v.date}:${v.slot || ''}`;
+      if (stayDone || v.status === 'completed') { doneKeys.add(key); return; }
+      add(visitWalkerId(v, o), { ...base, key, dateStr: v.date, kind: 'visit', slot: v.slot || null });
+    });
+    stayNightDates(o).forEach((date) => {
+      const night = o.nights?.[date];
+      if (date < todayStr) return;
+      const key = `night:${d.id}:${date}`;
+      if (stayDone || night?.status === 'completed' || night?.status === 'skipped') { doneKeys.add(key); return; }
+      add(nightWalkerId(o, date), { ...base, key, dateStr: date, kind: 'night', slot: null });
+    });
+  });
+  return { byWalker, doneKeys };
+}
+
+// Same-day order: walks and visits by slot, the night last.
+const DIGEST_ITEM_ORDER = ['morning', 'early-afternoon', 'midday', 'late-afternoon', 'evening', 'last-out'];
+function digestItemRank(a) {
+  return a.kind === 'night' ? 99 : DIGEST_ITEM_ORDER.indexOf(a.slot);
+}
+
+async function groupDigestByClient(items) {
+  const memberCache = {};
+  const clients = {};
+  for (const a of items) {
+    const groupKey = a.memberId || `name:${a.fallbackName || ''}`;
+    if (!clients[groupKey]) {
+      let member = null;
+      if (a.memberId) {
+        if (!(a.memberId in memberCache)) {
+          const snap = await db.collection('members').doc(a.memberId).get();
+          memberCache[a.memberId] = snap.exists ? snap.data() : null;
+        }
+        member = memberCache[a.memberId];
+      }
+      clients[groupKey] = {
+        clientName: (member?.name || a.fallbackName || '').trim() || 'Client',
+        // Every dog on dogs[], falling back to the legacy single dogName.
+        dogNames: (Array.isArray(member?.dogs) && member.dogs.length
+          ? member.dogs.map((dog) => dog && dog.name)
+          : [member?.dogName || a.fallbackDog]).filter(Boolean),
+        items: [],
+      };
+    }
+    clients[groupKey].items.push({ dateStr: a.dateStr, kind: a.kind, slot: a.slot });
+  }
+  const list = Object.values(clients);
+  list.forEach((c) => c.items.sort((x, y) => x.dateStr.localeCompare(y.dateStr) || digestItemRank(x) - digestItemRank(y)));
+  return list.sort((x, y) => x.items[0].dateStr.localeCompare(y.items[0].dateStr));
+}
+
+exports.sendWalkerAssignmentDigests = onSchedule({
+  schedule: '0 17 * * *',
+  timeZone: 'America/New_York',
+  secrets: [RESEND_API_KEY],
+}, async () => {
+  const { year, monthIndex, day } = easternTodayParts();
+  const todayStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  // Walk/stay dates are noon-UTC calendar-date stamps, so UTC midnight of
+  // today's ET date catches today onward.
+  const todayTs = Timestamp.fromDate(new Date(Date.UTC(year, monthIndex, day)));
+
+  const { byWalker, doneKeys } = await buildWalkerAssignments(todayStr, todayTs);
+  const stateCol = db.collection('walkerAssignmentDigest');
+  const stateSnap = await stateCol.get();
+  const seeding = stateSnap.empty;
+  const notifiedByWalker = {};
+  stateSnap.docs.forEach((d) => { notifiedByWalker[d.id] = d.data().notified || {}; });
+
+  // Two docs per walker (friendly ID + Auth UID); assignments use the
+  // friendly one, which is the doc whose ID matches its own walkerId field.
+  const walkersSnap = await db.collection('walkers').get();
+  const walkers = {};
+  walkersSnap.docs.forEach((d) => {
+    const w = d.data();
+    if (d.id === w.walkerId) walkers[d.id] = w;
+  });
+
+  // Each item is stored whole (not just its date) so a removal can still be
+  // described after its walk or reservation is gone.
+  const writeState = (walkerId, current) => stateCol.doc(walkerId).set({
+    notified: Object.fromEntries(current.map(({ key, ...item }) => [key, item])),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  let sent = 0, quiet = 0, failed = 0;
+  const walkerIds = new Set([...Object.keys(byWalker), ...Object.keys(notifiedByWalker)]);
+  for (const walkerId of walkerIds) {
+    const current = byWalker[walkerId] || [];
+    const notified = notifiedByWalker[walkerId] || {};
+    const currentKeys = new Set(current.map((a) => a.key));
+    const fresh = current.filter((a) => !(a.key in notified));
+    const removed = Object.entries(notified)
+      .filter(([key, item]) => item?.dateStr >= todayStr && !currentKeys.has(key) && !doneKeys.has(key))
+      .map(([key, item]) => ({ key, ...item }));
+    const walker = walkers[walkerId];
+
+    if (seeding || (!fresh.length && !removed.length) || !walker || walker.status === 'inactive' || !walker.email) {
+      await writeState(walkerId, current);
+      quiet++;
+      continue;
+    }
+
+    const result = await sendEmail({
+      to: walker.email,
+      template: 'walker-schedule-update',
+      from: 'Alison Gamble <alison@portcityleashclub.com>',
+      replyTo: 'alison@portcityleashclub.com',
+      data: {
+        firstName: (walker.name || '').trim().split(/\s+/)[0] || 'there',
+        added: await groupDigestByClient(fresh),
+        removed: await groupDigestByClient(removed),
+        dashboardUrl: `${BUSINESS_PORTAL_ORIGIN}/walker`,
+      },
+      idempotencyKey: `walker-schedule-update:${walkerId}:${todayStr}`,
+    });
+    if (result.ok) {
+      await writeState(walkerId, current);
+      sent++;
+    } else {
+      failed++;
+      console.error(`sendWalkerAssignmentDigests: ${walkerId} failed: ${result.error}`);
+    }
+  }
+  console.log(`sendWalkerAssignmentDigests ${todayStr}${seeding ? ' (seeded, no emails)' : ''}: sent ${sent}, quiet ${quiet}, failed ${failed}`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // 3d-backfill. One-time cutover helper for the rolling two-month window
 // above: generates NEXT month for every currently active, subscribed
 // member, using the exact same selection/generation logic

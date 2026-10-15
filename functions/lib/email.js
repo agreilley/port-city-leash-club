@@ -61,6 +61,7 @@ const TEMPLATES = {
   'walk-reschedule-update': require('../templates/walk-reschedule-update'),
   'walk-extension-declined': require('../templates/walk-extension-declined'),
   'stay-wrap-up': require('../templates/stay-wrap-up'),
+  'walker-schedule-update': require('../templates/walker-schedule-update'),
 };
 
 const MAX_ATTEMPTS = 3;
@@ -116,7 +117,10 @@ async function sendToResendWithRetry(payload, apiKey) {
   return { ok: false, error: lastError, attempts: MAX_ATTEMPTS };
 }
 
-// sendEmail({ to, template, data, replyTo, idempotencyKey })
+// sendEmail({ to, template, data, replyTo, idempotencyKey, from })
+//
+// `from` overrides FROM_ADDRESS for the few emails that come from Alison
+// personally rather than the business (the walker schedule update).
 //
 // Renders `template` with `data` and sends it. Never throws — every caller
 // treats a failed send as a warning, never a rollback of whatever real
@@ -126,7 +130,7 @@ async function sendToResendWithRetry(payload, apiKey) {
 // under that same key already succeeded, this is a no-op that returns the
 // original result instead of sending a second email (a retried Firestore
 // trigger delivery is the main case this guards against).
-async function sendEmail({ to, template, data, replyTo, idempotencyKey }) {
+async function sendEmail({ to, template, data, replyTo, idempotencyKey, from }) {
   const db = getFirestore();
 
   if (!to) {
@@ -178,7 +182,7 @@ async function sendEmail({ to, template, data, replyTo, idempotencyKey }) {
   }
 
   const result = await sendToResendWithRetry({
-    from: FROM_ADDRESS,
+    from: from || FROM_ADDRESS,
     to: [to],
     reply_to: replyTo || DEFAULT_REPLY_TO,
     subject,
