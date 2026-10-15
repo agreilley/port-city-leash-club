@@ -2755,19 +2755,39 @@ function renderCalendarDays() {
     // over a live member lookup's first dog, which could be wrong for a
     // multi-dog household. Falls back to a live lookup, then the member's
     // own name, only if the doc predates dogName being stamped.
-    const overnightChip = (overnightMap[d] || []).map(o => {
+    //
+    // One chip per drop-in visit (from visits[], with its time window) and
+    // one per night, each naming the walker actually doing it (a per-visit
+    // or per-night cover, else the stay's default) — same breakdown as the
+    // walker calendar. Skipped nights are left off. A reservation with no
+    // visits[] yet falls back to a single chip for the day.
+    const overnightItems = [];
+    (overnightMap[d] || []).forEach(o => {
       const oMember = allMembers.find(m => m.id === (o.memberId || '').trim());
       const oIsCheckin = isCheckinType(o.serviceType);
-      const oWkId = (o.walkerId || '').trim();
-      const oWalker = oWkId ? allWalkers.find(k => k.id === oWkId) : null;
       const oDogName = o.dogName || getMemberDogs(oMember)[0]?.name || oMember?.name?.split(' ')[0] || (oIsCheckin ? 'Drop-In Visit' : 'Overnight');
-      const oOff = oWalker && o.status !== 'completed' && walkerOffOn(oWalker, dateStr);
-      const oLabel = escapeHtml(oWalker ? `${oOff ? '⚠ ' : ''}${oDogName} / ${oWalker.name.split(' ')[0]}` : `${oDogName} · Unassigned`);
-      const oOffNote = oOff ? ` · ${escapeHtml(oWalker.name.split(' ')[0])} is off this day` : '';
-      return oIsCheckin
-        ? `<div class="walk-chip checkin" onclick="openOvernightModal('${o.id}')" title="${oLabel} · Drop-In Visit${oOffNote}">${oLabel}</div>`
-        : `<div class="walk-chip overnight" onclick="openOvernightModal('${o.id}')" title="${oLabel} · Overnight${oOffNote}">${oLabel}</div>`;
-    }).join('');
+      const push = (cls, start, time, wkId, done, what) => {
+        const oWalker = wkId ? allWalkers.find(k => k.id === wkId) : null;
+        const oOff = oWalker && !done && walkerOffOn(oWalker, dateStr);
+        const who = oWalker ? `${oOff ? '⚠ ' : ''}${oDogName} / ${oWalker.name.split(' ')[0]}` : `${oDogName} · Unassigned`;
+        const label = escapeHtml(time ? `${time} ${who}` : who);
+        const title = escapeHtml(`${who} · ${what}${oOff ? ` · ${oWalker.name.split(' ')[0]} is off this day` : ''}`);
+        overnightItems.push({ start, html: `<div class="walk-chip ${cls}" onclick="openOvernightModal('${o.id}')" title="${title}">${label}</div>` });
+      };
+      if (!Array.isArray(o.visits)) {
+        push(oIsCheckin ? 'checkin' : 'overnight', 100, '', (o.walkerId || '').trim(), o.status === 'completed', oIsCheckin ? 'Drop-In Visit' : 'Overnight');
+        return;
+      }
+      o.visits.filter(v => dateKey(v.date) === dateStr).forEach(v => push(
+        'checkin', VISIT_SLOTS.indexOf(v.slot) >= 0 ? VISIT_SLOTS.indexOf(v.slot) : 99,
+        VISIT_SLOT_RANGES[v.slot] || '', visitWalkerId(v, o), v.status === 'completed',
+        `${v.addOn ? 'Extra drop-in' : oIsCheckin ? 'Drop-in' : 'Drop-in (overnight stay)'}${VISIT_SLOT_LABELS[v.slot] ? ` · ${VISIT_SLOT_LABELS[v.slot]}` : ''}`,
+      ));
+      if (stayNightDates(o).includes(dateStr) && o.nights?.[dateStr]?.status !== 'skipped') {
+        push('overnight', 100, 'Night', nightWalkerId(o, dateStr), nightIsDone(o.nights?.[dateStr]), 'Overnight');
+      }
+    });
+    const overnightChip = overnightItems.sort((a, b) => a.start - b.start).map(it => it.html).join('');
     // Rendered last, below the confirmed work for the day, so what's
     // actually scheduled still reads first. Clicking opens the submission
     // itself (openRequestItem) rather than a walk/overnight modal — there
