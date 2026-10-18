@@ -26,6 +26,8 @@
 //     // run (previewChargeCredits), or what a charge that ran actually took
 //   alreadyCharged: boolean,       // resend after the charge ran — past tense
 //   chargeDateStr: string,         // 'YYYY-MM-DD' — matches chargeScheduledFor
+//   chargeBeforeStart: boolean,    // charged 48h before the start date instead
+//     // of 24h after confirming (CHARGE_48H_BEFORE_START_EMAILS) — says so
 //   visitSchedule: array<{date: 'YYYY-MM-DD', visits: number}> | null,
 //     // check-in only; null/absent for overnight stays — no per-day block rendered
 //   addOnDropIns: array<{date: 'YYYY-MM-DD', visits: number}> | null,
@@ -103,6 +105,7 @@ function chargeSentence(data) {
   const date = formatCalendarDate(data.chargeDateStr) || data.chargeDateStr;
   return data.alreadyCharged
     ? `Your card was charged ${fmtDollars(chargeDollars(data))}${date ? ` on ${date}` : ''}.`
+    : date && data.chargeBeforeStart ? `Your card will be charged ${fmtDollars(chargeDollars(data))} on ${date}, 48 hours before your reservation starts.`
     : date ? `Your card will be charged ${fmtDollars(chargeDollars(data))} on ${date}.`
     : `Your card will be charged ${fmtDollars(chargeDollars(data))}.`;
 }

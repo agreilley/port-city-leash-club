@@ -6078,6 +6078,23 @@ async function buildStayOrder({
   return { lines, total: round(confirmed - referralDiscountApplied - creditApplied), totalLabel };
 }
 
+// Clients whose pet sitting is charged 48 hours before it starts rather than
+// 24 hours after it's confirmed — matched on the live member doc's email.
+// Alex West asked for this 2026-10-18.
+const CHARGE_48H_BEFORE_START_EMAILS = [
+  'alexcwest@yahoo.com',
+];
+
+// 9am ET two calendar days before the start date — reservations carry a
+// start date but no start time, so the morning of "two days before" stands
+// in for 48 hours. Every reservation date is a UTC-midnight calendar date
+// (isoDateStr reads it back with the UTC getters).
+function chargeBeforeStartDate(startDate) {
+  const d = startDate?.toDate ? startDate.toDate() : null;
+  if (!d) return null;
+  return easternTimeToUtc(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - 2, 9, 0);
+}
+
 async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, reviewed) {
   const { SERVICE_PRICES, resolveServiceKey } = await import('./pricing.js');
   const isOvernightRequest = sub.type === 'overnight_request';
@@ -6196,9 +6213,18 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
     // paymentStatus: 'scheduled' for all of these, so nothing charges them
     // twice.
     const isCronCharged = true;
-    const chargeScheduledFor = isCronCharged
-      ? Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000))
+    // A few clients are charged 48 hours before the stay starts instead
+    // (chargeBeforeStartDate) — confirmed inside that window, the charge is
+    // due now and the next sweep takes it. chargeTiming tells the
+    // confirmation email to say so; it's left off a short-notice booking,
+    // whose charge date is just today.
+    const beforeStart = CHARGE_48H_BEFORE_START_EMAILS.includes((member?.email || '').trim().toLowerCase())
+      ? chargeBeforeStartDate(reviewed.startDate)
       : null;
+    const chargeTiming = beforeStart && beforeStart.getTime() > Date.now() ? '48h_before_start' : null;
+    const chargeScheduledFor = !isCronCharged ? null
+      : beforeStart ? Timestamp.fromDate(chargeTiming ? beforeStart : new Date())
+      : Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
 
     // markDatesConfirmed writes datesConfirmedAt only AFTER this function
     // returns, so a failure in between leaves the door open for a retry to
@@ -6264,6 +6290,7 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
       // hands it this overnights doc, not the submission `reviewed` came from.
       travelDiscountApplied: !!reviewed.travelDiscountApplied,
       chargeScheduledFor,
+      ...(chargeTiming ? { chargeTiming } : {}),
       chargePending: isCronCharged,
     });
     return { docType: 'overnight', docId: overnightRef.id, chargeScheduledFor };
@@ -6294,7 +6321,7 @@ async function runServiceOrOvernightCharge(sub, submissionId, memberId, reviewed
     // sendServiceOrOvernightConfirmationEmail's "Your card will be charged
     // on <date>" line isn't blank. Same submissionId-lookup pattern as
     // reservationAlreadyDeclinedFor above.
-    let chargeScheduledFor = null;
+    let chargeScheduledFor = null, chargeTiming = null;
     try {
       const overnightSnap = await db.collection('overnights')
         .where('submissionId', '==', submissionId)
@@ -6304,6 +6331,7 @@ async function runServiceOrOvernightCharge(sub, submissionId, memberId, reviewed
         const overnightDoc = overnightSnap.docs[0];
         const o = overnightDoc.data();
         chargeScheduledFor = o.chargeScheduledFor || null;
+        chargeTiming = o.chargeTiming || null;
         // A public-form overnight confirmed before 2026-09-27 was charged at
         // confirm, so its reservation was written with chargePending: false
         // and no charge date. If that charge failed, admin's Retry lands
@@ -6321,7 +6349,7 @@ async function runServiceOrOvernightCharge(sub, submissionId, memberId, reviewed
     } catch (e) {
       console.error(`runServiceOrOvernightCharge: failed to read back chargeScheduledFor for ${submissionId}:`, e.message);
     }
-    return { paymentStatus: 'scheduled', chargeScheduledFor };
+    return { paymentStatus: 'scheduled', chargeScheduledFor, chargeTiming };
   }
 
   // Immediate charge — a walk.
@@ -6450,6 +6478,7 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
       creditApplied: credits.creditApplied,
       referralDiscountApplied: credits.referralDiscountApplied,
       chargeDateStr: chargeResult.chargeScheduledFor?.toDate ? isoDateStr(chargeResult.chargeScheduledFor.toDate()) : null,
+      chargeBeforeStart: chargeResult.chargeTiming === '48h_before_start',
       visitSchedule: isCheckin ? reviewed.visitSchedule : null,
       addOnDropIns: reviewed.addOnDropIns || null,
       stayPlan,
@@ -7289,6 +7318,7 @@ exports.resendBookingConfirmationEmail = onCall({
       alreadyCharged: !!chargedDoc,
       chargeDateStr: chargedAt ? isoDateStr(chargedAt)
         : record.chargeScheduledFor?.toDate ? isoDateStr(record.chargeScheduledFor.toDate()) : null,
+      chargeBeforeStart: record.chargeTiming === '48h_before_start',
       visitSchedule: isCheckin ? record.visitSchedule || null : null,
       addOnDropIns: record.addOnDropIns || null,
       stayPlan: isCheckin ? null : buildStayPlan(record),
