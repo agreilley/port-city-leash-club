@@ -158,6 +158,79 @@
       border: 0.5px solid #ddd;
     }
 
+    /* Upcoming walks / pet sitting — two cards above the calendar, each row
+       edged in the same color as its calendar fill (legend below). */
+    .upcoming-sections {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+    .upcoming-card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      border: 0.5px solid #ddd;
+      min-width: 0;
+    }
+    .upcoming-title {
+      font-size: 16px;
+      font-weight: 500;
+      margin-bottom: 12px;
+    }
+    .upcoming-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      background: #f9f8f5;
+      border: none;
+      border-left: 4px solid #C5D5D1;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      text-align: left;
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+    }
+    .upcoming-row:hover { background: #f1efe9; }
+    .upcoming-row.overnight-confirmed { border-left-color: #C17B6F; }
+    .upcoming-row.overnight-pending { border-left: 4px dashed #C17B6F; }
+    .upcoming-row.checkin-confirmed { border-left-color: #1C2F42; }
+    .upcoming-row.checkin-pending { border-left: 4px dashed #1C2F42; }
+    .upcoming-main { font-size: 14px; font-weight: 500; color: #0D1B2A; }
+    .upcoming-sub { font-size: 12px; color: #888; margin-top: 2px; }
+    .upcoming-tag {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 8px;
+      border-radius: 10px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .upcoming-tag.confirmed { background: #E3ECEA; color: #4F6F68; }
+    .upcoming-tag.pending { background: #FBF1DA; color: #8A6A1F; }
+    .upcoming-tag.resched { background: #F0DEDB; color: #8E4B40; }
+    .upcoming-empty { font-size: 14px; color: #888; padding: 4px 0; }
+    .upcoming-empty a, .upcoming-more {
+      color: #C17B6F;
+      font-weight: 500;
+      text-decoration: none;
+    }
+    .upcoming-more {
+      background: none;
+      border: none;
+      padding: 4px 0 0;
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    @media (max-width: 768px) {
+      .upcoming-sections { grid-template-columns: 1fr; }
+    }
+
     .calendar-header {
       font-size: 16px;
       font-weight: 500;
@@ -670,6 +743,18 @@
           </div>
         </div>
 
+        <!-- Upcoming walks / pet sitting — filled by renderUpcoming() -->
+        <div class="upcoming-sections">
+          <div class="upcoming-card">
+            <div class="upcoming-title">Upcoming walks</div>
+            <div id="upcomingWalks"><div class="upcoming-empty">Loading…</div></div>
+          </div>
+          <div class="upcoming-card">
+            <div class="upcoming-title">Upcoming pet sitting</div>
+            <div id="upcomingSitting"><div class="upcoming-empty">Loading…</div></div>
+          </div>
+        </div>
+
         <!-- Calendar — id is the #calendar anchor the monthly schedule email links to -->
         <div class="calendar-section" id="calendar">
           <!-- Cross-month notice: a confirmed overnight can cover walks in a
@@ -1023,8 +1108,10 @@ async function loadAndSubscribe(targetId) {
   const walksQ = query(collection(db, 'walks'), where('memberId', '==', targetId));
   onSnapshot(walksQ, (snap) => {
     myWalks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    walksLoaded = true;
     updateMetrics();
     generateCalendar();
+    renderUpcomingWalks();
     renderOvernightConflicts();
     // The page is still behind the portal guard when the browser would
     // normally jump to #calendar, so scroll there once the walks are in.
@@ -1035,6 +1122,7 @@ async function loadAndSubscribe(targetId) {
   }, (err) => {
     console.error('walks subscription error:', err.code, err.message);
     showError(LOAD_ERROR_MSG);
+    document.getElementById('upcomingWalks').innerHTML = `<div class="upcoming-empty">Couldn't load your walks.</div>`;
   });
 
   // Real-time overnights (confirmed)
@@ -1064,6 +1152,7 @@ async function loadAndSubscribe(targetId) {
       .sort((a, b) => createdMs(a) - createdMs(b))
       .forEach(s => { pendingReschedules[s.walkId] = s; });
     generateCalendar();
+    renderUpcomingWalks();
   }, (err) => {
     // Non-fatal: the calendar still works without the marker, so no
     // member-facing error for this one.
@@ -1125,6 +1214,8 @@ async function loadOvernights(uid) {
   if (failed) showError(LOAD_ERROR_MSG);
   generateCalendar(); // always regenerate even if overnights failed
   renderOvernightConflicts();
+  overnightsLoaded = true;
+  renderUpcomingSitting();
 }
 
 window.signOutMember = () => {
@@ -1618,6 +1709,107 @@ function updateMetrics() {
           + `(${formatOvernightRange(g.start, g.end)}). Review below.</div>`;
       }).join('');
     }
+
+    // ── UPCOMING WALKS / PET SITTING ─────────────────────────────────────────
+    // Two lists above the calendar, so a booking in a month the calendar
+    // isn't showing is still visible. Each row opens the same modal its
+    // calendar day does. Rendered only once that side's data has loaded, so
+    // a slow load never flashes "nothing scheduled".
+    const UPCOMING_LIMIT = 5;
+    let walksLoaded = false, overnightsLoaded = false;
+    let showAllWalks = false, showAllSitting = false;
+    let upcomingWalkRows = [], upcomingSittingRows = [];
+
+    function localDay(val) {
+      const d = val?.toDate?.() || new Date(val);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+
+    function upcomingMoreHtml(total, showAll, toggle) {
+      if (total <= UPCOMING_LIMIT) return '';
+      return `<button class="upcoming-more" onclick="${toggle}()">${showAll ? 'Show fewer' : `Show all ${total}`}</button>`;
+    }
+
+    function renderUpcomingWalks() {
+      const el = document.getElementById('upcomingWalks');
+      if (!el || !walksLoaded) return;
+      const now = new Date(); now.setHours(0,0,0,0);
+      upcomingWalkRows = myWalks
+        .filter(w => w.status !== 'completed' && w.status !== 'cancelled' && localDay(w.date) >= now)
+        .sort((a, b) => localDay(a.date) - localDay(b.date));
+      if (!upcomingWalkRows.length) {
+        el.innerHTML = `<div class="upcoming-empty">${memberData?.tier === 'Travel' ? 'No recurring walks on your plan.' : 'No walks scheduled yet.'}</div>`;
+        return;
+      }
+      const shown = showAllWalks ? upcomingWalkRows : upcomingWalkRows.slice(0, UPCOMING_LIMIT);
+      el.innerHTML = shown.map((w, i) => {
+        const day = localDay(w.date);
+        const dayLabel = day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        const slot = WALK_TIME_SLOT_LABELS[w.timeSlot]
+          ? `${WALK_TIME_SLOT_LABELS[w.timeSlot]}, ${WALK_TIME_SLOT_RANGES[w.timeSlot]}`
+          : (w.timeSlot || '');
+        const sub = [slot, w.extended ? '45-minute walk' : ''].filter(Boolean).join(' · ');
+        const tag = pendingReschedules[w.id] ? '<span class="upcoming-tag resched">↻ Reschedule requested</span>' : '';
+        return `<button class="upcoming-row" onclick="openUpcomingWalk(${i})">
+          <div><div class="upcoming-main">${esc(dayLabel)}</div>${sub ? `<div class="upcoming-sub">${esc(sub)}</div>` : ''}</div>
+          ${tag}
+        </button>`;
+      }).join('') + upcomingMoreHtml(upcomingWalkRows.length, showAllWalks, 'toggleAllUpcomingWalks');
+    }
+
+    // "3 nights" for a stay, "6 visits" for confirmed drop-ins, and "4 days"
+    // for a pending drop-in request (its visit count is still an estimate).
+    function sittingSummary(o, start, end) {
+      const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+      const spanDays = Math.round((end - start) / 86400000);
+      if (!isCheckinType(o.serviceType)) return plural(Math.max(spanDays, 1), 'night');
+      if (o.status === 'confirmed') {
+        const visits = Array.isArray(o.visitSchedule) && o.visitSchedule.length
+          ? o.visitSchedule.reduce((sum, d) => sum + (d.visits || 0), 0)
+          : (o.visits || []).length;
+        if (visits) return plural(visits, 'visit');
+      }
+      return plural(spanDays + 1, 'day');
+    }
+
+    function renderUpcomingSitting() {
+      const el = document.getElementById('upcomingSitting');
+      if (!el || !overnightsLoaded) return;
+      const now = new Date(); now.setHours(0,0,0,0);
+      upcomingSittingRows = myOvernights
+        .filter(o => overnightBounds(o).end >= now)
+        .sort((a, b) => overnightBounds(a).start - overnightBounds(b).start);
+      if (!upcomingSittingRows.length) {
+        el.innerHTML = `<div class="upcoming-empty">No upcoming pet sitting. ${isPreviewMode ? '' : '<a href="portal-request-extras.html">Book pet sitting</a>'}</div>`;
+        return;
+      }
+      const shown = showAllSitting ? upcomingSittingRows : upcomingSittingRows.slice(0, UPCOMING_LIMIT);
+      el.innerHTML = shown.map((o, i) => {
+        const isCheckin = isCheckinType(o.serviceType);
+        const isPending = o.status === 'pending';
+        const { start, end } = overnightBounds(o);
+        const dates = start.getTime() === end.getTime()
+          ? start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          : formatOvernightRange(start, end);
+        const cls = `${isCheckin ? 'checkin' : 'overnight'}-${isPending ? 'pending' : 'confirmed'}`;
+        return `<button class="upcoming-row ${cls}" onclick="openUpcomingSitting(${i})">
+          <div><div class="upcoming-main">${esc(dates)}</div>
+          <div class="upcoming-sub">${isCheckin ? 'Drop-In Visits' : 'Overnight Stay'} · ${esc(sittingSummary(o, start, end))}</div></div>
+          <span class="upcoming-tag ${isPending ? 'pending' : 'confirmed'}">${isPending ? 'Awaiting confirmation' : 'Confirmed'}</span>
+        </button>`;
+      }).join('') + upcomingMoreHtml(upcomingSittingRows.length, showAllSitting, 'toggleAllUpcomingSitting');
+    }
+
+    window.openUpcomingWalk = (i) => {
+      const w = upcomingWalkRows[i];
+      if (w) openWalkModal(w, localDay(w.date));
+    };
+    window.openUpcomingSitting = (i) => {
+      const o = upcomingSittingRows[i];
+      if (o) openReservationModal(o);
+    };
+    window.toggleAllUpcomingWalks = () => { showAllWalks = !showAllWalks; renderUpcomingWalks(); };
+    window.toggleAllUpcomingSitting = () => { showAllSitting = !showAllSitting; renderUpcomingSitting(); };
 
     window.jumpToOvernightMonth = function(year, month) {
       currentDate = new Date(year, month, 1);
