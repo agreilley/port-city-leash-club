@@ -57,6 +57,9 @@ const BODY_FONT = "'DM Sans', Helvetica, Arial, sans-serif";
 // with the Sand logo vanishing into it. Baking the navy into the image
 // keeps the header identical in every client. width/height are explicit
 // since Outlook collapses the row without them.
+// Footer Instagram line on every templated email (added 2026-10-19).
+const INSTAGRAM_URL = 'https://instagram.com/portcityleashclub';
+
 const HEADER_URL = 'https://portcityleashclub.com/email/header.png';
 const HEADER_WIDTH = 600;
 const HEADER_HEIGHT = 94;
@@ -445,7 +448,8 @@ ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:al
             <p style="margin:0;font-family:${BODY_FONT};font-size:12px;line-height:1.6;color:${SAND};">
               Port City Leash Club &middot; Wilmington, NC<br>
               Questions? Just reply to this email, or write to
-              <a href="mailto:hello@portcityleashclub.com" style="color:${CORAL};">hello@portcityleashclub.com</a>.
+              <a href="mailto:hello@portcityleashclub.com" style="color:${CORAL};">hello@portcityleashclub.com</a>.<br>
+              Follow along on Instagram: <a href="${INSTAGRAM_URL}" style="color:${CORAL};">@portcityleashclub</a>
             </p>
           </td>
         </tr>
@@ -458,7 +462,7 @@ ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:al
 }
 
 function wrapText({ bodyText }) {
-  return `${bodyText}\n\nPort City Leash Club\nWilmington, NC\nQuestions? Just reply to this email, or write to hello@portcityleashclub.com.\n`;
+  return `${bodyText}\n\nPort City Leash Club\nWilmington, NC\nQuestions? Just reply to this email, or write to hello@portcityleashclub.com.\nFollow along on Instagram: @portcityleashclub (${INSTAGRAM_URL})\n`;
 }
 
 module.exports = {
