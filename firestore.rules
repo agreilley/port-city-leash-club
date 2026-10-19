@@ -398,8 +398,8 @@ service cloud.firestore {
         return request.resource.data.keys().hasOnly(
             ['type', 'name', 'email', 'phone', 'neighborhood', 'dogExperience',
              'experience', 'availability', 'walksPerWeek', 'transportation',
-             'availableForOvernights', 'additional', 'read', 'createdAt',
-             'resumePath', 'resumeName'])
+             'availableForOvernights', 'backgroundCheckConsent', 'additional',
+             'read', 'createdAt', 'resumePath', 'resumeName'])
           && request.resource.data.name is string && request.resource.data.name.size() <= 200
           && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
           && request.resource.data.neighborhood is string && request.resource.data.neighborhood.size() <= 200
@@ -410,6 +410,11 @@ service cloud.firestore {
           && request.resource.data.additional is string && request.resource.data.additional.size() <= 10000
           && (!('availableForOvernights' in request.resource.data)
               || request.resource.data.availableForOvernights is bool)
+          // backgroundCheckConsent moved here from the screening form
+          // 2026-10-19. Required Yes/No on the page; OPTIONAL here so the
+          // still-cached old careers.html (which omits it) isn't rejected.
+          && (!('backgroundCheckConsent' in request.resource.data)
+              || request.resource.data.backgroundCheckConsent in ['Yes', 'No'])
           && request.resource.data.availability is map
           && (!('resumePath' in request.resource.data)
               || (request.resource.data.resumePath is string && request.resource.data.resumePath.size() <= 500))
@@ -437,7 +442,7 @@ service cloud.firestore {
       // (morning/early-afternoon/late-afternoon/evening/overnight); comfortLevels is a
       // map whose keys are the fixed screening items (matching COMFORT_ITEMS in
       // the page); references is a list of {name, contact}; backgroundCheckConsent
-      // is a required Yes/No; unavailableDates and additional are optional free text.
+      // is an optional legacy Yes/No; unavailableDates and additional are optional free text.
       function validWalkerScreening() {
         return request.resource.data.keys().hasOnly(
             ['type', 'name', 'email', 'phone', 'availability', 'comfortLevels',
@@ -473,7 +478,10 @@ service cloud.firestore {
           && request.resource.data.scenarioTimeWindow is string && request.resource.data.scenarioTimeWindow.size() <= 10000
           && request.resource.data.scenarioAccess is string && request.resource.data.scenarioAccess.size() <= 10000
           && request.resource.data.writingSample is string && request.resource.data.writingSample.size() <= 10000
-          && request.resource.data.backgroundCheckConsent in ['Yes', 'No']
+          // backgroundCheckConsent moved to careers.html 2026-10-19; still
+          // accepted (optional) so a cached old screening page can submit.
+          && (!('backgroundCheckConsent' in request.resource.data)
+              || request.resource.data.backgroundCheckConsent in ['Yes', 'No'])
           // additional: optional free text (added 2026-09-29), so cached pages
           // that don't send it still pass.
           && (!('additional' in request.resource.data)

@@ -277,20 +277,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         </div>
       </div>
 
-      <!-- Consent -->
-      <div class="form-section">
-        <div class="section-label">Consent</div>
-        <div class="form-grid">
-          <div class="field full">
-            <label>Do you consent to a background check as part of this hiring process?</label>
-            <div class="radio-row">
-              <label class="radio-pill"><input type="radio" name="background-check" value="Yes" required> Yes</label>
-              <label class="radio-pill"><input type="radio" name="background-check" value="No"> No</label>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- Anything else (optional, same question as careers.html) -->
       <div class="form-section">
         <div class="section-label">Anything Else</div>
@@ -451,8 +437,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           { name: val('input[name=ref1-name]'), contact: val('input[name=ref1-contact]') },
           { name: val('input[name=ref2-name]'), contact: val('input[name=ref2-contact]') },
         ],
-        // Required Yes/No radio; value is always 'Yes' or 'No' here.
-        backgroundCheckConsent: document.querySelector('input[name="background-check"]:checked')?.value || '',
         unavailableDates: val('textarea[name=unavailable-dates]'),
         additional: val('textarea[name=additional]'),
         read: false,

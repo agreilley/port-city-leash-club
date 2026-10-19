@@ -5670,6 +5670,8 @@ window.openRequestItem = async (id) => {
       { label: 'Experience', value: item.experience || '–' },
       { label: 'Walks/Week Desired', value: item.walksPerWeek || '–' },
       { label: 'Transportation', value: item.transportation || '–' },
+      // Asked on careers.html since 2026-10-19; older applications lack it.
+      { label: 'Background Check Consent', value: item.backgroundCheckConsent || 'Not asked' },
       // Boolean on the submission (careers.html), mirrors walkers/{id}.
       // Applications submitted before this field existed have it missing/
       // undefined → show 'Not specified' (never a misleading 'No' or a blank),
