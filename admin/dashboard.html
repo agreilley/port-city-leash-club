@@ -908,8 +908,8 @@
         <div class="table-header"><div class="table-title">By Month</div></div>
         <div class="table-scroll">
         <table>
-          <thead><tr><th>Month</th><th>Earned</th><th>Upcoming</th><th>Revenue</th><th>Walker Pay</th><th>Stripe Fees (est.)</th><th>Profit</th></tr></thead>
-          <tbody id="svcMonthsTable"><tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
+          <thead><tr><th>Month</th><th>Earned</th><th>Upcoming</th><th>Revenue</th><th>Walker Pay</th><th>Stripe Fees (est.)</th><th>Profit</th><th>Margin</th></tr></thead>
+          <tbody id="svcMonthsTable"><tr><td colspan="8" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
         </table>
         </div>
       </div>
@@ -917,7 +917,7 @@
         <div class="table-header"><div class="table-title">By Category</div></div>
         <div class="table-scroll">
         <table>
-          <thead><tr><th>Category</th><th>Earned</th><th>Upcoming</th><th>Revenue</th><th>Walker Pay</th><th>Stripe Fees (est.)</th><th>Profit</th></tr></thead>
+          <thead><tr><th>Category</th><th>Earned</th><th>Upcoming</th><th>Revenue</th><th>Walker Pay</th><th>Stripe Fees (est.)</th><th>Profit</th><th>Margin</th></tr></thead>
           <tbody id="svcCategoryTable"></tbody>
         </table>
         </div>
@@ -3836,7 +3836,7 @@ const REVENUE_CATEGORY_LABELS = {
   memberships: 'Memberships', petSitting: 'Pet sitting', tips: 'Tips', events: 'Events', other: 'Other services', fees: 'Stripe account fees',
 };
 const SERVICE_REVENUE_CATEGORY_LABELS = {
-  memberships: 'Membership walks', extraWalks: 'Extra & one-time walks', petSitting: 'Pet sitting', tips: 'Tips', events: 'Events',
+  memberships: 'Membership walks', extraWalks: 'Extra & one-time walks', petSitting: 'Pet sitting (full price)', petSittingFF: 'Pet sitting (Friends & Family)', tips: 'Tips', events: 'Events',
 };
 const revDayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
 const revDay = (date) => revDayFmt.format(date); // "YYYY-MM-DD"
@@ -4085,6 +4085,7 @@ function renderServiceRevenue() {
     if (r.state === 'upcoming' && r.paid) t.paidUpcoming += r.amountCents;
   };
   const profitOf = (t, state) => t[state] - t.pay[state] - t.fee[state];
+  const marginPct = (rev, profit) => (rev > 0 ? `${Math.round((profit / rev) * 100)}%` : '—');
   const revenue = (t) => t.earned + t.upcoming;
   const payOf = (t) => t.pay.earned + t.pay.upcoming;
   const feeOf = (t) => t.fee.earned + t.fee.upcoming;
@@ -4109,12 +4110,16 @@ function renderServiceRevenue() {
   document.getElementById('svc-upcoming-profit').textContent = revMoney(profitOf(tot, 'upcoming'));
   document.getElementById('svc-upcoming-profit-sub').textContent = profitSub('upcoming');
   document.getElementById('svc-total-profit').textContent = revMoney(profitOf(tot, 'earned') + profitOf(tot, 'upcoming'));
-  document.getElementById('svc-total-profit-sub').textContent = profitSub(null);
+  document.getElementById('svc-total-profit-sub').textContent = `${profitSub(null)} · ${marginPct(revenue(tot), profitOf(tot, 'earned') + profitOf(tot, 'upcoming'))} margin`;
   const unmarked = document.getElementById('svc-unmarked');
-  unmarked.style.display = unmarkedCount ? '' : 'none';
-  unmarked.textContent = unmarkedCount
-    ? `${unmarkedCount} past walk${unmarkedCount === 1 ? '' : 's'}/visit${unmarkedCount === 1 ? '' : 's'} not marked complete (${revMoney(tot.unmarked)}) — left out of the totals above until they are.`
-    : '';
+  // A stay with no price anywhere still counts its walker pay, which would
+  // quietly drag profit down — say so rather than let it hide.
+  const missing = serviceRevenueReport.staysMissingPrice || 0;
+  const notes = [];
+  if (unmarkedCount) notes.push(`${unmarkedCount} past walk${unmarkedCount === 1 ? '' : 's'}/visit${unmarkedCount === 1 ? '' : 's'} not marked complete (${revMoney(tot.unmarked)}) — left out of the totals above until they are.`);
+  if (missing) notes.push(`${missing} stay${missing === 1 ? ' has' : 's have'} no price on file, so ${missing === 1 ? 'it counts' : 'they count'} as $0 revenue but still count walker pay.`);
+  unmarked.style.display = notes.length ? '' : 'none';
+  unmarked.innerHTML = notes.map(escapeHtml).join('<br>');
 
   const empty = (cols, msg) => `<tr><td colspan="${cols}" style="text-align:center;color:var(--text-light);padding:24px;">${msg}</td></tr>`;
 
@@ -4125,7 +4130,7 @@ function renderServiceRevenue() {
     k = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
   }
   rows.forEach(r => { if (months[r.date.slice(0, 7)]) add(months[r.date.slice(0, 7)], r); });
-  const moneyCells = (m) => `<td>${revMoney(m.earned)}</td><td>${m.upcoming ? revMoney(m.upcoming) : '—'}</td><td>${revMoney(revenue(m))}</td><td>${payOf(m) ? revMoney(-payOf(m)) : '—'}</td><td>${feeOf(m) ? revMoney(-feeOf(m)) : '—'}</td><td>${revMoney(revenue(m) - payOf(m) - feeOf(m))}</td>`;
+  const moneyCells = (m) => `<td>${revMoney(m.earned)}</td><td>${m.upcoming ? revMoney(m.upcoming) : '—'}</td><td>${revMoney(revenue(m))}</td><td>${payOf(m) ? revMoney(-payOf(m)) : '—'}</td><td>${feeOf(m) ? revMoney(-feeOf(m)) : '—'}</td><td>${revMoney(revenue(m) - payOf(m) - feeOf(m))}</td><td>${marginPct(revenue(m), revenue(m) - payOf(m) - feeOf(m))}</td>`;
   const monthRow = (label, m, style = '') => `<tr${style}><td>${label}</td>${moneyCells(m)}</tr>`;
   const monthRows = Object.entries(months).map(([k, m]) => monthRow(revMonthName(k), m));
   if (monthRows.length > 1) monthRows.push(monthRow('Total', tot, ' style="font-weight:600;background:var(--sand);"'));
@@ -4141,7 +4146,7 @@ function renderServiceRevenue() {
     const v = cats[c];
     return `<tr><td>${SERVICE_REVENUE_CATEGORY_LABELS[c]}</td>${moneyCells(v)}</tr>`;
   });
-  document.getElementById('svcCategoryTable').innerHTML = catRows.join('') || empty(7, 'No bookings in this period.');
+  document.getElementById('svcCategoryTable').innerHTML = catRows.join('') || empty(8, 'No bookings in this period.');
   // Unmarked amounts stay out of Total (same as the cards above) but keep
   // the client listed, so a forgotten check-off can't hide a client.
   const clientRows = Object.values(clients)

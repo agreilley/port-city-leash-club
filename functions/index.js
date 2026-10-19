@@ -917,9 +917,22 @@ exports.getServiceRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeout
   const overnightsSnap = await db.collection('overnights')
     .where('endDate', '>=', Timestamp.fromDate(new Date(`${startDate}T00:00:00Z`)))
     .get();
+  // Stays booked before confirmedTotalCents existed on the stay doc (and
+  // ones charged through the original request) keep their price and charge
+  // record on the submission instead — read those so they aren't valued at $0.
+  const staySubs = {};
+  await Promise.all(overnightsSnap.docs
+    .map(d => d.data())
+    .filter(o => typeof o.confirmedTotalCents !== 'number' && o.submissionId)
+    .map(async (o) => {
+      const snap = await db.collection('submissions').doc(o.submissionId).get();
+      if (snap.exists) staySubs[o.submissionId] = snap.data();
+    }));
+  let staysMissingPrice = 0;
   overnightsSnap.docs.forEach(d => {
     const o = d.data();
     if (o.status !== 'confirmed' && o.status !== 'completed') return;
+    const sub = (typeof o.confirmedTotalCents !== 'number' && o.submissionId && staySubs[o.submissionId]) || null;
     const stayDone = o.status === 'completed';
     const visits = (Array.isArray(o.visits) ? o.visits : []).filter(v => v && typeof v.date === 'string');
     const nights = stayNightDates(o);
@@ -928,13 +941,21 @@ exports.getServiceRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeout
     const units = nights.length
       ? nights.map(date => ({ date, kind: 'night', done: stayDone || nightIsDone(o.nights?.[date]) }))
       : visits.map(v => ({ date: v.date, kind: 'visit', done: stayDone || v.status === 'completed' }));
+    // Whichever doc holds the charge: the stay, else the original request.
+    const chargeDoc = charged(o) ? o : charged(sub) ? sub : o;
     const totalCents = typeof o.confirmedTotalCents === 'number' ? o.confirmedTotalCents
-      : Math.round(((o.lastChargeAmount || 0) * 100)) + appliedCreditCents(o);
+      : typeof sub?.amountInDollars === 'number' ? Math.round(sub.amountInDollars * 100)
+      : typeof sub?.estimatedTotal === 'number' ? Math.round(sub.estimatedTotal * 100)
+      : Math.round((chargeDoc.lastChargeAmount || 0) * 100) + appliedCreditCents(chargeDoc);
     const g = `stay:${d.id}`;
-    const paid = charged(o);
+    const paid = charged(chargeDoc);
+    // Friends & Family stays get their own category so the discount's cost
+    // shows up on its own line.
+    const category = (o.travelDiscountApplied ?? sub?.travelDiscountApplied) ? 'petSittingFF' : 'petSitting';
     const payCents = Math.round((typeof o.payout?.amount === 'number' ? o.payout.amount : calculateOvernightPayout(o).total) * 100);
+    if (units.length && !totalCents && units.some(u => inRange(u.date))) staysMissingPrice++;
     if (units.length) {
-      groups[g] = { memberId: o.memberId || null, firstDate: units[0].date, priceCents: totalCents, paid, creditCents: paid ? appliedCreditCents(o) : null, kind: 'oneoff' };
+      groups[g] = { memberId: o.memberId || null, firstDate: units[0].date, priceCents: totalCents, paid, creditCents: paid ? appliedCreditCents(chargeDoc) : null, kind: 'oneoff' };
       // Even split, with the rounding remainder on the first unit so the
       // pieces add back up to the exact total.
       const each = Math.floor(totalCents / units.length);
@@ -942,7 +963,7 @@ exports.getServiceRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeout
       units.forEach((u, i) => {
         if (!inRange(u.date)) return;
         addRow({
-          date: u.date, state: stateFor(u.date, u.done), kind: u.kind, category: 'petSitting', memberId: o.memberId || null, clientName: o.memberName || null, group: g,
+          date: u.date, state: stateFor(u.date, u.done), kind: u.kind, category, memberId: o.memberId || null, clientName: o.memberName || null, group: g,
           priceCents: each + (i === 0 ? totalCents - each * units.length : 0),
           walkerPayCents: payEach + (i === 0 ? payCents - payEach * units.length : 0),
         });
@@ -1066,7 +1087,7 @@ exports.getServiceRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeout
       clientEmail: m?.email || r.clientEmail || null,
     };
   });
-  return { startDate, endDate, today, rows: out, generatedAt: Date.now() };
+  return { startDate, endDate, today, rows: out, staysMissingPrice, generatedAt: Date.now() };
 });
 
 // removeCardOnFile: detaches the caller's own saved card(s) from Stripe and
