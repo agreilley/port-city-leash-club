@@ -148,8 +148,8 @@
 
   /* ── REQUESTS ── */
   .request-filters { display: flex; gap: 8px; margin-bottom: 20px; }
-  .request-filter, .request-status-filter, .conversation-filter, .conversation-category-filter, .referral-filter, .emaillog-filter, .review-filter, .event-ticket-filter, .revenue-filter { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
-  .request-filter.active, .request-status-filter.active, .conversation-filter.active, .conversation-category-filter.active, .referral-filter.active, .emaillog-filter.active, .review-filter.active, .event-ticket-filter.active, .revenue-filter.active { background: var(--navy); color: white; border-color: var(--navy); }
+  .request-filter, .request-status-filter, .conversation-filter, .conversation-category-filter, .referral-filter, .emaillog-filter, .review-filter, .event-ticket-filter, .revenue-filter, .revenue-mode { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); background: white; color: var(--text-mid); transition: all 0.15s; }
+  .request-filter.active, .request-status-filter.active, .conversation-filter.active, .conversation-category-filter.active, .referral-filter.active, .emaillog-filter.active, .review-filter.active, .event-ticket-filter.active, .revenue-filter.active, .revenue-mode.active { background: var(--navy); color: white; border-color: var(--navy); }
   .list-row { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 20px; margin-bottom: 12px; cursor: pointer; transition: box-shadow 0.15s; }
   .list-row:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
   .list-row.unread { border-left: 3px solid var(--rust); }
@@ -866,14 +866,20 @@
     </div>
 
     <!-- EMAIL LOG VIEW -->
-    <!-- REVENUE VIEW (read-only; Stripe balance transactions via the
-         getRevenueReport callable, walker pay from walkerPayments) -->
+    <!-- REVENUE VIEW (read-only). By service date: getServiceRevenueReport,
+         bookings valued on the day the service happens. Cash received: Stripe
+         balance transactions via getRevenueReport, walker pay from walkerPayments. -->
     <div class="view" id="view-revenue">
       <div class="request-filters" style="align-items:center;flex-wrap:wrap;">
+        <button class="revenue-mode active" data-mode="service" onclick="setRevenueMode('service')">By service date</button>
+        <button class="revenue-mode" data-mode="cash" onclick="setRevenueMode('cash')">Cash received</button>
+      </div>
+      <div class="request-filters" style="align-items:center;flex-wrap:wrap;margin-top:-8px;">
         <button class="revenue-filter" data-range="thisMonth" onclick="setRevenueRange('thisMonth')">This month</button>
+        <button class="revenue-filter" data-range="nextMonth" onclick="setRevenueRange('nextMonth')">Next month</button>
         <button class="revenue-filter" data-range="lastMonth" onclick="setRevenueRange('lastMonth')">Last month</button>
         <button class="revenue-filter" data-range="thisQuarter" onclick="setRevenueRange('thisQuarter')">This quarter</button>
-        <button class="revenue-filter" data-range="ytd" onclick="setRevenueRange('ytd')">Year to date</button>
+        <button class="revenue-filter" data-range="thisYear" onclick="setRevenueRange('thisYear')">This year</button>
         <button class="revenue-filter" data-range="lastYear" onclick="setRevenueRange('lastYear')">Last year</button>
         <button class="revenue-filter" data-range="custom" onclick="setRevenueRange('custom')">Custom</button>
       </div>
@@ -887,6 +893,43 @@
         </label>
         <span id="revenueStatus" style="font-size:12px;color:var(--text-light);"></span>
       </div>
+      <div id="revenueServiceView">
+      <div class="stats-row stats-row-3">
+        <div class="stat-card"><div class="stat-label">Earned</div><div class="stat-value" id="svc-earned">–</div><div class="stat-sub" id="svc-earned-sub">Completed services</div></div>
+        <div class="stat-card"><div class="stat-label">Upcoming</div><div class="stat-value" id="svc-upcoming">–</div><div class="stat-sub" id="svc-upcoming-sub">Scheduled, not done yet</div></div>
+        <div class="stat-card"><div class="stat-label">Projected Total</div><div class="stat-value" id="svc-total">–</div><div class="stat-sub" id="svc-total-sub">Earned plus upcoming</div></div>
+      </div>
+      <div id="svc-unmarked" style="display:none;margin:-8px 0 16px;padding:10px 14px;border-radius:8px;background:var(--sand);font-size:13px;color:var(--text-mid);"></div>
+      <div style="margin:-8px 0 16px;font-size:12px;color:var(--text-light);">Amounts are booked price minus referral and account credits. Credits on bookings not charged yet are estimates; the charge itself decides. Stripe fees and refunds are in Cash received.</div>
+      <div class="table-card" style="margin-bottom:24px;">
+        <div class="table-header"><div class="table-title">By Month</div></div>
+        <div class="table-scroll">
+        <table>
+          <thead><tr><th>Month</th><th>Earned</th><th>Upcoming</th><th>Credits</th><th>Total</th></tr></thead>
+          <tbody id="svcMonthsTable"><tr><td colspan="5" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
+        </table>
+        </div>
+      </div>
+      <div class="table-card" style="margin-bottom:24px;">
+        <div class="table-header"><div class="table-title">By Category</div></div>
+        <div class="table-scroll">
+        <table>
+          <thead><tr><th>Category</th><th>Earned</th><th>Upcoming</th><th>Total</th></tr></thead>
+          <tbody id="svcCategoryTable"></tbody>
+        </table>
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">By Client</div></div>
+        <div class="table-scroll">
+        <table>
+          <thead><tr><th>Client</th><th>Earned</th><th>Upcoming</th><th>Already Paid</th><th>Total</th></tr></thead>
+          <tbody id="svcClientTable"></tbody>
+        </table>
+        </div>
+      </div>
+      </div>
+      <div id="revenueCashView" style="display:none;">
       <div class="stats-row stats-row-3">
         <div class="stat-card"><div class="stat-label">Gross</div><div class="stat-value" id="rev-gross">–</div><div class="stat-sub" id="rev-gross-sub">Charged to clients</div></div>
         <div class="stat-card"><div class="stat-label">Refunds &amp; Stripe Fees</div><div class="stat-value" id="rev-deductions" style="color:var(--rust);">–</div><div class="stat-sub" id="rev-deductions-sub">&nbsp;</div></div>
@@ -921,6 +964,7 @@
           <tbody id="revenueClientTable"></tbody>
         </table>
         </div>
+      </div>
       </div>
     </div>
 
@@ -3777,11 +3821,19 @@ function sortEmailLogDesc() {
 // day they were marked paid; generated-but-unpaid ones are shown
 // separately as pending, by period end. Dates are ET calendar days.
 let revenueReport = null;
+// By-service-date rows from getServiceRevenueReport (see functions/index.js
+// for how each booking is priced, split and credited). The default view;
+// the Stripe report above only loads once Cash received is picked.
+let serviceRevenueReport = null;
+let revenueMode = 'service';
 // monthlyExpenses/{YYYY-MM} → cents, live once the tab is first opened.
 let monthlyExpenses = {};
 let revenueRange = { preset: 'thisMonth', start: null, end: null };
 const REVENUE_CATEGORY_LABELS = {
   memberships: 'Memberships', petSitting: 'Pet sitting', tips: 'Tips', events: 'Events', other: 'Other services', fees: 'Stripe account fees',
+};
+const SERVICE_REVENUE_CATEGORY_LABELS = {
+  memberships: 'Membership walks', extraWalks: 'Extra & one-time walks', petSitting: 'Pet sitting', tips: 'Tips', events: 'Events',
 };
 const revDayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
 const revDay = (date) => revDayFmt.format(date); // "YYYY-MM-DD"
@@ -3796,18 +3848,29 @@ const revIso = (y, m, d) => {
   return dt.toISOString().slice(0, 10);
 };
 
+// Presets cover whole periods so the service view can show what's still
+// upcoming in them; Cash received stops at today (see loadRevenue).
 function revenuePresetRange(preset) {
   const today = revDay(new Date());
   const y = Number(today.slice(0, 4)), m = Number(today.slice(5, 7)) - 1;
   switch (preset) {
+    case 'nextMonth': return { start: revIso(y, m + 1, 1), end: revIso(y, m + 2, 0) };
     case 'lastMonth': return { start: revIso(y, m - 1, 1), end: revIso(y, m, 0) };
-    case 'thisQuarter': return { start: revIso(y, m - (m % 3), 1), end: today };
-    case 'ytd': return { start: revIso(y, 0, 1), end: today };
+    case 'thisQuarter': return { start: revIso(y, m - (m % 3), 1), end: revIso(y, m - (m % 3) + 3, 0) };
+    case 'thisYear': return { start: revIso(y, 0, 1), end: revIso(y, 11, 31) };
     case 'lastYear': return { start: revIso(y - 1, 0, 1), end: revIso(y - 1, 11, 31) };
     case 'thisMonth':
-    default: return { start: revIso(y, m, 1), end: today };
+    default: return { start: revIso(y, m, 1), end: revIso(y, m + 1, 0) };
   }
 }
+
+window.setRevenueMode = (mode) => {
+  revenueMode = mode;
+  document.querySelectorAll('.revenue-mode').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  document.getElementById('revenueServiceView').style.display = mode === 'service' ? '' : 'none';
+  document.getElementById('revenueCashView').style.display = mode === 'cash' ? '' : 'none';
+  loadRevenue();
+};
 
 function initRevenue() {
   onSnapshot(collection(db, 'monthlyExpenses'), snap => {
@@ -3873,20 +3936,31 @@ window.applyRevenueCustomRange = () => {
 
 async function loadRevenue() {
   if (!revenueRange.start) revenueRange = { preset: 'thisMonth', ...revenuePresetRange('thisMonth') };
-  const { start, end } = revenueRange;
+  const { start, end: rangeEnd } = revenueRange;
+  const mode = revenueMode;
+  // Stripe has nothing after today, so Cash received stops there.
+  const today = revDay(new Date());
+  const end = mode === 'cash' && rangeEnd > today ? today : rangeEnd;
   const status = document.getElementById('revenueStatus');
-  status.textContent = 'Loading from Stripe...';
+  if (mode === 'cash' && start > today) {
+    revenueReport = { startDate: start, endDate: rangeEnd, rows: [] };
+    status.textContent = 'Nothing received yet — this range is in the future.';
+    renderRevenue();
+    return;
+  }
+  status.textContent = mode === 'cash' ? 'Loading from Stripe...' : 'Loading bookings...';
   try {
-    const fn = httpsCallable(fns, 'getRevenueReport');
+    const fn = httpsCallable(fns, mode === 'cash' ? 'getRevenueReport' : 'getServiceRevenueReport');
     const { data } = await fn({ startDate: start, endDate: end });
-    // A slower earlier request finishing late mustn't overwrite a newer range.
-    if (start !== revenueRange.start || end !== revenueRange.end) return;
-    revenueReport = data;
+    // A slower earlier request finishing late mustn't overwrite a newer range or view.
+    if (start !== revenueRange.start || rangeEnd !== revenueRange.end || mode !== revenueMode) return;
+    if (mode === 'cash') revenueReport = data;
+    else serviceRevenueReport = data;
     status.textContent = `Updated ${new Date(data.generatedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
     renderRevenue();
   } catch (e) {
     console.error('Failed to load revenue:', e.message);
-    status.textContent = "Couldn't load revenue from Stripe right now.";
+    status.textContent = mode === 'cash' ? "Couldn't load revenue from Stripe right now." : "Couldn't load bookings right now.";
   }
 }
 window.loadRevenue = loadRevenue;
@@ -3911,6 +3985,7 @@ function walkerPayInRange(start, end) {
 }
 
 function renderRevenue() {
+  if (revenueMode === 'service') return renderServiceRevenue();
   if (!revenueReport) return;
   const { startDate: start, endDate: end } = revenueReport;
   const includeEvents = document.getElementById('revenueIncludeEvents').checked;
@@ -3985,6 +4060,72 @@ function renderRevenue() {
   document.getElementById('revenueClientTable').innerHTML = clientRows.join('') || empty(5, 'No revenue in this period.');
 }
 window.renderRevenue = renderRevenue;
+
+function renderServiceRevenue() {
+  if (!serviceRevenueReport) return;
+  const { startDate: start, endDate: end } = serviceRevenueReport;
+  const includeEvents = document.getElementById('revenueIncludeEvents').checked;
+  const rows = serviceRevenueReport.rows.filter(r => includeEvents || r.category !== 'events');
+  document.getElementById('revenueRangeLabel').textContent = revenueRange.preset === 'custom' ? '' : `${revShortDate(start)} – ${revShortDate(end)}`;
+
+  const blank = () => ({ earned: 0, upcoming: 0, unmarked: 0, credits: 0, paidUpcoming: 0 });
+  const add = (t, r) => {
+    t[r.state] += r.amountCents;
+    t.credits += r.creditCents;
+    if (r.state === 'upcoming' && r.paid) t.paidUpcoming += r.amountCents;
+  };
+  const tot = blank();
+  const unmarkedCount = rows.filter(r => r.state === 'unmarked').length;
+  const estimatedCredits = rows.reduce((t, r) => t + (r.creditEstimated ? r.creditCents : 0), 0);
+  rows.forEach(r => add(tot, r));
+
+  document.getElementById('svc-earned').textContent = revMoney(tot.earned);
+  document.getElementById('svc-earned-sub').textContent = `Completed services · ${rows.filter(r => r.state === 'earned' && r.kind !== 'tip').length} done`;
+  document.getElementById('svc-upcoming').textContent = revMoney(tot.upcoming);
+  document.getElementById('svc-upcoming-sub').textContent = tot.paidUpcoming
+    ? `Scheduled, not done yet · ${revMoney(tot.paidUpcoming)} already paid`
+    : 'Scheduled, not done yet';
+  document.getElementById('svc-total').textContent = revMoney(tot.earned + tot.upcoming);
+  document.getElementById('svc-total-sub').textContent = tot.credits
+    ? `Earned plus upcoming · after ${revMoney(tot.credits)} credits${estimatedCredits ? ` (${revMoney(estimatedCredits)} estimated)` : ''}`
+    : 'Earned plus upcoming';
+  const unmarked = document.getElementById('svc-unmarked');
+  unmarked.style.display = unmarkedCount ? '' : 'none';
+  unmarked.textContent = unmarkedCount
+    ? `${unmarkedCount} past walk${unmarkedCount === 1 ? '' : 's'}/visit${unmarkedCount === 1 ? '' : 's'} not marked complete (${revMoney(tot.unmarked)}) — left out of the totals above until they are.`
+    : '';
+
+  const empty = (cols, msg) => `<tr><td colspan="${cols}" style="text-align:center;color:var(--text-light);padding:24px;">${msg}</td></tr>`;
+
+  const months = {};
+  for (let k = start.slice(0, 7); k <= end.slice(0, 7);) {
+    months[k] = blank();
+    const [y, m] = k.split('-').map(Number);
+    k = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+  }
+  rows.forEach(r => { if (months[r.date.slice(0, 7)]) add(months[r.date.slice(0, 7)], r); });
+  const monthRow = (label, m, style = '') => `<tr${style}><td>${label}</td><td>${revMoney(m.earned)}</td><td>${m.upcoming ? revMoney(m.upcoming) : '—'}</td><td>${m.credits ? revMoney(-m.credits) : '—'}</td><td>${revMoney(m.earned + m.upcoming)}</td></tr>`;
+  const monthRows = Object.entries(months).map(([k, m]) => monthRow(revMonthName(k), m));
+  if (monthRows.length > 1) monthRows.push(monthRow('Total', tot, ' style="font-weight:600;background:var(--sand);"'));
+  document.getElementById('svcMonthsTable').innerHTML = monthRows.join('');
+
+  const cats = {}, clients = {};
+  rows.forEach(r => {
+    add(cats[r.category] || (cats[r.category] = blank()), r);
+    const c = clients[r.clientKey] || (clients[r.clientKey] = { name: r.clientName, email: r.clientEmail, ...blank() });
+    add(c, r);
+  });
+  const catRows = Object.keys(SERVICE_REVENUE_CATEGORY_LABELS).filter(c => cats[c] && (cats[c].earned || cats[c].upcoming)).map(c => {
+    const v = cats[c];
+    return `<tr><td>${SERVICE_REVENUE_CATEGORY_LABELS[c]}</td><td>${revMoney(v.earned)}</td><td>${v.upcoming ? revMoney(v.upcoming) : '—'}</td><td>${revMoney(v.earned + v.upcoming)}</td></tr>`;
+  });
+  document.getElementById('svcCategoryTable').innerHTML = catRows.join('') || empty(4, 'No bookings in this period.');
+  const clientRows = Object.values(clients)
+    .filter(v => v.earned || v.upcoming)
+    .sort((a, b) => (b.earned + b.upcoming) - (a.earned + a.upcoming))
+    .map(v => `<tr><td>${escapeHtml(v.name)}${v.email && v.email !== v.name ? `<div style="font-size:11px;color:var(--text-light);">${escapeHtml(v.email)}</div>` : ''}</td><td>${revMoney(v.earned)}</td><td>${v.upcoming ? revMoney(v.upcoming) : '—'}</td><td>${v.paidUpcoming ? revMoney(v.paidUpcoming) : '—'}</td><td>${revMoney(v.earned + v.upcoming)}</td></tr>`);
+  document.getElementById('svcClientTable').innerHTML = clientRows.join('') || empty(5, 'No bookings in this period.');
+}
 
 async function loadEmailLog(isRefresh) {
   if (isRefresh) {
