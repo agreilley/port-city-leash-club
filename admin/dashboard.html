@@ -923,7 +923,7 @@
         <div class="table-header"><div class="table-title">By Client</div></div>
         <div class="table-scroll">
         <table>
-          <thead><tr><th>Client</th><th>Earned</th><th>Upcoming</th><th>Already Paid</th><th>Total</th></tr></thead>
+          <thead><tr><th>Client</th><th>Earned</th><th>Upcoming</th><th>Already Paid</th><th>Total</th><th>Not Marked Complete</th></tr></thead>
           <tbody id="svcClientTable"></tbody>
         </table>
         </div>
@@ -4120,11 +4120,13 @@ function renderServiceRevenue() {
     return `<tr><td>${SERVICE_REVENUE_CATEGORY_LABELS[c]}</td><td>${revMoney(v.earned)}</td><td>${v.upcoming ? revMoney(v.upcoming) : '—'}</td><td>${revMoney(v.earned + v.upcoming)}</td></tr>`;
   });
   document.getElementById('svcCategoryTable').innerHTML = catRows.join('') || empty(4, 'No bookings in this period.');
+  // Unmarked amounts stay out of Total (same as the cards above) but keep
+  // the client listed, so a forgotten check-off can't hide a client.
   const clientRows = Object.values(clients)
-    .filter(v => v.earned || v.upcoming)
-    .sort((a, b) => (b.earned + b.upcoming) - (a.earned + a.upcoming))
-    .map(v => `<tr><td>${escapeHtml(v.name)}${v.email && v.email !== v.name ? `<div style="font-size:11px;color:var(--text-light);">${escapeHtml(v.email)}</div>` : ''}</td><td>${revMoney(v.earned)}</td><td>${v.upcoming ? revMoney(v.upcoming) : '—'}</td><td>${v.paidUpcoming ? revMoney(v.paidUpcoming) : '—'}</td><td>${revMoney(v.earned + v.upcoming)}</td></tr>`);
-  document.getElementById('svcClientTable').innerHTML = clientRows.join('') || empty(5, 'No bookings in this period.');
+    .filter(v => v.earned || v.upcoming || v.unmarked)
+    .sort((a, b) => (b.earned + b.upcoming + b.unmarked) - (a.earned + a.upcoming + a.unmarked))
+    .map(v => `<tr><td>${escapeHtml(v.name)}${v.email && v.email !== v.name ? `<div style="font-size:11px;color:var(--text-light);">${escapeHtml(v.email)}</div>` : ''}</td><td>${revMoney(v.earned)}</td><td>${v.upcoming ? revMoney(v.upcoming) : '—'}</td><td>${v.paidUpcoming ? revMoney(v.paidUpcoming) : '—'}</td><td>${revMoney(v.earned + v.upcoming)}</td><td${v.unmarked ? ' style="color:var(--rust);"' : ''}>${v.unmarked ? revMoney(v.unmarked) : '—'}</td></tr>`);
+  document.getElementById('svcClientTable').innerHTML = clientRows.join('') || empty(6, 'No bookings in this period.');
 }
 
 async function loadEmailLog(isRefresh) {
@@ -4536,7 +4538,9 @@ window.openOvernightModal = (overnightId) => {
   const trackedVisits = Array.isArray(o.visits) ? o.visits : [];
   const completedVisitCount = trackedVisits.filter(v => v.status === 'completed').length;
   const nightDates = stayNightDates(o);
-  const nightsDoneCount = nightDates.filter(d => nightIsDone(o.nights?.[d])).length;
+  // Same fallback as the night rows below: a stay that closed before nights
+  // were completable never marked them, but they're done.
+  const nightsDoneCount = isCompleted ? nightDates.length : nightDates.filter(d => nightIsDone(o.nights?.[d])).length;
   const progressLabel = isCheckin
     ? `${completedVisitCount} of ${trackedVisits.length} completed`
     : `${completedVisitCount} of ${trackedVisits.length} visits, ${nightsDoneCount} of ${nightDates.length} nights done`;
