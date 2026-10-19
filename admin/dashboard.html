@@ -898,15 +898,18 @@
         <div class="stat-card"><div class="stat-label">Earned</div><div class="stat-value" id="svc-earned">–</div><div class="stat-sub" id="svc-earned-sub">Completed services</div></div>
         <div class="stat-card"><div class="stat-label">Upcoming</div><div class="stat-value" id="svc-upcoming">–</div><div class="stat-sub" id="svc-upcoming-sub">Scheduled, not done yet</div></div>
         <div class="stat-card"><div class="stat-label">Projected Total</div><div class="stat-value" id="svc-total">–</div><div class="stat-sub" id="svc-total-sub">Earned plus upcoming</div></div>
+        <div class="stat-card"><div class="stat-label">Earned Profit</div><div class="stat-value" id="svc-earned-profit">–</div><div class="stat-sub" id="svc-earned-profit-sub">&nbsp;</div></div>
+        <div class="stat-card"><div class="stat-label">Upcoming Profit</div><div class="stat-value" id="svc-upcoming-profit">–</div><div class="stat-sub" id="svc-upcoming-profit-sub">&nbsp;</div></div>
+        <div class="stat-card"><div class="stat-label">Projected Profit</div><div class="stat-value" id="svc-total-profit">–</div><div class="stat-sub" id="svc-total-profit-sub">&nbsp;</div></div>
       </div>
       <div id="svc-unmarked" style="display:none;margin:-8px 0 16px;padding:10px 14px;border-radius:8px;background:var(--sand);font-size:13px;color:var(--text-mid);"></div>
-      <div style="margin:-8px 0 16px;font-size:12px;color:var(--text-light);">Amounts are booked price minus referral and account credits. Credits on bookings not charged yet are estimates; the charge itself decides. Stripe fees and refunds are in Cash received.</div>
+      <div style="margin:-8px 0 16px;font-size:12px;color:var(--text-light);">Revenue is booked price minus referral and account credits; credits on bookings not charged yet are estimates. Profit is revenue minus walker pay and Stripe fees. Walker pay on upcoming work is at today's rates; tips count as walker pay in full. Stripe fees here are estimated at 2.9% + 30¢ per charge — Cash received has the real fees and refunds.</div>
       <div class="table-card" style="margin-bottom:24px;">
         <div class="table-header"><div class="table-title">By Month</div></div>
         <div class="table-scroll">
         <table>
-          <thead><tr><th>Month</th><th>Earned</th><th>Upcoming</th><th>Credits</th><th>Total</th></tr></thead>
-          <tbody id="svcMonthsTable"><tr><td colspan="5" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
+          <thead><tr><th>Month</th><th>Earned</th><th>Upcoming</th><th>Revenue</th><th>Walker Pay</th><th>Stripe Fees (est.)</th><th>Profit</th></tr></thead>
+          <tbody id="svcMonthsTable"><tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
         </table>
         </div>
       </div>
@@ -914,7 +917,7 @@
         <div class="table-header"><div class="table-title">By Category</div></div>
         <div class="table-scroll">
         <table>
-          <thead><tr><th>Category</th><th>Earned</th><th>Upcoming</th><th>Total</th></tr></thead>
+          <thead><tr><th>Category</th><th>Earned</th><th>Upcoming</th><th>Revenue</th><th>Walker Pay</th><th>Stripe Fees (est.)</th><th>Profit</th></tr></thead>
           <tbody id="svcCategoryTable"></tbody>
         </table>
         </div>
@@ -4068,12 +4071,23 @@ function renderServiceRevenue() {
   const rows = serviceRevenueReport.rows.filter(r => includeEvents || r.category !== 'events');
   document.getElementById('revenueRangeLabel').textContent = revenueRange.preset === 'custom' ? '' : `${revShortDate(start)} – ${revShortDate(end)}`;
 
-  const blank = () => ({ earned: 0, upcoming: 0, unmarked: 0, credits: 0, paidUpcoming: 0 });
+  // Costs are tracked per state so profit can be split the same way as
+  // revenue; unmarked costs, like unmarked revenue, stay out of totals.
+  const blank = () => ({
+    earned: 0, upcoming: 0, unmarked: 0, credits: 0, paidUpcoming: 0,
+    pay: { earned: 0, upcoming: 0, unmarked: 0 }, fee: { earned: 0, upcoming: 0, unmarked: 0 },
+  });
   const add = (t, r) => {
     t[r.state] += r.amountCents;
-    t.credits += r.creditCents;
+    t.pay[r.state] += r.walkerPayCents || 0;
+    t.fee[r.state] += r.feeCents || 0;
+    if (r.state !== 'unmarked') t.credits += r.creditCents;
     if (r.state === 'upcoming' && r.paid) t.paidUpcoming += r.amountCents;
   };
+  const profitOf = (t, state) => t[state] - t.pay[state] - t.fee[state];
+  const revenue = (t) => t.earned + t.upcoming;
+  const payOf = (t) => t.pay.earned + t.pay.upcoming;
+  const feeOf = (t) => t.fee.earned + t.fee.upcoming;
   const tot = blank();
   const unmarkedCount = rows.filter(r => r.state === 'unmarked').length;
   const estimatedCredits = rows.reduce((t, r) => t + (r.creditEstimated ? r.creditCents : 0), 0);
@@ -4089,6 +4103,13 @@ function renderServiceRevenue() {
   document.getElementById('svc-total-sub').textContent = tot.credits
     ? `Earned plus upcoming · after ${revMoney(tot.credits)} credits${estimatedCredits ? ` (${revMoney(estimatedCredits)} estimated)` : ''}`
     : 'Earned plus upcoming';
+  const profitSub = (state) => `After ${revMoney(state ? tot.pay[state] : payOf(tot))} walker pay · ${revMoney(state ? tot.fee[state] : feeOf(tot))} fees`;
+  document.getElementById('svc-earned-profit').textContent = revMoney(profitOf(tot, 'earned'));
+  document.getElementById('svc-earned-profit-sub').textContent = profitSub('earned');
+  document.getElementById('svc-upcoming-profit').textContent = revMoney(profitOf(tot, 'upcoming'));
+  document.getElementById('svc-upcoming-profit-sub').textContent = profitSub('upcoming');
+  document.getElementById('svc-total-profit').textContent = revMoney(profitOf(tot, 'earned') + profitOf(tot, 'upcoming'));
+  document.getElementById('svc-total-profit-sub').textContent = profitSub(null);
   const unmarked = document.getElementById('svc-unmarked');
   unmarked.style.display = unmarkedCount ? '' : 'none';
   unmarked.textContent = unmarkedCount
@@ -4104,7 +4125,8 @@ function renderServiceRevenue() {
     k = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
   }
   rows.forEach(r => { if (months[r.date.slice(0, 7)]) add(months[r.date.slice(0, 7)], r); });
-  const monthRow = (label, m, style = '') => `<tr${style}><td>${label}</td><td>${revMoney(m.earned)}</td><td>${m.upcoming ? revMoney(m.upcoming) : '—'}</td><td>${m.credits ? revMoney(-m.credits) : '—'}</td><td>${revMoney(m.earned + m.upcoming)}</td></tr>`;
+  const moneyCells = (m) => `<td>${revMoney(m.earned)}</td><td>${m.upcoming ? revMoney(m.upcoming) : '—'}</td><td>${revMoney(revenue(m))}</td><td>${payOf(m) ? revMoney(-payOf(m)) : '—'}</td><td>${feeOf(m) ? revMoney(-feeOf(m)) : '—'}</td><td>${revMoney(revenue(m) - payOf(m) - feeOf(m))}</td>`;
+  const monthRow = (label, m, style = '') => `<tr${style}><td>${label}</td>${moneyCells(m)}</tr>`;
   const monthRows = Object.entries(months).map(([k, m]) => monthRow(revMonthName(k), m));
   if (monthRows.length > 1) monthRows.push(monthRow('Total', tot, ' style="font-weight:600;background:var(--sand);"'));
   document.getElementById('svcMonthsTable').innerHTML = monthRows.join('');
@@ -4117,9 +4139,9 @@ function renderServiceRevenue() {
   });
   const catRows = Object.keys(SERVICE_REVENUE_CATEGORY_LABELS).filter(c => cats[c] && (cats[c].earned || cats[c].upcoming)).map(c => {
     const v = cats[c];
-    return `<tr><td>${SERVICE_REVENUE_CATEGORY_LABELS[c]}</td><td>${revMoney(v.earned)}</td><td>${v.upcoming ? revMoney(v.upcoming) : '—'}</td><td>${revMoney(v.earned + v.upcoming)}</td></tr>`;
+    return `<tr><td>${SERVICE_REVENUE_CATEGORY_LABELS[c]}</td>${moneyCells(v)}</tr>`;
   });
-  document.getElementById('svcCategoryTable').innerHTML = catRows.join('') || empty(4, 'No bookings in this period.');
+  document.getElementById('svcCategoryTable').innerHTML = catRows.join('') || empty(7, 'No bookings in this period.');
   // Unmarked amounts stay out of Total (same as the cards above) but keep
   // the client listed, so a forgotten check-off can't hide a client.
   const clientRows = Object.values(clients)

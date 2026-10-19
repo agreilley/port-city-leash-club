@@ -823,8 +823,21 @@ exports.getRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeoutSeconds
 // Estimates for upcoming credits are just that — the real charge re-decides.
 // Membership walks only exist a month ahead (generateMonthlyWalks), so
 // ranges further out undercount memberships.
+//
+// Each row also carries what it costs, so the page can show profit:
+//   - walkerPayCents: the stamped payout once complete, else today's rates
+//     (calculateWalkPayout / calculateOvernightPayout — covers split that
+//     same total, so they don't change it). A stay's pay is split over the
+//     same nights/visits as its price. Tips go to walkers in full.
+//   - feeCents: an ESTIMATE at Stripe's standard 2.9% + 30¢ per charge, on
+//     the amount after credits — one charge per stay, per one-off booking,
+//     per tip, per event order, and per member per month for membership
+//     walks (one invoice). The Cash received view has the real fees.
 // ─────────────────────────────────────────────────────────────────────────
 const EVENT_SERVICE_DATES = { 'puppies-pilates-2026-10-10': '2026-10-17' };
+const STRIPE_FEE_PERCENT = 2.9;
+const STRIPE_FEE_FIXED_CENTS = 30;
+const estimatedStripeFeeCents = (amountCents) => (amountCents > 0 ? Math.round(amountCents * STRIPE_FEE_PERCENT / 100) + STRIPE_FEE_FIXED_CENTS : 0);
 
 exports.getServiceRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeoutSeconds: 120 }, async (request) => {
   await assertIsAdmin(request.auth);
@@ -835,6 +848,7 @@ exports.getServiceRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeout
   }
   const { MEMBER_WALK_RATE, WALK_EXTENSION_PRICE } = await import('./pricing.js');
   const { stayNightDates, stayDateKey, nightIsDone } = await import('./visit-slots.js');
+  const { calculateWalkPayout, calculateOvernightPayout } = await import('./walker-pricing.js');
   const stripe = stripeClient(STRIPE_SECRET_KEY.value());
   const { year: ty, monthIndex: tm, day: td } = easternTodayParts();
   const today = `${ty}-${String(tm + 1).padStart(2, '0')}-${String(td).padStart(2, '0')}`;
@@ -849,7 +863,7 @@ exports.getServiceRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeout
   // to) first; credits are spread over each group at the end.
   const rows = [];
   const groups = {}; // key -> { memberId, firstDate, priceCents, creditCents|null, paid, kind }
-  const addRow = (row) => rows.push({ creditCents: 0, ...row });
+  const addRow = (row) => rows.push({ creditCents: 0, walkerPayCents: 0, feeCents: 0, ...row });
 
   // Walks are stamped noon UTC on their date, so a UTC window by date works.
   const walksSnap = await db.collection('walks')
@@ -877,22 +891,25 @@ exports.getServiceRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeout
   walkDocs.forEach(w => {
     const date = isoDateStr(w.date.toDate());
     const state = stateFor(date, w.status === 'completed');
+    const walkerPayCents = Math.round((typeof w.payout?.amount === 'number' ? w.payout.amount : calculateWalkPayout(w)) * 100);
     if (w.submissionId) {
       const sub = subsById[w.submissionId];
       const totalCents = Math.round((sub?.amountInDollars ?? sub?.estimatedTotal ?? 0) * 100);
       const g = `sub:${w.submissionId}`;
       groups[g] ||= { memberId: w.memberId, firstDate: date, priceCents: totalCents, paid: charged(sub), creditCents: charged(sub) ? appliedCreditCents(sub) : null, kind: 'oneoff' };
-      addRow({ date, state, kind: 'walk', category: 'extraWalks', memberId: w.memberId, group: g, priceCents: Math.round(totalCents / (sub?.walkCount || 1)) });
+      addRow({ date, state, kind: 'walk', category: 'extraWalks', memberId: w.memberId, group: g, priceCents: Math.round(totalCents / (sub?.walkCount || 1)), walkerPayCents });
     } else {
-      const g = `walks:${w.memberId}:${w.billedPeriod || 'unbilled'}`;
+      // One group per invoice: a billed period, or the month an unbilled
+      // walk will be billed in.
+      const g = `walks:${w.memberId}:${w.billedPeriod || `unbilled:${date.slice(0, 7)}`}`;
       groups[g] ||= { memberId: w.memberId, firstDate: date, priceCents: 0, paid: !!w.billedPeriod, creditCents: null, kind: w.billedPeriod ? 'billedWalks' : 'unbilledWalks', period: w.billedPeriod || null };
       const priceCents = Math.round(MEMBER_WALK_RATE * 100) + (w.extensionChargeId ? Math.round(WALK_EXTENSION_PRICE * 100) : 0);
       groups[g].priceCents += priceCents;
       if (date < groups[g].firstDate) groups[g].firstDate = date;
-      addRow({ date, state, kind: 'walk', category: 'memberships', memberId: w.memberId, group: g, priceCents });
+      addRow({ date, state, kind: 'walk', category: 'memberships', memberId: w.memberId, group: g, priceCents, walkerPayCents });
     }
     const tip = tipCents(w.tip);
-    if (tip) addRow({ date, state: 'earned', kind: 'tip', category: 'tips', memberId: w.memberId, group: null, priceCents: tip });
+    if (tip) addRow({ date, state: 'earned', kind: 'tip', category: 'tips', memberId: w.memberId, group: null, priceCents: tip, walkerPayCents: tip, feeCents: estimatedStripeFeeCents(tip) });
   });
 
   // Stays overlapping the range. endDate >= start is the one range filter;
@@ -915,23 +932,29 @@ exports.getServiceRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeout
       : Math.round(((o.lastChargeAmount || 0) * 100)) + appliedCreditCents(o);
     const g = `stay:${d.id}`;
     const paid = charged(o);
+    const payCents = Math.round((typeof o.payout?.amount === 'number' ? o.payout.amount : calculateOvernightPayout(o).total) * 100);
     if (units.length) {
       groups[g] = { memberId: o.memberId || null, firstDate: units[0].date, priceCents: totalCents, paid, creditCents: paid ? appliedCreditCents(o) : null, kind: 'oneoff' };
       // Even split, with the rounding remainder on the first unit so the
       // pieces add back up to the exact total.
       const each = Math.floor(totalCents / units.length);
+      const payEach = Math.floor(payCents / units.length);
       units.forEach((u, i) => {
         if (!inRange(u.date)) return;
-        addRow({ date: u.date, state: stateFor(u.date, u.done), kind: u.kind, category: 'petSitting', memberId: o.memberId || null, clientName: o.memberName || null, group: g, priceCents: each + (i === 0 ? totalCents - each * units.length : 0) });
+        addRow({
+          date: u.date, state: stateFor(u.date, u.done), kind: u.kind, category: 'petSitting', memberId: o.memberId || null, clientName: o.memberName || null, group: g,
+          priceCents: each + (i === 0 ? totalCents - each * units.length : 0),
+          walkerPayCents: payEach + (i === 0 ? payCents - payEach * units.length : 0),
+        });
       });
     }
     visits.forEach(v => {
       const tip = tipCents(v.tip);
-      if (tip && inRange(v.date)) addRow({ date: v.date, state: 'earned', kind: 'tip', category: 'tips', memberId: o.memberId || null, clientName: o.memberName || null, group: null, priceCents: tip });
+      if (tip && inRange(v.date)) addRow({ date: v.date, state: 'earned', kind: 'tip', category: 'tips', memberId: o.memberId || null, clientName: o.memberName || null, group: null, priceCents: tip, walkerPayCents: tip, feeCents: estimatedStripeFeeCents(tip) });
     });
     const stayTip = tipCents(o.tip);
     const endKey = stayDateKey(o.endDate);
-    if (stayTip && endKey && inRange(endKey)) addRow({ date: endKey, state: 'earned', kind: 'tip', category: 'tips', memberId: o.memberId || null, clientName: o.memberName || null, group: null, priceCents: stayTip });
+    if (stayTip && endKey && inRange(endKey)) addRow({ date: endKey, state: 'earned', kind: 'tip', category: 'tips', memberId: o.memberId || null, clientName: o.memberName || null, group: null, priceCents: stayTip, walkerPayCents: stayTip, feeCents: estimatedStripeFeeCents(stayTip) });
   });
 
   // Event tickets, on the day of the event, net of any refunds.
@@ -943,7 +966,7 @@ exports.getServiceRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeout
       if (ticket.status !== 'paid' && !ticket.refundedCents) return;
       const net = (ticket.amountCents || 0) - (ticket.refundedCents || 0);
       if (net <= 0) return;
-      addRow({ date, state: stateFor(date, date < today), kind: 'event', category: 'events', memberId: null, clientName: ticket.name || ticket.email || 'Event guest', clientEmail: ticket.email || null, group: null, priceCents: net });
+      addRow({ date, state: stateFor(date, date < today), kind: 'event', category: 'events', memberId: null, clientName: ticket.name || ticket.email || 'Event guest', clientEmail: ticket.email || null, group: null, priceCents: net, feeCents: estimatedStripeFeeCents(ticket.amountCents || 0) });
     });
   }));
 
@@ -1021,6 +1044,13 @@ exports.getServiceRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeout
     // share is of the whole booking, not just the in-range part.
     r.creditCents = Math.min(r.priceCents, Math.round(g.creditCents * (r.priceCents / g.priceCents)));
   });
+  // Estimated Stripe fee: one charge per group, on what's left after
+  // credits, shared out by price like the credit.
+  rows.forEach(r => {
+    const g = r.group && groups[r.group];
+    if (!g || !g.priceCents) return;
+    r.feeCents = Math.round(estimatedStripeFeeCents(g.priceCents - (g.creditCents || 0)) * (r.priceCents / g.priceCents));
+  });
 
   const out = rows.map(r => {
     const m = r.memberId ? members[r.memberId]?.data : null;
@@ -1028,6 +1058,7 @@ exports.getServiceRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeout
     return {
       date: r.date, state: r.state, kind: r.kind, category: r.category,
       priceCents: r.priceCents, creditCents: r.creditCents, amountCents: r.priceCents - r.creditCents,
+      walkerPayCents: r.walkerPayCents, feeCents: r.feeCents,
       paid: r.kind === 'tip' || r.kind === 'event' ? true : !!g?.paid,
       creditEstimated: !!g && !g.paid && r.creditCents > 0,
       clientKey: r.memberId || r.clientEmail || r.clientName || 'unknown',
