@@ -1849,7 +1849,7 @@ function renderPayoutsView() {
           <td>${count} item${count === 1 ? '' : 's'}</td>
           <td>$${total}${warn}</td>
           <td>
-            <button class="btn-sm view-btn" onclick="generatePayoutForWalker('${w.id}')" ${count ? '' : 'disabled'}>Generate</button>
+            <button class="btn-sm view-btn" onclick="generatePayoutForWalker('${w.id}')">Generate</button>
             <div id="payout-status-${w.id}"></div>
           </td>
         </tr>`;
@@ -1893,7 +1893,11 @@ window.generatePayoutForWalker = async (walkerId) => {
   try {
     const { periodStart, periodEnd } = getCurrentWeekPeriod();
     const generateWalkerPayout = httpsCallable(fns, 'generateWalkerPayout');
-    const res = await generateWalkerPayout({ walkerId, periodStart, periodEnd });
+    let res = await generateWalkerPayout({ walkerId, periodStart, periodEnd });
+    // No completed work: offer an empty payout to add one-off amounts to.
+    if (res.data.status === 'no_unclaimed_work' && confirm('No unclaimed completed work to pay. Start a payout anyway to add a one-off amount?')) {
+      res = await generateWalkerPayout({ walkerId, periodStart, periodEnd, allowEmpty: true });
+    }
     if (res.data.status === 'no_unclaimed_work') {
       showPayoutStatus(walkerId, 'Nothing to pay — no unclaimed completed work.', false);
     } else {
@@ -1920,8 +1924,23 @@ window.openPayoutReviewModal = async (paymentId) => {
 
   const tipsTotal = p.counts?.tips?.total || 0;
   const isPending = p.status === 'pending';
+  // One-off amounts (runAddPayoutAdjustment) — already in p.total.
+  const adjustmentRows = (p.adjustments || []).map(a => `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(0,0,0,0.06);font-size:13px;">
+      <span>One-off · ${escapeHtml(a.description)}</span>
+      <span style="display:flex;align-items:center;gap:8px;"><span style="font-weight:500;">$${a.amount}</span>${isPending ? `<button class="btn-sm" style="background:none;border:1px solid #ddd;color:#B91C1C;padding:2px 8px;" onclick="removePayoutAdjustment('${p.id}', '${a.id}')">Remove</button>` : ''}</span>
+    </div>`).join('');
+  const addAdjustmentHTML = isPending ? `
+    <div style="margin-top:12px;">
+      <label style="font-size:12px;font-weight:500;color:var(--navy);display:block;margin-bottom:6px;">Add a one-off amount</label>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="payoutAdjDescription" placeholder="Reason, e.g. marketing work" maxlength="200" style="flex:1;min-width:0;padding:8px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:13px;">
+        <input type="number" id="payoutAdjAmount" placeholder="$" min="0.01" max="5000" step="0.01" style="width:90px;padding:8px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:13px;">
+        <button class="btn-sm view-btn" id="addPayoutAdjBtn" onclick="addPayoutAdjustment('${p.id}')">Add</button>
+      </div>
+    </div>` : '';
   document.getElementById('payoutReviewContent').innerHTML = `
-    <div style="margin-bottom:16px;">${itemRows || '<div style="color:var(--text-light);font-size:13px;">No items.</div>'}</div>
+    <div style="margin-bottom:16px;">${itemRows || adjustmentRows ? itemRows + adjustmentRows : '<div style="color:var(--text-light);font-size:13px;">No items.</div>'}${addAdjustmentHTML}</div>
     ${tipsTotal ? `
     <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-light);padding-top:8px;">
       <span>Includes tips (${p.counts.tips.count})</span><span>$${tipsTotal}</span>
@@ -1948,6 +1967,36 @@ window.openPayoutReviewModal = async (paymentId) => {
     `}
   `;
   document.getElementById('payoutReviewModal').classList.add('open');
+};
+
+window.addPayoutAdjustment = async (paymentId) => {
+  const description = document.getElementById('payoutAdjDescription')?.value.trim();
+  const amount = Number(document.getElementById('payoutAdjAmount')?.value);
+  const errEl = document.getElementById('payoutReviewError');
+  if (errEl) errEl.style.display = 'none';
+  if (!description || !(amount > 0)) {
+    if (errEl) { errEl.textContent = 'Add a reason and an amount.'; errEl.style.display = 'block'; }
+    return;
+  }
+  const btn = document.getElementById('addPayoutAdjBtn');
+  if (btn) btn.disabled = true;
+  try {
+    await httpsCallable(fns, 'addPayoutAdjustment')({ paymentId, description, amount });
+    openPayoutReviewModal(paymentId);
+  } catch (e) {
+    if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+    if (btn) btn.disabled = false;
+  }
+};
+
+window.removePayoutAdjustment = async (paymentId, adjustmentId) => {
+  if (!confirm('Remove this one-off amount from the payout?')) return;
+  try {
+    await httpsCallable(fns, 'removePayoutAdjustment')({ paymentId, adjustmentId });
+    openPayoutReviewModal(paymentId);
+  } catch (e) {
+    alert('Could not remove it: ' + e.message);
+  }
 };
 
 window.markPayoutPaid = async (paymentId) => {

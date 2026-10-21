@@ -8753,7 +8753,9 @@ function buildPayoutCounts(walkSnaps, overnightSnaps, walkerId, { overnightPayou
 // directly callable (and testable) without going through Cloud Functions'
 // HTTPS/auth-token layer — adminUid is passed in explicitly rather than
 // read from request.auth.
-async function runGenerateWalkerPayout(adminUid, { walkerId, periodStart, periodEnd } = {}) {
+// allowEmpty: create the pending payout even with no unclaimed work, so
+// admin can pay a walker only one-off amounts (runAddPayoutAdjustment).
+async function runGenerateWalkerPayout(adminUid, { walkerId, periodStart, periodEnd, allowEmpty = false } = {}) {
   if (!walkerId) throw new HttpsError('invalid-argument', 'walkerId is required.');
   const periodStartDate = parseIsoDateStrict(periodStart);
   const periodEndDate = parseIsoDateStrict(periodEnd);
@@ -8816,7 +8818,7 @@ async function runGenerateWalkerPayout(adminUid, { walkerId, periodStart, period
   const unclaimedWalks = walksSnap.docs.filter(isUnclaimed);
   const unclaimedOvernights = overnightDocs.filter(isUnclaimedOvernight);
 
-  if (!unclaimedWalks.length && !unclaimedOvernights.length) {
+  if (!unclaimedWalks.length && !unclaimedOvernights.length && !allowEmpty) {
     return { status: 'no_unclaimed_work', walkerId, total: 0 };
   }
 
@@ -8841,7 +8843,7 @@ async function runGenerateWalkerPayout(adminUid, { walkerId, periodStart, period
     const stillUnclaimedWalks = freshWalks.filter(s => s.exists && !s.data().payoutId);
     const stillUnclaimedOvernights = freshOvernights.filter(s => s.exists && !overnightClaimFor(s.data(), walkerId) && isOvernightPayee(s.data(), walkerId));
 
-    if (!stillUnclaimedWalks.length && !stillUnclaimedOvernights.length) {
+    if (!stillUnclaimedWalks.length && !stillUnclaimedOvernights.length && !allowEmpty) {
       // Everything this call found was claimed by a concurrent generate()
       // between the query above and this transaction committing.
       return { status: 'no_unclaimed_work', walkerId, total: 0 };
@@ -8917,6 +8919,59 @@ async function runMarkPaid(adminUid, { paymentId, quickbooksReference } = {}) {
     return { status: 'paid', paymentId };
   });
 }
+
+// One-off amounts on a pending payout (a canceled visit still paid,
+// marketing work, etc.): adjustments [{ id, description, amount, addedAt,
+// addedBy }], each added into the payout's total. Not tied to any walk or
+// reservation, so voiding the payout just drops them with it. Pending only,
+// like Mark Paid — a paid payout's total is money already out.
+async function runAddPayoutAdjustment(adminUid, { paymentId, description, amount } = {}) {
+  if (!paymentId) throw new HttpsError('invalid-argument', 'paymentId is required.');
+  const desc = typeof description === 'string' ? description.trim() : '';
+  if (!desc || desc.length > 200) throw new HttpsError('invalid-argument', 'Add a reason of 200 characters or fewer.');
+  const amt = Math.round(Number(amount) * 100) / 100;
+  if (!Number.isFinite(amt) || amt <= 0 || amt > 5000) throw new HttpsError('invalid-argument', 'Amount must be between $0.01 and $5,000.');
+
+  const paymentRef = db.collection('walkerPayments').doc(paymentId);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(paymentRef);
+    if (!snap.exists) throw new HttpsError('not-found', 'Payment record not found.');
+    const payment = snap.data();
+    if (payment.status !== 'pending') throw new HttpsError('failed-precondition', `This payment is '${payment.status}' — one-off amounts can only be added to a pending payout.`);
+    const adjustment = { id: paymentRef.collection('_').doc().id, description: desc, amount: amt, addedAt: Timestamp.now(), addedBy: adminUid };
+    const total = Math.round(((payment.total || 0) + amt) * 100) / 100;
+    tx.update(paymentRef, { adjustments: [...(payment.adjustments || []), adjustment], total });
+    return { status: 'added', paymentId, total };
+  });
+}
+
+async function runRemovePayoutAdjustment(adminUid, { paymentId, adjustmentId } = {}) {
+  if (!paymentId || !adjustmentId) throw new HttpsError('invalid-argument', 'paymentId and adjustmentId are required.');
+  const paymentRef = db.collection('walkerPayments').doc(paymentId);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(paymentRef);
+    if (!snap.exists) throw new HttpsError('not-found', 'Payment record not found.');
+    const payment = snap.data();
+    if (payment.status !== 'pending') throw new HttpsError('failed-precondition', `This payment is '${payment.status}' — only a pending payout can be changed.`);
+    const adjustments = payment.adjustments || [];
+    const adj = adjustments.find(a => a.id === adjustmentId);
+    if (!adj) throw new HttpsError('not-found', 'That one-off amount is no longer on this payout.');
+    const total = Math.round(((payment.total || 0) - adj.amount) * 100) / 100;
+    tx.update(paymentRef, { adjustments: adjustments.filter(a => a.id !== adjustmentId), total });
+    return { status: 'removed', paymentId, total };
+  });
+}
+
+exports.addPayoutAdjustment = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+  return runAddPayoutAdjustment(request.auth.uid, request.data || {});
+});
+exports.removePayoutAdjustment = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+  return runRemovePayoutAdjustment(request.auth.uid, request.data || {});
+});
+exports.runAddPayoutAdjustment = runAddPayoutAdjustment;
+exports.runRemovePayoutAdjustment = runRemovePayoutAdjustment;
 
 exports.markPaid = onCall({}, async (request) => {
   await assertIsAdmin(request.auth);
