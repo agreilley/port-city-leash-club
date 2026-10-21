@@ -4606,6 +4606,7 @@ window.openOvernightModal = (overnightId) => {
               <span style="font-size:12px;font-weight:500;color:${isDone ? 'var(--green)' : 'var(--text-light)'};">${isDone ? '✓ Completed' : 'Expected'}</span>
             </div>
             ${visitWalkerSelectHTML(o, v, _walkers)}
+            ${!isCompleted && !isDone ? visitEditHTML(o, v) : ''}
             ${v.note ? `<div style="font-size:12px;color:var(--text-mid);margin-top:4px;">${escapeHtml(v.note)}</div>` : ''}
             ${completionPhotosHtml(v.photoUrls, v.photoUrl, 'Visit photo', '160px')}
           </div>`;
@@ -4687,6 +4688,83 @@ function visitWalkerSelectHTML(o, v, walkers) {
     </select>
   </div>`;
 }
+
+// Change the time of, or remove, one visit that hasn't happened yet, on a
+// stay that isn't completed (after that its pay is stamped). Only shown
+// for those visits.
+function visitEditHTML(o, v) {
+  const opts = VISIT_SLOTS.map(s => `<option value="${s}" ${s === v.slot ? 'selected' : ''}>${escapeHtml(VISIT_SLOT_LABELS[s])} (${escapeHtml(VISIT_SLOT_RANGES[s])})</option>`).join('');
+  return `<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+    <span style="font-size:12px;color:var(--text-light);">Time</span>
+    <select style="flex:1;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:4px 6px;font-size:12px;font-family:'DM Sans',sans-serif;"
+      onchange="changeStayVisit('${o.id}', '${v.id}', this.value)">${opts}</select>
+    <button class="btn-secondary" style="padding:4px 10px;font-size:12px;color:var(--rust);" onclick="changeStayVisit('${o.id}', '${v.id}', null)">Remove</button>
+  </div>`;
+}
+
+// Moves one visit off fromSlot on its day's entry in a per-day list
+// ([{ date, visits, slots }] — visitSchedule or addOnDropIns), onto toSlot,
+// or drops it (toSlot null), removing the day when it reaches 0 visits.
+function moveDayScheduleVisit(list, date, fromSlot, toSlot) {
+  if (!Array.isArray(list)) return list;
+  return list.flatMap(day => {
+    if (day.date !== date) return [day];
+    let slots = Array.isArray(day.slots) ? [...day.slots] : null;
+    if (slots) {
+      const i = slots.indexOf(fromSlot);
+      if (i !== -1) slots.splice(i, 1);
+      if (toSlot) slots = [...slots, toSlot].sort((a, b) => VISIT_SLOTS.indexOf(a) - VISIT_SLOTS.indexOf(b));
+    }
+    const visits = toSlot ? day.visits : Math.max((Number(day.visits) || 0) - 1, 0);
+    if (!visits) return [];
+    return [{ ...day, visits, ...(slots ? { slots } : {}) }];
+  });
+}
+
+// Changes one visit's time (toSlot) or removes it (toSlot null). Keeps the
+// per-day counts walker pay reads in step: visitSchedule on a drop-in
+// booking, addOnDropIns for an extra drop-in on an overnight stay (an
+// included check-in on a stay has no count — the night pays for it).
+// The member's charge is never touched; any refund is separate and manual.
+// The walker's 5pm assignment digest picks the change up on its own.
+// Removing the last open piece closes the stay, same as setNightSkipped.
+window.changeStayVisit = async (overnightId, visitId, toSlot) => {
+  if (!toSlot && !confirm("Remove this visit? The walker won't be paid for it. The customer's charge doesn't change — any refund is separate.")) return;
+  try {
+    await runTransaction(db, async (tx) => {
+      const ref = doc(db, 'overnights', overnightId);
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error('Reservation not found.');
+      const o = snap.data();
+      if (o.status === 'completed') throw new Error('This stay is already completed and its pay is set.');
+      const visit = (o.visits || []).find(v => v.id === visitId);
+      if (!visit) throw new Error('Visit not found.');
+      if (visit.status === 'completed') throw new Error('This visit was already completed.');
+      if (toSlot === visit.slot) return;
+      const isCheckin = isCheckinType(o.serviceType);
+      if (!toSlot && isCheckin && o.visits.length === 1) throw new Error("This is the reservation's only visit. Use Cancel Reservation instead.");
+      const visits = toSlot
+        ? o.visits.map(v => v.id === visitId ? { ...v, slot: toSlot } : v)
+        : o.visits.filter(v => v.id !== visitId);
+      const update = { visits, updatedAt: serverTimestamp() };
+      if (isCheckin && Array.isArray(o.visitSchedule)) update.visitSchedule = moveDayScheduleVisit(o.visitSchedule, visit.date, visit.slot, toSlot);
+      if (!isCheckin && visit.addOn && Array.isArray(o.addOnDropIns)) {
+        const addOnDropIns = moveDayScheduleVisit(o.addOnDropIns, visit.date, visit.slot, toSlot);
+        update.addOnDropIns = addOnDropIns.length ? addOnDropIns : null;
+      }
+      const next = { ...o, ...update };
+      update.walkerIds = overnightWalkerIds(next);
+      if (!toSlot && stayReadyToClose(next)) {
+        update.status = 'completed';
+        update.completedAt = serverTimestamp();
+      }
+      tx.update(ref, update);
+    });
+  } catch (e) {
+    alert('Could not change the visit: ' + e.message);
+  }
+  setTimeout(() => openOvernightModal(overnightId), 300);
+};
 
 // Per-night walker override, the night counterpart to
 // visitWalkerSelectHTML. A covering walker earns WALKER_NIGHT_COVER_RATE
