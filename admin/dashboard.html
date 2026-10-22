@@ -1153,6 +1153,10 @@
         </select>
       </div>
     </div>
+    <label style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:13px;cursor:pointer;">
+      <input type="checkbox" id="nr-charge-before-start" style="margin-top:2px;">
+      <span>Charge 48 hours before it starts (9am ET two days before), instead of 24 hours after confirming</span>
+    </label>
     <div id="nr-error" style="display:none;color:var(--rust);font-size:12px;margin-top:8px;"></div>
     <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">
       <button class="btn-secondary" onclick="closeModal('newReservationModal')">Cancel</button>
@@ -5369,6 +5373,7 @@ window.openNewReservationModal = () => {
       return `<option value="${m.id}">${escapeHtml(m.name)}${dogs ? ' — ' + escapeHtml(dogs) : ''}</option>`;
     }).join('');
   document.getElementById('nr-type').value = 'overnight';
+  document.getElementById('nr-charge-before-start').checked = false;
   const errEl = document.getElementById('nr-error');
   errEl.style.display = 'none'; errEl.textContent = '';
   document.getElementById('newReservationModal').classList.add('open');
@@ -5397,6 +5402,10 @@ window.submitNewReservation = async () => {
   const data = {
     type, memberId, memberName: member?.name || '', service,
     status: 'pending', read: true, adminCreated: true, createdAt: serverTimestamp(),
+    // Read by runServiceOrOvernightBookingDoc at confirm — same 48-hours-
+    // before-start timing as CHARGE_48H_BEFORE_START_EMAILS, for this one
+    // reservation only.
+    ...(document.getElementById('nr-charge-before-start').checked ? { chargeBeforeStart: true } : {}),
   };
   const docRef = await addDoc(collection(db, 'submissions'), data);
   // allRequests is fully rebuilt on the next `submissions` snapshot (see the

@@ -6511,8 +6511,10 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
     // (chargeBeforeStartDate) — confirmed inside that window, the charge is
     // due now and the next sweep takes it. chargeTiming tells the
     // confirmation email to say so; it's left off a short-notice booking,
-    // whose charge date is just today.
-    const beforeStart = CHARGE_48H_BEFORE_START_EMAILS.includes((member?.email || '').trim().toLowerCase())
+    // whose charge date is just today. A single reservation added from the
+    // admin New Reservation modal can opt in too (sub.chargeBeforeStart).
+    const beforeStart = (sub.adminCreated && sub.chargeBeforeStart)
+      || CHARGE_48H_BEFORE_START_EMAILS.includes((member?.email || '').trim().toLowerCase())
       ? chargeBeforeStartDate(reviewed.startDate)
       : null;
     const chargeTiming = beforeStart && beforeStart.getTime() > Date.now() ? '48h_before_start' : null;
