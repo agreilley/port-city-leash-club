@@ -1064,6 +1064,10 @@ onAuthStateChanged(auth, async (user) => {
         const sortedVisits = [...completedVisits, ...completedNights]
           .sort((a, b) => dayKey(a).localeCompare(dayKey(b)) || (a._night ? 1 : 0) - (b._night ? 1 : 0) || toJsDate(a.date) - toJsDate(b.date));
         const nightDate = (u) => new Date(`${u.date}T12:00:00`);
+        // A visit's date is a plain 'YYYY-MM-DD' that new Date() reads as
+        // midnight UTC — the evening before in ET — so pin its day to local
+        // noon the same way nights are.
+        const visitDate = (u) => new Date(`${dayKey(u)}T12:00:00`);
         const isComplete = o.status === 'completed';
 
         return {
@@ -1073,7 +1077,7 @@ onAuthStateChanged(auth, async (user) => {
           // keeps surfacing near the top of the feed as new visits land,
           // rather than sitting wherever the LAST day happens to fall once
           // the whole thing is finally done.
-          sortDate: (u => u._night ? nightDate(u) : toJsDate(u.date))(sortedVisits[sortedVisits.length - 1]),
+          sortDate: (u => u._night ? nightDate(u) : visitDate(u))(sortedVisits[sortedVisits.length - 1]),
           avatar: isCheckin ? '📍' : '🌙',
           walkerName: o.walkerName || 'Your Walker',
           subLabel: [
@@ -1082,7 +1086,7 @@ onAuthStateChanged(auth, async (user) => {
           ].filter(Boolean).join(' and ') + ' completed' + (isComplete ? '' : ' so far'),
           badgeLabel: serviceLabel,
           visitUpdates: sortedVisits.map(v => ({
-            dateStr: (v._night ? nightDate(v) : toJsDate(v.date)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            dateStr: (v._night ? nightDate(v) : visitDate(v)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
             slotLabel: v._night ? 'Overnight' : (VISIT_SLOT_LABELS[v.slot] || v.slot || ''),
             note: v.note || '',
             photoUrls: Array.isArray(v.photoUrls) && v.photoUrls.length ? v.photoUrls : (v.photoUrl ? [v.photoUrl] : []),
