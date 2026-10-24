@@ -1574,11 +1574,16 @@ const HISTORY_TYPE_META = {
   overnight: { label: 'Overnight Stay', cls: 'overnight' },
 };
 
+// The card shows sortDate's local day, but walk/visit dates are midnight
+// UTC (8pm ET the day before) — so take the stored day via walkDateStr,
+// the same match the calendar uses, and pin it to local noon like nights.
+const historyDay = (d) => new Date(`${walkDateStr(d)}T12:00:00`);
+
 function renderHistory() {
   const container = document.getElementById('historyList');
   const pastWalks = myWalks
     .filter(w => walkIsBeforeToday(w.date) || w.status === 'completed')
-    .map(w => ({ type: 'walk', sortDate: w.date?.toDate?.() || new Date(w.date), onclick: `openWalkDetail('${w.id}')`, walk: w }));
+    .map(w => ({ type: 'walk', sortDate: historyDay(w.date), onclick: `openWalkDetail('${w.id}')`, walk: w }));
 
   // Drop-in/overnight visits, flattened the same way renderStats already
   // does for the "Completed" stat. Same inclusion rule as pastWalks above —
@@ -1596,7 +1601,7 @@ function renderHistory() {
     const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
     return (Array.isArray(o.visits) ? o.visits : [])
       .filter(v => walkIsBeforeToday(v.date) || v.status === 'completed')
-      .map(v => ({ type: isCheckin ? 'dropin' : 'overnight', sortDate: v.date?.toDate?.() || new Date(v.date), onclick: `openVisitCompleteForm('${o.id}', '${v.id}')`, overnight: o, visit: v }));
+      .map(v => ({ type: isCheckin ? 'dropin' : 'overnight', sortDate: historyDay(v.date), onclick: `openVisitCompleteForm('${o.id}', '${v.id}')`, overnight: o, visit: v }));
   });
   // Nights, same inclusion rule. A night on a stay that closed before
   // nights were completable reads as completed, like the stay. Skipped
