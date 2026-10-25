@@ -1413,7 +1413,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import {
   initializeFirestore, memoryLocalCache, collection, collectionGroup, query, orderBy, onSnapshot,
-  doc, getDoc, getDocs, addDoc, updateDoc, setDoc, where, limit, startAfter,
+  doc, getDoc, getDocs, addDoc, updateDoc, setDoc, deleteDoc, where, limit, startAfter,
   serverTimestamp, Timestamp, writeBatch, runTransaction, arrayUnion, arrayRemove, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
@@ -5090,8 +5090,41 @@ window.openWalkModal = async (walkId) => {
     ${(Array.isArray(walk.photoUrls) && walk.photoUrls.length) || walk.photoUrl ? `<div class="modal-field" style="margin-top:10px;">${completionPhotosHtml(walk.photoUrls, walk.photoUrl, 'Walk photo', '100%')}</div>` : ''}
     <hr class="modal-divider">
     ${assignmentHTML}
+    ${walk.status !== 'completed' ? `
+    <hr class="modal-divider">
+    <button class="btn-secondary" style="width:100%;color:var(--rust);" onclick="cancelWalk('${walkId}')">Cancel walk</button>` : ''}
   `;
   document.getElementById('walkModal').classList.add('open');
+};
+
+// Canceling a walk deletes its doc, same as a vacation hold does
+// (submitVacationHold), so an unbilled walk simply isn't counted by
+// syncMonthlyWalkQuantities on the 1st. Nothing regenerates it: by the time a
+// month's walks exist, generateMonthlyWalks has moved on to the next month —
+// only a member schedule change (updateWalkSchedule) rebuilds next month's
+// walks from scratch. A walk that's already been paid for (billedPeriod, or a
+// one-off walk charged on its own via submissionId) is NOT refunded here, so
+// the confirm says so.
+window.cancelWalk = async (walkId) => {
+  const _walks = window.allWalks || allWalks;
+  const _members = window.allMembers || allMembers;
+  const walk = _walks.find(w => w.id === walkId);
+  if (!walk) return;
+  const member = _members.find(m => m.id === (walk.memberId||"").trim());
+  const date = walk.date?.toDate?.() || new Date(walk.date);
+  const dateLabel = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const who = member?.name ? `${member.name}'s` : 'this';
+  const msg = (walk.billedPeriod || walk.submissionId)
+    ? `Cancel ${who} walk on ${dateLabel}?\n\nThis walk has already been charged. Canceling removes it from the calendar but does NOT refund it — issue any refund separately.`
+    : `Cancel ${who} walk on ${dateLabel}?\n\nIt will be removed from the calendar and won't be billed.`;
+  if (!confirm(msg)) return;
+  try {
+    await deleteDoc(doc(db, 'walks', walkId));
+    closeModal('walkModal');
+  } catch (e) {
+    console.error('cancelWalk failed:', e);
+    alert('Could not cancel this walk: ' + e.message);
+  }
 };
 
 window.assignWalker = async (walkId, walkerId) => {
