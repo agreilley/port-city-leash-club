@@ -110,4 +110,17 @@
       window.pclcTrackGA('form_start');
     });
   }
+
+  // form_start — same, for the one-time / pet sitting request form
+  // (service-request.html), tagged so it can be told apart from the
+  // membership form's form_start without filtering by page.
+  var serviceForm = document.getElementById('serviceForm');
+  if (serviceForm) {
+    var serviceStarted = false;
+    serviceForm.addEventListener('focusin', function () {
+      if (serviceStarted) return;
+      serviceStarted = true;
+      window.pclcTrackGA('form_start', { lead_type: 'service_request' });
+    });
+  }
 })();
