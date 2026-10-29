@@ -376,7 +376,11 @@
     /* Pet Sitting Services: stack cards on mobile */
     .sitting-cards-grid { grid-template-columns: 1fr !important; gap: 16px; }
     .how-steps { grid-template-columns: 1fr; gap: 24px; }
-    .team-points { grid-template-columns: 1fr; gap: 24px; }
+    /* Phones: the stacked points get thin dividers so they read as three
+       separate reasons, not a continuation of the How It Works list above */
+    .team-points { grid-template-columns: 1fr; gap: 0; margin-top: 28px; }
+    .team-points > div { padding: 20px 0; border-top: 1px solid rgba(255,255,255,0.14); }
+    .team-points > div:last-child { padding-bottom: 0; }
 
     /* Why section: hidden on mobile (content covered elsewhere; reduces text density).
        Desktop unchanged. Faint membership/founder warm-white seam accepted. */
