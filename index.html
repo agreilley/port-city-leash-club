@@ -75,7 +75,7 @@
   .btn-nav { background: var(--rust); color: white !important; border: none; border-radius: 4px; padding: 10px 20px; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; }
 
   /* HERO */
-  .hero { padding: 80px 48px; display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 48px; align-items: center; max-width: 1100px; margin: 0 auto; }
+  .hero { padding: 80px 48px; display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 48px; align-items: center; max-width: 1196px; margin: 0 auto; }
   .hero-eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 20px; }
   .hero-headline { font-family: 'Cormorant Garamond', serif; font-size: 64px; font-weight: 300; line-height: 1.05; color: var(--navy); margin-bottom: 24px; }
   .hero-sub { font-size: 16px; color: var(--text-mid); line-height: 1.7; margin-bottom: 36px; max-width: 380px; }
@@ -99,7 +99,6 @@
   .section-eyebrow { font-size: 13px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 12px; }
   .section-headline { font-family: 'Cormorant Garamond', serif; font-size: 42px; font-weight: 300; color: var(--navy); line-height: 1.1; margin-bottom: 16px; }
   .section-sub { font-size: 15px; color: var(--text-mid); max-width: 620px; line-height: 1.7; margin-bottom: 48px; }
-  .section-lead { font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 20px; font-weight: 400; color: var(--text-mid); line-height: 1.35; margin: -6px 0 28px; }
 
   /* MEMBERSHIP */
   .membership-section { background: var(--sand-light); }
@@ -124,7 +123,7 @@
      extra space instead keeps the gutter in front of the right-aligned
      price/button visually consistent with the real 32px column-gap,
      rather than reading as its own oversized fourth gap. */
-  .membership-card { max-width: 990px; margin: 0 auto 16px; background: linear-gradient(135deg, #C17B6F 0%, #8FA8A2 100%); border: none; border-radius: 8px; padding: 40px 44px; display: grid; grid-template-columns: 1.25fr 1.25fr 1fr; column-gap: 32px; align-items: center; }
+  .membership-card { margin: 40px 0 16px; background: linear-gradient(135deg, #C17B6F 0%, #8FA8A2 100%); border: none; border-radius: 8px; padding: 40px 44px; display: grid; grid-template-columns: 1.25fr 1.25fr 1fr; column-gap: 32px; align-items: center; }
   .membership-prose { font-size: 14px; color: rgba(255,255,255,0.92); line-height: 1.6; }
   .membership-prose + .membership-prose { margin-top: 10px; }
   /* Center column: heading and list both centered, not left-aligned like
@@ -226,7 +225,7 @@
   .petsitting-item { border-radius: 6px; padding: 12px; }
 
   /* CLIENT REVIEWS — same scroll-snap carousel as pet-sitting.html */
-  .testimonial-carousel { position: relative; max-width: 900px; margin: 40px auto 0; }
+  .testimonial-carousel { position: relative; margin: 40px 0 0; }
   .carousel-track { display: flex; gap: 24px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
   .carousel-track::-webkit-scrollbar { display: none; }
   .carousel-card { flex: 0 0 calc(50% - 12px); scroll-snap-align: start; padding: 40px; background: white; border: 1px solid rgba(0,0,0,0.06); border-radius: 8px; display: flex; flex-direction: column; }
@@ -280,7 +279,7 @@
      services(warm) membership(sand) how-it-works(warm) reviews(sand)
      map(warm) founder(sand) $20 offer(navy). */
   .founder-section { background: var(--sand-light); }
-  .founder-layout { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 48px; align-items: stretch; }
+  .founder-layout { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 48px; align-items: stretch; margin-top: 80px; } /* room for the quote mark that sits above the card */
   .founder-photo { border-radius: 8px; overflow: hidden; aspect-ratio: 1 / 1; align-self: center; background: var(--sand); border:1px solid rgba(0,0,0,0.06); }
   .founder-copy { background: white; border:1px solid rgba(0,0,0,0.06); border-radius:8px; padding: 44px 42px; display: flex; flex-direction: column; justify-content: center; position: relative; }
   .founder-quote-mark { font-family: 'Cormorant Garamond', serif; font-size: 140px; line-height: 1; color: var(--rust); position: absolute; top: -46px; left: 42px; }
@@ -370,7 +369,6 @@
     /* Pet Sitting Services: stack cards on mobile */
     .sitting-cards-grid { grid-template-columns: 1fr !important; gap: 16px; }
     .how-steps { grid-template-columns: 1fr; gap: 24px; }
-    .section-lead { font-size: 18px; margin-bottom: 24px; }
 
     /* Why section: hidden on mobile (content covered elsewhere; reduces text density).
        Desktop unchanged. Faint membership/founder warm-white seam accepted. */
@@ -394,7 +392,7 @@
     .founder-photo { order: -1; }
     .founder-copy { padding: 28px 20px; order: 1; }
     .founder-quote-mark { font-size: 90px; top: -28px; left: 20px; }
-    .founder-layout { display: flex; flex-direction: column; }
+    .founder-layout { display: flex; flex-direction: column; margin-top: 40px; }
 
     /* Map */
     .address-search-row { grid-template-columns: 1fr !important; }
@@ -549,7 +547,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   <div class="section-inner">
     <p class="section-eyebrow">Drop-in visits &amp; overnight stays</p>
     <h2 class="section-headline">Pet Sitting</h2>
-    <p class="section-lead">Two ways we care for your pets while you're away.</p>
 
     <div class="sitting-cards-grid" style="margin-top:40px;">
 
@@ -588,7 +585,6 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   <div class="section-inner">
     <p class="section-eyebrow">Dog walking membership</p>
     <h2 class="section-headline">The Leash Club</h2>
-    <p class="section-lead">Your dog deserves a team they know.</p>
     <div class="membership-card">
       <div class="membership-prose-col">
         <p class="membership-prose">Set the days that work for your week, and we'll take care of the rest. Your Leash Club membership includes recurring 30-minute walks, with 45-minute walks available.</p>
@@ -621,8 +617,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 <!-- 4. HOW IT WORKS (pet sitting and the Leash Club) -->
 <section id="how-it-works" style="background: var(--warm-white);">
   <div class="section-inner">
-    <p class="section-eyebrow">How it works</p>
-    <h2 class="section-headline">Simple from the first request</h2>
+    <p class="section-eyebrow">Simple from the first request</p>
+    <h2 class="section-headline">How It Works</h2>
     <div class="how-steps">
       <div>
         <div class="how-step-num">01</div>
@@ -652,8 +648,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 <!-- 5. CLIENT REVIEWS -->
 <section style="background: var(--sand-light);">
   <div class="section-inner">
-    <p class="section-eyebrow">Client reviews</p>
-    <h2 class="section-headline">Trusted by Wilmington pet owners</h2>
+    <p class="section-eyebrow">Trusted by Wilmington pet owners</p>
+    <h2 class="section-headline">Client Reviews</h2>
 
     <div class="testimonial-carousel">
       <div class="carousel-track" id="testimonialTrack">
@@ -693,12 +689,12 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 <!-- 6. SERVICE AREA -->
 <section class="map-section">
   <div class="section-inner">
-    <p class="section-eyebrow">Where We Walk</p>
-    <h2 class="section-headline">Serving Wilmington's finest neighborhoods.</h2>
+    <p class="section-eyebrow">Serving Wilmington's finest neighborhoods</p>
+    <h2 class="section-headline">Where We Walk</h2>
 
-    <!-- Centered search bar + map -->
-    <div style="max-width:700px;margin:32px auto;">
-      <p class="section-sub" style="text-align:center;max-width:700px;margin:0 auto 20px;">Wondering if we're in your neighborhood? Enter your address to find out.</p>
+    <!-- Search bar + map, left-aligned with the section title -->
+    <div style="max-width:700px;margin:40px 0 0;">
+      <p class="section-sub" style="max-width:700px;margin:0 0 20px;">Wondering if we're in your neighborhood? Enter your address to find out.</p>
       <div class="address-search-row" style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:16px;">
         <input id="address-input" class="search-input" type="text" placeholder="Enter your address">
         <button id="check-address-btn" class="search-btn">Check my address</button>
@@ -730,7 +726,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 <!-- 7. MEET THE FOUNDER -->
 <section class="founder-section">
   <div class="section-inner">
-    <p class="section-eyebrow" style="margin-bottom:24px;">Meet the Founder</p>
+    <p class="section-eyebrow">Our story</p>
+    <h2 class="section-headline">Meet the Founder</h2>
     <div class="founder-layout">
       <div class="founder-copy">
         <div class="founder-quote-mark">&ldquo;</div>
