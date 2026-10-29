@@ -28,6 +28,9 @@
   .nav-links { display: flex; align-items: center; gap: 32px; list-style: none; }
   .nav-links a:not(.btn-nav) { font-size: 13px; color: var(--text-mid); text-decoration: none; letter-spacing: 0.04em; }
   .btn-nav { background: var(--rust); color: white !important; border: none; border-radius: 4px; padding: 10px 20px; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; text-decoration: none; display: inline-block; transition: background 0.2s; }
+  /* Menu Login: outlined (white, coral border), coral on hover; the menu has no filled button */
+  .btn-nav.btn-nav-outline { background: white; color: var(--rust) !important; border: 1.5px solid var(--rust); padding-top: 8.5px; padding-bottom: 8.5px; }
+  .btn-nav.btn-nav-outline:hover { background: var(--rust); color: white !important; }
   .btn-nav:hover { background: var(--rust-dark); }
 
   /* HERO */
@@ -150,10 +153,10 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 <nav>
   <a class="nav-logo" href="/" style="text-decoration:none;display:flex;align-items:center;"><img src="images/logo-horizontal.png" alt="Port City Leash Club" style="height:72px;width:auto;"></a>
   <ul class="nav-links" id="navLinks">
-    <li><a href="/#membership">Membership</a></li>
+    <li><a href="/#services">Pet Sitting</a></li>
+    <li><a href="/#membership">Leash Club</a></li>
     <li><a href="/faq">FAQ</a></li>
-    <li><a href="/portal-login">Login</a></li>
-    <li><a class="btn-nav" href="/service-request">Request Pet Sitting</a></li>
+    <li><a class="btn-nav btn-nav-outline" href="/portal-login">Login</a></li>
   </ul>
   <div class="hamburger" id="hamburger" onclick="toggleNav()" style="display:none;">
     <span></span><span></span><span></span>
