@@ -101,12 +101,7 @@
   .section-sub { font-size: 15px; color: var(--text-mid); max-width: 620px; line-height: 1.7; margin-bottom: 48px; }
 
   /* MEMBERSHIP */
-  /* padding-bottom tightened (generic `section` gives 80px) — membership
-     and how-works-section now share a background so they read as one
-     story; the full double-padding gap between them read as an accidental
-     empty section rather than a continuous flow. See how-works-section's
-     matching padding-top below. */
-  .membership-section { background: var(--warm-white); padding-bottom: 16px; }
+  .membership-section { background: var(--sand-light); }
   .how-works-section { padding-top: 16px; }
   /* Portal treatment: same rust-to-seafoam diagonal as the member portal's
      Walk Routine banner, full saturation — a muted/desaturated pass read
@@ -199,7 +194,7 @@
   a.btn-primary, a.btn-nav { display: inline-block; text-align: center; text-decoration: none; color: white !important; }
 
   /* SERVICE AREA */
-  .map-section { background: var(--sand-light); }
+  .map-section { background: var(--warm-white); }
   .map-container { border-radius: 8px; overflow: hidden; border: 1px solid rgba(0,0,0,0.08); margin-bottom: 32px; height: 340px; background: var(--sand); position: relative; display: flex; align-items: center; justify-content: center; }
   .map-placeholder { text-align: center; }
   .map-placeholder-label { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-light); margin-bottom: 12px; }
@@ -280,6 +275,9 @@
   .footer-social:hover { color: rgba(255,255,255,0.8); }
 
   html { scroll-behavior: smooth; }
+  /* Section colors alternate down the page (2026-10-29): hero(warm)
+     services(warm) membership(sand) how-it-works(warm) reviews(sand)
+     map(warm) founder(sand) $20 offer(navy). */
   .founder-section { background: var(--sand-light); }
   .founder-layout { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 48px; align-items: stretch; }
   .founder-photo { border-radius: 8px; overflow: hidden; aspect-ratio: 1 / 1; align-self: center; background: var(--sand); border:1px solid rgba(0,0,0,0.06); }
@@ -339,11 +337,6 @@
 
     /* Sections */
     section { padding: 48px 20px; }
-    /* Same tightening as desktop — membership and how-works-section share
-       a background now, so the stacked-padding gap between them needs to
-       shrink proportionally to mobile's smaller base padding too. */
-    .membership-section { padding-bottom: 10px; }
-    .how-works-section { padding-top: 10px; }
 
     /* Membership: card stacks to one column — the three grid columns
        (prose, benefit list, price/CTA) stack in DOM order. Gradient
@@ -400,12 +393,6 @@
     .founder-copy { padding: 28px 20px; order: 1; }
     .founder-quote-mark { font-size: 90px; top: -28px; left: 20px; }
     .founder-layout { display: flex; flex-direction: column; }
-    /* Membership and How the Leash Club works share one color deliberately
-       (one story, not two sections). Pet-sitting-first order (2026-10-29):
-       hero(warm) services(warm) how-it-works(warm) reviews(sand)
-       membership + leash steps(warm) map(sand) faq(warm) founder(warm on
-       mobile, sand on desktop) ready-to-plan(navy) $20 offer(navy). */
-    .founder-section { background: var(--warm-white); }
 
     /* Map */
     .address-search-row { grid-template-columns: 1fr !important; }
@@ -593,7 +580,41 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 </section>
 
 
-<!-- 3. HOW IT WORKS (pet sitting) -->
+<!-- 3. MEMBERSHIP -->
+<section class="membership-section" id="membership">
+  <div class="section-inner">
+    <p class="section-eyebrow">The Leash Club · Dog Walking Membership</p>
+    <h2 class="section-headline">Your dog deserves a team they know.</h2>
+    <div class="membership-card">
+      <div class="membership-prose-col">
+        <p class="membership-prose">Set the days that work for your week, and we'll take care of the rest. Your Leash Club membership includes recurring 30-minute walks, with 45-minute walks available.</p>
+      </div>
+      <div class="membership-list-col">
+        <div class="membership-list-heading">What's included</div>
+        <ul class="membership-features">
+          <li>A familiar walker on your weekly schedule</li>
+          <li>Welcome gift</li>
+          <li>Walk photos &amp; notes</li>
+          <li>Priority scheduling</li>
+          <li>$50 credit every 50 walks</li>
+        </ul>
+      </div>
+      <div class="membership-card-side">
+        <div class="membership-price"><div class="membership-price-amount">$27</div><div class="membership-price-unit">/walk</div></div>
+        <div class="membership-price-notes">
+          <div class="membership-price-compare">10% off our $30 single walk rate</div>
+          <div class="membership-price-compare" style="font-weight:500;color:white;">No enrollment fee. Pause for vacations. Cancel anytime.</div>
+        </div>
+        <a class="btn-membership" href="/membership-request" data-cta="tier_membership">Get started</a>
+      </div>
+    </div>
+
+    <div class="single-walk-banner">Not ready to commit? <a href="/service-request?service=standard-walk" style="color:var(--navy);font-weight:500;">One-time walks start at $30</a>, no membership required.</div>
+  </div>
+</section>
+
+
+<!-- 4. HOW IT WORKS (pet sitting and the Leash Club) -->
 <section id="how-it-works" style="background: var(--warm-white);">
   <div class="section-inner">
     <p class="section-eyebrow">How it works</p>
@@ -601,8 +622,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     <div class="how-steps">
       <div>
         <div class="how-step-num">01</div>
-        <div class="how-step-title">Request your dates</div>
-        <div class="how-step-text">Tell us about your trip and your pets. No payment needed to request.</div>
+        <div class="how-step-title">Tell us what you need</div>
+        <div class="how-step-text">Request dates for pet sitting, or choose your days for weekly walks. No payment needed to request.</div>
       </div>
       <div>
         <div class="how-step-num">02</div>
@@ -612,11 +633,11 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       <div>
         <div class="how-step-num">03</div>
         <div class="how-step-title">Set up your portal</div>
-        <div class="how-step-text">We'll email you a link to your client portal, where you'll add a card for your reservation and complete your pet's profile.</div>
+        <div class="how-step-text">We'll email you a link to your client portal, where you'll add a card and complete your pet's profile. Members manage their walk schedule there too.</div>
       </div>
       <div>
         <div class="how-step-num">04</div>
-        <div class="how-step-title">Relax while you're away</div>
+        <div class="how-step-title">Relax, we'll handle the rest</div>
         <div class="how-step-text">You'll get a photo and a note after every visit.</div>
       </div>
     </div>
@@ -624,7 +645,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 </section>
 
 
-<!-- 4. CLIENT REVIEWS -->
+<!-- 5. CLIENT REVIEWS -->
 <section style="background: var(--sand-light);">
   <div class="section-inner">
     <p class="section-eyebrow">Client reviews</p>
@@ -665,74 +686,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 </section>
 
 
-<!-- 5. MEMBERSHIP -->
-<section class="membership-section" id="membership">
-  <div class="section-inner">
-    <p class="section-eyebrow">The Leash Club · Dog Walking Membership</p>
-    <h2 class="section-headline">Your dog deserves a team they know.</h2>
-    <div class="membership-card">
-      <div class="membership-prose-col">
-        <p class="membership-prose">Set the days that work for your week, and we'll take care of the rest. Your Leash Club membership includes recurring 30-minute walks, with 45-minute walks available.</p>
-      </div>
-      <div class="membership-list-col">
-        <div class="membership-list-heading">What's included</div>
-        <ul class="membership-features">
-          <li>A familiar walker on your weekly schedule</li>
-          <li>Welcome gift</li>
-          <li>Walk photos &amp; notes</li>
-          <li>Priority scheduling</li>
-          <li>$50 credit every 50 walks</li>
-        </ul>
-      </div>
-      <div class="membership-card-side">
-        <div class="membership-price"><div class="membership-price-amount">$27</div><div class="membership-price-unit">/walk</div></div>
-        <div class="membership-price-notes">
-          <div class="membership-price-compare">10% off our $30 single walk rate</div>
-          <div class="membership-price-compare" style="font-weight:500;color:white;">No enrollment fee. Pause for vacations. Cancel anytime.</div>
-        </div>
-        <a class="btn-membership" href="/membership-request" data-cta="tier_membership">Get started</a>
-      </div>
-    </div>
-
-    <div class="single-walk-banner">Not ready to commit? <a href="/service-request?service=standard-walk" style="color:var(--navy);font-weight:500;">One-time walks start at $30</a>, no membership required.</div>
-  </div>
-</section>
-
-
-<!-- 6. HOW THE LEASH CLUB WORKS -->
-<section class="how-works-section" style="background: var(--warm-white);">
-  <div class="section-inner">
-    <div id="how-the-leash-club-works"></div>
-    <p class="section-eyebrow" style="margin-bottom:24px;">How The Leash Club Works</p>
-
-    <!-- 4 steps -->
-    <div class="steps-row" style="margin-bottom:16px;">
-      <div class="step-inline">
-        <div class="step-num">01</div>
-        <div class="step-title">Choose Your Schedule</div>
-        <div class="step-text">Pick the days that work for your week and a preferred time window.</div>
-      </div>
-      <div class="step-inline">
-        <div class="step-num">02</div>
-        <div class="step-title">Meet &amp; Greet</div>
-        <div class="step-text">We'll get to know you and your dog, learn your routine, and answer any questions before your first walk.</div>
-      </div>
-      <div class="step-inline">
-        <div class="step-num">03</div>
-        <div class="step-title">Manage Everything Online</div>
-        <div class="step-text">View upcoming walks, update your dog's information, and make schedule changes through the member portal.</div>
-      </div>
-      <div class="step-inline">
-        <div class="step-num">04</div>
-        <div class="step-title">Leave the Logistics to Us</div>
-        <div class="step-text">Once your schedule is in place, we'll take care of the rest. Focus on your day, knowing your dog's routine is covered.</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-
-<!-- 7. SERVICE AREA -->
+<!-- 6. SERVICE AREA -->
 <section class="map-section">
   <div class="section-inner">
     <p class="section-eyebrow">Where We Walk</p>
@@ -769,94 +723,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 </section>
 
 
-<!-- 8. PET SITTING FAQS -->
-<section class="faq-section">
-  <div class="section-inner">
-    <p class="section-eyebrow">Common questions</p>
-    <h2 class="section-headline">Pet sitting FAQs</h2>
-
-    <div class="faq-list">
-
-      <div class="faq-item">
-        <button class="faq-question">
-          <span class="faq-q-text">How are you different from a pet sitting app?</span>
-          <span class="faq-icon">+</span>
-        </button>
-        <div class="faq-answer">
-          <p>You'll meet a member of our team before the first visit, and the same small group cares for your pets each time, so they are never left with a stranger. We follow the routine your pets already have, so meals, medication, walks, and bedtime happen the way they happen when you're home. And you'll get a photo update after every visit, so you can see how they're doing without having to ask.</p>
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-question">
-          <span class="faq-q-text">What's the difference between a drop-in visit and an overnight stay?</span>
-          <span class="faq-icon">+</span>
-        </button>
-        <div class="faq-answer">
-          <p><strong>Drop-in visits</strong> are 20-minute check-ins while you're away: feeding, playtime, and a photo update. Most pet owners reserve 3-4 per day.</p>
-          <p><strong>Overnight stays:</strong> each night includes 12 hours of overnight care in your home (evening settling and overnight supervision), plus one mid-day drop-in visit tailored to your dog's routine. Want more coverage, like an extra visit on the day you leave or get back? You can add extra drop-in visits when you request your stay, and we'll confirm the times with you.</p>
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-question">
-          <span class="faq-q-text">Is your team insured?</span>
-          <span class="faq-icon">+</span>
-        </button>
-        <div class="faq-answer">
-          <p>Yes. Port City Leash Club carries full pet care liability insurance covering all walks and services. Every team member operates under this coverage, so you and your dog are always protected.</p>
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-question">
-          <span class="faq-q-text">Who's on the team?</span>
-          <span class="faq-icon">+</span>
-        </button>
-        <div class="faq-answer">
-          <p>Our team members are carefully selected, locally based dog lovers. Everyone on our team is background-checked, pet first aid certified, and personally trained before their first walk.</p>
-          <p>Our team is small on purpose, so everyone caring for your pet is trusted, trained, and held to the same high standard.</p>
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-question">
-          <span class="faq-q-text">How do you get into our home?</span>
-          <span class="faq-icon">+</span>
-        </button>
-        <div class="faq-answer">
-          <p>We'll collect a spare key or entry details at your free meet &amp; greet, so everything is set before the first visit.</p>
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-question">
-          <span class="faq-q-text">What if my pet gets sick while I'm away?</span>
-          <span class="faq-icon">+</span>
-        </button>
-        <div class="faq-answer">
-          <p>We'll contact you right away and follow your guidance on next steps. We keep your vet's information on file in case your pet needs to be seen.</p>
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-question">
-          <span class="faq-q-text">Do you serve my neighborhood?</span>
-          <span class="faq-icon">+</span>
-        </button>
-        <div class="faq-answer">
-          <p>Use the <a href="#map" style="color:var(--rust);">address checker</a> above to confirm your address is within our service area.</p>
-          <p>If you're outside our current area, you can sign up to be notified when we expand, we're growing quickly.</p>
-        </div>
-      </div>
-
-    </div>
-    <p style="text-align:center;margin-top:24px;font-size:14px;color:var(--text-mid);">More questions? <a href="/faq" style="color:var(--navy);font-weight:500;">See all FAQs &rarr;</a></p>
-  </div>
-</section>
-
-
-<!-- 9. MEET THE FOUNDER -->
+<!-- 7. MEET THE FOUNDER -->
 <section class="founder-section">
   <div class="section-inner">
     <p class="section-eyebrow" style="margin-bottom:24px;">Meet the Founder</p>
@@ -879,7 +746,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 </section>
 
 
-<!-- 10. $20 OFFER -->
+<!-- 8. $20 OFFER -->
 <section class="cta-section">
   <div class="section-inner">
     <p class="section-eyebrow">Stay In Touch</p>
