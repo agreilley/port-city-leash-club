@@ -6,20 +6,20 @@
   <link rel="icon" type="image/png" href="images/favicon.png">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dog Walking & Pet Sitting in Wilmington, NC | Port City Leash Club</title>
-<meta name="description" content="Dog walking and pet sitting in Wilmington, NC, including downtown, Landfall, and Porters Neck. A small local team for walks, drop-ins, and overnight stays, with an update after every visit.">
+<title>Pet Sitting & Dog Walking in Wilmington, NC | Port City Leash Club</title>
+<meta name="description" content="Pet sitting and dog walking in Wilmington, NC, including downtown, Landfall, and Porters Neck. A small local team for drop-ins, overnight stays, and walks, with an update after every visit.">
 <link rel="canonical" href="https://www.portcityleashclub.com/">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.portcityleashclub.com/">
 <meta property="og:site_name" content="Port City Leash Club">
-<meta property="og:title" content="Dog walking & pet sitting in Wilmington, NC">
-<meta property="og:description" content="Dog walking and pet sitting in Wilmington, NC, including downtown, Landfall, and Porters Neck. A small local team for walks, drop-ins, and overnight stays, with an update after every visit.">
+<meta property="og:title" content="Pet sitting & dog walking in Wilmington, NC">
+<meta property="og:description" content="Pet sitting and dog walking in Wilmington, NC, including downtown, Landfall, and Porters Neck. A small local team for drop-ins, overnight stays, and walks, with an update after every visit.">
 <meta property="og:image" content="https://www.portcityleashclub.com/images/og-image.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Dog walking & pet sitting in Wilmington, NC">
-<meta name="twitter:description" content="Dog walking and pet sitting in Wilmington, NC, including downtown, Landfall, and Porters Neck. A small local team for walks, drop-ins, and overnight stays, with an update after every visit.">
+<meta name="twitter:title" content="Pet sitting & dog walking in Wilmington, NC">
+<meta name="twitter:description" content="Pet sitting and dog walking in Wilmington, NC, including downtown, Landfall, and Porters Neck. A small local team for drop-ins, overnight stays, and walks, with an update after every visit.">
 <meta name="twitter:image" content="https://www.portcityleashclub.com/images/og-image.jpg">
 <!-- initMap() and the shared `map` global are defined BEFORE the async Maps
      loader below, so the loader's callback can never fire before initMap
@@ -167,6 +167,10 @@
   .sitting-card-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 20px; margin-top: 20px; border-top: 1px solid rgba(0,0,0,0.08); }
   .sitting-card-price { font-family: 'Cormorant Garamond', serif; font-size: 34px; font-weight: 400; color: var(--navy); }
   .sitting-card-price-unit { font-family: 'DM Sans', sans-serif; font-size: 14px; color: var(--text-light); }
+  .how-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; margin-top: 40px; }
+  .how-step-num { font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 300; color: var(--seafoam-light); line-height: 1; margin-bottom: 10px; }
+  .how-step-title { font-size: 16px; font-weight: 500; color: var(--navy); margin-bottom: 6px; }
+  .how-step-text { font-size: 14px; color: var(--text-mid); line-height: 1.7; }
   .sitting-card-cta { font-size: 13px; color: white; background: var(--rust); font-weight: 500; padding: 8px 16px; border-radius: 20px; white-space: nowrap; }
 
   .steps-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 48px; }
@@ -370,6 +374,7 @@
 
     /* Pet Sitting Services: stack cards on mobile */
     .sitting-cards-grid { grid-template-columns: 1fr !important; gap: 16px; }
+    .how-steps { grid-template-columns: 1fr; gap: 24px; }
 
     /* Why section: hidden on mobile (content covered elsewhere; reduces text density).
        Desktop unchanged. Faint membership/founder warm-white seam accepted. */
@@ -394,21 +399,11 @@
     .founder-copy { padding: 28px 20px; order: 1; }
     .founder-quote-mark { font-size: 90px; top: -28px; left: 20px; }
     .founder-layout { display: flex; flex-direction: column; }
-    /* Membership and how-it-works share one color deliberately (one story,
-       not two sections) — that's the one break in an otherwise-alternating
-       rhythm. Membership sits right after hero here, which has no section
-       background of its own (just the plain warm-white page background),
-       so the merged pair has to be sand to stay visible against it — the
-       opposite of when the pair sat after sand-services instead. With
-       .why-section hidden on mobile, founder needs its own override to
-       keep the rest of the rhythm going: how-works-section, #services, and
-       .map-section all carry the color this order needs as their own base
-       rule at every breakpoint, so none of them needs a mobile override —
-       only founder does, since it's the one section whose correct color
-       differs between the desktop chain (why included) and the mobile
-       chain (why skipped).
-       Result: hero(warm) membership(sand) how-it-works(sand) services(warm)
-       map(sand) founder(warm) cta(navy). */
+    /* Membership and How the Leash Club works share one color deliberately
+       (one story, not two sections). Pet-sitting-first order (2026-10-29):
+       hero(warm) services(warm) how-it-works(warm) reviews(sand)
+       membership + leash steps(sand) map(sand) faq(warm) founder(warm on
+       mobile, sand on desktop) ready-to-plan(navy) $20 offer(navy). */
     .founder-section { background: var(--warm-white); }
 
     /* Map */
@@ -448,7 +443,7 @@
   "@type": "ProfessionalService",
   "name": "Port City Leash Club",
   "url": "https://www.portcityleashclub.com/",
-  "description": "Dog walking and pet sitting in Wilmington, NC, including downtown, Landfall, and Porters Neck. A small local team for walks, drop-ins, and overnight stays, with an update after every visit.",
+  "description": "Pet sitting and dog walking in Wilmington, NC, including downtown, Landfall, and Porters Neck. A small local team for drop-ins, overnight stays, and walks, with an update after every visit.",
   "image": "https://www.portcityleashclub.com/images/og-image.jpg",
   "priceRange": "$$",
   "areaServed": [
@@ -497,10 +492,10 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 <nav>
   <a href="/" style="text-decoration:none;display:flex;align-items:center;"><img src="images/logo-horizontal.png" alt="Port City Leash Club" style="height:72px;width:auto;"></a>
   <ul class="nav-links" id="navLinks">
-    <li><a href="/pet-sitting">Pet Sitting</a></li>
+    <li><a href="/#membership">Membership</a></li>
     <li><a href="/faq">FAQ</a></li>
     <li><a href="/portal-login">Login</a></li>
-    <li><a class="btn-nav" href="/membership-request" data-cta="nav">Join the Leash Club</a></li>
+    <li><a class="btn-nav" href="/service-request" data-cta="nav">Request Pet Sitting</a></li>
   </ul>
   <div class="hamburger" id="hamburger" onclick="toggleNav()" style="display:none;">
     <span></span><span></span><span></span>
@@ -511,13 +506,13 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 <div style="max-width:1196px;margin:0 auto;">
   <div class="hero">
     <div>
-      <p class="hero-eyebrow">Dog Walking &amp; Pet Sitting · Wilmington, NC</p>
-      <h1 class="hero-headline">Your dog's <br>routine, <br>handled.</h1>
-      <p class="hero-sub">Dog walking and in-home pet sitting from a small local team your pets get to know.</p>
+      <p class="hero-eyebrow">Pet Sitting &amp; Dog Walking · Wilmington, NC</p>
+      <h1 class="hero-headline">Your pet's <br>routine, <br>handled.</h1>
+      <p class="hero-sub">In-home pet sitting and dog walking from a small local team your pets get to know.</p>
       <div class="hero-ctas">
-        <a class="btn-primary" href="/membership-request" data-cta="hero">Join the Leash Club</a>
+        <a class="btn-primary" href="/service-request" data-cta="hero">Request Pet Sitting</a>
       </div>
-      <p class="hero-alt-link">Planning a trip? <a href="/pet-sitting" data-cta="hero_pet_sitting">See pet sitting →</a></p>
+      <p class="hero-alt-link">Looking for regular dog walks? <a href="#membership" data-cta="hero_membership">Join the Leash Club →</a></p>
     </div>
     <div class="hero-visual" style="border-radius:8px;overflow:hidden;height:360px;">
       <img src="images/hero.jpg" alt="Woman walking her dog on a leash past a sunlit stone wall with dappled tree shadows" style="width:100%;height:100%;object-fit:cover;object-position:center center;">
@@ -533,7 +528,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       <path d="M7 23c.8-4 3.5-6 7-6s6.2 2 7 6" stroke="#C5D5D1" stroke-width="1.5" stroke-linecap="round"/>
       <path d="M20 6l2 2 4-4" stroke="#C5D5D1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
-    <div class="stat-label">Background Checked Team</div>
+    <div class="stat-label">Background Checked</div>
   </div>
   <div class="stat">
     <svg width="31" height="31" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin:0 auto 10px;display:block;">
@@ -555,189 +550,80 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       <path d="M10 3v4M18 3v4M6 11h16" stroke="#C5D5D1" stroke-width="1.5" stroke-linecap="round"/>
       <path d="M10 16l2 2 5-5" stroke="#C5D5D1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
-    <div class="stat-label">Consistent Walkers</div>
+    <div class="stat-label">Consistent, Team-Based Care</div>
   </div>
 </div>
 
-<!-- 2. MEMBERSHIP -->
-<section class="membership-section" id="membership">
-  <div class="section-inner">
-    <p class="section-eyebrow">The Leash Club · Dog Walking Membership</p>
-    <h2 class="section-headline">Your dog deserves a team they know.</h2>
-    <div class="membership-card">
-      <div class="membership-prose-col">
-        <p class="membership-prose">Set the days that work for your week, and we'll take care of the rest. Your Leash Club membership includes recurring 30-minute walks, with 45-minute walks available.</p>
-      </div>
-      <div class="membership-list-col">
-        <div class="membership-list-heading">What's included</div>
-        <ul class="membership-features">
-          <li>A familiar walker on your weekly schedule</li>
-          <li>Welcome gift</li>
-          <li>Walk photos &amp; notes</li>
-          <li>Priority scheduling</li>
-          <li>$50 credit every 50 walks</li>
-        </ul>
-      </div>
-      <div class="membership-card-side">
-        <div class="membership-price"><div class="membership-price-amount">$27</div><div class="membership-price-unit">/walk</div></div>
-        <div class="membership-price-notes">
-          <div class="membership-price-compare">10% off our $30 single walk rate</div>
-          <div class="membership-price-compare" style="font-weight:500;color:white;">No enrollment fee. Pause for vacations. Cancel anytime.</div>
-        </div>
-        <a class="btn-membership" href="/membership-request" data-cta="tier_membership">Get started</a>
-      </div>
-    </div>
-
-    <div class="single-walk-banner">Not ready to commit? <a href="/service-request?service=standard-walk" style="color:var(--navy);font-weight:500;">One-time walks start at $30</a>, no membership required.</div>
-  </div>
-</section>
-
-
-<!-- 3. HOW THE LEASH CLUB WORKS -->
-<section class="how-works-section" style="background: var(--sand-light);">
-  <div class="section-inner">
-    <div id="how-it-works"></div>
-    <p class="section-eyebrow" style="margin-bottom:24px;">How The Leash Club Works</p>
-
-    <!-- 4 steps -->
-    <div class="steps-row" style="margin-bottom:16px;">
-      <div class="step-inline">
-        <div class="step-num">01</div>
-        <div class="step-title">Choose Your Schedule</div>
-        <div class="step-text">Pick the days that work for your week and a preferred time window.</div>
-      </div>
-      <div class="step-inline">
-        <div class="step-num">02</div>
-        <div class="step-title">Meet &amp; Greet</div>
-        <div class="step-text">We'll get to know you and your dog, learn your routine, and answer any questions before your first walk.</div>
-      </div>
-      <div class="step-inline">
-        <div class="step-num">03</div>
-        <div class="step-title">Manage Everything Online</div>
-        <div class="step-text">View upcoming walks, update your dog's information, and make schedule changes through the member portal.</div>
-      </div>
-      <div class="step-inline">
-        <div class="step-num">04</div>
-        <div class="step-title">Leave the Logistics to Us</div>
-        <div class="step-text">Once your schedule is in place, we'll take care of the rest. Focus on your day, knowing your dog's routine is covered.</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-
-<!-- 4. ONE-TIME SERVICES -->
+<!-- 2. PET SITTING SERVICES -->
 <section id="services" style="background: var(--warm-white);">
   <div class="section-inner">
-    <p class="section-eyebrow">Pet Sitting Services</p>
-    <h2 class="section-headline">For trips, long days, and everything in between.</h2>
-    <p class="section-sub">Choose drop-in visits or overnight stays.</p>
+    <p class="section-eyebrow">Pet sitting services</p>
+    <h2 class="section-headline">Two ways we care for your pets</h2>
 
     <div class="sitting-cards-grid" style="margin-top:40px;">
 
-      <a href="/service-request?service=drop-in-visit" class="sitting-card">
+      <a href="/service-request?service=drop-in-visit" class="sitting-card" data-cta="services_dropin">
         <div>
           <div class="sitting-card-title">Drop-in visit</div>
-          <div class="sitting-card-desc">Personalized visits for dogs and cats, including feeding, potty breaks, litter box care, playtime, and a photo update. Ideal for short trips or extra coverage.</div>
+          <div class="sitting-card-desc">A 20-minute check-in while you're away. Feeding, fresh water, litter box care, playtime, and a photo update every time. Most pet owners reserve three to four visits a day.</div>
         </div>
         <div class="sitting-card-footer">
-          <div class="sitting-card-price">$25<span class="sitting-card-price-unit"> / visit</span></div>
+          <div class="sitting-card-price"><span id="price-dropin"></span><span class="sitting-card-price-unit"> / visit</span></div>
           <div class="sitting-card-cta">Reserve &rsaquo;</div>
         </div>
       </a>
 
-      <a href="/service-request?service=overnight-stay" class="sitting-card">
+      <a href="/service-request?service=overnight-stay" class="sitting-card" data-cta="services_overnight">
         <div>
           <div class="sitting-card-title">Overnight stay</div>
-          <div class="sitting-card-desc">Every night includes 12 hours of overnight care in your home, plus one mid-day drop-in visit tailored to your dog.</div>
+          <div class="sitting-card-desc">Every night includes 12 hours of overnight care in your home, plus one mid-day drop-in visit. Add extra drop-ins on any day you'd like more.</div>
         </div>
         <div class="sitting-card-footer">
-          <div class="sitting-card-price">$115<span class="sitting-card-price-unit"> / night</span></div>
+          <div class="sitting-card-price"><span id="price-overnight"></span><span class="sitting-card-price-unit"> / night</span></div>
           <div class="sitting-card-cta">Reserve &rsaquo;</div>
         </div>
       </a>
 
     </div>
 
-  </div>
-</section>
-
-
-<!-- 5. SERVICE AREA -->
-<section class="map-section">
-  <div class="section-inner">
-    <p class="section-eyebrow">Where We Walk</p>
-    <h2 class="section-headline">Serving Wilmington's finest neighborhoods.</h2>
-
-    <!-- Centered search bar + map -->
-    <div style="max-width:700px;margin:32px auto;">
-      <p class="section-sub" style="text-align:center;max-width:700px;margin:0 auto 20px;">Wondering if we're in your neighborhood? Enter your address to find out.</p>
-      <div class="address-search-row" style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:16px;">
-        <input id="address-input" class="search-input" type="text" placeholder="Enter your address">
-        <button id="check-address-btn" class="search-btn">Check my address</button>
-      </div>
-
-      <!-- Result: in service -->
-      <div id="result-in" class="search-result-in" style="margin-bottom:16px;display:none;">
-        ✓ Great news, we serve your neighborhood. <span style="margin-left:4px;"><a href="/service-request" data-cta="zone_check_success_pet_sitting" style="color:var(--navy);font-weight:500;">Request pet sitting</a> · <a href="/membership-request" data-cta="zone_check_success" style="color:var(--navy);font-weight:500;">Join the Leash Club</a></span>
-      </div>
-
-      <!-- Result: out of service -->
-      <div id="result-out" class="search-result-out" style="display:none;">
-        We're not in your neighborhood yet, but sign up to be notified when we expand.
-        <div class="address-search-row" style="margin-top:12px;display:grid;grid-template-columns:1fr auto;gap:8px;">
-          <input id="notify-email" class="search-input" type="email" placeholder="Your email address">
-          <button id="notify-btn" class="search-btn">Notify me</button>
-        </div>
-        <div id="notify-confirm" style="margin-top:10px;color:#2D6A40;font-size:13px;display:none;">✓ Thanks! We'll notify you when we expand.</div>
-        <div id="notify-error" style="margin-top:10px;color:var(--rust);font-size:13px;display:none;">Sorry, something went wrong. Please try again, or email <a href="mailto:hello@portcityleashclub.com" style="color:var(--rust);">hello@portcityleashclub.com</a>.</div>
-      </div>
-
-      <div id="map" style="border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,0.08);aspect-ratio:1200/630;background:#e8e0d5;margin-top:16px;"></div>
-    </div>
+    <p style="text-align:center;font-size:13px;color:var(--text-light);margin-top:24px;">Medication administration (+$<span id="fee-medication"></span>) and additional pets (+$<span id="fee-extrapet"></span>) are available as add-ons.</p>
 
   </div>
 </section>
 
 
-<!-- 6. WHY US -->
-<section class="why-section">
+<!-- 3. HOW IT WORKS (pet sitting) -->
+<section id="how-it-works" style="background: var(--warm-white);">
   <div class="section-inner">
-    <p class="section-eyebrow">Why Port City Leash Club</p>
-    <h2 class="section-headline">Built for Consistency. Designed for Peace of Mind.</h2>
-    <div class="why-layout" style="display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:stretch;max-width:990px;margin:40px auto 0;">
-
-      <!-- Left: photo -->
-      <div class="why-photo" style="border-radius:8px;overflow:hidden;aspect-ratio:530/640;">
-        <picture>
-          <source srcset="images/lifestyle.webp" type="image/webp">
-          <img src="images/lifestyle.jpeg" alt="A dog on a leash walking the shoreline at Wrightsville Beach, with ocean waves and a pier in the background." width="1100" height="1408" style="width:100%;height:100%;object-fit:cover;object-position:center center;">
-        </picture>
+    <p class="section-eyebrow">How it works</p>
+    <h2 class="section-headline">Simple from the first request</h2>
+    <div class="how-steps">
+      <div>
+        <div class="how-step-num">01</div>
+        <div class="how-step-title">Request your dates</div>
+        <div class="how-step-text">Tell us about your trip and your pets. No payment needed to request.</div>
       </div>
-
-      <!-- Right: stacked cards -->
-      <div class="why-cards" style="display:flex;flex-direction:column;gap:18px;justify-content:center;">
-        <div class="why-card">
-          <div class="why-title">A Team You Can Trust</div>
-          <div class="why-text">Every walker is background checked, insured, and Pet First Aid certified before their first visit.</div>
-        </div>
-
-        <div class="why-card">
-          <div class="why-title">Consistency Comes Standard</div>
-          <div class="why-text">The same familiar team, a predictable schedule, and care built around your dog's routine.</div>
-        </div>
-
-        <div class="why-card">
-          <div class="why-title">Always In The Loop</div>
-          <div class="why-text">Visit updates, photos, and account management all in one easy-to-use member portal.</div>
-        </div>
+      <div>
+        <div class="how-step-num">02</div>
+        <div class="how-step-title">Free meet &amp; greet</div>
+        <div class="how-step-text">We meet you and your pets at home, learn their routine, and collect a spare key.</div>
+      </div>
+      <div>
+        <div class="how-step-num">03</div>
+        <div class="how-step-title">Set up your portal</div>
+        <div class="how-step-text">We'll email you a link to your client portal, where you'll add a card for your reservation and complete your pet's profile.</div>
+      </div>
+      <div>
+        <div class="how-step-num">04</div>
+        <div class="how-step-title">Relax while you're away</div>
+        <div class="how-step-text">You'll get a photo and a note after every visit.</div>
       </div>
     </div>
   </div>
 </section>
 
 
-<!-- CLIENT REVIEWS (same carousel as pet-sitting.html) -->
+<!-- 4. CLIENT REVIEWS -->
 <section style="background: var(--sand-light);">
   <div class="section-inner">
     <p class="section-eyebrow">Client reviews</p>
@@ -778,7 +664,198 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 </section>
 
 
-<!-- MEET THE FOUNDER -->
+<!-- 5. MEMBERSHIP -->
+<section class="membership-section" id="membership">
+  <div class="section-inner">
+    <p class="section-eyebrow">The Leash Club · Dog Walking Membership</p>
+    <h2 class="section-headline">Your dog deserves a team they know.</h2>
+    <div class="membership-card">
+      <div class="membership-prose-col">
+        <p class="membership-prose">Set the days that work for your week, and we'll take care of the rest. Your Leash Club membership includes recurring 30-minute walks, with 45-minute walks available.</p>
+      </div>
+      <div class="membership-list-col">
+        <div class="membership-list-heading">What's included</div>
+        <ul class="membership-features">
+          <li>A familiar walker on your weekly schedule</li>
+          <li>Welcome gift</li>
+          <li>Walk photos &amp; notes</li>
+          <li>Priority scheduling</li>
+          <li>$50 credit every 50 walks</li>
+        </ul>
+      </div>
+      <div class="membership-card-side">
+        <div class="membership-price"><div class="membership-price-amount">$27</div><div class="membership-price-unit">/walk</div></div>
+        <div class="membership-price-notes">
+          <div class="membership-price-compare">10% off our $30 single walk rate</div>
+          <div class="membership-price-compare" style="font-weight:500;color:white;">No enrollment fee. Pause for vacations. Cancel anytime.</div>
+        </div>
+        <a class="btn-membership" href="/membership-request" data-cta="tier_membership">Get started</a>
+      </div>
+    </div>
+
+    <div class="single-walk-banner">Not ready to commit? <a href="/service-request?service=standard-walk" style="color:var(--navy);font-weight:500;">One-time walks start at $30</a>, no membership required.</div>
+  </div>
+</section>
+
+
+<!-- 6. HOW THE LEASH CLUB WORKS -->
+<section class="how-works-section" style="background: var(--sand-light);">
+  <div class="section-inner">
+    <div id="how-the-leash-club-works"></div>
+    <p class="section-eyebrow" style="margin-bottom:24px;">How The Leash Club Works</p>
+
+    <!-- 4 steps -->
+    <div class="steps-row" style="margin-bottom:16px;">
+      <div class="step-inline">
+        <div class="step-num">01</div>
+        <div class="step-title">Choose Your Schedule</div>
+        <div class="step-text">Pick the days that work for your week and a preferred time window.</div>
+      </div>
+      <div class="step-inline">
+        <div class="step-num">02</div>
+        <div class="step-title">Meet &amp; Greet</div>
+        <div class="step-text">We'll get to know you and your dog, learn your routine, and answer any questions before your first walk.</div>
+      </div>
+      <div class="step-inline">
+        <div class="step-num">03</div>
+        <div class="step-title">Manage Everything Online</div>
+        <div class="step-text">View upcoming walks, update your dog's information, and make schedule changes through the member portal.</div>
+      </div>
+      <div class="step-inline">
+        <div class="step-num">04</div>
+        <div class="step-title">Leave the Logistics to Us</div>
+        <div class="step-text">Once your schedule is in place, we'll take care of the rest. Focus on your day, knowing your dog's routine is covered.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- 7. SERVICE AREA -->
+<section class="map-section">
+  <div class="section-inner">
+    <p class="section-eyebrow">Where We Walk</p>
+    <h2 class="section-headline">Serving Wilmington's finest neighborhoods.</h2>
+
+    <!-- Centered search bar + map -->
+    <div style="max-width:700px;margin:32px auto;">
+      <p class="section-sub" style="text-align:center;max-width:700px;margin:0 auto 20px;">Wondering if we're in your neighborhood? Enter your address to find out.</p>
+      <div class="address-search-row" style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:16px;">
+        <input id="address-input" class="search-input" type="text" placeholder="Enter your address">
+        <button id="check-address-btn" class="search-btn">Check my address</button>
+      </div>
+
+      <!-- Result: in service -->
+      <div id="result-in" class="search-result-in" style="margin-bottom:16px;display:none;">
+        ✓ Great news, we serve your neighborhood. <span style="margin-left:4px;"><a href="/service-request" data-cta="zone_check_success_pet_sitting" style="color:var(--navy);font-weight:500;">Request pet sitting</a> · <a href="/membership-request" data-cta="zone_check_success" style="color:var(--navy);font-weight:500;">Join the Leash Club</a></span>
+      </div>
+
+      <!-- Result: out of service -->
+      <div id="result-out" class="search-result-out" style="display:none;">
+        We're not in your neighborhood yet, but sign up to be notified when we expand.
+        <div class="address-search-row" style="margin-top:12px;display:grid;grid-template-columns:1fr auto;gap:8px;">
+          <input id="notify-email" class="search-input" type="email" placeholder="Your email address">
+          <button id="notify-btn" class="search-btn">Notify me</button>
+        </div>
+        <div id="notify-confirm" style="margin-top:10px;color:#2D6A40;font-size:13px;display:none;">✓ Thanks! We'll notify you when we expand.</div>
+        <div id="notify-error" style="margin-top:10px;color:var(--rust);font-size:13px;display:none;">Sorry, something went wrong. Please try again, or email <a href="mailto:hello@portcityleashclub.com" style="color:var(--rust);">hello@portcityleashclub.com</a>.</div>
+      </div>
+
+      <div id="map" style="border-radius:8px;overflow:hidden;border:1px solid rgba(0,0,0,0.08);aspect-ratio:1200/630;background:#e8e0d5;margin-top:16px;"></div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- 8. PET SITTING FAQS -->
+<section class="faq-section">
+  <div class="section-inner">
+    <p class="section-eyebrow">Common questions</p>
+    <h2 class="section-headline">Pet sitting FAQs</h2>
+
+    <div class="faq-list">
+
+      <div class="faq-item">
+        <button class="faq-question">
+          <span class="faq-q-text">How are you different from a pet sitting app?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>You'll meet a member of our team before the first visit, and the same small group cares for your pets each time, so they are never left with a stranger. We follow the routine your pets already have, so meals, medication, walks, and bedtime happen the way they happen when you're home. And you'll get a photo update after every visit, so you can see how they're doing without having to ask.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          <span class="faq-q-text">What's the difference between a drop-in visit and an overnight stay?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p><strong>Drop-in visits</strong> are 20-minute check-ins while you're away: feeding, playtime, and a photo update. Most pet owners reserve 3-4 per day.</p>
+          <p><strong>Overnight stays:</strong> each night includes 12 hours of overnight care in your home (evening settling and overnight supervision), plus one mid-day drop-in visit tailored to your dog's routine. Want more coverage, like an extra visit on the day you leave or get back? You can add extra drop-in visits when you request your stay, and we'll confirm the times with you.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          <span class="faq-q-text">Is your team insured?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Yes. Port City Leash Club carries full pet care liability insurance covering all walks and services. Every team member operates under this coverage, so you and your dog are always protected.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          <span class="faq-q-text">Who's on the team?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Our team members are carefully selected, locally based dog lovers. Everyone on our team is background-checked, pet first aid certified, and personally trained before their first walk.</p>
+          <p>Our team is small on purpose, so everyone caring for your pet is trusted, trained, and held to the same high standard.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          <span class="faq-q-text">How do you get into our home?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>We'll collect a spare key or entry details at your free meet &amp; greet, so everything is set before the first visit.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          <span class="faq-q-text">What if my pet gets sick while I'm away?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>We'll contact you right away and follow your guidance on next steps. We keep your vet's information on file in case your pet needs to be seen.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question">
+          <span class="faq-q-text">Do you serve my neighborhood?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Use the <a href="#map" style="color:var(--rust);">address checker</a> above to confirm your address is within our service area.</p>
+          <p>If you're outside our current area, you can sign up to be notified when we expand, we're growing quickly.</p>
+        </div>
+      </div>
+
+    </div>
+    <p style="text-align:center;margin-top:24px;font-size:14px;color:var(--text-mid);">More questions? <a href="/faq" style="color:var(--navy);font-weight:500;">See all FAQs &rarr;</a></p>
+  </div>
+</section>
+
+
+<!-- 9. MEET THE FOUNDER -->
 <section class="founder-section">
   <div class="section-inner">
     <p class="section-eyebrow" style="margin-bottom:24px;">Meet the Founder</p>
@@ -801,7 +878,19 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 </section>
 
 
-<!-- 7. CTA -->
+<!-- 10. READY TO PLAN YOUR TRIP -->
+<section class="cta-section">
+  <div class="section-inner">
+    <h2 class="section-headline">Ready to plan your trip?</h2>
+    <p class="section-sub">Tell us your dates and we'll confirm availability within 24 hours.</p>
+    <div style="text-align:center;">
+      <a class="btn-primary" href="/service-request" data-cta="final_cta">Request Pet Sitting</a>
+    </div>
+  </div>
+</section>
+
+
+<!-- 11. $20 OFFER -->
 <section class="cta-section">
   <div class="section-inner">
     <p class="section-eyebrow">Stay In Touch</p>
@@ -1503,6 +1592,34 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     mobileQuery.addEventListener('change', rebuild);
     rebuild();
   })();
+</script>
+<script>
+  // ga4.js's built-in cta_click delegate only matches anchors linking to
+  // /membership-request (see js/ga4.js's own comment) — the pet sitting CTAs on
+  // this page link to /service-request instead, so fire cta_click
+  // manually here using the same window.pclcTrackGA helper ga4.js exposes.
+  // ga4.js itself is not modified.
+  document.addEventListener('click', function (e) {
+    const link = e.target.closest && e.target.closest('a[href*="/service-request"]');
+    if (!link) return;
+    window.pclcTrackGA && window.pclcTrackGA('cta_click', { cta_location: link.getAttribute('data-cta') || 'unlabeled' });
+
+    // Meta ViewContent (not Lead — a Reserve click is interest, not a lead)
+    // for an actual Reserve click. Only the two service cards carry a
+    // `service` query param; the generic "Request pet sitting" CTAs on this
+    // page (nav, hero, final_cta) don't, so this never fires for those.
+    const service = new URL(link.href, window.location.origin).searchParams.get('service');
+    if (service) {
+      window.pclcTrack && window.pclcTrack('ViewContent', { content_name: service });
+    }
+  });
+</script>
+<script type="module">
+  import { SERVICE_PRICES, MEDICATION_FEE, EXTRA_PET_FEE } from './pricing.js';
+  document.getElementById('price-dropin').textContent = '$' + SERVICE_PRICES['drop-in-visit'].price;
+  document.getElementById('price-overnight').textContent = '$' + SERVICE_PRICES['overnight-stay'].price;
+  document.getElementById('fee-medication').textContent = MEDICATION_FEE;
+  document.getElementById('fee-extrapet').textContent = EXTRA_PET_FEE;
 </script>
 </body>
 </html>

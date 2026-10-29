@@ -7,7 +7,8 @@
     { "source": "/welcomehome/:slug", "destination": "/welcomehome" }
   ],
   "redirects": [
-    { "source": "/dev/(.*)", "destination": "/404", "permanent": false }
+    { "source": "/dev/(.*)", "destination": "/404", "permanent": false },
+    { "source": "/pet-sitting", "destination": "/", "permanent": false }
   ],
   "headers": [
     {
