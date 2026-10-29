@@ -246,7 +246,7 @@
   .carousel-arrow:hover { background:var(--navy); color:white; border-color:var(--navy); }
   .btn-outline { background: white; color: var(--rust); border: 1.5px solid var(--rust); border-radius: 4px; padding: 14px 28px; font-size: 14px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; text-decoration: none; text-align: center; transition: background 0.2s, color 0.2s; }
   .btn-outline:hover { background: var(--rust); color: white; }
-  .hero-ctas .btn-outline { padding-top: 12.5px; padding-bottom: 12.5px; } /* matches btn-primary's height despite the border */
+  .hero-ctas .btn-outline { padding-top: 12.5px; padding-bottom: 12.5px; } /* same 50px height as the site's filled buttons, border included */
   #services, #membership { scroll-margin-top: 72px; }
   /* WHY US */
   .why-section { background: var(--warm-white); }
@@ -498,7 +498,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       <h1 class="hero-headline">Your pet's <br>routine, <br>handled.</h1>
       <p class="hero-sub">In-home pet sitting and dog walking from a small local team your pets get to know.</p>
       <div class="hero-ctas">
-        <a class="btn-primary" href="#services" data-cta="hero_pet_sitting">Pet Sitting</a>
+        <a class="btn-outline" href="#services" data-cta="hero_pet_sitting">Pet Sitting</a>
         <a class="btn-outline" href="#membership" data-cta="hero_leash_club">Leash Club</a>
       </div>
     </div>
@@ -1217,22 +1217,29 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   const steps = Array.from(document.querySelectorAll('.how-steps > div'));
   if (steps.length && 'IntersectionObserver' in window) {
     steps.forEach(step => step.classList.add('pre-animate'));
-    function revealStep(step, delay) {
-      if (step.classList.contains('animate-in')) return;
-      setTimeout(() => step.classList.add('animate-in'), delay);
+    // Reveals are queued 200ms apart, so steps that come into view together
+    // (or in back-to-back observer callbacks) still arrive one at a time.
+    let nextRevealAt = 0;
+    function revealStep(step) {
+      if (step.dataset.revealQueued) return;
+      step.dataset.revealQueued = '1';
+      const now = performance.now();
+      const at = Math.max(now, nextRevealAt);
+      nextRevealAt = at + 200;
+      setTimeout(() => step.classList.add('animate-in'), at - now);
     }
     const stepObserver = new IntersectionObserver((entries) => {
-      entries.filter(entry => entry.isIntersecting).forEach((entry, i) => {
-        revealStep(entry.target, i * 150);
+      entries.filter(entry => entry.isIntersecting).forEach(entry => {
+        revealStep(entry.target);
         stepObserver.unobserve(entry.target);
       });
     }, { threshold: 0.15, rootMargin: '0px 0px -50px 0px' });
     steps.forEach(step => stepObserver.observe(step));
     function revealReached() {
       steps.forEach(step => {
-        if (step.getBoundingClientRect().top < window.innerHeight) revealStep(step, 0);
+        if (step.getBoundingClientRect().top < window.innerHeight) revealStep(step);
       });
-      if (steps.every(step => step.classList.contains('animate-in'))) window.removeEventListener('scroll', revealReached);
+      if (steps.every(step => step.dataset.revealQueued)) window.removeEventListener('scroll', revealReached);
     }
     window.addEventListener('scroll', revealReached, { passive: true });
     setTimeout(revealReached, 4000);
