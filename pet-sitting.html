@@ -159,6 +159,14 @@
 
   /* CTA */
   .cta-section { background: var(--navy); text-align: center; padding: 100px 48px; }
+  .how-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; margin-top: 40px; }
+  .how-step-num { font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 300; color: var(--seafoam-light); line-height: 1; margin-bottom: 10px; }
+  .how-step-title { font-size: 16px; font-weight: 500; color: var(--navy); margin-bottom: 6px; }
+  .how-step-text { font-size: 14px; color: var(--text-mid); line-height: 1.7; }
+  .cta-founder { display: flex; gap: 16px; align-items: center; max-width: 560px; margin: 0 auto 40px; text-align: left; }
+  .cta-founder img { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; object-position: center top; flex-shrink: 0; }
+  .cta-founder-quote { font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 22px; line-height: 1.35; color: white; }
+  .cta-founder-name { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--seafoam-light); margin-top: 8px; }
   .cta-section .section-eyebrow { color: var(--seafoam); }
   .cta-section .section-headline { color: white; font-size: 56px; max-width: 600px; margin: 0 auto 16px; }
   .cta-section .section-sub { color: rgba(255,255,255,0.6); text-align: center; margin: 0 auto 40px; }
@@ -236,6 +244,8 @@
     /* Misc */
     .section-headline { font-size: 32px; }
     .cta-section .section-headline { font-size: 40px; }
+    .how-steps { grid-template-columns: 1fr; gap: 24px; }
+    .cta-founder-quote { font-size: 20px; }
     .sitting-card-title { font-size: 22px; }
     .sitting-card-price { font-size: 28px; }
     * { max-width: 100%; }
@@ -281,7 +291,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     <div>
       <p class="hero-eyebrow">Pet sitting · Wilmington, NC</p>
       <h1 class="hero-headline">Your pets stay home, with all the comforts they know.</h1>
-      <p class="hero-sub">Overnight stays and drop-in visits from a small local team your pets get to know. Insured, background checked, and pet first aid certified.</p>
+      <p class="hero-sub">Overnight stays and drop-in visits from a small local team your pets get to know, with a photo update after every visit.</p>
       <div class="hero-ctas">
         <a class="btn-primary" href="/service-request" data-cta="hero">Request Pet Sitting</a>
       </div>
@@ -393,6 +403,37 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 </section>
 
 
+<!-- HOW IT WORKS -->
+<section id="how-it-works" style="background: var(--warm-white);">
+  <div class="section-inner">
+    <p class="section-eyebrow">How it works</p>
+    <h2 class="section-headline">Simple from the first request</h2>
+    <div class="how-steps">
+      <div>
+        <div class="how-step-num">01</div>
+        <div class="how-step-title">Request your dates</div>
+        <div class="how-step-text">Tell us about your trip and your pets. No payment needed to request.</div>
+      </div>
+      <div>
+        <div class="how-step-num">02</div>
+        <div class="how-step-title">Free meet &amp; greet</div>
+        <div class="how-step-text">We meet you and your pets at home, learn their routine, and collect a spare key.</div>
+      </div>
+      <div>
+        <div class="how-step-num">03</div>
+        <div class="how-step-title">Set up your portal</div>
+        <div class="how-step-text">We'll email you a link to your client portal, where you'll add a card for your reservation and complete your pet's profile.</div>
+      </div>
+      <div>
+        <div class="how-step-num">04</div>
+        <div class="how-step-title">Relax while you're away</div>
+        <div class="how-step-text">You'll get a photo and a note after every visit.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
 <!-- 3. TESTIMONIALS -->
 <section style="background: var(--sand-light);">
   <div class="section-inner">
@@ -448,7 +489,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           <span class="faq-icon">+</span>
         </button>
         <div class="faq-answer">
-          <p>You'll meet a member of our team before the first visit, and the same small group of sitters cares for your pets each time, so they are never left with a stranger. We follow the routine your pets already have, so meals, medication, walks, and bedtime happen the way they happen when you're home. And you'll get a photo update after every visit, so you can see how they're doing without having to ask.</p>
+          <p>You'll meet a member of our team before the first visit, and the same small group cares for your pets each time, so they are never left with a stranger. We follow the routine your pets already have, so meals, medication, walks, and bedtime happen the way they happen when you're home. And you'll get a photo update after every visit, so you can see how they're doing without having to ask.</p>
         </div>
       </div>
 
@@ -480,7 +521,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         </button>
         <div class="faq-answer">
           <p>Our team members are carefully selected, locally based dog lovers. Everyone on our team is background-checked, pet first aid certified, and personally trained before their first walk.</p>
-          <p>We don't use a large rotating pool of strangers. Our team is small, trusted, and held to a consistent standard of care.</p>
+          <p>Our team is small on purpose, so everyone caring for your pet is trusted, trained, and held to the same high standard.</p>
         </div>
       </div>
 
@@ -523,6 +564,13 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 <!-- FINAL CTA -->
 <section class="cta-section">
   <div class="section-inner">
+    <div class="cta-founder">
+      <img src="images/founder.jpeg" alt="Alison Gamble, founder of Port City Leash Club" width="64" height="64" loading="lazy">
+      <div>
+        <div class="cta-founder-quote">“If you've ever left home wondering whether your pet is truly okay, I built this for you.”</div>
+        <div class="cta-founder-name">Alison Gamble · Founder</div>
+      </div>
+    </div>
     <h2 class="section-headline">Ready to plan your trip?</h2>
     <p class="section-sub">Tell us your dates and we'll confirm availability within 24 hours.</p>
     <div style="text-align:center;">
