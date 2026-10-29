@@ -106,7 +106,7 @@
      story; the full double-padding gap between them read as an accidental
      empty section rather than a continuous flow. See how-works-section's
      matching padding-top below. */
-  .membership-section { background: var(--sand-light); padding-bottom: 16px; }
+  .membership-section { background: var(--warm-white); padding-bottom: 16px; }
   .how-works-section { padding-top: 16px; }
   /* Portal treatment: same rust-to-seafoam diagonal as the member portal's
      Walk Routine banner, full saturation — a muted/desaturated pass read
@@ -249,8 +249,10 @@
   .carousel-dot.active { background:var(--navy); }
   .carousel-arrow { background:none; border:1px solid rgba(0,0,0,0.12); border-radius:50%; width:36px; height:36px; font-size:16px; cursor:pointer; color:var(--navy); display:flex; align-items:center; justify-content:center; transition:all 0.2s; font-family:inherit; }
   .carousel-arrow:hover { background:var(--navy); color:white; border-color:var(--navy); }
-  .hero-alt-link { margin-top: 18px; font-size: 14px; color: var(--text-mid); }
-  .hero-alt-link a { color: var(--navy); font-weight: 500; }
+  .btn-outline { background: white; color: var(--rust); border: 1.5px solid var(--rust); border-radius: 4px; padding: 14px 28px; font-size: 14px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; text-decoration: none; text-align: center; transition: background 0.2s, color 0.2s; }
+  .btn-outline:hover { background: var(--rust); color: white; }
+  .hero-ctas .btn-outline { padding-top: 12.5px; padding-bottom: 12.5px; } /* matches btn-primary's height despite the border */
+  #services, #membership { scroll-margin-top: 72px; }
   /* WHY US */
   .why-section { background: var(--warm-white); }
   .why-card { padding: 32px 28px; background: white; border: 1px solid rgba(0,0,0,0.06); border-radius: 8px; }
@@ -328,8 +330,7 @@
     .hero-headline br { display: none; }
     .hero-visual { height: 286px !important; }
     .hero-ctas { flex-direction: column; gap: 10px; }
-    .hero-ctas a { text-align: center; }
-    .hero-alt-link { text-align: center; }
+    .hero-ctas a { text-align: center; min-width: 220px; }
     .carousel-card { flex-basis: 100%; }
     .carousel-controls .carousel-arrow { display: none; }
 
@@ -402,7 +403,7 @@
     /* Membership and How the Leash Club works share one color deliberately
        (one story, not two sections). Pet-sitting-first order (2026-10-29):
        hero(warm) services(warm) how-it-works(warm) reviews(sand)
-       membership + leash steps(sand) map(sand) faq(warm) founder(warm on
+       membership + leash steps(warm) map(sand) faq(warm) founder(warm on
        mobile, sand on desktop) ready-to-plan(navy) $20 offer(navy). */
     .founder-section { background: var(--warm-white); }
 
@@ -510,9 +511,9 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       <h1 class="hero-headline">Your pet's <br>routine, <br>handled.</h1>
       <p class="hero-sub">In-home pet sitting and dog walking from a small local team your pets get to know.</p>
       <div class="hero-ctas">
-        <a class="btn-primary" href="/service-request" data-cta="hero">Request Pet Sitting</a>
+        <a class="btn-primary" href="#services" data-cta="hero_pet_sitting">Pet Sitting</a>
+        <a class="btn-outline" href="#membership" data-cta="hero_leash_club">Leash Club</a>
       </div>
-      <p class="hero-alt-link">Looking for regular dog walks? <a href="#membership" data-cta="hero_membership">Join the Leash Club →</a></p>
     </div>
     <div class="hero-visual" style="border-radius:8px;overflow:hidden;height:360px;">
       <img src="images/hero.jpg" alt="Woman walking her dog on a leash past a sunlit stone wall with dappled tree shadows" style="width:100%;height:100%;object-fit:cover;object-position:center center;">
@@ -699,7 +700,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
 
 <!-- 6. HOW THE LEASH CLUB WORKS -->
-<section class="how-works-section" style="background: var(--sand-light);">
+<section class="how-works-section" style="background: var(--warm-white);">
   <div class="section-inner">
     <div id="how-the-leash-club-works"></div>
     <p class="section-eyebrow" style="margin-bottom:24px;">How The Leash Club Works</p>
@@ -878,19 +879,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 </section>
 
 
-<!-- 10. READY TO PLAN YOUR TRIP -->
-<section class="cta-section">
-  <div class="section-inner">
-    <h2 class="section-headline">Ready to plan your trip?</h2>
-    <p class="section-sub">Tell us your dates and we'll confirm availability within 24 hours.</p>
-    <div style="text-align:center;">
-      <a class="btn-primary" href="/service-request" data-cta="final_cta">Request Pet Sitting</a>
-    </div>
-  </div>
-</section>
-
-
-<!-- 11. $20 OFFER -->
+<!-- 10. $20 OFFER -->
 <section class="cta-section">
   <div class="section-inner">
     <p class="section-eyebrow">Stay In Touch</p>
@@ -1600,6 +1589,13 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   // manually here using the same window.pclcTrackGA helper ga4.js exposes.
   // ga4.js itself is not modified.
   document.addEventListener('click', function (e) {
+    // The hero's two buttons jump to #services / #membership on this page;
+    // count them as cta_click too so hero clicks stay visible in GA4.
+    const jump = e.target.closest && e.target.closest('.hero-ctas a[href^="#"]');
+    if (jump) {
+      window.pclcTrackGA && window.pclcTrackGA('cta_click', { cta_location: jump.getAttribute('data-cta') || 'unlabeled' });
+      return;
+    }
     const link = e.target.closest && e.target.closest('a[href*="/service-request"]');
     if (!link) return;
     window.pclcTrackGA && window.pclcTrackGA('cta_click', { cta_location: link.getAttribute('data-cta') || 'unlabeled' });
@@ -1607,7 +1603,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     // Meta ViewContent (not Lead — a Reserve click is interest, not a lead)
     // for an actual Reserve click. Only the two service cards carry a
     // `service` query param; the generic "Request pet sitting" CTAs on this
-    // page (nav, hero, final_cta) don't, so this never fires for those.
+    // page (nav, request form links) don't, so this never fires for those.
     const service = new URL(link.href, window.location.origin).searchParams.get('service');
     if (service) {
       window.pclcTrack && window.pclcTrack('ViewContent', { content_name: service });

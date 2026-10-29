@@ -148,6 +148,7 @@ function html(data) {
   const billingHtml = data.needsCard ? `
     <p style="margin:20px 0 0;">We don't have a card on file for you yet — add one so we can process the ${escapeHtml(fmtDollars(chargeDollars(data)))} charge for this reservation.</p>
     ${renderButtonHtml({ href: data.addCardUrl, label: 'Add Your Card' })}
+    <p style="margin:20px 0 0;">If your plans change, reservations canceled within 48 hours of the start date may still be charged.</p>
   ` : `
     <p style="margin:20px 0 0;">${escapeHtml(chargeSentence(data))}</p>
     <p style="margin:20px 0 0;">If your plans change, reservations canceled within 48 hours of the start date may still be charged. This is the same policy that applies to scheduled walks.</p>
@@ -208,6 +209,8 @@ function text(data) {
       `We don't have a card on file for you yet — add one so we can process the ${fmtDollars(chargeDollars(data))} charge for this reservation.`,
       '',
       `Add your card: ${data.addCardUrl}`,
+      '',
+      `If your plans change, reservations canceled within 48 hours of the start date may still be charged.`,
       '',
     );
   } else {
