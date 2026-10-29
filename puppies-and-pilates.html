@@ -151,6 +151,9 @@
   .footer-links { display: flex; gap: 32px; list-style: none; }
   .footer-links a { font-size: 13px; color: rgba(255,255,255,0.5); text-decoration: none; transition: color 0.2s; }
   .footer-social { display: inline-flex; margin-top: 10px; color: rgba(255,255,255,0.4); transition: color 0.2s; }
+  /* Bigger tap areas (44px tall links, 32px icon) without changing how the footer looks */
+  .footer-links a { display: inline-block; padding: 12px 0; }
+  .footer-social { padding: 8px; margin: 2px 0 0 -8px; }
   .footer-social:hover { color: rgba(255,255,255,0.8); }
   .footer-links a:hover { color: white; }
 
@@ -398,8 +401,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     </a>
   </div>
   <ul class="footer-links">
-    <li><a href="/#services">Services</a></li>
-    <li><a href="/#membership">Membership</a></li>
+    <li><a href="/#services">Pet Sitting</a></li>
+    <li><a href="/#membership">Leash Club</a></li>
     <li><a href="/faq">FAQ</a></li>
     <li><a href="/careers">Careers</a></li>
     <li><a href="/contact">Contact</a></li>

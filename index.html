@@ -266,7 +266,7 @@
   .testimonial-quote { font-size: 14px; color: var(--text-mid); line-height: 1.7; flex: 1; }
   .testimonial-attribution { font-size: 13px; font-weight: 500; color: var(--navy); margin-top: 20px; }
   .carousel-controls { display: flex; align-items: center; justify-content: center; gap: 20px; margin-top: 24px; }
-  .carousel-dots { display: flex; gap: 8px; }
+  .carousel-dots { display: flex; gap: 0; }
   .carousel-arrow[disabled] { opacity: 0.35; cursor: default; }
   .carousel-arrow:hover[disabled] { background: none; color: var(--navy); border-color: rgba(0,0,0,0.12); }
   .carousel-arrow:focus-visible, .carousel-dot:focus-visible { outline: 2px solid var(--rust); outline-offset: 2px; }
@@ -274,8 +274,10 @@
   /* Carousel dots and arrows */
   .carousel-arrow { transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.1s; }
   .carousel-arrow:active { transform: scale(0.93); }
-  .carousel-dot { width:8px; height:8px; border-radius:50%; background:var(--seafoam-light); cursor:pointer; border: none; transition:background 0.2s; }
-  .carousel-dot.active { background:var(--navy); }
+  /* 32px tap area; the visible 8px dot is drawn by ::after */
+  .carousel-dot { width:32px; height:32px; padding:0; border:none; border-radius:50%; background:transparent; cursor:pointer; position:relative; }
+  .carousel-dot::after { content:''; position:absolute; top:12px; left:12px; width:8px; height:8px; border-radius:50%; background:var(--seafoam-light); transition:background 0.2s; }
+  .carousel-dot.active::after { background:var(--navy); }
   .carousel-arrow { background:none; border:1px solid rgba(0,0,0,0.12); border-radius:50%; width:36px; height:36px; font-size:16px; cursor:pointer; color:var(--navy); display:flex; align-items:center; justify-content:center; transition:all 0.2s; font-family:inherit; }
   .carousel-arrow:hover { background:var(--navy); color:white; border-color:var(--navy); }
   .btn-outline { background: white; color: var(--rust); border: 1.5px solid var(--rust); border-radius: 4px; padding: 14px 28px; font-size: 14px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; text-decoration: none; text-align: center; transition: background 0.2s, color 0.2s; }
@@ -306,6 +308,9 @@
   .footer-links { display: flex; gap: 32px; list-style: none; }
   .footer-links a { font-size: 13px; color: rgba(255,255,255,0.5); text-decoration: none; }
   .footer-social { display: inline-flex; margin-top: 10px; color: rgba(255,255,255,0.4); transition: color 0.2s; }
+  /* Bigger tap areas (44px tall links, 32px icon) without changing how the footer looks */
+  .footer-links a { display: inline-block; padding: 12px 0; }
+  .footer-social { padding: 8px; margin: 2px 0 0 -8px; }
   .footer-social:hover { color: rgba(255,255,255,0.8); }
 
   html { scroll-behavior: smooth; }
@@ -429,7 +434,7 @@
 
     /* Founder */
     .founder-layout { grid-template-columns: 1fr; }
-    .founder-photo { order: -1; }
+    .founder-photo { order: -1; width: 100%; } /* full width so the square box holds its size before the lazy photo loads */
     .founder-copy { padding: 28px 20px; order: 1; }
     .founder-quote-mark { font-size: 90px; top: -28px; left: 20px; }
     .founder-layout { display: flex; flex-direction: column; margin-top: 40px; }
@@ -851,8 +856,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     </a>
   </div>
   <ul class="footer-links">
-    <li><a href="#services">Services</a></li>
-    <li><a href="#membership">Membership</a></li>
+    <li><a href="#services">Pet Sitting</a></li>
+    <li><a href="#membership">Leash Club</a></li>
     <li><a href="/faq">FAQ</a></li>
     <li><a href="/careers">Careers</a></li>
     <li><a href="/contact">Contact</a></li>
