@@ -53,9 +53,34 @@
     });
   }
 </script>
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAbBk5q33zuoqtLTOpoZ5X6UIRJrSHZ4ug&libraries=places&callback=initMap" async defer></script>
+<!-- Google Maps (~460KB) loads on demand: when the visitor nears the service
+     area section or focuses the address box (see the loader near the end of
+     <body>), not on every page view. The address checker already falls back
+     to a zip match if Maps isn't there yet, and the Check button waits for it. -->
+<script>
+  let mapsLoading = null;
+  function loadGoogleMaps() {
+    if (window.google && window.google.maps) return Promise.resolve();
+    if (mapsLoading) return mapsLoading;
+    mapsLoading = new Promise((resolve) => {
+      window.__onMapsReady = () => { initMap(); resolve(); };
+      const tag = document.createElement('script');
+      tag.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyAbBk5q33zuoqtLTOpoZ5X6UIRJrSHZ4ug&libraries=places&callback=__onMapsReady';
+      tag.async = true;
+      tag.onerror = () => resolve(); // checker falls back to the zip match
+      document.head.appendChild(tag);
+    });
+    return mapsLoading;
+  }
+</script>
+<!-- Fonts load as a normal stylesheet (found right away) instead of an @import
+     inside the inline <style>, which the browser only discovered after
+     parsing it -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap">
+<link rel="preload" as="image" type="image/webp" imagesrcset="images/hero-700.webp 700w, images/hero-1100.webp 1100w" imagesizes="(max-width: 768px) calc(100vw - 40px), 580px" fetchpriority="high">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { overflow-x: hidden; max-width: 100%; }
   :root {
@@ -491,7 +516,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
 <!-- NAV -->
 <nav>
-  <a href="/" style="text-decoration:none;display:flex;align-items:center;"><img src="images/logo-horizontal.png" alt="Port City Leash Club" style="height:72px;width:auto;"></a>
+  <a href="/" style="text-decoration:none;display:flex;align-items:center;"><picture><source type="image/webp" srcset="images/logo-horizontal-540.webp"><img src="images/logo-horizontal-540.png" width="270" height="72" alt="Port City Leash Club" style="height:72px;width:auto;"></picture></a>
   <ul class="nav-links" id="navLinks">
     <li><a href="/#services">Pet Sitting</a></li>
     <li><a href="/#membership">Leash Club</a></li>
@@ -516,7 +541,10 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       </div>
     </div>
     <div class="hero-visual" style="border-radius:8px;overflow:hidden;height:360px;">
-      <img src="images/hero.jpg" alt="Woman walking her dog on a leash past a sunlit stone wall with dappled tree shadows" style="width:100%;height:100%;object-fit:cover;object-position:center center;">
+      <picture style="display:block;width:100%;height:100%;">
+        <source type="image/webp" srcset="images/hero-700.webp 700w, images/hero-1100.webp 1100w" sizes="(max-width: 768px) calc(100vw - 40px), 580px">
+        <img src="images/hero.jpg" width="1535" height="1050" fetchpriority="high" alt="Woman walking her dog on a leash past a sunlit stone wall with dappled tree shadows" style="width:100%;height:100%;object-fit:cover;object-position:center center;">
+      </picture>
     </div>
   </div>
 </div>
@@ -739,7 +767,10 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         </div>
       </div>
       <div class="founder-photo" style="padding:0;">
-        <img src="images/founder.jpeg" alt="Alison Gamble, Founder of Port City Leash Club" style="width:100%;height:100%;object-fit:cover;object-position:center top;border-radius:8px;">
+        <picture style="display:block;width:100%;height:100%;">
+          <source type="image/webp" srcset="images/founder-768.webp">
+          <img src="images/founder.jpeg" width="768" height="871" loading="lazy" alt="Alison Gamble, Founder of Port City Leash Club" style="width:100%;height:100%;object-fit:cover;object-position:center top;border-radius:8px;">
+        </picture>
       </div>
     </div>
   </div>
@@ -1080,6 +1111,11 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
   checkBtn.addEventListener('click', () => {
     const address = addressInput.value.trim();
+    if (address && !(window.google && window.google.maps) && !checkBtn.dataset.mapsTried) {
+      checkBtn.dataset.mapsTried = '1';
+      loadGoogleMaps().then(() => checkBtn.click());
+      return;
+    }
     
     if (!address) {
       alert('Please enter an address');
@@ -1530,6 +1566,23 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   document.getElementById('price-overnight').textContent = '$' + SERVICE_PRICES['overnight-stay'].price;
   document.getElementById('fee-medication').textContent = MEDICATION_FEE;
   document.getElementById('fee-extrapet').textContent = EXTRA_PET_FEE;
+</script>
+<script>
+  // Load Google Maps shortly before the service area scrolls into view, or as
+  // soon as someone taps into the address box (see loadGoogleMaps in <head>).
+  (function () {
+    const area = document.querySelector('.map-section');
+    const input = document.getElementById('address-input');
+    if (input) input.addEventListener('focus', loadGoogleMaps, { once: true });
+    if (area && 'IntersectionObserver' in window) {
+      const io = new IntersectionObserver((entries) => {
+        if (entries.some(e => e.isIntersecting)) { loadGoogleMaps(); io.disconnect(); }
+      }, { rootMargin: '800px 0px' });
+      io.observe(area);
+    } else {
+      loadGoogleMaps();
+    }
+  })();
 </script>
 </body>
 </html>
