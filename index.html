@@ -99,6 +99,7 @@
   .section-eyebrow { font-size: 13px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 12px; }
   .section-headline { font-family: 'Cormorant Garamond', serif; font-size: 42px; font-weight: 300; color: var(--navy); line-height: 1.1; margin-bottom: 16px; }
   .section-sub { font-size: 15px; color: var(--text-mid); max-width: 620px; line-height: 1.7; margin-bottom: 48px; }
+  .section-lead { font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 20px; font-weight: 400; color: var(--text-mid); line-height: 1.35; margin: -6px 0 28px; }
 
   /* MEMBERSHIP */
   .membership-section { background: var(--sand-light); }
@@ -177,11 +178,11 @@
      hides them, so if JS never runs at all, steps stay visible. See the
      step-reveal script for the timeout that also guarantees .animate-in
      lands even if the IntersectionObserver itself never fires. */
-  .step-inline.pre-animate { opacity: 0; transform: translateY(24px); }
-  .step-inline.animate-in { opacity: 1; transform: translateY(0); transition: opacity 0.6s ease, transform 0.6s ease; }
+  .how-steps > div.pre-animate { opacity: 0; transform: translateY(24px); }
+  .how-steps > div.animate-in { opacity: 1; transform: translateY(0); transition: opacity 0.6s ease, transform 0.6s ease; }
   @media (prefers-reduced-motion: reduce) {
-    .step-inline.pre-animate { opacity: 1; transform: none; }
-    .step-inline.animate-in { transition: none; }
+    .how-steps > div.pre-animate { opacity: 1; transform: none; }
+    .how-steps > div.animate-in { transition: none; }
   }
   /* HOW IT WORKS - sits inside membership section visually */
   .how-section { background: var(--sand-light); padding-top: 0; }
@@ -369,6 +370,7 @@
     /* Pet Sitting Services: stack cards on mobile */
     .sitting-cards-grid { grid-template-columns: 1fr !important; gap: 16px; }
     .how-steps { grid-template-columns: 1fr; gap: 24px; }
+    .section-lead { font-size: 18px; margin-bottom: 24px; }
 
     /* Why section: hidden on mobile (content covered elsewhere; reduces text density).
        Desktop unchanged. Faint membership/founder warm-white seam accepted. */
@@ -545,8 +547,9 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 <!-- 2. PET SITTING SERVICES -->
 <section id="services" style="background: var(--warm-white);">
   <div class="section-inner">
-    <p class="section-eyebrow">Pet sitting services</p>
-    <h2 class="section-headline">Two ways we care for your pets</h2>
+    <p class="section-eyebrow">Drop-in visits &amp; overnight stays</p>
+    <h2 class="section-headline">Pet Sitting</h2>
+    <p class="section-lead">Two ways we care for your pets while you're away.</p>
 
     <div class="sitting-cards-grid" style="margin-top:40px;">
 
@@ -583,8 +586,9 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 <!-- 3. MEMBERSHIP -->
 <section class="membership-section" id="membership">
   <div class="section-inner">
-    <p class="section-eyebrow">The Leash Club · Dog Walking Membership</p>
-    <h2 class="section-headline">Your dog deserves a team they know.</h2>
+    <p class="section-eyebrow">Dog walking membership</p>
+    <h2 class="section-headline">The Leash Club</h2>
+    <p class="section-lead">Your dog deserves a team they know.</p>
     <div class="membership-card">
       <div class="membership-prose-col">
         <p class="membership-prose">Set the days that work for your week, and we'll take care of the rest. Your Leash Club membership includes recurring 30-minute walks, with 45-minute walks available.</p>
@@ -1206,32 +1210,35 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   });
 
   // Scroll-triggered stagger for the "How The Leash Club Works" steps.
-  // Unlike the previous version of this effect, .step-inline is fully
-  // visible by default in CSS — this only ever HIDES steps (via
-  // .pre-animate) right before starting to observe them, and reveals them
-  // via .animate-in either when the IntersectionObserver fires or, if it
-  // never does for any reason, after a flat 4s timeout regardless. So the
-  // worst case is a max 4s delay before steps appear, never permanent
-  // invisibility.
-  const steps = document.querySelectorAll('.step-inline');
+  // How it works steps float in as they scroll into view. Steps are fully
+  // visible by default in CSS; this only HIDES them (.pre-animate) right
+  // before observing, and each one gets .animate-in as it enters the
+  // viewport (staggered when several enter together, e.g. the desktop row
+  // of four). Fallback: a scroll check reveals any step that has reached
+  // the viewport even if the IntersectionObserver never fires, so a step
+  // can never stay hidden once the visitor gets to it.
+  const steps = Array.from(document.querySelectorAll('.how-steps > div'));
   if (steps.length && 'IntersectionObserver' in window) {
     steps.forEach(step => step.classList.add('pre-animate'));
-    let stepsRevealed = false;
-    function revealSteps() {
-      if (stepsRevealed) return;
-      stepsRevealed = true;
-      steps.forEach((step, i) => {
-        setTimeout(() => step.classList.add('animate-in'), i * 150);
-      });
+    function revealStep(step, delay) {
+      if (step.classList.contains('animate-in')) return;
+      setTimeout(() => step.classList.add('animate-in'), delay);
     }
     const stepObserver = new IntersectionObserver((entries) => {
-      if (entries.some(entry => entry.isIntersecting)) {
-        revealSteps();
-        stepObserver.disconnect();
-      }
+      entries.filter(entry => entry.isIntersecting).forEach((entry, i) => {
+        revealStep(entry.target, i * 150);
+        stepObserver.unobserve(entry.target);
+      });
     }, { threshold: 0.15, rootMargin: '0px 0px -50px 0px' });
     steps.forEach(step => stepObserver.observe(step));
-    setTimeout(revealSteps, 4000);
+    function revealReached() {
+      steps.forEach(step => {
+        if (step.getBoundingClientRect().top < window.innerHeight) revealStep(step, 0);
+      });
+      if (steps.every(step => step.classList.contains('animate-in'))) window.removeEventListener('scroll', revealReached);
+    }
+    window.addEventListener('scroll', revealReached, { passive: true });
+    setTimeout(revealReached, 4000);
   }
 
   // FAQ accordion
