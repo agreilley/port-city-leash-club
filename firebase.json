@@ -10,7 +10,7 @@
     {
       "source": "functions",
       "codebase": "default",
-      "runtime": "nodejs20",
+      "runtime": "nodejs22",
       "predeploy": [
         "cp \"$RESOURCE_DIR/../pricing.js\" \"$RESOURCE_DIR/../walker-pricing.js\" \"$RESOURCE_DIR/../time-slots.js\" \"$RESOURCE_DIR/../visit-slots.js\" \"$RESOURCE_DIR/../walker-availability.js\" \"$RESOURCE_DIR/\""
       ]
