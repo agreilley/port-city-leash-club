@@ -110,6 +110,24 @@
      the request. Outline rather than border so the chip's size doesn't change. */
   .walk-chip.resched-pending { outline: 1px dashed var(--rust); outline-offset: -1px; }
   .walk-chip.tentative.t-resched { border-color: var(--rust); color: var(--rust); }
+  /* Phone view (js/calendar-mobile.js): dots in the grid, the tapped day's
+     chips listed under it. Both hidden on desktop; shown in the mobile query. */
+  .cal-dots, .cal-day-list { display: none; }
+  .cal-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .cal-dot.dot-walk { background: #1A5C30; }
+  .cal-dot.dot-dropin { background: #B04A0C; }
+  .cal-dot.dot-overnight { background: #1E4E8C; }
+  .cal-dot.dot-unassigned { background: #991B1B; }
+  .cal-dot.dot-resched { background: var(--rust); }
+  .cal-dot.dot-tentative { background: transparent; border: 1px dashed; }
+  .cal-dot.dot-tentative.dot-walk { border-color: #1A5C30; }
+  .cal-dot.dot-tentative.dot-dropin { border-color: #B04A0C; }
+  .cal-dot.dot-tentative.dot-overnight { border-color: #1E4E8C; }
+  .cal-dot.dot-tentative.dot-resched { border-color: var(--rust); }
+  .cal-dot.dot-done { opacity: 0.45; }
+  .cal-dot-more { font-size: 10px; font-weight: 600; color: var(--text-mid); line-height: 7px; }
+  .cal-day-list-title { font-size: 15px; font-weight: 500; color: var(--navy); margin-bottom: 10px; }
+  .cal-day-list-empty { font-size: 13px; color: var(--text-light); }
 
   /* ── REVIEWS ── */
   /* Placed before the mobile .stats-row media query below (same specificity,
@@ -393,7 +411,14 @@
     #view-availability > div { grid-template-columns: 1fr !important; max-width: 100% !important; }
 
     /* Calendar: shorter cells so a month fits without excess scrolling */
-    .calendar-day { min-height: 64px; padding: 4px; }
+    .calendar-day { min-height: 56px; padding: 4px; cursor: pointer; }
+    .calendar-day.other-month { cursor: default; }
+    .calendar-day.selected { background: var(--sand); }
+    .calendar-days .walk-chip { display: none; }
+    .cal-dots { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; padding: 2px 0 0 2px; }
+    .cal-day-list { display: block; background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 14px; margin-top: 12px; }
+    .cal-day-list .walk-chip { white-space: normal; font-size: 14px; padding: 10px 12px; margin-bottom: 6px; border-radius: 6px; }
+    .cal-day-list .walk-chip.tentative { padding: 9px 11px; }
     .calendar-legend { flex-wrap: wrap; gap: 8px 14px; }
 
     /* Request filters: allow wrapping instead of overflowing */
@@ -565,6 +590,7 @@
         </div>
         <div class="calendar-days" id="calendarDays"></div>
       </div>
+      <div class="cal-day-list" id="calendarDayList"></div>
     </div>
 
     <!-- WALKERS VIEW -->
@@ -1409,6 +1435,7 @@
 </div>
 
 <script type="module">
+import { enhanceCalendar } from '/js/calendar-mobile.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import {
@@ -2977,6 +3004,23 @@ function renderCalendarDays() {
   }
 
   container.innerHTML = html;
+  enhanceCalendar({
+    container, list: document.getElementById('calendarDayList'),
+    year: calendarYear, month: calendarMonth, chipSelector: '.walk-chip', dotClass: calendarDotClass,
+  });
+}
+
+// Dot for one calendar chip in the phone view: same service colors as the
+// chips, red when unassigned, outlined when tentative, faded when done.
+function calendarDotClass(chip) {
+  const c = chip.classList;
+  const service = c.contains('t-resched') ? 'dot-resched'
+    : c.contains('c-dropin') || c.contains('t-checkin') ? 'dot-dropin'
+    : c.contains('c-overnight') || c.contains('t-overnight') ? 'dot-overnight'
+    : 'dot-walk';
+  if (c.contains('tentative')) return `dot-tentative ${service}`;
+  if (c.contains('unassigned')) return 'dot-unassigned';
+  return `${service}${c.contains('done') ? ' dot-done' : ''}`;
 }
 
 // ── WALKERS TABLE ─────────────────────────────────────────────────────────────

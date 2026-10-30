@@ -93,10 +93,19 @@
      window printed on the chip itself (renderCalendar), rather than a
      color per walk time slot that had to be decoded from the legend. */
   .my-walk-chip .chip-time { font-weight: 700; margin-right: 4px; }
-  .my-walk-chip .chip-time-short { display: none; }
   .my-walk-chip.walk { background: #EBF5EF; color: #1A5C30; border-left: 3px solid #1A5C30; }
   .my-walk-chip.dropin { background: #FDEBDD; color: #B04A0C; border-left: 3px solid #B04A0C; }
   .my-walk-chip.overnight { background: #E6EEFB; color: #1E4E8C; border-left: 3px solid #1E4E8C; }
+  /* Phone view (js/calendar-mobile.js): dots in the grid, the tapped day's
+     chips listed under it. Both hidden on desktop; shown in the mobile query. */
+  .cal-dots, .cal-day-list { display: none; }
+  .cal-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .cal-dot.dot-walk { background: #1A5C30; }
+  .cal-dot.dot-dropin { background: #B04A0C; }
+  .cal-dot.dot-overnight { background: #1E4E8C; }
+  .cal-dot-more { font-size: 10px; font-weight: 600; color: var(--text-mid); line-height: 7px; }
+  .cal-day-list-title { font-size: 15px; font-weight: 500; color: var(--navy); margin-bottom: 10px; }
+  .cal-day-list-empty { font-size: 13px; color: var(--text-light); }
 
   /* Quick reference: what each assignment type involves, under the calendar */
   .quick-ref { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 20px 24px; margin-top: 20px; }
@@ -174,13 +183,15 @@
     .stat-value { font-size: 20px; }
 
     /* Calendar: shorter cells so a full month fits without excess scrolling */
-    .calendar-day { min-height: 56px; padding: 4px; }
-    /* Cells are ~50px wide here: time on its own line, name under it. */
-    .my-walk-chip { padding: 2px 3px; font-size: 10px; }
-    .my-walk-chip .chip-time, .my-walk-chip .chip-name { display: block; overflow: hidden; text-overflow: ellipsis; }
-    .my-walk-chip .chip-time { margin-right: 0; }
-    .my-walk-chip .chip-time-full { display: none; }
-    .my-walk-chip .chip-time-short { display: inline; }
+    .calendar-day { min-height: 56px; padding: 4px; cursor: pointer; }
+    .calendar-day.other-month { cursor: default; }
+    .calendar-day.selected { background: var(--sand); }
+    /* Cells are ~50px wide here, too narrow for chips: dots in the grid,
+       the tapped day's chips full width in the list below. */
+    .calendar-days .my-walk-chip { display: none; }
+    .cal-dots { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; padding: 2px 0 0 2px; }
+    .cal-day-list { display: block; background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; padding: 14px; margin-top: 12px; }
+    .cal-day-list .my-walk-chip { white-space: normal; font-size: 14px; padding: 10px 12px; margin-bottom: 6px; border-radius: 6px; }
 
     /* Walk cards: tighten padding */
     .walk-card { padding: 16px; gap: 12px; }
@@ -313,6 +324,7 @@
           </div>
         </div>
       </div>
+      <div class="cal-day-list" id="calendarDayList"></div>
 
       <div class="quick-ref">
         <div class="quick-ref-title">Quick Reference</div>
@@ -430,6 +442,7 @@
      to their first upload. -->
 <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
 <script type="module">
+import { enhanceCalendar } from '/js/calendar-mobile.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { initializeFirestore, memoryLocalCache, collection, query, where, onSnapshot, doc, getDoc, updateDoc, getDocs, addDoc, serverTimestamp, Timestamp, runTransaction } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
@@ -1553,10 +1566,7 @@ function renderCalendar() {
     });
     const chips = items.sort((a, b) => a.start - b.start).map(it =>
       `<div class="my-walk-chip ${it.cls}" onclick="${it.onclick}" title="${escapeHtml(`${it.name} · ${it.title}`)}">`
-      // Phones get a short form (see .chip-time-short in the mobile CSS):
-      // "11am–2pm" -> "11–2", "Overnight" -> "Night". The chip's color and
-      // its place in the day's order carry the rest.
-      + (it.time ? `<span class="chip-time"><span class="chip-time-full">${escapeHtml(it.time)}</span><span class="chip-time-short">${escapeHtml(it.time === 'Overnight' ? 'Night' : it.time.replace(/am|pm/g, ''))}</span></span>` : '')
+      + (it.time ? `<span class="chip-time">${escapeHtml(it.time)}</span>` : '')
       + `<span class="chip-name">${escapeHtml(it.name)}</span></div>`
     ).join('');
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}</div>`;
@@ -1565,6 +1575,10 @@ function renderCalendar() {
   const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
   for (let i = 1; i <= totalCells - firstDay - daysInMonth; i++) html += `<div class="calendar-day other-month"><div class="day-num">${i}</div></div>`;
   container.innerHTML = html;
+  enhanceCalendar({
+    container, list: document.getElementById('calendarDayList'),
+    year: calYear, month: calMonth, chipSelector: '.my-walk-chip', dotClass: (chip) => `dot-${chip.classList[1]}`,
+  });
 }
 
 // ── HISTORY ───────────────────────────────────────────────────────────────────
