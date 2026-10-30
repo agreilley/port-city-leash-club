@@ -16,6 +16,9 @@ n.queue=[];t=b.createElement(e);t.async=!0;
 t.src=v;s=b.getElementsByTagName(e)[0];
 s.parentNode.insertBefore(t,s)}(window, document,'script',
 'https://connect.facebook.net/en_US/fbevents.js');
+// Don't let Meta count in-page jumps (the homepage hero buttons link to
+// #services / #membership) as new PageViews; one visit = one PageView.
+fbq.disablePushState = true;
 fbq('init', '1024622867154084');
 fbq('track', 'PageView');
 
