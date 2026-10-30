@@ -3796,6 +3796,14 @@ window.openReferralCodeDetail = (codeId) => {
     { label: 'Source', value: REFERRAL_SOURCE_LABELS[code.source] || code.source || '–' },
     { label: code.source === 'member_referral' ? 'Referrer' : code.source === 'email_capture' ? 'Email' : code.source === 'event' ? 'Event' : 'Building / Agent', value: referralCodeLabel(code) },
     { label: 'Status', value: capitalize(code.status) },
+    // Partner codes carry the /welcomehome submitter's contact info
+    // (runGenerateReferralCode) — the label above only shows the building/agent.
+    ...(code.source === 'apartment' || code.source === 'agent' ? [
+      { label: 'Name', value: code.submittedName || '–' },
+      { label: 'Phone', value: code.submittedPhone || '–' },
+      { label: 'Email', value: code.submittedEmail || '–' },
+      { label: 'Notes', value: code.notes || '–' },
+    ] : []),
     ...(code.source === 'event' ? [
       { label: 'Amount', value: typeof code.amountCents === 'number' ? `$${(code.amountCents / 100).toFixed(2)}` : '–' },
       { label: 'Expires', value: code.expiresAt?.toDate ? code.expiresAt.toDate().toLocaleDateString() : '–' },
