@@ -80,9 +80,9 @@
   .calendar-nav button { background: white; border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; padding: 6px 14px; font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; }
   .calendar-month { font-family: 'Cormorant Garamond', serif; font-size: 24px; font-weight: 300; color: var(--navy); }
   .calendar-grid { background: white; border: 1px solid rgba(0,0,0,0.07); border-radius: 8px; overflow: hidden; }
-  .calendar-weekdays { display: grid; grid-template-columns: repeat(7,1fr); background: var(--sand); border-bottom: 1px solid rgba(0,0,0,0.07); }
+  .calendar-weekdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); background: var(--sand); border-bottom: 1px solid rgba(0,0,0,0.07); }
   .calendar-weekday { padding: 10px; font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-light); text-align: center; }
-  .calendar-days { display: grid; grid-template-columns: repeat(7,1fr); }
+  .calendar-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
   .calendar-day { min-height: 90px; border-right: 1px solid rgba(0,0,0,0.05); border-bottom: 1px solid rgba(0,0,0,0.05); padding: 8px; }
   .calendar-day:nth-child(7n) { border-right: none; }
   .calendar-day.other-month { background: rgba(0,0,0,0.02); }
