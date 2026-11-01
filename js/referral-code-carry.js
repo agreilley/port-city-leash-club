@@ -3,7 +3,8 @@
 // https://www.portcityleashclub.com/?code=PCLC-XXXXXX) through to the
 // request forms, so the friend never has to type it.
 //
-// Loaded with `defer` on the homepage and both request forms. A ?code= in
+// Loaded with `defer` on the homepage and both request forms; on the
+// homepage it also shows the "your code is saved" banner. A ?code= in
 // the URL wins and is remembered for the rest of the tab's session; with
 // no ?code=, the remembered one is used. membership-request.html and
 // service-request.html read window._carriedReferralCode once their
@@ -33,4 +34,12 @@
     } catch (e) { /* storage blocked */ }
   }
   window._carriedReferralCode = code;
+
+  // Homepage only: tell the visitor their code came with them. Deferred
+  // script, so the banner markup is already parsed.
+  var banner = document.getElementById('referralCodeBanner');
+  if (banner && code) {
+    document.getElementById('referralCodeBannerCode').textContent = code;
+    banner.hidden = false;
+  }
 })();

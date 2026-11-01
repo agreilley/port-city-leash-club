@@ -520,6 +520,13 @@
 src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 /></noscript>
 
+<!-- Referral code banner — hidden unless js/referral-code-carry.js finds a
+     code from a share link (?code=) in this visit. Above the sticky nav, so
+     it scrolls away instead of covering the page. -->
+<div id="referralCodeBanner" hidden style="background:var(--navy);color:var(--sand-light);text-align:center;font-size:13px;line-height:1.5;padding:10px 16px;">
+  Your referral code <strong id="referralCodeBannerCode" style="color:white;letter-spacing:0.04em;"></strong> is saved. It'll fill in for you when you request a Leash Club membership or pet sitting.
+</div>
+
 <!-- NAV -->
 <nav>
   <a href="/" style="text-decoration:none;display:flex;align-items:center;"><picture><source type="image/webp" srcset="images/logo-horizontal-540.webp"><img src="images/logo-horizontal-540.png" width="270" height="72" alt="Port City Leash Club" style="height:72px;width:auto;"></picture></a>
