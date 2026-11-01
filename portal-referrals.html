@@ -262,12 +262,9 @@
     .invite-status.ok { color: #5c7570; }
     .invite-status.err { color: #C17B6F; }
 
-    /* Credit + referral list row */
+    /* Credit balance */
     .info-row {
-      display: grid;
-      grid-template-columns: 1fr 2fr;
-      gap: 20px;
-      align-items: start;
+      max-width: 360px;
     }
 
     .info-box {
@@ -295,10 +292,7 @@
       color: #888;
     }
 
-    /* Shared by the credit-balance and referral-list error states below —
-       both sit side by side in .info-row, so a load failure in either one
-       needs the same recovery affordance, not one with a retry and one
-       without. */
+    /* Retry link in the credit-balance error state below. */
     .inline-retry {
       background: none;
       border: none;
@@ -311,57 +305,9 @@
       font: inherit;
     }
 
-    .referral-list-card {
-      background: white;
-      border: 0.5px solid #ddd;
-      border-radius: 12px;
-      padding: 20px 24px;
-    }
-    .referral-list-card h3 {
-      font-size: 15px;
-      font-weight: 500;
-      color: #0D1B2A;
-      margin-bottom: 4px;
-    }
-    .referral-list-card > p {
-      font-size: 12px;
-      color: #888;
-      margin-bottom: 16px;
-    }
-    .referral-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 12px 0;
-      border-top: 0.5px solid #eee;
-      font-size: 13px;
-    }
-    .referral-row:first-child { border-top: none; }
-    .referral-name { color: #0D1B2A; font-weight: 500; flex: 1; }
-    .referral-date { color: #888; }
-    .referral-status {
-      font-size: 11px;
-      font-weight: 500;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      padding: 4px 10px;
-      border-radius: 20px;
-      white-space: nowrap;
-    }
-    .status-invited { background: rgba(143,168,162,0.15); color: #5c7570; }
-    .status-booked { background: rgba(143,168,162,0.3); color: #0D1B2A; }
-    .status-flagged_review { background: rgba(143,168,162,0.15); color: #5c7570; }
-    .status-credit_applied { background: rgba(193,123,111,0.9); color: white; }
-    .empty-state {
-      font-size: 13px;
-      color: #888;
-      padding: 12px 0;
-    }
-
     @media (max-width: 768px) {
       .sidebar { display: none; }
-      .info-row { grid-template-columns: 1fr; }
+      .info-row { max-width: none; }
       .invite-fields input { font-size: 16px; } /* no iOS zoom on focus */
       .btn-invite { width: 100%; }
     }
@@ -446,14 +392,6 @@
             <div class="info-value" id="creditBalanceValue">Loading&hellip;</div>
             <div class="info-sub" id="creditBalanceSub"></div>
           </div>
-
-          <div class="referral-list-card">
-            <h3>Your Referrals</h3>
-            <p>Friends you've invited or who've used your code.</p>
-            <div id="referralList">
-              <div class="empty-state">Loading&hellip;</div>
-            </div>
-          </div>
         </div>
 
       </div>
@@ -461,7 +399,7 @@
 <script type="module">
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { initializeFirestore, memoryLocalCache, doc, getDoc, collection, query, orderBy, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { initializeFirestore, memoryLocalCache, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { requireMemberDoc, showPortalLoadTimeout } from '/js/portal-guard.js';
 const cfg = { apiKey:"AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM", authDomain:"port-city-leash-club-827ab.firebaseapp.com", projectId:"port-city-leash-club-827ab", storageBucket:"port-city-leash-club-827ab.firebasestorage.app", messagingSenderId:"649385306352", appId:"1:649385306352:web:8e8a6fcbe8a7eff29dfa35" };
@@ -494,13 +432,6 @@ function formatDogAge(age) {
   return n !== null ? `${n} year${n === 1 ? '' : 's'} old` : `${trimmed} old`;
 }
 
-// Display labels only — stored status values are unchanged. A redemption
-// is written as 'invited' the moment a friend submits a request with the
-// code (onNewSubmission), so to the member that means they've booked; a
-// portal invite that hasn't turned into a request yet is the real
-// "Invited" (see the invites merge in loadReferralList).
-const STATUS_LABELS = { invited: 'Booked', flagged_review: 'Pending Review', credit_applied: 'Credit Applied' };
-const STATUS_CLASSES = { invited: 'booked', flagged_review: 'flagged_review', credit_applied: 'credit_applied' };
 
 // Same URL sendReferralInvite puts behind the invite email's button —
 // js/referral-code-carry.js on the homepage keeps the code for the
@@ -549,7 +480,6 @@ document.getElementById('inviteForm').addEventListener('submit', async (e) => {
     setStatus('Invite sent to ' + friendName + '.', 'ok');
     nameEl.value = '';
     emailEl.value = '';
-    if (currentReferralCode) loadReferralList(currentReferralCode);
   } catch (err) {
     console.error('Referral invite failed:', err.message);
     // Callable HttpsError messages are written for the member (see
@@ -562,50 +492,10 @@ document.getElementById('inviteForm').addEventListener('submit', async (e) => {
   }
 });
 
-// Set once the code is resolved in onAuthStateChanged below — lets
-// retryReferralList() re-run this without re-resolving auth/the code.
+// Set once the code is resolved in onAuthStateChanged below — read by the
+// Copy Code / Copy Link buttons.
 let currentReferralCode = null;
 
-async function loadReferralList(code) {
-  const listEl = document.getElementById('referralList');
-  listEl.innerHTML = '<div class="empty-state">Loading&hellip;</div>';
-  try {
-    const [redemptionSnap, inviteSnap] = await Promise.all([
-      getDocs(query(collection(db, 'referralCodes', code, 'redemptions'), orderBy('createdAt', 'desc'))),
-      getDocs(collection(db, 'referralCodes', code, 'invites')),
-    ]);
-    const rows = redemptionSnap.docs.map(d => {
-      const r = d.data();
-      const status = r.status || 'invited';
-      return { name: r.name || 'A friend', at: r.createdAt, label: STATUS_LABELS[status] || 'Booked', cls: STATUS_CLASSES[status] || 'booked' };
-    });
-    // Invites that became a request are already listed above as their
-    // redemption ('booked' + redemptionId); 'sending' means the send is
-    // still in flight or failed and was rolled back.
-    inviteSnap.docs.forEach(d => {
-      const inv = d.data();
-      if (inv.status !== 'sent') return;
-      rows.push({ name: inv.friendName || 'A friend', at: inv.createdAt, label: 'Invited', cls: 'invited' });
-    });
-    if (!rows.length) {
-      listEl.innerHTML = '<div class="empty-state">No referrals yet. Send your code to a friend to get started.</div>';
-      return;
-    }
-    rows.sort((a, b) => (b.at?.toMillis?.() || 0) - (a.at?.toMillis?.() || 0));
-    listEl.innerHTML = rows.map(r => {
-      const date = r.at?.toDate ? r.at.toDate().toLocaleDateString() : '';
-      return '<div class="referral-row">'
-        + '<div class="referral-name">' + esc(r.name) + '</div>'
-        + '<div class="referral-date">' + esc(date) + '</div>'
-        + '<div class="referral-status status-' + esc(r.cls) + '">' + esc(r.label) + '</div>'
-        + '</div>';
-    }).join('');
-  } catch (e) {
-    console.error('Failed to load referrals:', e.message);
-    listEl.innerHTML = '<div class="empty-state">Couldn\'t load your referrals right now. <button type="button" class="inline-retry" onclick="retryReferralList()">Retry</button></div>';
-  }
-}
-window.retryReferralList = () => { if (currentReferralCode) loadReferralList(currentReferralCode); };
 
 async function loadCreditBalance() {
   const valueEl = document.getElementById('creditBalanceValue');
@@ -649,7 +539,6 @@ onAuthStateChanged(auth, async (user) => {
   clearTimeout(authTimeoutId);
   if (!m) {
     document.getElementById('referralCodeValue').textContent = '–';
-    document.getElementById('referralList').innerHTML = '';
     return;
   }
   // Was independent of the guard (fired before requireMemberDoc), on the
@@ -681,11 +570,11 @@ onAuthStateChanged(auth, async (user) => {
     }
     currentReferralCode = code;
     renderCode(code);
-    await loadReferralList(code);
   } catch(e) {
     console.error('Referral tab load failed:', e.message);
     document.getElementById('referralCodeValue').textContent = 'Unavailable';
-    document.getElementById('referralList').innerHTML = '<div class="empty-state">Couldn\'t load your account. <button type="button" class="inline-retry" onclick="location.reload()">Retry</button></div>';
+    document.getElementById('inviteStatus').innerHTML = 'Couldn\'t load your referral code right now. <button type="button" class="inline-retry" onclick="location.reload()">Retry</button>';
+    document.getElementById('inviteStatus').className = 'invite-status err';
   }
 });
 </script>
