@@ -206,6 +206,7 @@
 </style>
 <script src="/js/meta-pixel.js" defer></script>
 <script src="/js/attribution.js" defer></script>
+<script src="/js/referral-code-carry.js" defer></script>
 <script src="/js/ga4.js" defer></script>
 </head>
 <body>
@@ -856,6 +857,16 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   window._serverTimestamp = serverTimestamp;
   window._Timestamp = Timestamp;
   window._validateReferralCode = httpsCallable(getFunctions(app), 'validateReferralCode');
+  // Share links (?code=, see js/referral-code-carry.js) pre-fill the code
+  // and run the same blur check a typed code gets, now that the callable
+  // it needs exists. Never overwrites something already typed.
+  {
+    const carriedInput = document.getElementById('referralCode');
+    if (carriedInput && !carriedInput.value && window._carriedReferralCode) {
+      carriedInput.value = window._carriedReferralCode;
+      carriedInput.dispatchEvent(new Event('blur'));
+    }
+  }
   window._MEMBER_WALK_RATE = MEMBER_WALK_RATE; // bridge ES module -> classic estimate calculator
   // Paint the estimate for the first time now that the real rate is in
   // place — see the comment where the old init-time call used to be, in the

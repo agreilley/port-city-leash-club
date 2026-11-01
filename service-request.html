@@ -337,6 +337,7 @@
 </style>
 <script src="/js/meta-pixel.js" defer></script>
 <script src="/js/attribution.js" defer></script>
+<script src="/js/referral-code-carry.js" defer></script>
 <script src="/js/ga4.js" defer></script>
 </head>
 <body>
@@ -1300,6 +1301,16 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   window._collection = collection;
   window._serverTimestamp = serverTimestamp;
   window._validateReferralCode = httpsCallable(getFunctions(app), 'validateReferralCode');
+  // Share links (?code=, see js/referral-code-carry.js) pre-fill the code
+  // and run the same blur check a typed code gets, now that the callable
+  // it needs exists. Never overwrites something already typed.
+  {
+    const carriedInput = document.getElementById('referralCode');
+    if (carriedInput && !carriedInput.value && window._carriedReferralCode) {
+      carriedInput.value = window._carriedReferralCode;
+      carriedInput.dispatchEvent(new Event('blur'));
+    }
+  }
 </script>
 <script type="module">
   import { initMeetGreetCalendar } from './meet-greet-calendar.js';

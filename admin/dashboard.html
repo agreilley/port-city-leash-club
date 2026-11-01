@@ -1536,7 +1536,7 @@ let allPayouts = [];
 // every code (fetched via a single collectionGroup query, not one query per
 // code — see loadReferralCodes), each tagged with codeId so it can be
 // grouped/counted client-side.
-let allReferralCodes = [], allReferralRedemptions = [];
+let allReferralCodes = [], allReferralRedemptions = [], allReferralInvites = [];
 let currentReferralSourceFilter = 'all';
 let currentReferralSearch = '';
 // Default is createdAt-descending (newest first) rather than redemptions —
@@ -3661,15 +3661,19 @@ async function loadReferralCodes(isRefresh) {
   const tbody = document.getElementById('referralCodesTable');
   if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr>`;
   try {
-    const [codesSnap, redemptionsSnap] = await Promise.all([
+    const [codesSnap, redemptionsSnap, invitesSnap] = await Promise.all([
       getDocs(collection(db, 'referralCodes')),
       getDocs(collectionGroup(db, 'redemptions')),
+      // Portal Refer a Friend invites (sendReferralInvite) — same one-read,
+      // collection-group posture as redemptions.
+      getDocs(collectionGroup(db, 'invites')),
     ]);
     allReferralCodes = codesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     // codeId comes from the redemption doc's own path (redemptions is only
     // ever nested under referralCodes/{code} — see functions/index.js — so
     // parent.parent.id is always that code, never a foreign collection).
     allReferralRedemptions = redemptionsSnap.docs.map(d => ({ id: d.id, codeId: d.ref.parent.parent.id, ...d.data() }));
+    allReferralInvites = invitesSnap.docs.map(d => ({ id: d.id, codeId: d.ref.parent.parent.id, ...d.data() }));
     renderReferralCodesTable();
   } catch (e) {
     console.error('Failed to load referral codes:', e.message);
@@ -3866,6 +3870,31 @@ window.openReferralCodeDetail = (codeId) => {
   // the new pre-charge discount path (finalizeNewMemberReferralDiscount) —
   // the old post-charge path (runFirstPaymentReferralCredit) and Scenario
   // 7's fallback never write it. Shown only when present, never "undefined".
+  // Friends this member invited from the portal. 'booked' invites also
+  // appear above as their redemption; 'sending' never reached the friend.
+  const invites = allReferralInvites
+    .filter(i => i.codeId === codeId && (i.status === 'sent' || i.status === 'booked'))
+    .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+  const invitesHTML = invites.length ? `
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Sent</th></tr></thead>
+      <tbody>
+        ${invites.map(i => {
+          const date = i.createdAt?.toDate ? i.createdAt.toDate().toLocaleDateString() : '–';
+          const booked = i.status === 'booked';
+          return `<tr>
+            <td>${escapeHtml(i.friendName || '–')}</td>
+            <td>${escapeHtml(i.friendEmail || '–')}</td>
+            <td><span class="status-badge ${booked ? 'active' : 'pending'}">${booked ? 'Booked' : 'Invited'}</span></td>
+            <td>${escapeHtml(date)}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>
+  ` : `<div class="empty-state">No invites sent yet.</div>`;
+
   const redemptionsHTML = redemptions.length ? `
     <div class="table-scroll">
     <table>
@@ -3895,6 +3924,10 @@ window.openReferralCodeDetail = (codeId) => {
     <hr class="modal-divider">
     <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Redemptions</div>
     ${redemptionsHTML}
+    ${code.source === 'member_referral' ? `
+    <hr class="modal-divider">
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:10px;">Invites Sent</div>
+    ${invitesHTML}` : ''}
   `;
   document.getElementById('referralCodeDetailModal').classList.add('open');
 };

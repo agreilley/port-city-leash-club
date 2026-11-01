@@ -211,6 +211,57 @@
     }
     .btn-secondary-code:hover { background: rgba(193,123,111,0.08); }
 
+    /* Invite-a-friend form — sent from Port City Leash Club by
+       sendReferralInvite, replacing the old mailto: share button. */
+    .invite-form {
+      border-top: 0.5px solid #eee;
+      margin-top: 22px;
+      padding-top: 20px;
+    }
+    .invite-form h3 {
+      font-size: 15px;
+      font-weight: 500;
+      color: #0D1B2A;
+      margin: 0 0 4px;
+    }
+    .invite-form > p {
+      font-size: 12px;
+      color: #888;
+      margin: 0 0 14px;
+      line-height: 1.5;
+    }
+    .invite-fields {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .invite-fields input {
+      flex: 1 1 180px;
+      min-width: 0;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 14px;
+      font-family: inherit;
+      color: #0D1B2A;
+    }
+    .invite-fields input:focus { outline: none; border-color: #8FA8A2; }
+    .btn-invite {
+      background: #C17B6F;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-invite:disabled { opacity: 0.6; cursor: default; }
+    .invite-status { font-size: 12px; margin-top: 10px; min-height: 1em; }
+    .invite-status.ok { color: #5c7570; }
+    .invite-status.err { color: #C17B6F; }
+
     /* Credit + referral list row */
     .info-row {
       display: grid;
@@ -299,6 +350,7 @@
       white-space: nowrap;
     }
     .status-invited { background: rgba(143,168,162,0.15); color: #5c7570; }
+    .status-booked { background: rgba(143,168,162,0.3); color: #0D1B2A; }
     .status-flagged_review { background: rgba(143,168,162,0.15); color: #5c7570; }
     .status-credit_applied { background: rgba(193,123,111,0.9); color: white; }
     .empty-state {
@@ -310,6 +362,8 @@
     @media (max-width: 768px) {
       .sidebar { display: none; }
       .info-row { grid-template-columns: 1fr; }
+      .invite-fields input { font-size: 16px; } /* no iOS zoom on focus */
+      .btn-invite { width: 100%; }
     }
 
   /* ── PORTAL MOBILE ─────────────────────────────────────────────────────── */
@@ -363,7 +417,7 @@
 
         <div class="refer-hero">
           <h2>Give $50, Get $50.</h2>
-          <p>Share your code with a friend or neighbor. They get $50 toward their first charge. Once their first payment goes through, you get $50 in credit toward your next one.</p>
+          <p>Send your code to a friend or neighbor. They get $50 toward their first charge. Once their first payment goes through, you get $50 in credit toward your next one.</p>
         </div>
 
         <div class="code-card">
@@ -371,8 +425,19 @@
           <div class="code-value" id="referralCodeValue">Loading&hellip;</div>
           <div class="code-actions">
             <button type="button" class="btn-secondary-code" id="copyCodeBtn">Copy Code</button>
-            <a href="#" class="btn-secondary-code" id="shareEmailBtn">Share via Email</a>
+            <button type="button" class="btn-secondary-code" id="copyLinkBtn">Copy Link</button>
           </div>
+
+          <form class="invite-form" id="inviteForm" novalidate>
+            <h3>Send It to a Friend</h3>
+            <p>We'll email your friend your code and a little about us, from Port City Leash Club. It's one email, and we won't contact them again unless they reach out or book.</p>
+            <div class="invite-fields">
+              <input type="text" id="inviteName" placeholder="Friend's first name" autocomplete="off" maxlength="80" required>
+              <input type="email" id="inviteEmail" placeholder="Friend's email" autocomplete="off" maxlength="320" required>
+              <button type="submit" class="btn-invite" id="inviteBtn">Send Invite</button>
+            </div>
+            <div class="invite-status" id="inviteStatus" role="status"></div>
+          </form>
         </div>
 
         <div class="info-row">
@@ -384,7 +449,7 @@
 
           <div class="referral-list-card">
             <h3>Your Referrals</h3>
-            <p>Friends who've used your code.</p>
+            <p>Friends you've invited or who've used your code.</p>
             <div id="referralList">
               <div class="empty-state">Loading&hellip;</div>
             </div>
@@ -429,27 +494,71 @@ function formatDogAge(age) {
   return n !== null ? `${n} year${n === 1 ? '' : 's'} old` : `${trimmed} old`;
 }
 
-const STATUS_LABELS = { invited: 'Invited', flagged_review: 'Pending Review', credit_applied: 'Credit Applied' };
+// Display labels only — stored status values are unchanged. A redemption
+// is written as 'invited' the moment a friend submits a request with the
+// code (onNewSubmission), so to the member that means they've booked; a
+// portal invite that hasn't turned into a request yet is the real
+// "Invited" (see the invites merge in loadReferralList).
+const STATUS_LABELS = { invited: 'Booked', flagged_review: 'Pending Review', credit_applied: 'Credit Applied' };
+const STATUS_CLASSES = { invited: 'booked', flagged_review: 'flagged_review', credit_applied: 'credit_applied' };
+
+// Same URL sendReferralInvite puts behind the invite email's button —
+// js/referral-code-carry.js on the homepage keeps the code for the
+// request forms to pre-fill.
+const shareLink = code => 'https://www.portcityleashclub.com/?code=' + encodeURIComponent(code);
 
 function renderCode(code) {
   document.getElementById('referralCodeValue').textContent = code;
-  const mailBody = `Hey! I've been using Port City Leash Club for dog walking and pet sitting and thought you'd love it too.\n\n`
-    + `Use my referral code ${code} when you sign up and you'll get $50 toward your first charge. Once your first payment goes through, I'll get $50 in credit too.\n\n`
-    + `https://www.portcityleashclub.com/membership-request`;
-  document.getElementById('shareEmailBtn').href =
-    'mailto:?subject=' + encodeURIComponent('Port City Leash Club, $50 toward your first charge')
-    + '&body=' + encodeURIComponent(mailBody);
 }
 
-document.getElementById('copyCodeBtn').addEventListener('click', async () => {
-  const btn = document.getElementById('copyCodeBtn');
-  const code = document.getElementById('referralCodeValue').textContent;
+async function copyWithFeedback(btn, value, idleLabel) {
   try {
-    await navigator.clipboard.writeText(code);
-    btn.textContent = 'Copied!';
-    setTimeout(() => { btn.textContent = 'Copy Code'; }, 1800);
+    await navigator.clipboard.writeText(value);
+    btn.textContent = 'Copied';
+    setTimeout(() => { btn.textContent = idleLabel; }, 1800);
   } catch (err) {
     console.error('Clipboard copy failed:', err);
+  }
+}
+
+document.getElementById('copyCodeBtn').addEventListener('click', () => {
+  if (!currentReferralCode) return;
+  copyWithFeedback(document.getElementById('copyCodeBtn'), currentReferralCode, 'Copy Code');
+});
+document.getElementById('copyLinkBtn').addEventListener('click', () => {
+  if (!currentReferralCode) return;
+  copyWithFeedback(document.getElementById('copyLinkBtn'), shareLink(currentReferralCode), 'Copy Link');
+});
+
+document.getElementById('inviteForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const nameEl = document.getElementById('inviteName');
+  const emailEl = document.getElementById('inviteEmail');
+  const btn = document.getElementById('inviteBtn');
+  const statusEl = document.getElementById('inviteStatus');
+  const friendName = nameEl.value.trim();
+  const friendEmail = emailEl.value.trim();
+  const setStatus = (text, kind) => { statusEl.textContent = text; statusEl.className = 'invite-status ' + (kind || ''); };
+  if (!friendName) { setStatus("Please enter your friend's name.", 'err'); nameEl.focus(); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(friendEmail)) { setStatus('Please enter a valid email address.', 'err'); emailEl.focus(); return; }
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  setStatus('');
+  try {
+    await httpsCallable(functions, 'sendReferralInvite')({ friendName, friendEmail });
+    setStatus('Invite sent to ' + friendName + '.', 'ok');
+    nameEl.value = '';
+    emailEl.value = '';
+    if (currentReferralCode) loadReferralList(currentReferralCode);
+  } catch (err) {
+    console.error('Referral invite failed:', err.message);
+    // Callable HttpsError messages are written for the member (see
+    // runSendReferralInvite); anything else gets a generic retry line.
+    const known = ['functions/invalid-argument', 'functions/already-exists', 'functions/resource-exhausted', 'functions/failed-precondition', 'functions/internal'];
+    setStatus(known.includes(err.code) && err.message ? err.message : "We couldn't send that invite right now. Please try again.", 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send Invite';
   }
 });
 
@@ -461,20 +570,34 @@ async function loadReferralList(code) {
   const listEl = document.getElementById('referralList');
   listEl.innerHTML = '<div class="empty-state">Loading&hellip;</div>';
   try {
-    const q = query(collection(db, 'referralCodes', code, 'redemptions'), orderBy('createdAt', 'desc'));
-    const snap = await getDocs(q);
-    if (snap.empty) {
-      listEl.innerHTML = '<div class="empty-state">No referrals yet — share your code to get started!</div>';
+    const [redemptionSnap, inviteSnap] = await Promise.all([
+      getDocs(query(collection(db, 'referralCodes', code, 'redemptions'), orderBy('createdAt', 'desc'))),
+      getDocs(collection(db, 'referralCodes', code, 'invites')),
+    ]);
+    const rows = redemptionSnap.docs.map(d => {
+      const r = d.data();
+      const status = r.status || 'invited';
+      return { name: r.name || 'A friend', at: r.createdAt, label: STATUS_LABELS[status] || 'Booked', cls: STATUS_CLASSES[status] || 'booked' };
+    });
+    // Invites that became a request are already listed above as their
+    // redemption ('booked' + redemptionId); 'sending' means the send is
+    // still in flight or failed and was rolled back.
+    inviteSnap.docs.forEach(d => {
+      const inv = d.data();
+      if (inv.status !== 'sent') return;
+      rows.push({ name: inv.friendName || 'A friend', at: inv.createdAt, label: 'Invited', cls: 'invited' });
+    });
+    if (!rows.length) {
+      listEl.innerHTML = '<div class="empty-state">No referrals yet. Send your code to a friend to get started.</div>';
       return;
     }
-    listEl.innerHTML = snap.docs.map(d => {
-      const r = d.data();
-      const date = r.createdAt?.toDate ? r.createdAt.toDate().toLocaleDateString() : '';
-      const status = r.status || 'invited';
+    rows.sort((a, b) => (b.at?.toMillis?.() || 0) - (a.at?.toMillis?.() || 0));
+    listEl.innerHTML = rows.map(r => {
+      const date = r.at?.toDate ? r.at.toDate().toLocaleDateString() : '';
       return '<div class="referral-row">'
-        + '<div class="referral-name">' + esc(r.name || 'A friend') + '</div>'
+        + '<div class="referral-name">' + esc(r.name) + '</div>'
         + '<div class="referral-date">' + esc(date) + '</div>'
-        + '<div class="referral-status status-' + esc(status) + '">' + esc(STATUS_LABELS[status] || 'Invited') + '</div>'
+        + '<div class="referral-status status-' + esc(r.cls) + '">' + esc(r.label) + '</div>'
         + '</div>';
     }).join('');
   } catch (e) {

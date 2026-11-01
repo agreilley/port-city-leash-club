@@ -780,6 +780,17 @@ service cloud.firestore {
               && get(/databases/$(database)/documents/referralCodes/$(id)).data.referrerId == request.auth.uid);
         allow write: if false;
       }
+
+      // Friends a member invited from the portal's Refer a Friend tab
+      // (sendReferralInvite, Admin SDK only). Same read scoping as
+      // redemptions above. The referralInviteEmails lock docs and the
+      // creditNotices subcollection have no rule at all — server-only.
+      match /invites/{inviteId} {
+        allow read: if isAdmin()
+          || (request.auth != null
+              && get(/databases/$(database)/documents/referralCodes/$(id)).data.referrerId == request.auth.uid);
+        allow write: if false;
+      }
     }
 
     // Collection-group counterpart to referralCodes/{id}/redemptions/{redemptionId}
@@ -799,6 +810,13 @@ service cloud.firestore {
     // one above, it just makes the collection-group access pattern
     // reachable at all, which it wasn't before.
     match /{path=**}/redemptions/{redemptionId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // Collection-group counterpart for invites, same reasoning as redemptions
+    // above — the admin Referral Codes table reads every invite at once.
+    match /{path=**}/invites/{inviteId} {
       allow read: if isAdmin();
       allow write: if false;
     }

@@ -48,6 +48,8 @@ const TEMPLATES = {
   'member-welcome': require('../templates/member-welcome'),
   'portal-access': require('../templates/portal-access'),
   'referral-code-delivery': require('../templates/referral-code-delivery'),
+  'referral-invite': require('../templates/referral-invite'),
+  'referral-credit-earned': require('../templates/referral-credit-earned'),
   'waitlist-area-accepted': require('../templates/waitlist-area-accepted'),
   'billing-needs-review': require('../templates/billing-needs-review'),
   'vacation-hold': require('../templates/vacation-hold'),

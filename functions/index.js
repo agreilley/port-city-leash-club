@@ -4992,6 +4992,7 @@ async function finalizeNewMemberReferralDiscount(stripe, memberId, referralSubmi
       // appliedDiscountCents, which is only the portion the 50% cap let
       // through on this one charge.
       await issueReferralCredit(stripe, discount.referrerId, referrerData, discount.discountCents);
+      await recordReferralCreditNotice(discount.referredByCode, discount.referrerId, referrerData, memberId, discount.discountCents);
     }
   } catch (e) {
     console.error(`finalizeNewMemberReferralDiscount: failed at stage '${stage}' for member ${memberId} (code ${discount.referredByCode}):`, e.message);
@@ -5162,6 +5163,7 @@ async function runFirstPaymentReferralCredit(stripe, memberId, invoiceAmountPaid
         throw new Error(`Referrer member ${discount.referrerId} not found — cannot issue their credit (new member ${memberId} was already credited).`);
       }
       await issueReferralCredit(stripe, discount.referrerId, referrerData, discount.discountCents);
+      await recordReferralCreditNotice(discount.referredByCode, discount.referrerId, referrerData, memberId, discount.discountCents);
     }
 
     stage = 'bookkeeping';
@@ -9390,6 +9392,18 @@ exports.onNewSubmission = onDocumentCreated({
           status: 'invited',
           createdAt: FieldValue.serverTimestamp(),
         });
+        // A friend the member invited from the portal (sendReferralInvite)
+        // is now a real request — link the invite to it so the portal and
+        // admin lists show one "Booked" row instead of an invite plus a
+        // redemption for the same person.
+        const subEmail = normalizeEmail(sub.email);
+        if (subEmail) {
+          const inviteRef = codeRef.collection('invites').doc(referralInviteEmailHash(subEmail));
+          const inviteSnap = await inviteRef.get();
+          if (inviteSnap.exists) {
+            await inviteRef.set({ status: 'booked', redemptionId: event.params.submissionId }, { merge: true });
+          }
+        }
       }
     } catch (e) {
       console.error(`Referral redemption tracking failed for code ${sub.referredByCode}:`, e.message);
@@ -10459,6 +10473,173 @@ exports.getOrCreateMemberReferralCode = onCall({}, async (request) => {
     tx.update(memberRef, { referralCode: candidateCode });
     return { code: candidateCode };
   });
+});
+
+// ── Refer a Friend invites ──────────────────────────────────────────────────
+// The portal's Refer a Friend tab sends the member's code to a friend FROM
+// Port City Leash Club (replacing the old mailto: button, which sent from
+// the member's own mail app and left us with no record of who was invited).
+// Each invite is recorded at referralCodes/{code}/invites/{emailHash} so the
+// member's tab and the admin Referral Codes table can show it, and so the
+// friend becomes a named warm lead.
+//
+// The friend never opted in, so the guards here exist to protect the
+// sending domain's reputation, not money:
+//   - one invite per friend's address, ever, across every member — a
+//     top-level referralInviteEmails/{emailHash} lock doc taken with
+//     .create() (atomic, no collection-group index needed);
+//   - no invite to an existing member or to the member themself;
+//   - REFERRAL_INVITE_DAILY_LIMIT per member per rolling 24h;
+//   - no member-written text in the email (see referral-invite.js).
+const REFERRAL_INVITE_DAILY_LIMIT = 10;
+const REFERRAL_INVITE_AMOUNT_CENTS = 5000; // member_referral codes never set amountCents — same `?? 5000` default
+const REFERRAL_SHARE_BASE_URL = 'https://www.portcityleashclub.com/';
+const REFERRAL_INVITE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function referralInviteEmailHash(normalizedEmail) {
+  return crypto.createHash('sha256').update(normalizedEmail).digest('hex');
+}
+
+function referralShareLink(code) {
+  return `${REFERRAL_SHARE_BASE_URL}?code=${encodeURIComponent(code)}`;
+}
+
+async function runSendReferralInvite(uid, payload = {}) {
+  const friendName = typeof payload.friendName === 'string' ? payload.friendName.trim().slice(0, 80) : '';
+  const friendEmail = typeof payload.friendEmail === 'string' ? payload.friendEmail.trim().slice(0, 320) : '';
+  if (!friendName) throw new HttpsError('invalid-argument', "Please enter your friend's name.");
+  if (!REFERRAL_INVITE_EMAIL_PATTERN.test(friendEmail)) throw new HttpsError('invalid-argument', 'Please enter a valid email address.');
+  const friendEmailNormalized = normalizeEmail(friendEmail);
+
+  const memberSnap = await db.collection('members').doc(uid).get();
+  if (!memberSnap.exists) throw new HttpsError('not-found', 'Member not found.');
+  const member = memberSnap.data();
+  const code = member.referralCode;
+  if (!code) throw new HttpsError('failed-precondition', 'Your referral code is still being set up. Refresh the page and try again.');
+
+  if (friendEmailNormalized === (member.emailNormalized || normalizeEmail(member.email))) {
+    throw new HttpsError('invalid-argument', "That's your own email address. Enter your friend's instead.");
+  }
+  // Deliberately the same message for "already a client" and "already
+  // invited by someone" — a member shouldn't be able to use this form to
+  // find out whether an address belongs to one of our clients.
+  const alreadyMessage = "We can't send an invite to that address. It may already be on file with us.";
+  if (await findMemberByEmail(friendEmailNormalized)) {
+    throw new HttpsError('already-exists', alreadyMessage);
+  }
+
+  const codeRef = db.collection('referralCodes').doc(code);
+  const since = Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
+  const recent = await codeRef.collection('invites').where('createdAt', '>=', since).get();
+  if (recent.size >= REFERRAL_INVITE_DAILY_LIMIT) {
+    throw new HttpsError('resource-exhausted', `You can send up to ${REFERRAL_INVITE_DAILY_LIMIT} invites a day. Try again tomorrow.`);
+  }
+
+  const emailHash = referralInviteEmailHash(friendEmailNormalized);
+  try {
+    await db.collection('referralInviteEmails').doc(emailHash).create({
+      code, referrerId: uid, createdAt: FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    if (e.code === 6) throw new HttpsError('already-exists', alreadyMessage); // gRPC ALREADY_EXISTS
+    throw e;
+  }
+
+  const inviteRef = codeRef.collection('invites').doc(emailHash);
+  await inviteRef.set({
+    friendName,
+    friendEmail,
+    friendEmailNormalized,
+    referrerId: uid,
+    referrerName: member.name || null,
+    status: 'sending',
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  const emailResult = await sendEmail({
+    to: friendEmail,
+    template: 'referral-invite',
+    data: {
+      friendFirstName: friendName.split(/\s+/)[0],
+      referrerName: member.name || 'A friend',
+      code,
+      amountCents: REFERRAL_INVITE_AMOUNT_CENTS,
+      link: referralShareLink(code),
+    },
+    idempotencyKey: `referral-invite:${code}:${emailHash}`,
+  });
+
+  if (!emailResult.ok) {
+    console.error(`runSendReferralInvite: invite from ${uid} failed to send:`, emailResult.error);
+    // Release the lock so the member can try the same address again —
+    // nothing reached the friend, so there's no reputation reason to block it.
+    await inviteRef.delete().catch(() => {});
+    await db.collection('referralInviteEmails').doc(emailHash).delete().catch(() => {});
+    throw new HttpsError('internal', "We couldn't send that invite right now. Please try again in a few minutes.");
+  }
+
+  await inviteRef.set({ status: 'sent', sentAt: FieldValue.serverTimestamp() }, { merge: true });
+  return { ok: true };
+}
+
+exports.sendReferralInvite = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
+  return runSendReferralInvite(request.auth.uid, request.data || {});
+});
+// Exposed directly, same reasoning as runGenerateReferralCode.
+exports.runSendReferralInvite = runSendReferralInvite;
+
+// Called from both referrer-credit paths (finalizeNewMemberReferralDiscount
+// and runFirstPaymentReferralCredit) right after issueReferralCredit
+// succeeds for the referring member. Only writes a notice doc — the email
+// itself goes out from onReferralCreditNotice below, so the charge paths
+// never need RESEND_API_KEY bound. Never throws: the credit has already
+// been issued, and a notification problem must never be recorded as a
+// credit-issuance failure. .create() keyed by the new member's id makes a
+// retried path a no-op rather than a second email.
+async function recordReferralCreditNotice(code, referrerId, referrerData, newMemberId, amountCents) {
+  try {
+    const newMemberSnap = await db.collection('members').doc(newMemberId).get();
+    const newMemberName = newMemberSnap.data()?.name || '';
+    await db.collection('referralCodes').doc(code).collection('creditNotices').doc(newMemberId).create({
+      referrerId,
+      friendFirstName: newMemberName.trim().split(/\s+/)[0] || null,
+      amountCents,
+      isMembershipTier: referrerData.tier === 'Member',
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    if (e.code === 6) return; // already recorded on an earlier pass
+    console.error(`recordReferralCreditNotice: failed for code ${code}, new member ${newMemberId}:`, e.message);
+  }
+}
+
+exports.onReferralCreditNotice = onDocumentCreated({
+  document: 'referralCodes/{code}/creditNotices/{newMemberId}',
+  secrets: [RESEND_API_KEY],
+}, async (event) => {
+  const notice = event.data?.data();
+  if (!notice?.referrerId) return;
+  const referrerSnap = await db.collection('members').doc(notice.referrerId).get();
+  const referrer = referrerSnap.data();
+  if (!referrer?.email) {
+    console.error(`onReferralCreditNotice: referrer ${notice.referrerId} has no email on file — no notice sent.`);
+    return;
+  }
+  const dogNames = referrer.dogs?.length ? referrer.dogs.map((d) => d.name) : [referrer.dogName];
+  const result = await sendEmail({
+    to: referrer.email,
+    template: 'referral-credit-earned',
+    data: {
+      firstName: (referrer.name || '').trim().split(/\s+/)[0] || null,
+      friendFirstName: notice.friendFirstName || null,
+      amountCents: notice.amountCents,
+      isMembershipTier: !!notice.isMembershipTier,
+      dogNames: dogNames.filter(Boolean),
+    },
+    idempotencyKey: `referral-credit-earned:${event.params.code}:${event.params.newMemberId}`,
+  });
+  if (!result.ok) console.error(`onReferralCreditNotice: send failed for referrer ${notice.referrerId}:`, result.error);
 });
 
 // Member's own referral credit balance, as one combined number — see
