@@ -2599,14 +2599,28 @@ const TODO_SETTINGS_DEFAULTS = {
   // list existed, so it counts as already sent.
   warmLeadTotal: 4,
   warmLeadSentBefore: 1,
-  // Last counts logged before the weekly follower item existed (previously
-  // tracked by hand), so the first week has something to compare against.
-  followerHistory: [
-    { date: '2026-09-18', facebook: 5, instagram: 169 },
-    { date: '2026-09-22', facebook: 8, instagram: 172 },
-    { date: '2026-10-01', facebook: 11, instagram: 198 },
-  ],
 };
+
+// Follower counts Alison tracked by hand before the weekly follower item
+// existed (ranges and "80+" kept exactly as she logged them). New counts go
+// in adminTodos/week_* docs, which continue this history; only exact
+// numbers are compared week to week.
+const FOLLOWER_HISTORY = [
+  { date: '2026-08-01', label: 'Early Aug', instagram: 47, facebook: null },
+  { date: '2026-08-06', instagram: '51–62', facebook: null },
+  { date: '2026-08-17', instagram: '80+', facebook: null },
+  { date: '2026-09-09', instagram: 115, facebook: null },
+  { date: '2026-09-12', instagram: '121–122', facebook: 0 },
+  { date: '2026-09-18', instagram: 169, facebook: 5 },
+  { date: '2026-09-22', instagram: 172, facebook: 8 },
+  { date: '2026-10-01', instagram: 198, facebook: 11 },
+  { date: '2026-10-21', instagram: 241, facebook: 15 },
+  { date: '2026-10-26', instagram: 250, facebook: 15 },
+];
+
+// Walkers the payout to-dos never mention (lowercased names): Taylor Dixon
+// is deactivated, and Ali Gamble is Alison's own backup walker login.
+const TODO_PAYOUT_EXCLUDED_WALKERS = ['taylor dixon', 'ali gamble'];
 
 // Fixed ids so two tabs seeding at once write the same docs, not duplicates.
 const TODO_SEED_ITEMS = {
@@ -2803,14 +2817,22 @@ function renderTodoLive() {
   if (unreadConvos) rows.push(todoRow({ text: `Reply to ${plural(unreadConvos, 'unread message')}`, onclick: "switchView('conversations')" }));
 
   // Payouts: generated but not marked paid, or last week's completed work
-  // not yet in a payout (any walker with unclaimed work dated before this
-  // Monday — this week's work isn't due until next week).
-  const pendingPayouts = allPayouts.filter(p => p.status === 'pending').length;
+  // not yet in a payout (work dated before this Monday — this week's isn't
+  // due until next week). Only counts real money owed, and never Taylor
+  // Dixon (deactivated) or Ali Gamble (Alison's own backup login).
+  const payoutExcluded = (name) => TODO_PAYOUT_EXCLUDED_WALKERS.includes((name || '').trim().toLowerCase());
+  const excludedIds = new Set(allWalkers.filter(w => payoutExcluded(w.name)).map(w => w.id));
+  const pendingPayouts = allPayouts.filter(p => p.status === 'pending' && (Number(p.total) || 0) > 0
+    && !excludedIds.has(p.walkerId) && !payoutExcluded(p.walkerName)).length;
   if (pendingPayouts) rows.push(todoRow({ text: `Pay ${plural(pendingPayouts, 'generated payout')}`, sub: 'Then mark paid', onclick: "switchView('payouts')" }));
   const monday = bookingDay(todoWeekKey());
-  const walkersOwed = allWalkers.filter(w => w.status !== 'inactive' && computeUnclaimedPreview(w.id).items
-    .some(d => { const day = bookingDay(d.endDate || d.date); return day && day < monday; })).length;
-  if (walkersOwed) rows.push(todoRow({ text: `Generate last week's payouts`, sub: `${plural(walkersOwed, 'walker')} with unclaimed work`, onclick: "switchView('payouts')" }));
+  const owedLastWeek = (walkerId) => computeUnclaimedPreview(walkerId).items
+    .filter(d => { const day = bookingDay(d.endDate || d.date); return day && day < monday; })
+    .reduce((sum, d) => sum + (allOvernights.includes(d)
+      ? (d.payout ? overnightPayoutShare(d, walkerId).amount + overnightTipShare(d, walkerId) : 0)
+      : (d.payout ? d.payout.amount + tipTotal(d) : 0)), 0);
+  const walkersOwed = allWalkers.filter(w => w.status !== 'inactive' && !excludedIds.has(w.id) && owedLastWeek(w.id) > 0).length;
+  if (walkersOwed) rows.push(todoRow({ text: `Generate last week's payouts`, sub: `${plural(walkersOwed, 'walker')} with money owed`, onclick: "switchView('payouts')" }));
 
   document.getElementById('todoLive').innerHTML = rows.length ? rows.join('') : '<div class="todo-empty">Nothing needs you right now.</div>';
 }
@@ -2854,7 +2876,7 @@ function renderTodoWeekly() {
   // Followers: this week's numbers, compared with the most recent earlier
   // entry (an earlier week doc, else the pre-list history in settings).
   const earlier = [
-    ...(todoSettings.followerHistory || []).map(h => ({ key: h.date, facebook: h.facebook, instagram: h.instagram })),
+    ...FOLLOWER_HISTORY.map(h => ({ key: h.date, label: h.label, facebook: h.facebook, instagram: h.instagram })),
     ...Object.entries(todoWeeks).filter(([k]) => k < weekKey).map(([k, w]) => ({ key: k, facebook: w.facebookFollowers, instagram: w.instagramFollowers })),
   ].filter(h => typeof h.facebook === 'number' || typeof h.instagram === 'number').sort((a, b) => a.key.localeCompare(b.key));
   const last = earlier[earlier.length - 1];
