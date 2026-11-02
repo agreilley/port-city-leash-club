@@ -10649,6 +10649,45 @@ exports.referralInviteUnsubscribe = onRequest(async (req, res) => {
 <form method="POST" action="${action}"><button type="submit" style="background:#C17B6F;color:#fff;border:none;border-radius:6px;padding:12px 28px;font-size:14px;font-weight:500;cursor:pointer;">Unsubscribe</button></form>`));
 });
 
+// Unsubscribe link for one-off marketing emails (the warm-lead mailing
+// list), which go out from a local Resend script rather than sendEmail, so
+// there's no per-recipient doc to hold a random token. Instead the link
+// carries the address (base64url) plus an HMAC of it under
+// MARKETING_UNSUBSCRIBE_KEY; the sending script reads the same secret via
+// `firebase functions:secrets:access`. Same GET-confirm / POST-record shape
+// and the same emailUnsubscribes/{sha256(email)} list as the invite link,
+// so one list covers both.
+const MARKETING_UNSUBSCRIBE_KEY = defineSecret('MARKETING_UNSUBSCRIBE_KEY');
+
+function marketingUnsubscribeToken(email, key) {
+  return crypto.createHmac('sha256', key).update(email).digest('hex').slice(0, 32);
+}
+
+exports.marketingUnsubscribe = onRequest({ secrets: [MARKETING_UNSUBSCRIBE_KEY] }, async (req, res) => {
+  const encoded = typeof req.query.e === 'string' ? req.query.e : '';
+  const token = typeof req.query.t === 'string' ? req.query.t : '';
+  const invalid = () => res.status(400).send(unsubscribePage('Link not recognized', '<p style="margin:0;font-size:15px;line-height:1.6;">This unsubscribe link isn\'t valid. Reply to any of our emails or write to hello@portcityleashclub.com and we\'ll take you off our list.</p>'));
+  if (!/^[A-Za-z0-9_-]{4,400}$/.test(encoded) || !/^[a-f0-9]{32}$/.test(token)) return invalid();
+  const email = Buffer.from(encoded, 'base64url').toString('utf8').trim().toLowerCase();
+  if (!REFERRAL_INVITE_EMAIL_PATTERN.test(email)) return invalid();
+  const expected = marketingUnsubscribeToken(email, MARKETING_UNSUBSCRIBE_KEY.value());
+  if (!crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected))) return invalid();
+
+  if (req.method === 'POST') {
+    await db.collection('emailUnsubscribes').doc(referralInviteEmailHash(email)).set({
+      email,
+      source: 'marketing',
+      createdAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return res.status(200).send(unsubscribePage("You're unsubscribed", '<p style="margin:0;font-size:15px;line-height:1.6;">We won\'t send you any more emails.</p>'));
+  }
+  if (req.method !== 'GET') return res.status(405).send('');
+
+  const action = `?e=${encoded}&t=${token}`;
+  return res.status(200).send(unsubscribePage('Unsubscribe', `<p style="margin:0 0 20px;font-size:15px;line-height:1.6;">Stop all emails from Port City Leash Club?</p>
+<form method="POST" action="${action}"><button type="submit" style="background:#C17B6F;color:#fff;border:none;border-radius:6px;padding:12px 28px;font-size:14px;font-weight:500;cursor:pointer;">Unsubscribe</button></form>`));
+});
+
 // Called from both referrer-credit paths (finalizeNewMemberReferralDiscount
 // and runFirstPaymentReferralCredit) right after issueReferralCredit
 // succeeds for the referring member. Only writes a notice doc — the email
