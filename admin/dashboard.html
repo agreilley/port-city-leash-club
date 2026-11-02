@@ -149,6 +149,38 @@
   .table-header { padding: 16px 20px; border-bottom: 1px solid rgba(0,0,0,0.07); display: flex; align-items: center; justify-content: space-between; }
   .table-title { font-size: 15px; font-weight: 500; color: var(--navy); }
   .table-search { border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; padding: 7px 12px; font-size: 13px; font-family: 'DM Sans', sans-serif; width: 220px; }
+
+  /* ── TO DO (Overview) ── */
+  .todo-card { margin-bottom: 28px; }
+  .todo-cols { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .todo-col { padding: 16px 20px; min-width: 0; }
+  .todo-col + .todo-col { border-left: 1px solid rgba(0,0,0,0.07); }
+  .todo-col-title { font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-light); margin-bottom: 10px; }
+  .todo-col-sub { text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .todo-row { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; font-size: 13px; color: var(--text-dark); border-bottom: 1px solid rgba(0,0,0,0.04); }
+  .todo-row:last-child { border-bottom: none; }
+  .todo-row.link { cursor: pointer; }
+  .todo-row.link:hover .todo-text { color: var(--rust-dark); }
+  .todo-row input[type="checkbox"] { margin-top: 2px; flex-shrink: 0; accent-color: var(--navy); cursor: pointer; }
+  .todo-dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(0,0,0,0.18); margin-top: 6px; flex-shrink: 0; }
+  .todo-dot.urgent { background: var(--rust); }
+  .todo-text { flex: 1; min-width: 0; line-height: 1.4; overflow-wrap: anywhere; }
+  .todo-sub { display: block; font-size: 12px; color: var(--text-light); }
+  .todo-row.done .todo-text { color: var(--text-light); text-decoration: line-through; }
+  .todo-count { font-size: 12px; color: var(--text-light); white-space: nowrap; }
+  .todo-step { border: 1px solid rgba(0,0,0,0.14); background: white; border-radius: 4px; width: 22px; height: 22px; font-size: 13px; line-height: 1; cursor: pointer; color: var(--navy); }
+  .todo-step:disabled { opacity: 0.35; cursor: default; }
+  .todo-num { width: 64px; border: 1px solid rgba(0,0,0,0.14); border-radius: 4px; padding: 3px 6px; font-size: 12px; font-family: 'DM Sans', sans-serif; }
+  .todo-followers { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; font-size: 12px; color: var(--text-light); align-items: center; }
+  .todo-remove { border: none; background: none; color: var(--text-light); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; }
+  .todo-remove:hover { color: var(--rust-dark); }
+  .todo-empty { font-size: 13px; color: var(--text-light); padding: 4px 0; }
+  .todo-add { display: flex; gap: 8px; margin-top: 10px; }
+  .todo-add input { flex: 1; min-width: 0; border: 1px solid rgba(0,0,0,0.14); border-radius: 4px; padding: 7px 10px; font-size: 13px; font-family: 'DM Sans', sans-serif; }
+  @media (max-width: 900px) {
+    .todo-cols { grid-template-columns: 1fr; }
+    .todo-col + .todo-col { border-left: none; border-top: 1px solid rgba(0,0,0,0.07); }
+  }
   table { width: 100%; border-collapse: collapse; }
   th { padding: 10px 16px; text-align: left; font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-light); background: var(--sand); border-bottom: 1px solid rgba(0,0,0,0.07); }
   th.sortable-th { cursor: pointer; user-select: none; }
@@ -550,6 +582,32 @@
           <div class="stat-label">Needs Attention</div>
           <div class="stat-value" id="stat-needs-attention" style="color:var(--rust);">–</div>
           <div class="stat-sub" id="stat-needs-attention-sub"></div>
+        </div>
+      </div>
+      <!-- To Do: live items computed from data already loaded (they disappear
+           once handled), this week's repeating checklist (adminTodos/week_*),
+           and one-off items (adminTodos docs with type 'item'). See renderTodos. -->
+      <div class="table-card todo-card">
+        <div class="table-header">
+          <div class="table-title">To Do</div>
+        </div>
+        <div class="todo-cols">
+          <div class="todo-col">
+            <div class="todo-col-title">Needs you</div>
+            <div id="todoLive"><div class="todo-empty">Loading...</div></div>
+          </div>
+          <div class="todo-col">
+            <div class="todo-col-title">This week <span id="todoWeekLabel" class="todo-col-sub"></span></div>
+            <div id="todoWeekly"></div>
+          </div>
+          <div class="todo-col">
+            <div class="todo-col-title">Other to-dos</div>
+            <div id="todoItems"></div>
+            <form class="todo-add" onsubmit="addTodoItem(event)">
+              <input id="todoAddInput" type="text" placeholder="Add a to-do" maxlength="200" autocomplete="off">
+              <button class="btn-secondary" type="submit">Add</button>
+            </form>
+          </div>
         </div>
       </div>
       <div class="table-card">
@@ -1736,6 +1794,7 @@ function initDashboard() {
   subscribeConversations();
   subscribeOvernights();
   subscribePayouts();
+  subscribeTodos();
   renderCalendar();
   refreshGmailStatus();
   // Connect Gmail opens the OAuth consent screen in a new tab — re-check
@@ -1763,6 +1822,7 @@ function subscribeOvernights() {
     renderCalendarDays();
     renderPayoutsView();
     renderReviewsView();
+    scheduleTodoRender();
   });
 }
 
@@ -1771,6 +1831,7 @@ function subscribePayouts() {
     allPayouts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderPayoutsView();
     renderRevenue();
+    scheduleTodoRender();
   });
 }
 
@@ -1807,7 +1868,7 @@ function computeUnclaimedPreview(walkerId) {
   const unstamped = [...walks, ...overnights].filter(d => !d.payout);
   const total = walks.filter(d => d.payout).reduce((sum, d) => sum + d.payout.amount + tipTotal(d), 0)
     + overnights.filter(o => o.payout).reduce((sum, o) => sum + overnightPayoutShare(o, walkerId).amount + overnightTipShare(o, walkerId), 0);
-  return { count: walks.length + overnights.length, total, unstamped };
+  return { count: walks.length + overnights.length, total, unstamped, items: [...walks, ...overnights] };
 }
 
 // Monday-through-next-Monday, matching "paid weekly, Fridays, for the prior
@@ -2184,6 +2245,7 @@ function updateNeedsAttentionStat() {
   if (failedSubmissions > 0) parts.push(`${failedSubmissions} failed charge${failedSubmissions === 1 ? '' : 's'}`);
   if (flaggedMembers > 0) parts.push(`${flaggedMembers} billing issue${flaggedMembers === 1 ? '' : 's'}`);
   document.getElementById('stat-needs-attention-sub').textContent = parts.join(' · ');
+  scheduleTodoRender();
 }
 
 function subscribeRequests() {
@@ -2221,6 +2283,7 @@ function subscribeConversations() {
     badge.textContent = unread;
     badge.style.display = unread > 0 ? 'inline' : 'none';
     renderConversationsList();
+    scheduleTodoRender();
   });
 }
 
@@ -2513,7 +2576,356 @@ function updateStats() {
     const d = w.date?.toDate?.() || new Date(w.date);
     return d >= now && d <= unassignedWindowEnd;
   }).length;
+  scheduleTodoRender();
 }
+
+// ── TO DO (Overview) ────────────────────────────────────────────────────────
+// Three columns. "Needs you" is computed from data this page already
+// subscribes to, so an item disappears the moment it's handled — nothing is
+// stored for it. "This week" is a checklist that resets every Monday: its
+// check-offs live in adminTodos/week_<Monday YYYY-MM-DD>, so last week's doc
+// is simply never read again (follower counts stay in those docs as the
+// history). "Other to-dos" are adminTodos docs with type 'item'.
+// adminTodos/settings holds the knobs (Instagram posts per week, warm-lead
+// series length) and is written with defaults + seed items on first load.
+let todoSettings = null;
+let todoWeeks = {};   // weekKey -> week doc data
+let todoItems = [];
+let todoRenderQueued = false;
+
+const TODO_SETTINGS_DEFAULTS = {
+  instagramPerWeek: 3,
+  // Warm-lead series: 4 weekly emails, email 1 sent 2026-11-01 before this
+  // list existed, so it counts as already sent.
+  warmLeadTotal: 4,
+  warmLeadSentBefore: 1,
+  // Last counts logged before the weekly follower item existed (previously
+  // tracked by hand), so the first week has something to compare against.
+  followerHistory: [
+    { date: '2026-09-18', facebook: 5, instagram: 169 },
+    { date: '2026-09-22', facebook: 8, instagram: 172 },
+    { date: '2026-10-01', facebook: 11, instagram: 198 },
+  ],
+};
+
+// Fixed ids so two tabs seeding at once write the same docs, not duplicates.
+const TODO_SEED_ITEMS = {
+  seed_tentative_cutoff: 'Clear the September demo requests, then remove the temporary October cutoff on calendar tentative chips',
+  seed_webhook_secrets: 'Destroy the old Stripe webhook signing-secret versions in Secret Manager',
+  seed_dmarc: 'Revisit DMARC: move off p=none once real signups pass SPF/DKIM',
+  seed_attribution_tests: 'Delete the first-touch attribution test records (Firestore doc + Stripe customer)',
+  seed_twilio: 'Decide whether to set up Twilio texting',
+  seed_extra_walk: 'Watch for the first real member extra walk charge',
+  seed_cover_split: 'Watch for the first per-visit cover payout split',
+  seed_stay_keys: 'Check Keep key / Leave key on the walker calendar with a real stay',
+};
+
+function todoDayKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function todoWeekKey() {
+  return getCurrentWeekPeriod().periodStart;
+}
+function todoShortDate(d) {
+  return d ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+}
+
+function subscribeTodos() {
+  onSnapshot(collection(db, 'adminTodos'), snap => {
+    let settings = null;
+    const weeks = {};
+    const items = [];
+    snap.forEach(d => {
+      const data = d.data();
+      if (d.id === 'settings') settings = data;
+      else if (d.id.startsWith('week_')) weeks[d.id.slice(5)] = data;
+      else if (data.type === 'item') items.push({ id: d.id, ...data });
+    });
+    if (!settings && !snap.metadata.fromCache) { seedTodos(); return; }
+    todoSettings = { ...TODO_SETTINGS_DEFAULTS, ...(settings || {}) };
+    todoWeeks = weeks;
+    todoItems = items.sort((a, b) => (a.createdAt?.toMillis?.() || 0) - (b.createdAt?.toMillis?.() || 0));
+    scheduleTodoRender();
+  }, err => console.error('adminTodos subscription error', err.code, err.message));
+}
+
+async function seedTodos() {
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'adminTodos', 'settings'), { ...TODO_SETTINGS_DEFAULTS, createdAt: serverTimestamp() });
+    let i = 0;
+    for (const [id, text] of Object.entries(TODO_SEED_ITEMS)) {
+      // createdAt spaced a millisecond apart keeps the seed list in order.
+      batch.set(doc(db, 'adminTodos', id), { type: 'item', text, done: false, createdAt: Timestamp.fromMillis(Date.now() + i++) });
+    }
+    await batch.commit();
+  } catch (e) {
+    console.error('seedTodos failed', e);
+  }
+}
+
+// Many listeners (walks, members + one per member's billing doc, requests…)
+// can fire in the same tick; render once after they settle.
+function scheduleTodoRender() {
+  if (todoRenderQueued) return;
+  todoRenderQueued = true;
+  setTimeout(() => { todoRenderQueued = false; renderTodos(); }, 0);
+}
+
+function renderTodos() {
+  if (!document.getElementById('todoLive')) return;
+  renderTodoLive();
+  renderTodoWeekly();
+  renderTodoItems();
+}
+
+// urgent: money problems, and anything happening in the next few days.
+function todoRow({ text, sub = '', onclick = '', urgent = false }) {
+  return `<div class="todo-row${onclick ? ' link' : ''}"${onclick ? ` onclick="${onclick}"` : ''}>
+    <span class="todo-dot${urgent ? ' urgent' : ''}"></span>
+    <span class="todo-text">${text}${sub ? `<span class="todo-sub">${sub}</span>` : ''}</span>
+  </div>`;
+}
+
+function renderTodoLive() {
+  const rows = [];
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayKey = todoDayKey(today);
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowKey = todoDayKey(tomorrow);
+  const horizon = new Date(today); horizon.setDate(horizon.getDate() + 14);
+  const soonCutoff = new Date(today); soonCutoff.setDate(soonCutoff.getDate() + 3);
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+  // Billing problems — same two sources (and the same finalize_charge_failed
+  // exclusion) as updateNeedsAttentionStat, plus failed charges.
+  const failedFinalize = allRequests.filter(i => i.finalizeError && i.status !== 'declined');
+  const failedCharges = allRequests.filter(i => i.paymentStatus === 'failed' && !i.finalizeError && i.status !== 'declined');
+  const flaggedMembers = Object.values(memberBilling).filter(b => b.needsReview && b.needsReviewReason !== 'finalize_charge_failed').length;
+  if (failedFinalize.length) {
+    rows.push(todoRow({ text: `Fix ${plural(failedFinalize.length, 'request')} that failed to finalize`, sub: 'Charge, subscription or email step failed', onclick: "todoOpenRequests('needs_attention')", urgent: true }));
+  }
+  failedCharges.forEach(i => rows.push(todoRow({
+    text: `Charge failed: ${escapeHtml(i.ownerName || i.name || 'request')}`,
+    onclick: `openRequestItem('${escapeHtml(i.id)}')`,
+    urgent: true,
+  })));
+  if (flaggedMembers) {
+    rows.push(todoRow({ text: `Review ${plural(flaggedMembers, 'member billing issue')}`, sub: 'Flagged on the Members tab', onclick: "switchView('members')", urgent: true }));
+  }
+
+  // Meet & greets today and tomorrow.
+  allRequests
+    .filter(i => i.meetGreetDateTime && !['declined', 'cancelled'].includes(i.status))
+    .filter(i => { const k = i.meetGreetDateTime.split(' ')[0]; return k === todayKey || k === tomorrowKey; })
+    .sort((a, b) => a.meetGreetDateTime.localeCompare(b.meetGreetDateTime))
+    .forEach(i => rows.push(todoRow({
+      text: `Meet & greet: ${escapeHtml(i.ownerName || i.name || 'Unknown')}`,
+      sub: `${i.meetGreetDateTime.startsWith(todayKey) ? 'Today' : 'Tomorrow'} · ${escapeHtml(mgWhenLabel(i))}`,
+      onclick: `openRequestItem('${escapeHtml(i.id)}')`,
+      urgent: true,
+    })));
+
+  // Walker assignments, next 14 days — same walk filter as the Unassigned
+  // Walks stat, plus stays with no default walker.
+  const unassignedWalks = allWalks.filter(w => {
+    if (w.walkerId || w.status === 'cancelled') return false;
+    const d = w.date?.toDate?.() || new Date(w.date);
+    return d >= now && d <= horizon;
+  });
+  if (unassignedWalks.length) {
+    const first = unassignedWalks.reduce((min, w) => { const d = w.date?.toDate?.() || new Date(w.date); return !min || d < min ? d : min; }, null);
+    rows.push(todoRow({
+      text: `Assign walkers to ${plural(unassignedWalks.length, 'walk')}`,
+      sub: `Soonest ${todoShortDate(first)}`,
+      onclick: "switchView('calendar')",
+      urgent: first < soonCutoff,
+    }));
+  }
+  allOvernights
+    .filter(o => !(o.walkerId || '').trim() && o.status !== 'cancelled' && o.status !== 'completed')
+    .map(o => ({ o, start: bookingDay(o.startDate), end: bookingDay(o.endDate) || bookingDay(o.startDate) }))
+    .filter(({ start, end }) => start && start <= horizon && end >= today)
+    .sort((a, b) => a.start - b.start)
+    .forEach(({ o, start, end }) => {
+      const member = allMembers.find(m => m.id === (o.memberId || '').trim());
+      const dog = o.dogName || getMemberDogs(member)[0]?.name || member?.name || o.memberName || '';
+      const kind = isCheckinType(o.serviceType) ? 'drop-ins' : 'pet sitting';
+      const dates = end && end.getTime() !== start.getTime() ? `${todoShortDate(start)} – ${todoShortDate(end)}` : todoShortDate(start);
+      rows.push(todoRow({
+        text: `Assign a walker: ${escapeHtml(dog)} (${kind})`,
+        sub: dates,
+        onclick: `openOvernightModal('${escapeHtml(o.id)}')`,
+        urgent: start < soonCutoff,
+      }));
+    });
+
+  // Requests waiting on a decision, then anything not opened yet.
+  allRequests
+    .filter(i => !isRequestCompleted(i) && (i.type === 'reschedule' || (i.type === 'walker_schedule_request' && i.requestType === 'time_off')))
+    .forEach(i => rows.push(todoRow({
+      text: i.type === 'reschedule'
+        ? `Approve or decline reschedule: ${escapeHtml(i.memberName || allMembers.find(m => m.id === i.memberId)?.name || 'member')}`
+        : `Time-off request: ${escapeHtml(i.walkerName || i.name || 'walker')}`,
+      sub: i.type === 'walker_schedule_request' && i.startDate ? escapeHtml(fmtTimeOffEntry({ start: i.startDate, end: i.endDate || i.startDate })) : '',
+      onclick: `openRequestItem('${escapeHtml(i.id)}')`,
+    })));
+  const unread = allRequests.filter(i => !i.read).length;
+  if (unread) rows.push(todoRow({ text: `Read ${plural(unread, 'new request')}`, onclick: "todoOpenRequests('pending')" }));
+  const unreadConvos = allConversations.filter(c => c.unreadByAdmin).length;
+  if (unreadConvos) rows.push(todoRow({ text: `Reply to ${plural(unreadConvos, 'unread message')}`, onclick: "switchView('conversations')" }));
+
+  // Payouts: generated but not marked paid, or last week's completed work
+  // not yet in a payout (any walker with unclaimed work dated before this
+  // Monday — this week's work isn't due until next week).
+  const pendingPayouts = allPayouts.filter(p => p.status === 'pending').length;
+  if (pendingPayouts) rows.push(todoRow({ text: `Pay ${plural(pendingPayouts, 'generated payout')}`, sub: 'Then mark paid', onclick: "switchView('payouts')" }));
+  const monday = bookingDay(todoWeekKey());
+  const walkersOwed = allWalkers.filter(w => w.status !== 'inactive' && computeUnclaimedPreview(w.id).items
+    .some(d => { const day = bookingDay(d.endDate || d.date); return day && day < monday; })).length;
+  if (walkersOwed) rows.push(todoRow({ text: `Generate last week's payouts`, sub: `${plural(walkersOwed, 'walker')} with unclaimed work`, onclick: "switchView('payouts')" }));
+
+  document.getElementById('todoLive').innerHTML = rows.length ? rows.join('') : '<div class="todo-empty">Nothing needs you right now.</div>';
+}
+
+function renderTodoWeekly() {
+  const el = document.getElementById('todoWeekly');
+  if (!todoSettings) { el.innerHTML = '<div class="todo-empty">Loading...</div>'; return; }
+  const weekKey = todoWeekKey();
+  const week = todoWeeks[weekKey] || {};
+  const start = bookingDay(weekKey);
+  const end = new Date(start); end.setDate(end.getDate() + 6);
+  document.getElementById('todoWeekLabel').textContent = `· ${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+
+  const check = (field, label, sub = '') => `
+    <label class="todo-row${week[field] ? ' done' : ''}">
+      <input type="checkbox" ${week[field] ? 'checked' : ''} onchange="setTodoWeek('${field}', this.checked)">
+      <span class="todo-text">${label}${sub ? `<span class="todo-sub">${sub}</span>` : ''}</span>
+    </label>`;
+
+  const rows = [];
+  const target = Math.max(1, Number(todoSettings.instagramPerWeek) || 1);
+  const posted = Number(week.instagram) || 0;
+  rows.push(`
+    <div class="todo-row${posted >= target ? ' done' : ''}">
+      <input type="checkbox" ${posted >= target ? 'checked' : ''} onchange="setTodoWeek('instagram', this.checked ? ${target} : 0)">
+      <span class="todo-text">Instagram posts</span>
+      <button class="todo-step" type="button" onclick="setTodoWeek('instagram', ${posted - 1})" ${posted <= 0 ? 'disabled' : ''} aria-label="One fewer post">&minus;</button>
+      <span class="todo-count">${posted} of ${target}</span>
+      <button class="todo-step" type="button" onclick="setTodoWeek('instagram', ${posted + 1})" aria-label="One more post">+</button>
+    </div>`);
+  rows.push(check('nextdoor', 'Nextdoor post'));
+  rows.push(check('metaAds', 'Check Meta ads', 'Spend, results, and UTM tags match the conventions'));
+
+  // Warm-lead series: emails already sent = the pre-list baseline plus every
+  // earlier week that was checked off. Hidden once the series is done.
+  const sentEarlier = (Number(todoSettings.warmLeadSentBefore) || 0)
+    + Object.entries(todoWeeks).filter(([k, w]) => k < weekKey && w.warmLead).length;
+  const total = Number(todoSettings.warmLeadTotal) || 0;
+  if (sentEarlier < total) rows.push(check('warmLead', `Warm-lead email ${sentEarlier + 1} of ${total}`, 'Ask Claude to draft it, then approve'));
+
+  // Followers: this week's numbers, compared with the most recent earlier
+  // entry (an earlier week doc, else the pre-list history in settings).
+  const earlier = [
+    ...(todoSettings.followerHistory || []).map(h => ({ key: h.date, facebook: h.facebook, instagram: h.instagram })),
+    ...Object.entries(todoWeeks).filter(([k]) => k < weekKey).map(([k, w]) => ({ key: k, facebook: w.facebookFollowers, instagram: w.instagramFollowers })),
+  ].filter(h => typeof h.facebook === 'number' || typeof h.instagram === 'number').sort((a, b) => a.key.localeCompare(b.key));
+  const last = earlier[earlier.length - 1];
+  const hasFb = typeof week.facebookFollowers === 'number';
+  const hasIg = typeof week.instagramFollowers === 'number';
+  const delta = (now, then) => typeof now === 'number' && typeof then === 'number' ? ` (${now - then >= 0 ? '+' : ''}${now - then})` : '';
+  const lastLabel = last ? `Last logged ${bookingDay(last.key).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}: Facebook ${last.facebook ?? '–'} · Instagram ${last.instagram ?? '–'}` : '';
+  rows.push(`
+    <div class="todo-row">
+      <input type="checkbox" ${hasFb && hasIg ? 'checked' : ''} disabled title="Checks off once both counts are entered">
+      <span class="todo-text">Log follower counts
+        <span class="todo-followers">
+          <span>Facebook <input class="todo-num" type="number" min="0" inputmode="numeric" value="${hasFb ? week.facebookFollowers : ''}" onchange="setTodoFollowers('facebookFollowers', this.value)">${delta(week.facebookFollowers, last?.facebook)}</span>
+          <span>Instagram <input class="todo-num" type="number" min="0" inputmode="numeric" value="${hasIg ? week.instagramFollowers : ''}" onchange="setTodoFollowers('instagramFollowers', this.value)">${delta(week.instagramFollowers, last?.instagram)}</span>
+        </span>
+        ${lastLabel ? `<span class="todo-sub">${lastLabel}</span>` : ''}
+      </span>
+    </div>`);
+  el.innerHTML = rows.join('');
+}
+
+function renderTodoItems() {
+  const el = document.getElementById('todoItems');
+  if (!todoSettings) { el.innerHTML = ''; return; }
+  // Done items stay visible (struck through) for the rest of the week they
+  // were checked, then drop off. They're kept, not deleted.
+  const monday = bookingDay(todoWeekKey());
+  const shown = todoItems.filter(i => !i.done || (i.doneAt?.toDate?.() || new Date()) >= monday);
+  el.innerHTML = shown.length ? shown.map(i => `
+    <div class="todo-row${i.done ? ' done' : ''}">
+      <input type="checkbox" ${i.done ? 'checked' : ''} onchange="toggleTodoItem('${escapeHtml(i.id)}', this.checked)">
+      <span class="todo-text">${escapeHtml(i.text)}</span>
+      <button class="todo-remove" type="button" onclick="removeTodoItem('${escapeHtml(i.id)}')" title="Remove" aria-label="Remove">&times;</button>
+    </div>`).join('') : '<div class="todo-empty">Nothing here.</div>';
+}
+
+window.todoOpenRequests = (filter) => {
+  switchView('requests');
+  const btn = filter === 'needs_attention'
+    ? document.getElementById('requestsNeedsAttentionFilter')
+    : document.querySelector('.request-status-filter');
+  if (btn) filterRequestStatus(filter, btn);
+};
+
+window.setTodoWeek = async (field, value) => {
+  if (field === 'instagram') value = Math.max(0, Number(value) || 0);
+  try {
+    await setDoc(doc(db, 'adminTodos', `week_${todoWeekKey()}`), { [field]: value, updatedAt: serverTimestamp() }, { merge: true });
+  } catch (e) {
+    alert(`Couldn't save: ${e.message}`);
+    renderTodoWeekly();
+  }
+};
+
+window.setTodoFollowers = async (field, raw) => {
+  const n = raw === '' ? null : Math.round(Number(raw));
+  if (n !== null && (!Number.isFinite(n) || n < 0)) { renderTodoWeekly(); return; }
+  try {
+    await setDoc(doc(db, 'adminTodos', `week_${todoWeekKey()}`), { [field]: n === null ? deleteField() : n, updatedAt: serverTimestamp() }, { merge: true });
+  } catch (e) {
+    alert(`Couldn't save: ${e.message}`);
+    renderTodoWeekly();
+  }
+};
+
+window.addTodoItem = async (e) => {
+  e.preventDefault();
+  const input = document.getElementById('todoAddInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  try {
+    await addDoc(collection(db, 'adminTodos'), { type: 'item', text, done: false, createdAt: serverTimestamp() });
+  } catch (err) {
+    input.value = text;
+    alert(`Couldn't add: ${err.message}`);
+  }
+};
+
+window.toggleTodoItem = async (id, done) => {
+  try {
+    await updateDoc(doc(db, 'adminTodos', id), { done, doneAt: done ? serverTimestamp() : deleteField() });
+  } catch (e) {
+    alert(`Couldn't save: ${e.message}`);
+    renderTodoItems();
+  }
+};
+
+window.removeTodoItem = async (id) => {
+  const item = todoItems.find(i => i.id === id);
+  if (!confirm(`Remove "${item?.text || 'this to-do'}"?`)) return;
+  try {
+    await deleteDoc(doc(db, 'adminTodos', id));
+  } catch (e) {
+    alert(`Couldn't remove: ${e.message}`);
+  }
+};
 
 // ── UPCOMING WALKS TABLE ──────────────────────────────────────────────────────
 function renderUpcomingWalks() {

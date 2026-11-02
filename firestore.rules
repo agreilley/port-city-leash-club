@@ -671,6 +671,13 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Admin Overview "To Do" card: the settings doc, one doc per week of
+    // check-offs (week_YYYY-MM-DD, keyed by that week's Monday), and the
+    // admin's own one-off items. Never read by members, walkers, or functions.
+    match /adminTodos/{id} {
+      allow read, write: if isAdmin();
+    }
+
     // Admin-added radius zones layered on top of index.html's hardcoded
     // SIMPLE_ZIPS/RADIUS_ZONES (see acceptWaitlistArea, functions/index.js) —
     // the "accept their area" waitlist action writes here so a coverage
