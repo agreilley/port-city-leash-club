@@ -10495,6 +10495,12 @@ const REFERRAL_INVITE_DAILY_LIMIT = 10;
 const REFERRAL_INVITE_AMOUNT_CENTS = 5000; // member_referral codes never set amountCents — same `?? 5000` default
 const REFERRAL_SHARE_BASE_URL = 'https://www.portcityleashclub.com/';
 const REFERRAL_INVITE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// referralInviteUnsubscribe below, on its cloudfunctions.net address.
+const REFERRAL_UNSUBSCRIBE_URL = 'https://us-central1-port-city-leash-club-827ab.cloudfunctions.net/referralInviteUnsubscribe';
+
+function referralUnsubscribeUrl(code, emailHash, token) {
+  return `${REFERRAL_UNSUBSCRIBE_URL}?c=${encodeURIComponent(code)}&i=${emailHash}&t=${token}`;
+}
 
 function referralInviteEmailHash(normalizedEmail) {
   return crypto.createHash('sha256').update(normalizedEmail).digest('hex');
@@ -10546,7 +10552,12 @@ async function runSendReferralInvite(uid, payload = {}) {
   }
 
   const inviteRef = codeRef.collection('invites').doc(emailHash);
+  // Random per-invite secret in the unsubscribe link, so knowing someone's
+  // email address isn't enough to unsubscribe them.
+  const unsubscribeToken = crypto.randomBytes(16).toString('hex');
+  const unsubscribeUrl = referralUnsubscribeUrl(code, emailHash, unsubscribeToken);
   await inviteRef.set({
+    unsubscribeToken,
     friendName,
     friendEmail,
     friendEmailNormalized,
@@ -10565,6 +10576,11 @@ async function runSendReferralInvite(uid, payload = {}) {
       code,
       amountCents: REFERRAL_INVITE_AMOUNT_CENTS,
       link: referralShareLink(code),
+      unsubscribeUrl,
+    },
+    headers: {
+      'List-Unsubscribe': `<${unsubscribeUrl}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
     },
     idempotencyKey: `referral-invite:${code}:${emailHash}`,
   });
@@ -10588,6 +10604,50 @@ exports.sendReferralInvite = onCall({ secrets: [RESEND_API_KEY] }, async (reques
 });
 // Exposed directly, same reasoning as runGenerateReferralCode.
 exports.runSendReferralInvite = runSendReferralInvite;
+
+// Unsubscribe link from the Refer a Friend invite email. GET shows a
+// confirm button (so a mail scanner opening the link doesn't unsubscribe
+// anyone); POST records it — the button, or a mail app's one-click
+// List-Unsubscribe, which POSTs to the same URL. The address goes into
+// emailUnsubscribes/{sha256(email)}, which any future marketing send
+// (e.g. a warm-lead email) must skip. The invite's own lock doc already
+// stops a second invite to the address.
+function unsubscribePage(title, bodyHtml) {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${title} | Port City Leash Club</title></head>
+<body style="margin:0;background:#F4F0EA;font-family:'DM Sans',Helvetica,Arial,sans-serif;color:#0D1B2A;">
+<div style="max-width:480px;margin:64px auto;padding:32px 24px;background:#fff;border-radius:8px;border:1px solid rgba(13,27,42,0.08);text-align:center;">
+<p style="margin:0 0 12px;font-family:'Cormorant Garamond',Georgia,serif;font-size:28px;">${title}</p>${bodyHtml}
+<p style="margin:24px 0 0;font-size:13px;"><a href="https://www.portcityleashclub.com" style="color:#C17B6F;">portcityleashclub.com</a></p></div></body></html>`;
+}
+
+exports.referralInviteUnsubscribe = onRequest(async (req, res) => {
+  const code = typeof req.query.c === 'string' ? req.query.c : '';
+  const emailHash = typeof req.query.i === 'string' ? req.query.i : '';
+  const token = typeof req.query.t === 'string' ? req.query.t : '';
+  const invalid = () => res.status(400).send(unsubscribePage('Link not recognized', '<p style="margin:0;font-size:15px;line-height:1.6;">This unsubscribe link isn\'t valid. Reply to any of our emails or write to hello@portcityleashclub.com and we\'ll take you off our list.</p>'));
+  if (!/^[A-Z0-9-]{4,24}$/.test(code) || !/^[a-f0-9]{64}$/.test(emailHash) || !/^[a-f0-9]{32}$/.test(token)) return invalid();
+
+  const inviteRef = db.collection('referralCodes').doc(code).collection('invites').doc(emailHash);
+  const inviteSnap = await inviteRef.get();
+  const invite = inviteSnap.data();
+  if (!invite || invite.unsubscribeToken !== token) return invalid();
+
+  if (req.method === 'POST') {
+    await db.collection('emailUnsubscribes').doc(emailHash).set({
+      email: invite.friendEmail || null,
+      source: 'referral_invite',
+      code,
+      createdAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    await inviteRef.set({ unsubscribed: true, unsubscribedAt: FieldValue.serverTimestamp() }, { merge: true });
+    return res.status(200).send(unsubscribePage("You're unsubscribed", '<p style="margin:0;font-size:15px;line-height:1.6;">We won\'t send you any more emails.</p>'));
+  }
+  if (req.method !== 'GET') return res.status(405).send('');
+
+  const action = `?c=${encodeURIComponent(code)}&i=${emailHash}&t=${token}`;
+  return res.status(200).send(unsubscribePage('Unsubscribe', `<p style="margin:0 0 20px;font-size:15px;line-height:1.6;">Stop all emails from Port City Leash Club?</p>
+<form method="POST" action="${action}"><button type="submit" style="background:#C17B6F;color:#fff;border:none;border-radius:6px;padding:12px 28px;font-size:14px;font-weight:500;cursor:pointer;">Unsubscribe</button></form>`));
+});
 
 // Called from both referrer-credit paths (finalizeNewMemberReferralDiscount
 // and runFirstPaymentReferralCredit) right after issueReferralCredit

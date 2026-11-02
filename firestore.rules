@@ -821,6 +821,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Addresses that used an unsubscribe link (referralInviteUnsubscribe,
+    // Admin SDK only). Admin-readable so one-off marketing sends can skip them.
+    match /emailUnsubscribes/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // Every automated send (sendEmail, functions/lib/email.js) writes one
     // doc here via the Admin SDK, regardless of outcome — this is the audit
     // trail admin/dashboard.html's Email Log view reads. No non-admin case

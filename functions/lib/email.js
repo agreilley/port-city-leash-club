@@ -119,10 +119,13 @@ async function sendToResendWithRetry(payload, apiKey) {
   return { ok: false, error: lastError, attempts: MAX_ATTEMPTS };
 }
 
-// sendEmail({ to, template, data, replyTo, idempotencyKey, from })
+// sendEmail({ to, template, data, replyTo, idempotencyKey, from, headers })
 //
 // `from` overrides FROM_ADDRESS for the few emails that come from Alison
 // personally rather than the business (the walker schedule update).
+// `headers` passes extra email headers straight to Resend — used for
+// List-Unsubscribe on the Refer a Friend invite, the one email we send to
+// someone who never signed up with us.
 //
 // Renders `template` with `data` and sends it. Never throws — every caller
 // treats a failed send as a warning, never a rollback of whatever real
@@ -132,7 +135,7 @@ async function sendToResendWithRetry(payload, apiKey) {
 // under that same key already succeeded, this is a no-op that returns the
 // original result instead of sending a second email (a retried Firestore
 // trigger delivery is the main case this guards against).
-async function sendEmail({ to, template, data, replyTo, idempotencyKey, from }) {
+async function sendEmail({ to, template, data, replyTo, idempotencyKey, from, headers }) {
   const db = getFirestore();
 
   if (!to) {
@@ -190,6 +193,7 @@ async function sendEmail({ to, template, data, replyTo, idempotencyKey, from }) 
     subject,
     html,
     text,
+    ...(headers ? { headers } : {}),
   }, RESEND_API_KEY.value());
 
   await logRef.set({
