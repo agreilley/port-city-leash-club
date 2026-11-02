@@ -2743,27 +2743,53 @@ function renderTodoLive() {
       urgent: first < soonCutoff,
     }));
   }
+  // Stays: flagged only when a visit or night in the window has nobody on
+  // it. A stay with no default walker is fine as long as every visit and
+  // night is covered individually. Older stays without visits[] fall back
+  // to the default walker alone, as the calendar does.
+  const horizonKey = todoDayKey(horizon);
+  const inWindow = (k) => k && k >= todayKey && k <= horizonKey;
   allOvernights
-    .filter(o => !(o.walkerId || '').trim() && o.status !== 'cancelled' && o.status !== 'completed')
-    .map(o => ({ o, start: bookingDay(o.startDate), end: bookingDay(o.endDate) || bookingDay(o.startDate) }))
-    .filter(({ start, end }) => start && start <= horizon && end >= today)
-    .sort((a, b) => a.start - b.start)
-    .forEach(({ o, start, end }) => {
+    .filter(o => o.status !== 'cancelled' && o.status !== 'completed')
+    .forEach(o => {
+      let open = [];
+      if (Array.isArray(o.visits)) {
+        o.visits.forEach(v => {
+          const day = bookingDay(v.date);
+          const k = day ? todoDayKey(day) : null;
+          if (inWindow(k) && v.status !== 'completed' && !visitWalkerId(v, o)) open.push(k);
+        });
+        stayNightDates(o).forEach(k => {
+          if (inWindow(k) && !nightIsDone(o.nights?.[k]) && !nightWalkerId(o, k)) open.push(k);
+        });
+      } else if (!(o.walkerId || '').trim()) {
+        const start = bookingDay(o.startDate);
+        const end = bookingDay(o.endDate) || start;
+        if (start && start <= horizon && end >= today) open.push(todoDayKey(start < today ? today : start));
+      }
+      if (!open.length) return;
+      open = [...new Set(open)].sort();
+      const first = bookingDay(open[0]);
+      const last = bookingDay(open[open.length - 1]);
       const member = allMembers.find(m => m.id === (o.memberId || '').trim());
       const dog = o.dogName || getMemberDogs(member)[0]?.name || member?.name || o.memberName || '';
       const kind = isCheckinType(o.serviceType) ? 'drop-ins' : 'pet sitting';
-      const dates = end && end.getTime() !== start.getTime() ? `${todoShortDate(start)} – ${todoShortDate(end)}` : todoShortDate(start);
+      const dates = open.length > 1 ? `${todoShortDate(first)} – ${todoShortDate(last)}` : todoShortDate(first);
       rows.push(todoRow({
         text: `Assign a walker: ${escapeHtml(dog)} (${kind})`,
-        sub: dates,
+        sub: `${dates} · ${open.length === 1 ? '1 day' : `${open.length} days`} with nobody assigned`,
         onclick: `openOvernightModal('${escapeHtml(o.id)}')`,
-        urgent: start < soonCutoff,
+        urgent: first < soonCutoff,
       }));
     });
 
   // Requests waiting on a decision, then anything not opened yet.
   allRequests
-    .filter(i => !isRequestCompleted(i) && (i.type === 'reschedule' || (i.type === 'walker_schedule_request' && i.requestType === 'time_off')))
+    // Time off only while it's still ahead: a past or undated request has
+    // nothing left to decide.
+    .filter(i => !isRequestCompleted(i) && (i.type === 'reschedule'
+      || (i.type === 'walker_schedule_request' && i.requestType === 'time_off' && i.startDate
+        && bookingDay(i.endDate || i.startDate) >= today)))
     .forEach(i => rows.push(todoRow({
       text: i.type === 'reschedule'
         ? `Approve or decline reschedule: ${escapeHtml(i.memberName || allMembers.find(m => m.id === i.memberId)?.name || 'member')}`
