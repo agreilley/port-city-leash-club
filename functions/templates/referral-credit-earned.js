@@ -55,8 +55,8 @@ function html(data) {
     <p style="margin:0 0 20px;font-family:'Cormorant Garamond', Georgia, 'Times New Roman', serif;font-weight:400;font-size:28px;line-height:1.25;color:${NAVY};">Your ${amount} credit is in.</p>
     <p style="margin:0 0 20px;">Hi ${escapeHtml(data.firstName || 'there')},</p>
     <p style="margin:0 0 20px;">${escapeHtml(friendLabel(data))} booked with us using your referral code, so ${amount} in credit is now on your account. ${escapeHtml(appliesLine(data))}</p>
-    <p style="margin:0 0 20px;">You can see your credit and everyone you've referred on the Refer a Friend tab.</p>
-    ${renderButtonHtml({ href: REFERRALS_URL, label: 'View Your Referrals' })}
+    <p style="margin:0 0 20px;">You can see your credit and send your code to another friend on the Refer a Friend tab.</p>
+    ${renderButtonHtml({ href: REFERRALS_URL, label: 'Refer a Friend' })}
     <p style="margin:20px 0 0;">${escapeHtml(closingLine(data))}</p>
     ${renderSignoffHtml(TEAM_SIGNOFF)}
   `;
@@ -72,7 +72,7 @@ function text(data) {
     '',
     `${friendLabel(data)} booked with us using your referral code, so ${amount} in credit is now on your account. ${appliesLine(data)}`,
     '',
-    `You can see your credit and everyone you've referred on the Refer a Friend tab: ${REFERRALS_URL}`,
+    `You can see your credit and send your code to another friend on the Refer a Friend tab: ${REFERRALS_URL}`,
     '',
     closingLine(data),
     '',
