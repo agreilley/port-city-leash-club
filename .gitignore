@@ -16,3 +16,7 @@ dev/.test-member-welcome-uid
 
 # Local visual reference, regenerable from the service area definitions.
 dev/dev-coverage-map.html
+
+# Local Claude skills (warm-lead email, social posts). Kept out of the
+# public repo: they describe internal marketing process and file paths.
+.claude/skills/
