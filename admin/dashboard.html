@@ -75,6 +75,7 @@
   .calendar-day.other-month { background: rgba(0,0,0,0.02); }
   .calendar-day.today .day-num { background: var(--rust); color: white; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }
   .day-num { font-size: 13px; font-weight: 500; color: var(--text-mid); margin-bottom: 4px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }
+  .walk-chip .chip-key { font-weight: 700; }
   .walk-chip { border-radius: 4px; padding: 2px 6px; font-size: 11px; font-weight: 500; margin-bottom: 2px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 0.15s; }
   .walk-chip:hover { opacity: 0.8; }
   .walk-chip.morning { background: #EBF5EF; color: #1A5C30; }
@@ -1453,7 +1454,7 @@ import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalk
 // buildScreeningAvailabilityGrid below.
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
 import { AVAILABILITY_DAYS, AVAILABILITY_HOURS, hourLabel, hourBlockLabel, rangeHours, summarizeHours, visitSlotCoverage, availabilityDayKey, normalizeAvailability } from '../walker-availability.js';
-import { VISIT_SLOTS, VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, defaultSlotsForCount, buildStaySchedule, groupStayScheduleByDay, stayRowLabel, stayNightDates, nightWalkerId, nightIsDone, stayReadyToClose } from '../visit-slots.js';
+import { VISIT_SLOTS, VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, defaultSlotsForCount, buildStaySchedule, groupStayScheduleByDay, stayRowLabel, stayNightDates, nightWalkerId, nightIsDone, stayReadyToClose, keyInstructionLabel } from '../visit-slots.js';
 import { calculateEarnings, isCheckinType, visitWalkerId, overnightWalkerIds, calculateVisitCovers, overnightPayoutShare, overnightTipShare, isOvernightPayee, overnightClaimFor } from '../walker-pricing.js';
 import { showError } from '/js/status.js';
 
@@ -2910,13 +2911,13 @@ function renderCalendarDays() {
       const oMember = allMembers.find(m => m.id === (o.memberId || '').trim());
       const oIsCheckin = isCheckinType(o.serviceType);
       const oDogName = o.dogName || getMemberDogs(oMember)[0]?.name || oMember?.name?.split(' ')[0] || (oIsCheckin ? 'Drop-In Visit' : 'Overnight');
-      const push = (cls, start, time, wkId, done, what) => {
+      const push = (cls, start, time, wkId, done, what, key = '') => {
         const oWalker = wkId ? allWalkers.find(k => k.id === wkId) : null;
         const oOff = oWalker && !done && walkerOffOn(oWalker, dateStr);
         const who = oWalker ? `${oOff ? '⚠ ' : ''}${oDogName} / ${oWalker.name.split(' ')[0]}` : `${oDogName} · Unassigned`;
-        const title = escapeHtml(`${who} · ${what}${oOff ? ` · ${oWalker.name.split(' ')[0]} is off this day` : ''}`);
+        const title = escapeHtml(`${who} · ${what}${key ? ` · ${key}` : ''}${oOff ? ` · ${oWalker.name.split(' ')[0]} is off this day` : ''}`);
         const state = !oWalker ? ' unassigned' : done ? ' done' : '';
-        dayItems.push({ start, html: `<div class="walk-chip ${cls}${state}" onclick="openOvernightModal('${o.id}')" title="${title}">${chipTime(time)}${escapeHtml(who)}</div>` });
+        dayItems.push({ start, html: `<div class="walk-chip ${cls}${state}" onclick="openOvernightModal('${o.id}')" title="${title}">${chipTime(time)}${escapeHtml(who)}${key ? ` <span class="chip-key">· ${escapeHtml(key)}</span>` : ''}</div>` });
       };
       if (!Array.isArray(o.visits)) {
         push(oIsCheckin ? 'c-dropin' : 'c-overnight', 100, oIsCheckin ? '' : 'Overnight', (o.walkerId || '').trim(), o.status === 'completed', oIsCheckin ? 'Drop-In Visit' : 'Overnight');
@@ -2926,9 +2927,10 @@ function renderCalendarDays() {
         'c-dropin', CAL_VISIT_START[v.slot] ?? 99,
         VISIT_SLOT_RANGES[v.slot] || '', visitWalkerId(v, o), v.status === 'completed',
         `${v.addOn ? 'Extra drop-in' : oIsCheckin ? 'Drop-in' : 'Drop-in (overnight stay)'}${VISIT_SLOT_LABELS[v.slot] ? ` · ${VISIT_SLOT_LABELS[v.slot]}` : ''}`,
+        keyInstructionLabel(v),
       ));
       if (stayNightDates(o).includes(dateStr) && o.nights?.[dateStr]?.status !== 'skipped') {
-        push('c-overnight', 100, 'Overnight', nightWalkerId(o, dateStr), nightIsDone(o.nights?.[dateStr]), 'Overnight');
+        push('c-overnight', 100, 'Overnight', nightWalkerId(o, dateStr), nightIsDone(o.nights?.[dateStr]), 'Overnight', keyInstructionLabel(o.nights?.[dateStr]));
       }
     });
     // Walks, drop-ins and nights in one list by start time, night last.
@@ -4730,6 +4732,7 @@ window.openOvernightModal = (overnightId) => {
                 <span style="font-size:12px;font-weight:500;color:${stColor};">${stLabel}</span>
               </div>
               ${nightWalkerSelectHTML(o, row.date, _walkers)}
+              ${(!isCompleted && !n.status) || n.key ? keyChoiceHTML(o.id, 'night', row.date, n.key) : ''}
               ${!isCompleted && !n.status ? `<button class="btn-secondary" style="margin-top:6px;padding:4px 10px;font-size:12px;" onclick="setNightSkipped('${o.id}', '${row.date}', true)">Didn't happen</button>` : ''}
               ${!isCompleted && n.status === 'skipped' ? `<button class="btn-secondary" style="margin-top:6px;padding:4px 10px;font-size:12px;" onclick="setNightSkipped('${o.id}', '${row.date}', false)">Undo didn't happen</button>` : ''}
               ${n.note ? `<div style="font-size:12px;color:var(--text-mid);margin-top:4px;">${escapeHtml(n.note)}</div>` : ''}
@@ -4744,6 +4747,7 @@ window.openOvernightModal = (overnightId) => {
               <span style="font-size:12px;font-weight:500;color:${isDone ? 'var(--green)' : 'var(--text-light)'};">${isDone ? '✓ Completed' : 'Expected'}</span>
             </div>
             ${visitWalkerSelectHTML(o, v, _walkers)}
+            ${(!isCompleted && !isDone) || v.key ? keyChoiceHTML(o.id, 'visit', v.id, v.key) : ''}
             ${!isCompleted && !isDone ? visitEditHTML(o, v) : ''}
             ${v.note ? `<div style="font-size:12px;color:var(--text-mid);margin-top:4px;">${escapeHtml(v.note)}</div>` : ''}
             ${completionPhotosHtml(v.photoUrls, v.photoUrl, 'Visit photo', '160px')}
@@ -4826,6 +4830,46 @@ function visitWalkerSelectHTML(o, v, walkers) {
     </select>
   </div>`;
 }
+
+// Keep key / Leave key checkboxes for one visit or night, shown to whoever
+// does it on the walker calendar. Checking one clears the other; clearing
+// both leaves it unset (nothing shown). kind is 'visit' (id = visit id) or
+// 'night' (id = night date).
+function keyChoiceHTML(overnightId, kind, id, cur) {
+  const box = (val, label) => `<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--text-mid);cursor:pointer;">
+      <input type="checkbox" ${cur === val ? 'checked' : ''} onchange="setStayKey('${overnightId}', '${kind}', '${id}', this.checked ? '${val}' : '')">${label}</label>`;
+  return `<div style="display:flex;align-items:center;gap:12px;margin-top:4px;">
+    <span style="font-size:12px;color:var(--text-light);">Key</span>
+    ${box('keep', 'Keep key')}
+    ${box('leave', 'Leave key')}
+  </div>`;
+}
+
+// Sets (or with key '' clears) one visit's or night's key instruction.
+// Transactional for the same reason as assignVisitWalker: the walker app
+// rewrites the same visits array / nights map when completing.
+window.setStayKey = async (overnightId, kind, id, key) => {
+  const withKey = (entry) => {
+    const next = { ...entry };
+    if (key) next.key = key; else delete next.key;
+    return next;
+  };
+  try {
+    await runTransaction(db, async (tx) => {
+      const ref = doc(db, 'overnights', overnightId);
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error('Reservation not found.');
+      const o = snap.data();
+      const update = kind === 'night'
+        ? { nights: { ...(o.nights || {}), [id]: withKey((o.nights || {})[id] || {}) } }
+        : { visits: (o.visits || []).map(v => v.id === id ? withKey(v) : v) };
+      tx.update(ref, { ...update, updatedAt: serverTimestamp() });
+    });
+  } catch (e) {
+    alert('Could not save the key instruction: ' + e.message);
+  }
+  setTimeout(() => openOvernightModal(overnightId), 300);
+};
 
 // Change the time of, or remove, one visit that hasn't happened yet, on a
 // stay that isn't completed (after that its pay is stamped). Only shown

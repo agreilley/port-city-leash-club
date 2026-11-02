@@ -189,3 +189,12 @@ export function stayRowLabel(row, isCheckin, { showIncluded = true } = {}) {
   if (isCheckin) return slot;
   return showIncluded ? `${slot} check-in (included)` : `${slot} check-in`;
 }
+
+// What the walker does with the house key after a visit or night
+// (visits[].key / nights[date].key: 'keep' or 'leave'), set per visit by
+// admin when more than one person is on a stay. Unset shows nothing.
+export const KEY_INSTRUCTIONS = { keep: 'Keep key', leave: 'Leave key' };
+
+export function keyInstructionLabel(entry) {
+  return KEY_INSTRUCTIONS[entry?.key] || '';
+}

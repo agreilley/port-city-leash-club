@@ -93,6 +93,7 @@
      window printed on the chip itself (renderCalendar), rather than a
      color per walk time slot that had to be decoded from the legend. */
   .my-walk-chip .chip-time { font-weight: 700; margin-right: 4px; }
+  .my-walk-chip .chip-key { font-weight: 700; }
   .my-walk-chip.walk { background: #EBF5EF; color: #1A5C30; border-left: 3px solid #1A5C30; }
   .my-walk-chip.dropin { background: #FDEBDD; color: #B04A0C; border-left: 3px solid #B04A0C; }
   .my-walk-chip.overnight { background: #E6EEFB; color: #1E4E8C; border-left: 3px solid #1E4E8C; }
@@ -452,7 +453,7 @@ import { calculateEarnings, WALKER_RATES, WALKER_EXTRA_PET_FEE, WALKER_MEDICATIO
 import { HOLIDAY_RATE_PERCENT } from '../pricing.js';
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
 import { AVAILABILITY_DAYS, AVAILABILITY_DAY_LABELS, AVAILABILITY_HOURS, hourLabel, hourBlockLabel, summarizeHours } from '../walker-availability.js';
-import { VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, buildStaySchedule, groupStayScheduleByDay, stayRowLabel, stayNightDates, nightWalkerId, stayReadyToClose } from '../visit-slots.js';
+import { VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, buildStaySchedule, groupStayScheduleByDay, stayRowLabel, stayNightDates, nightWalkerId, stayReadyToClose, keyInstructionLabel } from '../visit-slots.js';
 import { showError } from '/js/status.js';
 
 // ─── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────────────
@@ -997,14 +998,14 @@ function renderTodaysVisits() {
       return `<div class="walk-card" style="align-items:center;">
         <div style="flex:1;">
           <div style="font-size:13px;color:var(--text-mid);">${address}</div>
-          <div style="font-size:13px;color:var(--text-light);">${v.date} · ${slotLabel}</div>
+          <div style="font-size:13px;color:var(--text-light);">${v.date} · ${slotLabel}${keyInstructionLabel(v) ? ` · <strong style="color:var(--navy);">${keyInstructionLabel(v)}</strong>` : ''}</div>
         </div>
         <button class="btn-complete" style="width:auto;padding:8px 16px;" onclick="openVisitCompleteForm('${o.id}', '${v.id}')">Mark complete</button>
       </div>`;
     }).join('') + (tonight ? `<div class="walk-card" style="align-items:center;">
         <div style="flex:1;">
           <div style="font-size:13px;color:var(--text-mid);">${address}</div>
-          <div style="font-size:13px;color:var(--text-light);">${todayDateStr()} · Overnight</div>
+          <div style="font-size:13px;color:var(--text-light);">${todayDateStr()} · Overnight${keyInstructionLabel(o.nights?.[todayDateStr()]) ? ` · <strong style="color:var(--navy);">${keyInstructionLabel(o.nights?.[todayDateStr()])}</strong>` : ''}</div>
         </div>
         <button class="btn-complete" style="width:auto;padding:8px 16px;" onclick="openNightCompleteForm('${o.id}', '${todayDateStr()}')">Mark complete</button>
       </div>` : '');
@@ -1049,6 +1050,7 @@ window.openVisitCompleteForm = (overnightId, visitId) => {
     ${renderEmergencyBlock(member)}
     <div class="detail-row"><span class="detail-label">Date</span><span class="detail-value">${escapeHtml(visit.date)}</span></div>
     <div class="detail-row"><span class="detail-label">Slot</span><span class="detail-value">${slotLabel}</span></div>
+    ${keyInstructionLabel(visit) ? `<div class="detail-row"><span class="detail-label">Key</span><span class="detail-value"><strong>${keyInstructionLabel(visit)}</strong> after this visit</span></div>` : ''}
     <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted ? '✓ Completed' : isToday ? 'Today' : isPastDay ? 'Past' : 'Scheduled'}</span></div>
     ${isCompleted ? `
       <div class="detail-row"><span class="detail-label">Note</span><span class="detail-value">${escapeHtml(visit.note) || 'None'}</span></div>
@@ -1257,6 +1259,7 @@ window.openNightCompleteForm = (overnightId, date) => {
     <div class="detail-row"><span class="detail-label">Internal Notes</span><span class="detail-value">${escapeHtml(member?.internalNotes) || 'None'}</span></div>
     ${renderEmergencyBlock(member)}
     <div class="detail-row"><span class="detail-label">Night of</span><span class="detail-value">${escapeHtml(dateLabel)}</span></div>
+    ${keyInstructionLabel(night) ? `<div class="detail-row"><span class="detail-label">Key</span><span class="detail-value"><strong>${keyInstructionLabel(night)}</strong> after this night</span></div>` : ''}
     <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted || closedUnmarked ? '✓ Completed' : isSkipped ? "Didn't happen" : date === today ? 'Tonight' : date < today ? 'Past' : 'Scheduled'}</span></div>
     ${isCompleted ? `
       <div class="detail-row"><span class="detail-label">Note</span><span class="detail-value">${escapeHtml(night.note) || 'None'}</span></div>
@@ -1468,9 +1471,9 @@ window.openOvernightDetail = (overnightId) => {
       const label = escapeHtml(stayRowLabel(row, isCheckin, { showIncluded: false }));
       if (row.kind === 'night') {
         const st = row.night?.status;
-        return `<div>${label} · ${st === 'completed' || (!st && isCompleted) ? '✓ Done' : st === 'skipped' ? "Didn't happen" : 'Expected'}</div>`;
+        return `<div>${label} · ${st === 'completed' || (!st && isCompleted) ? '✓ Done' : st === 'skipped' ? "Didn't happen" : 'Expected'}${keyInstructionLabel(row.night) ? ` · ${keyInstructionLabel(row.night)}` : ''}</div>`;
       }
-      return `<div>${label} · ${row.visit.status === 'completed' ? '✓ Done' : 'Expected'}</div>`;
+      return `<div>${label} · ${row.visit.status === 'completed' ? '✓ Done' : 'Expected'}${keyInstructionLabel(row.visit) ? ` · ${keyInstructionLabel(row.visit)}` : ''}</div>`;
     }).join('');
     return `<div class="detail-row" style="align-items:flex-start;"><span class="detail-label">${escapeHtml(dateLabel)}</span><span class="detail-value">${items}</span></div>`;
   }).join('');
@@ -1558,16 +1561,17 @@ function renderCalendar() {
           cls: 'dropin', start: CAL_VISIT_START[v.slot] ?? 99,
           time: VISIT_SLOT_RANGES[v.slot] || VISIT_SLOT_LABELS[v.slot] || '', name: petNames,
           title: `${v.addOn ? 'Extra drop-in' : isCheckin ? 'Drop-in' : 'Drop-in (overnight stay)'} · ${VISIT_SLOT_LABELS[v.slot] || v.slot || ''}`,
-          onclick: `openVisitCompleteForm('${o.id}', '${v.id}')`,
+          onclick: `openVisitCompleteForm('${o.id}', '${v.id}')`, key: keyInstructionLabel(v),
         }));
       if (!isCheckin && o.status !== 'cancelled' && o._nights.includes(dayStr) && o.nights?.[dayStr]?.status !== 'skipped') {
-        items.push({ cls: 'overnight', start: 100, time: 'Overnight', name: petNames, title: 'Overnight stay', onclick: `openNightCompleteForm('${o.id}', '${dayStr}')` });
+        items.push({ cls: 'overnight', start: 100, time: 'Overnight', name: petNames, title: 'Overnight stay', onclick: `openNightCompleteForm('${o.id}', '${dayStr}')`, key: keyInstructionLabel(o.nights?.[dayStr]) });
       }
     });
     const chips = items.sort((a, b) => a.start - b.start).map(it =>
-      `<div class="my-walk-chip ${it.cls}" onclick="${it.onclick}" title="${escapeHtml(`${it.name} · ${it.title}`)}">`
+      `<div class="my-walk-chip ${it.cls}" onclick="${it.onclick}" title="${escapeHtml(`${it.name} · ${it.title}${it.key ? ` · ${it.key}` : ''}`)}">`
       + (it.time ? `<span class="chip-time">${escapeHtml(it.time)}</span>` : '')
-      + `<span class="chip-name">${escapeHtml(it.name)}</span></div>`
+      + `<span class="chip-name">${escapeHtml(it.name)}</span>`
+      + (it.key ? ` <span class="chip-key">· ${escapeHtml(it.key)}</span>` : '') + '</div>'
     ).join('');
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}</div>`;
   }
