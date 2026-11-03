@@ -21,6 +21,6 @@ dev/dev-coverage-map.html
 # public repo: they describe internal marketing process and file paths.
 .claude/skills/
 
-# Marketing workspace: ad exports, weekly reports, plan. Private business
-# data, never published (the repo is public).
-marketing/
+# Business workspace (marketing, team, operations, finance, the current
+# business summary). Private business data, never published (the repo is public).
+business/
