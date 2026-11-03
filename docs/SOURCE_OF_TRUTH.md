@@ -1,5 +1,7 @@
 # Port City Leash Club — Source of Truth
 
+> **OUTDATED (marked 2026-11-03). Do not use this for current business facts.** It describes the code as of late August 2026, and prices, services, the team and the homepage have changed since. The current business summary is `marketing/PCLC-current.md` (kept on Alison's computer only). Kept here as a historical code reference.
+
 **Describes commit:** `285d5769aa70a5ab923493926266e9fbbfbd9491` (2026-08-29)
 **Update (2026-08-30):** the working-tree changes described below in [§1.13](#113-uncommitted-working-tree-changes-important) as uncommitted have since been committed as `bb6fb02` — see that section for the current status. This document's Part 1 narrative elsewhere (e.g. §1.7's `stripeWebhook` row) was written when those changes were still uncommitted; treat §1.13 as the authoritative status for that specific feature, not the surrounding prose.
 **Document generated:** 2026-08-29, by direct code inspection (six parallel research passes over the live working tree, cross-checked against each other and against `git diff`/`git log`), not copied from any prior document.
