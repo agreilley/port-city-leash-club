@@ -2864,7 +2864,10 @@ function renderTodoWeekly() {
       <button class="todo-step" type="button" onclick="setTodoWeek('instagram', ${posted + 1})" aria-label="One more post">+</button>
     </div>`);
   rows.push(check('nextdoor', 'Nextdoor post'));
-  rows.push(check('metaAds', 'Check Meta ads', 'Spend, results, and UTM tags match the conventions'));
+  rows.push(check('metaAds', 'Weekly marketing review', 'Save the Meta + Nextdoor exports, then /marketing-weekly in Claude'));
+  // First week of each month (Monday falls on the 1st–7th): the monthly
+  // strategy session.
+  if (start.getDate() <= 7) rows.push(check('strategy', 'Monthly marketing strategy', '/marketing-strategy in Claude'));
 
   // Warm-lead series: emails already sent = the pre-list baseline plus every
   // earlier week that was checked off. Hidden once the series is done.
