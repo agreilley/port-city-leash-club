@@ -449,7 +449,7 @@ import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inM
 import { initializeFirestore, memoryLocalCache, collection, query, where, onSnapshot, doc, getDoc, updateDoc, getDocs, addDoc, serverTimestamp, Timestamp, runTransaction } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
-import { calculateEarnings, WALKER_RATES, WALKER_EXTRA_PET_FEE, WALKER_MEDICATION_FEE, visitWalkerId, isOvernightPayee, overnightClaimFor, overnightTipShare } from '../walker-pricing.js';
+import { calculateEarnings, overnightEarnedSoFar, WALKER_RATES, WALKER_EXTRA_PET_FEE, WALKER_MEDICATION_FEE, visitWalkerId, isOvernightPayee, overnightClaimFor, overnightTipShare } from '../walker-pricing.js';
 import { HOLIDAY_RATE_PERCENT } from '../pricing.js';
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
 import { AVAILABILITY_DAYS, AVAILABILITY_DAY_LABELS, AVAILABILITY_HOURS, hourLabel, hourBlockLabel, summarizeHours } from '../walker-availability.js';
@@ -810,10 +810,12 @@ function loadData() {
 // buildStaySchedule, only the ones this walker is doing. A night is done
 // once it's marked complete, or its stay was completed (stays closed before
 // nights were completable never marked theirs). Cancelled/skipped items are
-// left out of both sides. Pay and tips for a stay land in the month
+// left out of both sides. Pay and tips for a closed stay land in the month
 // the stay ends, the same unit calculateEarnings/payouts work in; walks by
-// their own date. Pay is a live estimate like Upcoming Payout, not a paid
-// figure (see renderEarnings).
+// their own date. A stay still open counts each completed visit and night
+// by its own date (overnightEarnedSoFar), so Earned moves with Visits
+// Completed instead of waiting for the stay to close. Pay is a live estimate
+// like Upcoming Payout, not a paid figure (see renderEarnings).
 function renderStats() {
   const now = new Date();
   const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -844,7 +846,9 @@ function renderStats() {
 
   const doneWalks = monthWalks.filter(w => w.status === 'completed');
   const doneStays = myOvernightDocs.filter(o => o.status === 'completed' && localMonth(o.endDate) === monthKey);
-  const earned = calculateEarnings(doneWalks, doneStays, me).total;
+  const openStays = myOvernightDocs.filter(o => live(o) && o.status !== 'completed');
+  const earned = calculateEarnings(doneWalks, doneStays, me).total
+    + openStays.reduce((sum, o) => sum + overnightEarnedSoFar(o, me, monthKey), 0);
   const tips = doneWalks.reduce((sum, w) => sum + (w.tip?.chargeStatus === 'charged' ? w.tip.amountCents / 100 : 0), 0)
     + doneStays.reduce((sum, o) => sum + overnightTipShare(o, me), 0);
 

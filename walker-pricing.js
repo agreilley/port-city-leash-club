@@ -24,7 +24,7 @@
 // generated copy — edit here, never there.
 
 import { getDaysBetween } from './pricing.js';
-import { stayNightDates, nightWalkerId } from './visit-slots.js';
+import { stayNightDates, nightWalkerId, stayDateKey } from './visit-slots.js';
 
 const cents = (n) => Math.round(n * 100) / 100;
 
@@ -373,6 +373,57 @@ export function overnightTipShare(overnight, walkerId) {
     if (visitWalkerId(v, overnight) === walkerId) total += charged(v.tip);
   });
   return total;
+}
+
+// What this walker has earned so far on a reservation that hasn't closed,
+// from the visits and nights they've completed in monthKey ('YYYY-MM').
+// Display only: pay is stamped and paid out when the stay closes, through
+// calculateOvernightPayout. The pieces here add up to that same figure:
+// - A visit pays WALKER_RATES.checkin, plus holiday pay on a holiday date.
+// - A night pays WALKER_NIGHT_COVER_RATE, plus that night's Multiple Pets /
+//   Medication fees and holiday pay. A night and its included check-in
+//   together make the full overnight rate, whoever does each one.
+// - On a drop-in booking those per-day fees go to whoever calculateVisitCovers
+//   gives that day: a lone covering walker, otherwise the default walker.
+// Capped at the walker's share of the whole reservation, so older docs priced
+// per day rather than per visit can't show more than the stay will pay.
+export function overnightEarnedSoFar(overnight, walkerId, monthKey) {
+  if (!overnight || !walkerId || !monthKey) return 0;
+  const isCheckin = isCheckinType(overnight.serviceType);
+  const visits = Array.isArray(overnight.visits) ? overnight.visits : [];
+  const dayFees = (overnight.extraPet ? WALKER_EXTRA_PET_FEE : 0) + (overnight.medication ? WALKER_MEDICATION_FEE : 0);
+  const inMonth = (date) => (date || '').slice(0, 7) === monthKey;
+  let pay = 0;
+
+  const paidFeeDates = new Set();
+  visits.forEach(v => {
+    const date = stayDateKey(v?.date);
+    if (v?.status !== 'completed' || visitWalkerId(v, overnight) !== walkerId || !inMonth(date)) return;
+    pay += WALKER_RATES.checkin + holidayVisitPay(overnight, date);
+    if (!isCheckin || !dayFees || paidFeeDates.has(date)) return;
+    const dayWalkers = new Set(visits.filter(x => stayDateKey(x?.date) === date).map(x => visitWalkerId(x, overnight)));
+    const dayFeeOwner = dayWalkers.size === 1 ? [...dayWalkers][0] : (overnight.walkerId || '').trim();
+    if (dayFeeOwner === walkerId) {
+      paidFeeDates.add(date);
+      pay += dayFees;
+    }
+  });
+
+  const h = holidayStamp(overnight);
+  stayNightDates(overnight).forEach(date => {
+    if (overnight.nights?.[date]?.status !== 'completed' || nightWalkerId(overnight, date) !== walkerId || !inMonth(date)) return;
+    pay += WALKER_NIGHT_COVER_RATE + dayFees;
+    if (h && h.dates.has(date)) pay += WALKER_NIGHT_COVER_RATE * h.pct / 100;
+  });
+
+  // A bad date range makes calculateOvernightPayout throw. An estimate on a
+  // stat card shouldn't take the rest of the dashboard down with it.
+  try {
+    return cents(Math.min(pay, overnightPayoutShare(overnight, walkerId, liveOvernightPayout(overnight)).amount));
+  } catch (err) {
+    console.error('overnightEarnedSoFar:', overnight.id, err);
+    return cents(pay);
+  }
 }
 
 // Aggregates a walker's payout across a set of already-completed walks
