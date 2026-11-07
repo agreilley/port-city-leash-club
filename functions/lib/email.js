@@ -64,6 +64,9 @@ const TEMPLATES = {
   'walk-extension-declined': require('../templates/walk-extension-declined'),
   'stay-wrap-up': require('../templates/stay-wrap-up'),
   'walker-schedule-update': require('../templates/walker-schedule-update'),
+  'gift-package-purchased': require('../templates/gift-package-purchased'),
+  'gift-package-delivered': require('../templates/gift-package-delivered'),
+  'gift-package-admin': require('../templates/gift-package-admin'),
 };
 
 const MAX_ATTEMPTS = 3;

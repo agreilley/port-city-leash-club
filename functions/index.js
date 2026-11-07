@@ -1646,11 +1646,19 @@ async function computeChargeCredits(memberId, billingData, amountInCentsRequeste
 // confirmation email. Best-effort: a failed read previews no credit rather
 // than blocking the email. The real charge re-decides at charge time, so if
 // something else uses the credit first, it can come out smaller than shown.
-async function previewChargeCredits(memberId, amountInDollars) {
+//
+// giftBooking (see giftBookingFromOvernight) folds any gift package visits into
+// creditApplied, since these emails show one account credit line.
+async function previewChargeCredits(memberId, amountInDollars, giftBooking = null) {
   try {
     const billingData = (await billingRef(memberId).get()).data() || {};
-    const { creditAppliedCents, discountCents } = await computeChargeCredits(memberId, billingData, Math.round((amountInDollars || 0) * 100));
-    return { creditApplied: creditAppliedCents / 100, referralDiscountApplied: discountCents / 100 };
+    const requestedCents = Math.round((amountInDollars || 0) * 100);
+    const gift = await planGiftPackageCredit(memberId, billingData, giftBooking, requestedCents);
+    const afterGiftCents = requestedCents - gift.creditCents;
+    const { creditAppliedCents, discountCents } = afterGiftCents > 0
+      ? await computeChargeCredits(memberId, billingData, afterGiftCents)
+      : { creditAppliedCents: 0, discountCents: 0 };
+    return { creditApplied: (creditAppliedCents + gift.creditCents) / 100, referralDiscountApplied: discountCents / 100 };
   } catch (e) {
     console.error(`previewChargeCredits: couldn't preview credits for ${memberId}:`, e.message);
     return { creditApplied: 0, referralDiscountApplied: 0 };
@@ -1677,7 +1685,10 @@ async function previewChargeCredits(memberId, amountInDollars) {
 // per-doc stripeCustomerId, is strictly narrowing what this function trusts,
 // not widening it.
 // ─────────────────────────────────────────────────────────────────────────
-async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountInDollars, description, attemptField = 'lastChargeAttempt' }) {
+//
+// giftBooking is passed only by the walk and pet sitting charges, so a walk
+// extension's upcharge (chargeSavedCard) can never use up a package visit.
+async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountInDollars, description, attemptField = 'lastChargeAttempt', giftBooking = null }) {
   const memberId = docData?.memberId || null;
   if (!memberId) {
     throw new HttpsError('failed-precondition', 'No member linked to this charge.');
@@ -1704,6 +1715,7 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
       paymentIntentId: docData.lastChargeId || null,
       creditApplied: docData.referralCreditApplied || 0,
       referralDiscountApplied: docData.referralDiscountApplied || 0,
+      giftPackageApplied: docData.giftPackageApplied || 0,
     };
   }
 
@@ -1784,9 +1796,20 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
   // this charge's own amount (never a negative charge, never over-applies).
   // Cents throughout to avoid floating-point drift on the subtraction.
   const amountInCentsRequested = Math.round(amountInDollars * 100);
-  const { creditAppliedCents, discountCents, referralDiscount } = await computeChargeCredits(memberId, billingData, amountInCentsRequested);
 
-  const chargeAmountInCents = amountInCentsRequested - creditAppliedCents - discountCents;
+  // Gift package visits come off first, so other credits only apply to what's
+  // left. If a package covers the whole charge, computeChargeCredits is skipped
+  // altogether: this isn't the member's first real payment, and resolving their
+  // referral discount against $0 would forfeit it. A failed read here throws
+  // rather than charging full price, and the charge stays retryable.
+  const gift = await planGiftPackageCredit(memberId, billingData, giftBooking, amountInCentsRequested);
+  const amountAfterGiftCents = amountInCentsRequested - gift.creditCents;
+  const { creditAppliedCents, discountCents, referralDiscount } = amountAfterGiftCents > 0
+    ? await computeChargeCredits(memberId, billingData, amountAfterGiftCents)
+    : { creditAppliedCents: 0, discountCents: 0, referralDiscount: null };
+
+  const chargeAmountInCents = amountAfterGiftCents - creditAppliedCents - discountCents;
+  const giftPackageApplied = gift.creditCents / 100;
   const creditApplied = creditAppliedCents / 100;
   const referralDiscountApplied = discountCents / 100;
   const chargeAmountInDollars = chargeAmountInCents / 100;
@@ -1875,12 +1898,23 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
     },
     ...(creditApplied > 0 ? { referralCreditApplied: creditApplied } : {}),
     ...(referralDiscountApplied > 0 ? { referralDiscountApplied } : {}),
+    ...(gift.creditCents > 0 ? { giftPackageApplied, giftPackageVisitsUsed: gift.visitsUsed } : {}),
   }, { merge: true });
 
   if (creditAppliedCents > 0 && memberId) {
     await billingRef(memberId).set({
       pendingReferralCredit: FieldValue.increment(-creditApplied),
     }, { merge: true });
+  }
+
+  // Visits only come off once the charge has succeeded, so a declined or
+  // canceled booking never touches a package. The card has been charged by this
+  // point, so a failure here is flagged on the doc rather than thrown.
+  if (gift.allocations.length) {
+    await commitGiftPackageCredit(gift.allocations, memberId, chargeKey).catch(async (e) => {
+      console.error(`chargeCustomerCard: couldn't take gift package visits for ${chargeKey}:`, e.message);
+      await docRef.set({ giftPackageCommitError: String(e.message).slice(0, 300) }, { merge: true }).catch(() => {});
+    });
   }
 
   // Post-charge commit for the discount decided above — see
@@ -1897,7 +1931,7 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
 
   return {
     success: true, paymentIntentId: paymentIntent ? paymentIntent.id : null,
-    creditApplied, referralDiscountApplied,
+    creditApplied, referralDiscountApplied, giftPackageApplied,
   };
 }
 
@@ -2245,6 +2279,7 @@ exports.chargeScheduledReservations = onSchedule({
         amountInDollars: (freshData.confirmedTotalCents || 0) / 100,
         description: `Port City Leash Club - ${isCheckin ? 'Drop-In Visits' : 'Overnight Stay'}`,
         attemptField: 'chargeAttempt',
+        giftBooking: giftBookingFromOvernight(freshData),
       });
       await candidate.ref.set({ chargePending: false }, { merge: true });
 
@@ -2359,6 +2394,7 @@ exports.retryReservationCharge = onCall({ secrets: [STRIPE_SECRET_KEY] }, async 
     amountInDollars: (data.confirmedTotalCents || 0) / 100,
     description: `Port City Leash Club - ${isCheckin ? 'Drop-In Visits' : 'Overnight Stay'}`,
     attemptField: 'chargeAttempt',
+    giftBooking: giftBookingFromOvernight(data),
   });
   await ref.set({ chargePending: false }, { merge: true });
 
@@ -5200,7 +5236,7 @@ async function runFirstPaymentReferralCredit(stripe, memberId, invoiceAmountPaid
 // test against a disposable customer, not a real member's.
 exports.runFirstPaymentReferralCredit = runFirstPaymentReferralCredit;
 
-exports.stripeWebhook = onRequest({ secrets: [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET] }, async (req, res) => {
+exports.stripeWebhook = onRequest({ secrets: [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, RESEND_API_KEY] }, async (req, res) => {
   const stripe = stripeClient(STRIPE_SECRET_KEY.value());
 
   // Signature verification is the ONLY case that returns non-200 here — an
@@ -5271,9 +5307,19 @@ exports.stripeWebhook = onRequest({ secrets: [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_
         // against for this to match the other two paths' rule exactly.
         await runFirstPaymentReferralCredit(stripe, memberId, invoice.amount_paid);
       }
+    } else if (event.type === 'payment_intent.succeeded') {
+      // Only gift packages act on this event. It's what still delivers a gift
+      // when the buyer closes the tab right after paying, before
+      // confirmGiftPackage runs. Every other PaymentIntent is ignored.
+      //
+      // ⚠ DEPLOYMENT NOTE: this event has to be selected on the Stripe
+      // Dashboard's webhook endpoint (Developers → Webhooks).
+      const paymentIntent = event.data.object;
+      const giftPackageId = paymentIntent.metadata?.giftPackageId;
+      if (giftPackageId) await fulfillGiftPackage(giftPackageId, paymentIntent);
     }
     // Any other event type: the Stripe Dashboard endpoint is only configured
-    // to send these three (see setup notes above), but ignore anything else
+    // to send these four (see setup notes above), but ignore anything else
     // defensively rather than erroring.
   } catch (e) {
     // A genuine bug processing an already-recorded event. Logged for
@@ -6662,11 +6708,12 @@ async function runServiceOrOvernightCharge(sub, submissionId, memberId, reviewed
         chargeKey: submissionId,
         amountInDollars: reviewed.amountInDollars,
         description,
+        giftBooking: { serviceKey, visits: Math.max(reviewed.unitCount || 1, 1), travelDiscountApplied: false },
       });
       paymentStatus = 'charged';
       // Passed on so the confirmation email's itemized order shows the
       // credit the charge actually took (buildStayOrder).
-      creditApplied = charge?.creditApplied || 0;
+      creditApplied = (charge?.creditApplied || 0) + (charge?.giftPackageApplied || 0);
       referralDiscountApplied = charge?.referralDiscountApplied || 0;
     } catch (e) {
       paymentStatus = 'failed';
@@ -6733,7 +6780,7 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
   // member's billing doc with the same math the charge will use.
   const isScheduledCharge = chargeResult.paymentStatus === 'scheduled';
   const credits = isScheduledCharge
-    ? await previewChargeCredits(memberId, reviewed.amountInDollars)
+    ? await previewChargeCredits(memberId, reviewed.amountInDollars, await giftBookingForSubmission(submissionId))
     : { creditApplied: chargeResult.creditApplied || 0, referralDiscountApplied: chargeResult.referralDiscountApplied || 0 };
   const hasCredits = credits.creditApplied > 0 || credits.referralDiscountApplied > 0;
 
@@ -7582,8 +7629,8 @@ exports.resendBookingConfirmationEmail = onCall({
       : (!record.chargePending && subData?.lastChargeAttempt?.status === 'charged') ? subData
       : null;
     const credits = chargedDoc
-      ? { creditApplied: chargedDoc.referralCreditApplied || 0, referralDiscountApplied: chargedDoc.referralDiscountApplied || 0 }
-      : await previewChargeCredits(record.memberId, confirmedTotal || 0);
+      ? { creditApplied: (chargedDoc.referralCreditApplied || 0) + (chargedDoc.giftPackageApplied || 0), referralDiscountApplied: chargedDoc.referralDiscountApplied || 0 }
+      : await previewChargeCredits(record.memberId, confirmedTotal || 0, giftBookingFromOvernight(record));
     const hasCredits = credits.creditApplied > 0 || credits.referralDiscountApplied > 0;
     const chargedAt = chargedDoc?.lastChargedAt?.toDate ? chargedDoc.lastChargedAt.toDate() : null;
     let order = null;
@@ -10856,4 +10903,518 @@ exports.validateReferralCode = onCall({}, async (request) => {
   // this is a preview of the exact amount the charge-time cap will apply
   // against, not a separate number that could drift from it.
   return { valid: true, reason: null, amountCents: codeData.amountCents ?? 5000 };
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GIFT PACKAGES: prepaid visits sold as a gift on gift-packages.html.
+//
+// giftPackages/{id} is written only through the Admin SDK (no client access,
+// see firestore.rules) because each paid doc holds a redeemable code.
+//   status: pending -> paid, or failed if Stripe couldn't start the payment.
+//   deliveryStatus: scheduled -> sent, or failed -> failed_final after
+//   GIFT_PACKAGE_MAX_DELIVERY_ATTEMPTS.
+//
+// Paid packages are fulfilled from two places, whichever lands first:
+// confirmGiftPackage (the buyer's browser) and the payment_intent.succeeded
+// webhook (the buyer closed the tab). The transaction in fulfillGiftPackage
+// lets exactly one of them issue the code and send the emails.
+// ═══════════════════════════════════════════════════════════════════════════
+const GIFT_PACKAGE_MAX_DELIVERY_ATTEMPTS = 5;
+const GIFT_PACKAGE_MAX_ORDERS_PER_HOUR = 10;
+const GIFT_PACKAGE_MAX_DELIVERY_DAYS_AHEAD = 365;
+const GIFT_PACKAGE_MESSAGE_MAX_LENGTH = 300;
+// No 0/O or 1/I, since a recipient may retype the code by hand.
+const GIFT_PACKAGE_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+function generateGiftPackageCode() {
+  const pick = (length) => Array.from({ length }, () => GIFT_PACKAGE_CODE_ALPHABET[crypto.randomInt(GIFT_PACKAGE_CODE_ALPHABET.length)]).join('');
+  return `GIFT-${pick(5)}-${pick(5)}`;
+}
+
+function easternTodayString() {
+  const { year, monthIndex, day } = easternTodayParts();
+  return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function giftPackageText(value, maxLength) {
+  return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+}
+
+function isValidGiftPackageEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+// Blank means "send it now". Otherwise a real calendar date from today through
+// a year out, Eastern time, since that's when the daily send runs.
+function resolveGiftPackageDeliverOn(value) {
+  const today = easternTodayString();
+  if (value === undefined || value === null || value === '') return today;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new HttpsError('invalid-argument', 'Please choose a valid delivery date.');
+  }
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw new HttpsError('invalid-argument', 'Please choose a valid delivery date.');
+  }
+  const latest = new Date(`${today}T00:00:00Z`);
+  latest.setUTCDate(latest.getUTCDate() + GIFT_PACKAGE_MAX_DELIVERY_DAYS_AHEAD);
+  if (value < today || parsed > latest) {
+    throw new HttpsError('invalid-argument', 'Please choose a delivery date between today and one year from now.');
+  }
+  return value;
+}
+
+// Limits how often one caller can start a payment or try a code. Only a hash of
+// the caller's IP address or member id is stored.
+async function assertGiftPackageRateLimit(caller) {
+  if (!caller) return;
+  const key = crypto.createHash('sha256').update(caller).digest('hex');
+  const ref = db.collection('giftPackageThrottle').doc(key);
+  const now = Date.now();
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const windowStartMs = snap.exists ? snap.data().windowStartMs : 0;
+    const count = snap.exists ? snap.data().count : 0;
+    if (now - windowStartMs >= 60 * 60 * 1000) {
+      tx.set(ref, { windowStartMs: now, count: 1 });
+      return;
+    }
+    if (count >= GIFT_PACKAGE_MAX_ORDERS_PER_HOUR) {
+      throw new HttpsError('resource-exhausted', 'Too many attempts. Please try again in an hour, or email hello@portcityleashclub.com.');
+    }
+    tx.set(ref, { windowStartMs, count: count + 1 });
+  });
+}
+
+// Never throws: the buyer has already paid by the time this runs, so a failed
+// send is recorded and retried by sendScheduledGiftPackages, or flagged to
+// Alison once the retries run out.
+async function deliverGiftPackage(giftPackageId, giftPackage) {
+  const ref = db.collection('giftPackages').doc(giftPackageId);
+  const result = await sendEmail({
+    to: giftPackage.recipientEmail,
+    template: 'gift-package-delivered',
+    data: {
+      recipientName: giftPackage.recipientName,
+      buyerName: giftPackage.buyerName,
+      message: giftPackage.message,
+      packageLabel: giftPackage.packageLabel,
+      code: giftPackage.code,
+    },
+    idempotencyKey: `gift-package-delivered:${giftPackageId}`,
+  });
+  if (result.ok) {
+    await ref.set({ deliveryStatus: 'sent', deliveredAt: FieldValue.serverTimestamp() }, { merge: true });
+    return true;
+  }
+  const attempts = (giftPackage.deliveryAttempts || 0) + 1;
+  const gaveUp = attempts >= GIFT_PACKAGE_MAX_DELIVERY_ATTEMPTS;
+  await ref.set({
+    deliveryStatus: gaveUp ? 'failed_final' : 'failed',
+    deliveryAttempts: attempts,
+    deliveryError: String(result.error || 'Unknown error').slice(0, 500),
+  }, { merge: true });
+  if (gaveUp) {
+    await sendEmail({
+      to: ADMIN_EMAIL,
+      template: 'gift-package-admin',
+      data: { kind: 'delivery_failed', ...giftPackage, deliveryError: result.error },
+      idempotencyKey: `gift-package-delivery-failed:${giftPackageId}`,
+    });
+  }
+  return false;
+}
+
+// Checks the PaymentIntent itself rather than trusting the caller, then issues
+// the code once. Returns true when this package is paid, including when an
+// earlier call already got there.
+async function fulfillGiftPackage(giftPackageId, paymentIntent) {
+  const ref = db.collection('giftPackages').doc(giftPackageId);
+  const code = generateGiftPackageCode();
+  const outcome = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return { paid: false };
+    const giftPackage = snap.data();
+    if (giftPackage.status === 'paid') return { paid: true, firstFulfillment: false };
+    if (paymentIntent.status !== 'succeeded'
+      || paymentIntent.metadata?.giftPackageId !== giftPackageId
+      || paymentIntent.amount !== giftPackage.amountCents) {
+      return { paid: false };
+    }
+    const fields = {
+      status: 'paid',
+      paymentIntentId: paymentIntent.id,
+      paidAt: FieldValue.serverTimestamp(),
+      code,
+      items: giftPackage.items.map((item) => ({ ...item, visitsRemaining: item.quantity })),
+      deliveryStatus: 'scheduled',
+      deliveryAttempts: 0,
+    };
+    tx.set(ref, fields, { merge: true });
+    return { paid: true, firstFulfillment: true, giftPackage: { ...giftPackage, ...fields } };
+  });
+  if (!outcome.firstFulfillment) return outcome.paid;
+
+  const { giftPackage } = outcome;
+  await sendEmail({
+    to: giftPackage.buyerEmail,
+    template: 'gift-package-purchased',
+    data: {
+      buyerName: giftPackage.buyerName,
+      recipientName: giftPackage.recipientName,
+      packageLabel: giftPackage.packageLabel,
+      amountCents: giftPackage.amountCents,
+      deliverOn: giftPackage.deliverOn,
+      deliversToday: giftPackage.deliverOn <= easternTodayString(),
+    },
+    idempotencyKey: `gift-package-purchased:${giftPackageId}`,
+  });
+  await sendEmail({
+    to: ADMIN_EMAIL,
+    template: 'gift-package-admin',
+    data: { kind: 'sold', ...giftPackage },
+    idempotencyKey: `gift-package-sold:${giftPackageId}`,
+  });
+  if (giftPackage.deliverOn <= easternTodayString()) {
+    await deliverGiftPackage(giftPackageId, giftPackage);
+  }
+  return true;
+}
+
+// Deliberately unauthenticated: buyers don't need an account. The amount always
+// comes from pricing.js, never from the client.
+exports.createGiftPackagePaymentIntent = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  const payload = request.data || {};
+  assertHoneypotEmpty(payload);
+
+  const buyerName = giftPackageText(payload.buyerName, 100);
+  const buyerEmail = giftPackageText(payload.buyerEmail, 320);
+  const recipientName = giftPackageText(payload.recipientName, 100);
+  const recipientEmail = giftPackageText(payload.recipientEmail, 320);
+  const message = giftPackageText(payload.message, GIFT_PACKAGE_MESSAGE_MAX_LENGTH);
+  if (!buyerName) throw new HttpsError('invalid-argument', 'Please enter your name.');
+  if (!isValidGiftPackageEmail(buyerEmail)) throw new HttpsError('invalid-argument', 'Please enter a valid email address for yourself.');
+  if (!recipientName) throw new HttpsError('invalid-argument', "Please enter the recipient's name.");
+  if (!isValidGiftPackageEmail(recipientEmail)) throw new HttpsError('invalid-argument', "Please enter a valid email address for the recipient.");
+  if (payload.serviceAreaConfirmed !== true) {
+    throw new HttpsError('invalid-argument', 'Please confirm the recipient lives in our service area.');
+  }
+
+  const { calculateGiftPackageOrder } = await import('./pricing.js');
+  let priced;
+  try {
+    priced = calculateGiftPackageOrder(payload.items);
+  } catch (e) {
+    throw new HttpsError('invalid-argument', e.message);
+  }
+  const deliverOn = resolveGiftPackageDeliverOn(payload.deliverOn);
+
+  await assertGiftPackageRateLimit(request.rawRequest?.ip);
+
+  const amountCents = Math.round(priced.total * 100);
+  const ref = db.collection('giftPackages').doc();
+  await ref.set({
+    status: 'pending',
+    buyerName, buyerEmail, recipientName, recipientEmail,
+    message: message || null,
+    items: priced.items.map((item) => ({
+      serviceKey: item.serviceKey,
+      quantity: item.quantity,
+      unitPriceCents: Math.round(item.unitPrice * 100),
+    })),
+    amountCents,
+    packageLabel: priced.label,
+    deliverOn,
+    serviceAreaConfirmed: true,
+    paymentIntentId: null,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  try {
+    const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountCents,
+      currency: 'usd',
+      receipt_email: buyerEmail,
+      description: `Port City Leash Club gift package: ${priced.label}`,
+      metadata: { giftPackageId: ref.id, packageLabel: priced.label },
+    });
+    await ref.set({ paymentIntentId: paymentIntent.id }, { merge: true });
+    return { clientSecret: paymentIntent.client_secret, giftPackageId: ref.id };
+  } catch (e) {
+    await ref.set({ status: 'failed', failureReason: String(e.message || '').slice(0, 200) }, { merge: true }).catch(() => {});
+    console.error('createGiftPackagePaymentIntent: Stripe error:', e.message);
+    throw new HttpsError('internal', "Couldn't start checkout. Please try again.");
+  }
+});
+
+// Called by the page once the card payment resolves. Returns only a yes or no,
+// never the code, since this endpoint is public.
+exports.confirmGiftPackage = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KEY] }, async (request) => {
+  const giftPackageId = typeof request.data?.giftPackageId === 'string' ? request.data.giftPackageId : '';
+  if (!giftPackageId || giftPackageId.includes('/')) throw new HttpsError('invalid-argument', 'Missing gift package.');
+  const snap = await db.collection('giftPackages').doc(giftPackageId).get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Gift package not found.');
+  const giftPackage = snap.data();
+  if (giftPackage.status === 'paid') return { ok: true };
+  if (!giftPackage.paymentIntentId) throw new HttpsError('failed-precondition', 'This gift package has no payment attached yet.');
+
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+  const paymentIntent = await stripe.paymentIntents.retrieve(giftPackage.paymentIntentId);
+  return { ok: await fulfillGiftPackage(giftPackageId, paymentIntent) };
+});
+
+// 8am ET: sends gifts scheduled for today and retries any failed send.
+exports.sendScheduledGiftPackages = onSchedule({
+  schedule: '0 8 * * *',
+  timeZone: 'America/New_York',
+  secrets: [RESEND_API_KEY],
+}, async () => {
+  const today = easternTodayString();
+  const snap = await db.collection('giftPackages').where('deliveryStatus', 'in', ['scheduled', 'failed']).get();
+  let sent = 0, failed = 0;
+  for (const doc of snap.docs) {
+    const giftPackage = doc.data();
+    if (giftPackage.status !== 'paid' || giftPackage.deliverOn > today) continue;
+    if (await deliverGiftPackage(doc.id, giftPackage)) sent++; else failed++;
+  }
+  console.log(`sendScheduledGiftPackages: ${sent} sent, ${failed} failed`);
+});
+
+// ── Redeeming and spending package visits ─────────────────────────────────
+
+// The visits a pet sitting reservation would draw on. A stay counts its nights.
+// Drop-ins count the reservation's own visits, leaving out add-ons, because a
+// drop-in package only pays for a drop-in booking.
+function giftBookingFromOvernight(overnight) {
+  const serviceKey = overnight.serviceType === 'checkin' ? 'drop-in-visit'
+    : overnight.serviceType === 'overnight' ? 'overnight-stay' : overnight.serviceType;
+  let visits = 0;
+  if (serviceKey === 'drop-in-visit') {
+    visits = (Array.isArray(overnight.visits) ? overnight.visits : []).filter((v) => !v.addOn).length;
+  } else if (serviceKey === 'overnight-stay') {
+    const start = overnight.startDate?.toDate?.();
+    const end = overnight.endDate?.toDate?.();
+    visits = start && end ? Math.round((end - start) / 86400000) : 0;
+  }
+  return { serviceKey, visits, travelDiscountApplied: overnight.travelDiscountApplied === true };
+}
+
+// Best effort, for a confirmation email's preview: no booking found just
+// previews without package visits. The charge itself decides for real.
+async function giftBookingForSubmission(submissionId) {
+  try {
+    const snap = await db.collection('overnights').where('submissionId', '==', submissionId).limit(1).get();
+    return snap.empty ? null : giftBookingFromOvernight(snap.docs[0].data());
+  } catch (e) {
+    console.error(`giftBookingForSubmission: couldn't read the reservation for ${submissionId}:`, e.message);
+    return null;
+  }
+}
+
+// How many of a member's package visits this charge would use, oldest package
+// first. A pure read. A visit is valued at today's base price, and only that
+// comes off: holiday rates, extra pets, medication, and add-ons stay on the card.
+// A Friends & Family total is already discounted, so its visits are worth the
+// discounted price, or the discount would pay for those extras too.
+async function planGiftPackageCredit(memberId, billingData, booking, amountCents) {
+  const none = { creditCents: 0, visitsUsed: 0, allocations: [] };
+  if (!booking || !(booking.visits > 0) || !(amountCents > 0)) return none;
+  const { giftPackageVisitValue } = await import('./pricing.js');
+  const value = giftPackageVisitValue(booking.serviceKey);
+  if (!value) return none;
+
+  const snap = await db.collection('giftPackages').where('redeemedByMemberId', '==', memberId).get();
+  const packages = snap.docs
+    .map((d) => ({ id: d.id, redeemedAtMs: d.data().redeemedAtMs || 0, status: d.data().status, item: (d.data().items || []).find((i) => i.serviceKey === value.packageKey) }))
+    .filter((p) => p.status === 'paid' && p.item?.visitsRemaining > 0)
+    .sort((a, b) => a.redeemedAtMs - b.redeemedAtMs);
+  if (!packages.length) return none;
+
+  const discountPercent = booking.travelDiscountApplied && billingData.travelDiscountPercent > 0 ? billingData.travelDiscountPercent : 0;
+  const visitCents = Math.round(value.dollars * 100 * (100 - discountPercent) / 100);
+  if (!(visitCents > 0)) return none;
+
+  // Never spends a visit the charge has no room for, such as when an admin set
+  // a lower total by hand.
+  let visitsLeft = Math.min(booking.visits, Math.ceil(amountCents / visitCents));
+  const allocations = [];
+  for (const pkg of packages) {
+    if (visitsLeft <= 0) break;
+    const visits = Math.min(visitsLeft, pkg.item.visitsRemaining);
+    allocations.push({ id: pkg.id, serviceKey: value.packageKey, visits });
+    visitsLeft -= visits;
+  }
+  const visitsUsed = allocations.reduce((sum, a) => sum + a.visits, 0);
+  return { creditCents: Math.min(visitsUsed * visitCents, amountCents), visitsUsed, allocations };
+}
+
+async function commitGiftPackageCredit(allocations, memberId, chargeKey) {
+  await db.runTransaction(async (tx) => {
+    const refs = allocations.map((a) => db.collection('giftPackages').doc(a.id));
+    const snaps = await Promise.all(refs.map((ref) => tx.get(ref)));
+    snaps.forEach((snap, i) => {
+      const { serviceKey, visits } = allocations[i];
+      tx.update(refs[i], {
+        items: (snap.data()?.items || []).map((item) => (item.serviceKey === serviceKey
+          ? { ...item, visitsRemaining: Math.max(0, item.visitsRemaining - visits) }
+          : item)),
+        redemptions: FieldValue.arrayUnion({ chargeKey, memberId, serviceKey, visits, at: Timestamp.now() }),
+      });
+    });
+  });
+}
+
+// Attaches a paid package to a member's account. Saying the same thing for a
+// wrong code and someone else's code means this can't be used to probe codes.
+async function redeemGiftPackageForMember(rawCode, memberId) {
+  const notFound = () => new HttpsError('not-found', "We couldn't find that code. Please check it and try again, or email hello@portcityleashclub.com.");
+  const code = typeof rawCode === 'string' ? rawCode.trim().toUpperCase() : '';
+  if (!/^GIFT-[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/.test(code)) throw notFound();
+
+  const snap = await db.collection('giftPackages').where('code', '==', code).limit(1).get();
+  if (snap.empty) throw notFound();
+  const ref = snap.docs[0].ref;
+  return db.runTransaction(async (tx) => {
+    const fresh = await tx.get(ref);
+    const giftPackage = fresh.data();
+    if (giftPackage.status !== 'paid') throw notFound();
+    if (giftPackage.redeemedByMemberId && giftPackage.redeemedByMemberId !== memberId) throw notFound();
+    if (!giftPackage.redeemedByMemberId) {
+      tx.update(ref, { redeemedByMemberId: memberId, redeemedAt: FieldValue.serverTimestamp(), redeemedAtMs: Date.now() });
+    }
+    return { packageLabel: giftPackage.packageLabel };
+  });
+}
+
+// ── Admin actions, from the Gift Packages view in admin/dashboard.html ────
+
+function giftPackageRefFromRequest(request) {
+  const id = typeof request.data?.giftPackageId === 'string' ? request.data.giftPackageId : '';
+  if (!id || id.includes('/')) throw new HttpsError('invalid-argument', 'giftPackageId is required.');
+  return db.collection('giftPackages').doc(id);
+}
+
+// Sends the gift email now, optionally to a corrected address. With sendNow
+// false it only saves the address, for a gift still waiting on its date. A new
+// idempotency key each time, since the usual key would block a repeat send.
+exports.adminResendGiftPackage = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+  await assertIsAdmin(request.auth);
+  const ref = giftPackageRefFromRequest(request);
+  const snap = await ref.get();
+  const giftPackage = snap.data();
+  if (!giftPackage || giftPackage.status !== 'paid') throw new HttpsError('failed-precondition', 'Only a paid gift package can be sent.');
+
+  const newEmail = giftPackageText(request.data?.recipientEmail, 320);
+  if (newEmail && !isValidGiftPackageEmail(newEmail)) throw new HttpsError('invalid-argument', 'Please enter a valid email address.');
+  const recipientEmail = newEmail || giftPackage.recipientEmail;
+
+  if (request.data?.sendNow === false) {
+    if (giftPackage.deliveryStatus !== 'scheduled') throw new HttpsError('failed-precondition', 'This gift is no longer waiting on its delivery date.');
+    await ref.update({ recipientEmail });
+    return { sent: false };
+  }
+
+  const resendCount = (giftPackage.resendCount || 0) + 1;
+  const result = await sendEmail({
+    to: recipientEmail,
+    template: 'gift-package-delivered',
+    data: {
+      recipientName: giftPackage.recipientName,
+      buyerName: giftPackage.buyerName,
+      message: giftPackage.message,
+      packageLabel: giftPackage.packageLabel,
+      code: giftPackage.code,
+    },
+    idempotencyKey: `gift-package-delivered:${ref.id}:resend:${resendCount}`,
+  });
+  if (!result.ok) throw new HttpsError('internal', `The email didn't send: ${result.error}`);
+  await ref.update({ recipientEmail, resendCount, deliveryStatus: 'sent', deliveredAt: FieldValue.serverTimestamp(), deliveryError: null });
+  return { sent: true };
+});
+
+// Puts visits back, typically after refunding a booking they paid for. Can't
+// raise a package above the number of visits the buyer paid for.
+exports.adminAddGiftPackageVisits = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+  const ref = giftPackageRefFromRequest(request);
+  const visits = Number(request.data?.visits);
+  const serviceKey = request.data?.serviceKey;
+  if (!Number.isInteger(visits) || visits < 1) throw new HttpsError('invalid-argument', 'Enter a whole number of visits.');
+  return db.runTransaction(async (tx) => {
+    const giftPackage = (await tx.get(ref)).data();
+    if (!giftPackage || giftPackage.status !== 'paid') throw new HttpsError('failed-precondition', 'Only a paid gift package can have visits added back.');
+    const item = (giftPackage.items || []).find((i) => i.serviceKey === serviceKey);
+    if (!item) throw new HttpsError('invalid-argument', "This package doesn't include that service.");
+    const visitsRemaining = item.visitsRemaining + visits;
+    if (visitsRemaining > item.quantity) {
+      throw new HttpsError('failed-precondition', `This package was for ${item.quantity} of these and has ${item.visitsRemaining} left, so you can add back at most ${item.quantity - item.visitsRemaining}.`);
+    }
+    tx.update(ref, {
+      items: giftPackage.items.map((i) => (i.serviceKey === serviceKey ? { ...i, visitsRemaining } : i)),
+      adjustments: FieldValue.arrayUnion({ serviceKey, visits, at: Timestamp.now() }),
+    });
+    return { visitsRemaining };
+  });
+});
+
+// Stops a package working, and stops its email if it hasn't gone out. This does
+// not refund the buyer. That's done in Stripe, so the money side stays a
+// separate, deliberate step.
+exports.adminVoidGiftPackage = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+  const ref = giftPackageRefFromRequest(request);
+  await db.runTransaction(async (tx) => {
+    const giftPackage = (await tx.get(ref)).data();
+    if (!giftPackage || giftPackage.status !== 'paid') throw new HttpsError('failed-precondition', 'Only a paid gift package can be voided.');
+    tx.update(ref, {
+      status: 'voided',
+      items: giftPackage.items.map((item) => ({ ...item, visitsRemaining: 0 })),
+      visitsAtVoid: giftPackage.items.reduce((sum, item) => sum + item.visitsRemaining, 0),
+      voidedAt: FieldValue.serverTimestamp(),
+      deliveryStatus: giftPackage.deliveryStatus === 'sent' ? 'sent' : 'canceled',
+    });
+  });
+  return { success: true };
+});
+
+// Member-facing: the code owner is whoever's signed in.
+exports.redeemGiftPackage = onCall({}, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
+  await assertGiftPackageRateLimit(`redeem:${request.auth.uid}`);
+  return redeemGiftPackageForMember(request.data?.code, request.auth.uid);
+});
+
+exports.adminRedeemGiftPackage = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+  const memberId = typeof request.data?.memberId === 'string' ? request.data.memberId : '';
+  if (!memberId || memberId.includes('/')) throw new HttpsError('invalid-argument', 'memberId is required.');
+  const memberSnap = await db.collection('members').doc(memberId).get();
+  if (!memberSnap.exists) throw new HttpsError('not-found', 'Member not found.');
+  return redeemGiftPackageForMember(request.data?.code, memberId);
+});
+
+// A member's packages, without the buyer's email or the code. A member sees
+// their own, and an admin can pass a memberId to see anyone's.
+exports.getGiftPackages = onCall({}, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'You must be signed in.');
+  let memberId = request.auth.uid;
+  if (request.data?.memberId) {
+    await assertIsAdmin(request.auth);
+    memberId = String(request.data.memberId);
+  }
+  const snap = await db.collection('giftPackages').where('redeemedByMemberId', '==', memberId).get();
+  const { giftPackageNoun } = await import('./pricing.js');
+  return {
+    packages: snap.docs
+      .map((d) => d.data())
+      .filter((p) => p.status === 'paid')
+      .sort((a, b) => (a.redeemedAtMs || 0) - (b.redeemedAtMs || 0))
+      .flatMap((p) => p.items.map((item) => ({
+        buyerName: p.buyerName,
+        visitsRemaining: item.visitsRemaining,
+        visitsTotal: item.quantity,
+        noun: giftPackageNoun(item.serviceKey, item.visitsRemaining),
+      }))),
+  };
 });

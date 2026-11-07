@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="apple-touch-icon" href="images/favicon.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="icon" type="image/png" href="images/favicon.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gift Pet Care | Port City Leash Club</title>
+<meta name="description" content="Give someone in Wilmington, NC prepaid dog walks, drop-in visits, or overnight pet sitting from Port City Leash Club.">
+<link rel="canonical" href="https://www.portcityleashclub.com/gift-packages">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.portcityleashclub.com/gift-packages">
+<meta property="og:site_name" content="Port City Leash Club">
+<meta property="og:title" content="Gift Pet Care | Port City Leash Club">
+<meta property="og:description" content="Give someone in Wilmington, NC prepaid dog walks, drop-in visits, or overnight pet sitting.">
+<meta property="og:image" content="https://www.portcityleashclub.com/images/og-image.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<script src="https://js.stripe.com/v3/"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow-x: hidden; max-width: 100%; }
+  :root {
+    --navy: #0D1B2A; --seafoam: #8FA8A2; --sand: #E9E1D3; --sand-light: #F4F0EA;
+    --warm-white: #FAFAF8; --text-dark: #1A1A1A; --text-mid: #4A4A4A; --text-light: #6B6B6B;
+    --rust: #C17B6F; --rust-dark: #A36358;
+  }
+  body { font-family: 'DM Sans', sans-serif; background: var(--warm-white); color: var(--text-dark); line-height: 1.6; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: var(--warm-white); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 0 48px; display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .nav-logo { display: flex; align-items: center; text-decoration: none; }
+  .nav-logo img { height: 72px; width: auto; }
+  .nav-links { display: flex; align-items: center; gap: 32px; list-style: none; }
+  .nav-links a:not(.btn-nav) { font-size: 13px; color: var(--text-mid); text-decoration: none; letter-spacing: 0.04em; }
+  .btn-nav { background: white; color: var(--rust); border: 1.5px solid var(--rust); border-radius: 4px; padding: 8.5px 20px; font-size: 13px; font-weight: 500; text-decoration: none; display: inline-block; transition: background 0.2s, color 0.2s; }
+  .btn-nav:hover { background: var(--rust); color: white; }
+  .hamburger { display: none; }
+
+  .page-hero { background: var(--sand-light); padding: 72px 48px; border-bottom: 1px solid rgba(0,0,0,0.06); }
+  .hero-inner { max-width: 760px; margin: 0 auto; text-align: center; }
+  .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--rust-dark); margin-bottom: 16px; }
+  h1 { font-family: 'Cormorant Garamond', serif; font-size: 52px; font-weight: 300; line-height: 1.06; color: var(--navy); margin-bottom: 18px; }
+  .hero-sub { font-size: 17px; color: var(--text-mid); line-height: 1.75; }
+
+  main { padding: 64px 48px 90px; }
+  .form-shell { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 32px; align-items: start; }
+  .form-card { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 40px; }
+  .form-section { border-top: 1px solid rgba(0,0,0,0.07); padding-top: 28px; margin-top: 28px; }
+  .form-section.first { border-top: none; padding-top: 0; margin-top: 0; }
+  h2 { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 400; color: var(--navy); margin-bottom: 18px; line-height: 1.2; }
+  fieldset { border: none; min-width: 0; }
+  /* Float takes the legend out of the fieldset's top border, so the divider
+     line sits above the heading instead of running through it. */
+  legend { float: left; width: 100%; padding: 0; }
+  legend + * { clear: both; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .field.full { grid-column: 1 / -1; }
+  label, .field-label { font-size: 12px; font-weight: 500; color: var(--navy); letter-spacing: 0.02em; }
+  .optional { color: var(--text-light); font-weight: 400; }
+  input[type=text], input[type=email], input[type=date], textarea { border: 1px solid rgba(0,0,0,0.2); background: var(--warm-white); border-radius: 4px; padding: 11px 13px; font-size: 14px; font-family: 'DM Sans', sans-serif; color: var(--text-dark); width: 100%; }
+  textarea { resize: vertical; min-height: 88px; }
+  input:focus, textarea:focus { outline: none; border-color: var(--seafoam); box-shadow: 0 0 0 3px rgba(143,168,162,0.2); }
+  .char-count { font-size: 12px; color: var(--text-light); text-align: right; }
+  .honeypot-field { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+  .choose-hint { font-size: 14px; color: var(--text-mid); margin-bottom: 14px; }
+  .service-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid rgba(0,0,0,0.14); border-radius: 8px; background: var(--warm-white); margin-bottom: 10px; }
+  .service-row.selected { border-color: var(--rust); background: var(--sand-light); }
+  .service-name { display: block; font-size: 15px; font-weight: 500; color: var(--navy); line-height: 1.3; letter-spacing: 0; }
+  .service-price { display: block; font-size: 13px; font-weight: 400; color: var(--text-mid); margin-top: 2px; letter-spacing: 0; }
+  .service-row select { flex-shrink: 0; width: 96px; height: 44px; border: 1px solid rgba(0,0,0,0.2); background: white; border-radius: 4px; padding: 0 10px; font-size: 16px; font-family: 'DM Sans', sans-serif; color: var(--navy); }
+  .service-row select:focus { outline: none; border-color: var(--seafoam); box-shadow: 0 0 0 3px rgba(143,168,162,0.2); }
+
+  .delivery-options { display: flex; flex-direction: column; gap: 10px; }
+  .radio-line, .check-line { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; font-weight: 400; color: var(--text-mid); letter-spacing: 0; cursor: pointer; line-height: 1.5; }
+  .radio-line input, .check-line input { width: 18px; height: 18px; margin-top: 2px; flex-shrink: 0; accent-color: var(--rust); }
+  .check-line a { color: var(--rust-dark); }
+  #deliverDateField { display: none; max-width: 260px; margin-top: 14px; }
+
+  #cardElementMount { border: 1px solid rgba(0,0,0,0.2); background: var(--warm-white); border-radius: 4px; padding: 13px; }
+  #card-errors { font-size: 12px; color: var(--rust-dark); margin-top: 6px; min-height: 16px; }
+  .btn-submit { background: var(--rust); color: white; border: none; border-radius: 4px; padding: 14px 32px; font-size: 15px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: background 0.2s; width: 100%; margin-top: 20px; }
+  .btn-submit:hover { background: var(--rust-dark); }
+  .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .gift-success { display: none; background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 48px 40px; text-align: center; }
+  .gift-success h2 { font-size: 32px; margin-bottom: 12px; }
+  .gift-success p { font-size: 15px; color: var(--text-mid); line-height: 1.7; max-width: 440px; margin: 0 auto; }
+
+  .sidebar { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 88px; }
+  .sidebar-card { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 28px; }
+  .sidebar-card h2 { font-size: 24px; margin-bottom: 14px; }
+  .summary-line { font-size: 15px; color: var(--navy); font-weight: 500; line-height: 1.5; }
+  .summary-line.empty { color: var(--text-mid); font-weight: 400; }
+  .summary-line.problem { color: var(--rust-dark); font-weight: 400; font-size: 13px; }
+  .gift-summary { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 16px; padding: 16px 18px; background: var(--sand-light); border-radius: 8px; }
+  .summary-total { display: flex; align-items: baseline; gap: 10px; flex-shrink: 0; font-size: 14px; color: var(--text-mid); }
+  .summary-total strong { font-family: 'Cormorant Garamond', serif; font-size: 34px; font-weight: 400; color: var(--navy); line-height: 1; }
+  .good-to-know { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .good-to-know li { font-size: 13px; color: var(--text-mid); line-height: 1.6; }
+  .contact-note { font-size: 13px; color: var(--text-mid); }
+  .contact-note a { color: var(--rust-dark); }
+
+  footer { background: var(--navy); color: rgba(255,255,255,0.6); padding: 48px; display: flex; justify-content: space-between; align-items: center; }
+  .footer-brand { font-family: 'Cormorant Garamond', serif; font-size: 18px; color: white; line-height: 1.4; }
+  .footer-sub { font-size: 12px; color: rgba(255,255,255,0.6); margin-top: 4px; }
+  .footer-links { display: flex; gap: 32px; list-style: none; }
+  .footer-links a { display: inline-block; padding: 12px 0; font-size: 13px; color: rgba(255,255,255,0.7); text-decoration: none; }
+  .footer-links a:hover { color: white; }
+
+  @media (max-width: 1000px) {
+    .form-shell { grid-template-columns: minmax(0, 1fr); }
+    .sidebar { position: static; }
+  }
+  @media (max-width: 768px) {
+    nav { padding: 0 20px; height: 56px; }
+    .nav-links { display: none; flex-direction: column; align-items: stretch; position: fixed; top: 56px; left: 0; right: 0; background: var(--warm-white); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 16px 20px 24px; gap: 0; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    .nav-links.open { display: flex; }
+    .nav-links li { padding: 12px 0; border-bottom: 1px solid rgba(0,0,0,0.06); }
+    .nav-links li:last-child { border-bottom: none; padding-top: 16px; }
+    .nav-links a:not(.btn-nav) { font-size: 15px; }
+    .btn-nav { display: block; text-align: center; padding: 12px; }
+    .hamburger { display: flex; flex-direction: column; gap: 5px; cursor: pointer; padding: 8px; background: none; border: none; }
+    .hamburger span { display: block; width: 22px; height: 2px; background: var(--navy); border-radius: 2px; }
+    .page-hero { padding: 48px 20px; }
+    h1 { font-size: 38px; }
+    main { padding: 32px 16px 64px; }
+    .form-card { padding: 24px 20px; }
+    .form-grid { grid-template-columns: minmax(0, 1fr); }
+    .service-options { grid-template-columns: minmax(0, 1fr); }
+    input[type=text], input[type=email], input[type=date], textarea { font-size: 16px; }
+    footer { flex-direction: column; align-items: flex-start; gap: 28px; padding: 40px 20px; }
+    .footer-links { flex-wrap: wrap; gap: 16px; }
+  }
+</style>
+<script src="/js/meta-pixel.js" defer></script>
+<script src="/js/attribution.js" defer></script>
+<script src="/js/ga4.js" defer></script>
+</head>
+<body>
+<noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"/></noscript>
+
+<nav>
+  <a class="nav-logo" href="/"><img src="images/logo-horizontal.png" alt="Port City Leash Club"></a>
+  <ul class="nav-links" id="navLinks">
+    <li><a href="/#services">Pet Sitting</a></li>
+    <li><a href="/#membership">Leash Club</a></li>
+    <li><a href="/faq">FAQ</a></li>
+    <li><a class="btn-nav" href="/portal-login">Login</a></li>
+  </ul>
+  <button class="hamburger" id="hamburger" type="button" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
+</nav>
+
+<div class="page-hero">
+  <div class="hero-inner">
+    <div class="eyebrow">Gift Pet Care</div>
+    <h1>Give someone a little help with their pet</h1>
+    <p class="hero-sub">Choose walks, drop-in visits, or overnights for a pet owner in the Wilmington area. We'll email them the gift, and they can use it whenever they need us.</p>
+  </div>
+</div>
+
+<main>
+  <div class="form-shell">
+    <div>
+      <form class="form-card" id="giftForm" novalidate>
+        <div data-status-container></div>
+
+        <div class="honeypot-field" aria-hidden="true">
+          <label for="website">Website</label>
+          <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+        </div>
+
+        <fieldset class="form-section first">
+          <legend><h2>Choose your gift</h2></legend>
+          <p class="choose-hint">Choose as many as you'd like.</p>
+          <div id="serviceOptions"></div>
+          <div class="gift-summary" aria-live="polite">
+            <div id="summaryLines"></div>
+            <div class="summary-total"><span>Total</span><strong id="summaryTotal"></strong></div>
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend><h2>Who is it for?</h2></legend>
+          <div class="form-grid">
+            <div class="field"><label for="recipientName">Their name</label><input type="text" id="recipientName" maxlength="100" autocomplete="off" required></div>
+            <div class="field"><label for="recipientEmail">Their email</label><input type="email" id="recipientEmail" maxlength="320" autocomplete="off" required></div>
+            <div class="field full">
+              <label for="message">Your message <span class="optional">(optional)</span></label>
+              <textarea id="message" maxlength="300"></textarea>
+              <div class="char-count"><span id="messageCount">0</span>/300</div>
+            </div>
+            <div class="field full">
+              <label class="check-line"><input type="checkbox" id="serviceAreaConfirmed" required><span>They live in our service area. <a href="/#map" target="_blank" rel="noopener">Check their address</a></span></label>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend><h2>When should we send it?</h2></legend>
+          <div class="delivery-options">
+            <label class="radio-line"><input type="radio" name="delivery" value="now" checked><span>Send it right after I pay</span></label>
+            <label class="radio-line"><input type="radio" name="delivery" value="date"><span>Send it the morning of a date I choose</span></label>
+          </div>
+          <div class="field" id="deliverDateField">
+            <label for="deliverOn">Delivery date</label>
+            <input type="date" id="deliverOn">
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend><h2>Your details</h2></legend>
+          <div class="form-grid">
+            <div class="field"><label for="buyerName">Your name</label><input type="text" id="buyerName" maxlength="100" autocomplete="name" required></div>
+            <div class="field"><label for="buyerEmail">Your email</label><input type="email" id="buyerEmail" maxlength="320" autocomplete="email" required></div>
+            <div class="field full">
+              <label for="cardElementMount">Card details</label>
+              <div id="cardElementMount"></div>
+              <div id="card-errors" role="alert"></div>
+            </div>
+          </div>
+          <button type="submit" class="btn-submit" id="submitBtn">Buy gift</button>
+        </fieldset>
+      </form>
+
+      <div class="gift-success" id="giftSuccess" tabindex="-1">
+        <h2>Thank you for your gift</h2>
+        <p id="giftSuccessText"></p>
+      </div>
+    </div>
+
+    <aside class="sidebar">
+      <div class="sidebar-card terms">
+        <h2>Good to know</h2>
+        <ul class="good-to-know">
+          <li>The gift does not expire.</li>
+          <li>It covers the standard price of each visit on one-time bookings, not regular Leash Club membership walks. Holiday rates, extra pets, medication, and 45-minute walks are extra.</li>
+          <li>We meet every new client and pet first, at no charge.</li>
+          <li>It has no cash value and can only be used for our services. If we can't care for the recipient's pet, we'll refund you in full.</li>
+        </ul>
+      </div>
+      <div class="sidebar-card contact">
+        <p class="contact-note">Questions? Email <a href="mailto:hello@portcityleashclub.com">hello@portcityleashclub.com</a>.</p>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<footer>
+  <div>
+    <div class="footer-brand">Port City Leash Club</div>
+    <div class="footer-sub">Wilmington, NC · portcityleashclub.com</div>
+    <div class="footer-sub">hello@portcityleashclub.com</div>
+  </div>
+  <ul class="footer-links">
+    <li><a href="/#services">Pet Sitting</a></li>
+    <li><a href="/#membership">Leash Club</a></li>
+    <li><a href="/faq">FAQ</a></li>
+    <li><a href="/careers">Careers</a></li>
+    <li><a href="/contact">Contact</a></li>
+  </ul>
+</footer>
+
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+  import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+  import { showError, clearStatus } from '/js/status.js';
+  import { SERVICE_PRICES, GIFT_PACKAGE_OPTIONS, calculateGiftPackageOrder } from '/pricing.js';
+
+  const app = initializeApp({
+    apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
+    authDomain: "port-city-leash-club-827ab.firebaseapp.com",
+    projectId: "port-city-leash-club-827ab",
+    storageBucket: "port-city-leash-club-827ab.firebasestorage.app",
+    messagingSenderId: "649385306352",
+    appId: "1:649385306352:web:8e8a6fcbe8a7eff29dfa35"
+  });
+  const functions = getFunctions(app);
+  const createPaymentIntent = httpsCallable(functions, 'createGiftPackagePaymentIntent');
+  const confirmGiftPackage = httpsCallable(functions, 'confirmGiftPackage');
+
+  const $ = (id) => document.getElementById(id);
+  const titleCase = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+  // ── Choosing a package ──────────────────────────────────────────────────
+  $('serviceOptions').innerHTML = Object.entries(GIFT_PACKAGE_OPTIONS).map(([key, option]) => {
+    const quantities = Array.from({ length: option.max - option.min + 1 }, (_, i) => option.min + i);
+    return `
+    <div class="service-row" data-service="${key}">
+      <label for="qty-${key}">
+        <span class="service-name">${titleCase(option.plural)}</span>
+        <span class="service-price">$${SERVICE_PRICES[key].price} each</span>
+      </label>
+      <select id="qty-${key}" data-service="${key}">
+        <option value="0">None</option>
+        ${quantities.map((n) => `<option value="${n}">${n}</option>`).join('')}
+      </select>
+    </div>`;
+  }).join('');
+
+  function selectedItems() {
+    return [...document.querySelectorAll('#serviceOptions select')]
+      .map((select) => ({ serviceKey: select.dataset.service, quantity: Number(select.value) }))
+      .filter((item) => item.quantity > 0);
+  }
+
+  // Returns the priced order, or an error message when nothing valid is chosen.
+  function priceSelection() {
+    const items = selectedItems();
+    if (!items.length) return { problem: 'Please choose at least one service.', empty: true };
+    try {
+      return { priced: calculateGiftPackageOrder(items) };
+    } catch (error) {
+      return { problem: error.message };
+    }
+  }
+
+  function summaryLine(text, kind = '') {
+    const line = document.createElement('div');
+    line.className = `summary-line ${kind}`;
+    line.textContent = text;
+    return line;
+  }
+
+  function renderPackage() {
+    document.querySelectorAll('#serviceOptions select').forEach((select) => {
+      select.closest('.service-row').classList.toggle('selected', Number(select.value) > 0);
+    });
+    const { priced, problem, empty } = priceSelection();
+    const total = priced ? priced.total : selectedItems().reduce((sum, item) => sum + SERVICE_PRICES[item.serviceKey].price * item.quantity, 0);
+    $('summaryLines').replaceChildren(...(priced
+      ? priced.items.map((item) => summaryLine(titleCase(item.label)))
+      : [summaryLine(empty ? 'Nothing chosen yet' : problem, empty ? 'empty' : 'problem')]));
+    $('summaryTotal').textContent = `$${total}`;
+    $('submitBtn').textContent = priced ? `Buy gift for $${priced.total}` : 'Buy gift';
+  }
+
+  document.querySelectorAll('#serviceOptions select').forEach((select) => select.addEventListener('change', renderPackage));
+  renderPackage();
+
+  // ── Message and delivery date ───────────────────────────────────────────
+  $('message').addEventListener('input', () => { $('messageCount').textContent = $('message').value.length; });
+
+  const easternToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+  $('deliverOn').min = easternToday;
+  const latest = new Date(`${easternToday}T00:00:00Z`);
+  latest.setUTCDate(latest.getUTCDate() + 365);
+  $('deliverOn').max = latest.toISOString().slice(0, 10);
+
+  document.querySelectorAll('input[name=delivery]').forEach((input) => {
+    input.addEventListener('change', () => {
+      $('deliverDateField').style.display = input.value === 'date' && input.checked ? 'flex' : 'none';
+    });
+  });
+
+  // ── Card ────────────────────────────────────────────────────────────────
+  let stripeClient = null;
+  let cardElement = null;
+  if (typeof Stripe === 'undefined') {
+    showError("The payment form couldn't load. Please refresh the page and try again.");
+  } else {
+    stripeClient = Stripe('pk_live_51Ts2njBYaaTA3vAvPIQWwppe0dXFMS1WxXJ67VR79b281wouy4dv0ePgcHT6oiZGKDjMnTj7n0vTuk3yBlDfuEQF006JgayvNW');
+    cardElement = stripeClient.elements().create('card', {
+      hidePostalCode: true,
+      style: { base: { fontFamily: "'DM Sans', sans-serif", fontSize: '16px', color: '#0D1B2A', '::placeholder': { color: '#6B6B6B' } } },
+    });
+    cardElement.mount('#cardElementMount');
+    cardElement.on('change', (event) => { $('card-errors').textContent = event.error ? event.error.message : ''; });
+  }
+
+  // ── Submit ──────────────────────────────────────────────────────────────
+  function readOrder() {
+    const sendOnDate = document.querySelector('input[name=delivery]:checked').value === 'date';
+    return {
+      items: selectedItems(),
+      recipientName: $('recipientName').value.trim(),
+      recipientEmail: $('recipientEmail').value.trim(),
+      message: $('message').value.trim(),
+      serviceAreaConfirmed: $('serviceAreaConfirmed').checked,
+      deliverOn: sendOnDate ? $('deliverOn').value : '',
+      buyerName: $('buyerName').value.trim(),
+      buyerEmail: $('buyerEmail').value.trim(),
+      website: $('website').value,
+      sendOnDate,
+    };
+  }
+
+  function orderProblem(order) {
+    const { problem } = priceSelection();
+    if (problem) return problem;
+    if (!order.recipientName || !$('recipientEmail').checkValidity() || !order.recipientEmail) return "Please enter the recipient's name and a valid email address.";
+    if (!order.serviceAreaConfirmed) return 'Please confirm the recipient lives in our service area.';
+    if (order.sendOnDate && !order.deliverOn) return 'Please choose a delivery date.';
+    if (order.sendOnDate && (order.deliverOn < $('deliverOn').min || order.deliverOn > $('deliverOn').max)) return 'Please choose a delivery date between today and one year from now.';
+    if (!order.buyerName || !$('buyerEmail').checkValidity() || !order.buyerEmail) return 'Please enter your name and a valid email address.';
+    if (!stripeClient || !cardElement) return "The payment form isn't ready yet. Please refresh the page and try again.";
+    return null;
+  }
+
+  function showGiftSuccess(order, emailPending) {
+    $('giftForm').style.display = 'none';
+    const when = order.sendOnDate
+      ? `We'll email ${order.recipientName} on the morning you chose`
+      : `We're emailing ${order.recipientName} now`;
+    $('giftSuccessText').textContent = emailPending
+      ? `Your payment went through. We're finishing up your gift, and you'll get a receipt by email shortly. If it doesn't arrive, email hello@portcityleashclub.com and we'll sort it out.`
+      : `${when}, and your receipt is on its way to ${order.buyerEmail}.`;
+    const success = $('giftSuccess');
+    success.style.display = 'block';
+    success.focus();
+    success.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  $('giftForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    clearStatus();
+    const order = readOrder();
+    const problem = orderProblem(order);
+    if (problem) {
+      showError(problem);
+      return;
+    }
+
+    const btn = $('submitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Processing…';
+    let charged = false;
+    try {
+      const { sendOnDate, ...payload } = order;
+      const { data } = await createPaymentIntent(payload);
+      const result = await stripeClient.confirmCardPayment(data.clientSecret, {
+        payment_method: { card: cardElement, billing_details: { name: order.buyerName, email: order.buyerEmail } },
+      });
+      if (result.error) throw new Error(result.error.message || 'Your card was declined. Please try a different card.');
+
+      // The card has been charged. Nothing past here may ask the buyer to try
+      // again, since that risks a second charge. The webhook finishes the order
+      // if this confirmation call fails.
+      charged = true;
+      let confirmed = false;
+      try {
+        confirmed = (await confirmGiftPackage({ giftPackageId: data.giftPackageId })).data.ok === true;
+      } catch (confirmError) {
+        console.error('confirmGiftPackage failed after a successful charge:', confirmError);
+      }
+      showGiftSuccess(order, !confirmed);
+    } catch (error) {
+      console.error(error);
+      if (charged) {
+        showGiftSuccess(order, true);
+        return;
+      }
+      showError(error.message || 'Something went wrong. Please try again, or email hello@portcityleashclub.com.');
+      btn.disabled = false;
+      renderPackage();
+    }
+  });
+
+  // ── Mobile menu ─────────────────────────────────────────────────────────
+  $('hamburger').addEventListener('click', () => {
+    const open = $('navLinks').classList.toggle('open');
+    $('hamburger').setAttribute('aria-expanded', String(open));
+  });
+</script>
+</body>
+</html>

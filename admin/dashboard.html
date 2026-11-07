@@ -508,6 +508,10 @@
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1 8.5l3-3 2 2 5-5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 2.5h3v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M1 12.5h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     Referral Codes
   </a>
+  <a class="nav-item" data-view="giftpackages" onclick="switchView('giftpackages')">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="6" width="13" height="8.5" rx="1" stroke="currentColor" stroke-width="1.5"/><path d="M1 6h14M8 6v8.5M8 6S6.5 1.5 4.5 2.5 5 6 8 6Zm0 0s1.5-4.5 3.5-3.5S11 6 8 6Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+    Gift Packages
+  </a>
   <!-- Hidden after the event (2026-10-19). The guest-list view and the
        events/ tickets data are untouched: remove display:none to bring the
        tab back, or run switchView('events') in the console. -->
@@ -892,6 +896,43 @@
             <th>Credit Issued</th>
           </tr></thead>
           <tbody id="referralCodesTable"><tr><td colspan="6" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- GIFT PACKAGES VIEW -->
+    <div class="view" id="view-giftpackages">
+      <div style="padding:0 20px 12px;">
+        <p style="font-size:13px;color:var(--text-light);margin:0;" id="giftPackagesSummary">Loading gift packages…</p>
+      </div>
+      <div class="request-filters">
+        <button class="event-ticket-filter gift-package-filter active" onclick="filterGiftPackages('all', this)">All paid</button>
+        <button class="event-ticket-filter gift-package-filter" onclick="filterGiftPackages('unredeemed', this)">Not on an account</button>
+        <button class="event-ticket-filter gift-package-filter" onclick="filterGiftPackages('active', this)">Visits left</button>
+        <button class="event-ticket-filter gift-package-filter" onclick="filterGiftPackages('usedup', this)">Used up</button>
+        <button class="event-ticket-filter gift-package-filter" onclick="filterGiftPackages('emailproblem', this)">Email problem</button>
+        <button class="event-ticket-filter gift-package-filter" onclick="filterGiftPackages('voided', this)">Voided</button>
+        <button class="event-ticket-filter gift-package-filter" onclick="filterGiftPackages('unpaid', this)">Unpaid checkouts</button>
+      </div>
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">Gift Packages</div>
+          <input class="table-search" type="text" placeholder="Search name, email, or code..." oninput="searchGiftPackages(this.value)">
+        </div>
+        <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th>Package</th>
+            <th>Bought by</th>
+            <th>For</th>
+            <th>Paid</th>
+            <th>Visits left</th>
+            <th>Email</th>
+            <th>Code</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="giftPackagesTable"><tr><td colspan="8" style="text-align:center;color:var(--text-light);padding:24px;">Loading...</td></tr></tbody>
         </table>
         </div>
       </div>
@@ -1504,7 +1545,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { getStorage, ref as storageRef, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
-import { SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalkExtensionTotal, WALK_EXTENSION_PRICE, EXTRA_PET_FEE, MEDICATION_FEE, applyTravelDiscount, isTravelDiscountService, calculateAddOnDropInTotal, calculateHolidaySurcharge, withHolidaySurcharge, isHolidayRateRequest, holidayWindowsRunningOut } from '../pricing.js';
+import { giftPackageNoun, SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalkExtensionTotal, WALK_EXTENSION_PRICE, EXTRA_PET_FEE, MEDICATION_FEE, applyTravelDiscount, isTravelDiscountService, calculateAddOnDropInTotal, calculateHolidaySurcharge, withHolidaySurcharge, isHolidayRateRequest, holidayWindowsRunningOut } from '../pricing.js';
 // Walk time-of-day slot: keys + base label + clock range, shared with every
 // other page that shows or picks one (see time-slots.js's own header
 // comment). Deliberately NOT the careers/screening availability grids —
@@ -4924,6 +4965,165 @@ window.lookupEmailLogByAddress = async () => {
     if (!snap.docs.length) alert(`No emails found for ${val}.`);
   } catch (e) {
     alert(`Couldn't look up that address: ${e.message}`);
+  }
+};
+
+// ── GIFT PACKAGES ─────────────────────────────────────────────────────────
+// Reads giftPackages directly (admin-only, see firestore.rules). Every change
+// goes through a callable in functions/index.js.
+let allGiftPackages = [];
+let giftPackageFilter = 'all';
+let giftPackageSearch = '';
+
+async function loadGiftPackages() {
+  const tbody = document.getElementById('giftPackagesTable');
+  try {
+    const snap = await getDocs(collection(db, 'giftPackages'));
+    allGiftPackages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    allGiftPackages.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+    renderGiftPackagesTable();
+  } catch (e) {
+    console.error('Failed to load gift packages:', e.message);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-light);padding:24px;">Couldn't load gift packages right now.</td></tr>`;
+  }
+}
+
+window.loadGiftPackages = loadGiftPackages;
+
+const GIFT_PACKAGE_EMAIL_LABELS = { sent: 'Sent', scheduled: 'Scheduled', failed: 'Failed, retrying', failed_final: 'Failed', canceled: 'Canceled' };
+
+function matchesGiftPackageFilter(p) {
+  switch (giftPackageFilter) {
+    case 'unredeemed': return p.status === 'paid' && !p.redeemedByMemberId;
+    case 'active': return p.status === 'paid' && (p.items || []).some(i => i.visitsRemaining > 0);
+    case 'usedup': return p.status === 'paid' && (p.items || []).every(i => i.visitsRemaining === 0);
+    case 'emailproblem': return p.status === 'paid' && (p.deliveryStatus === 'failed' || p.deliveryStatus === 'failed_final');
+    case 'voided': return p.status === 'voided';
+    case 'unpaid': return p.status === 'pending' || p.status === 'failed';
+    default: return p.status === 'paid';
+  }
+}
+
+function renderGiftPackagesTable() {
+  const tbody = document.getElementById('giftPackagesTable');
+  if (!tbody) return;
+
+  // What's been sold, and the value of visits still owed. Unused visits are
+  // valued at what the buyer paid per visit.
+  const paid = allGiftPackages.filter(p => p.status === 'paid');
+  const soldCents = paid.reduce((sum, p) => sum + (p.amountCents || 0), 0);
+  const owedCents = paid.reduce((sum, p) => sum + (p.items || []).reduce((itemSum, i) => itemSum + (i.visitsRemaining || 0) * (i.unitPriceCents || 0), 0), 0);
+  const summary = document.getElementById('giftPackagesSummary');
+  if (summary) summary.textContent = `${paid.length} sold for $${(soldCents / 100).toFixed(2)}. Unused visits: $${(owedCents / 100).toFixed(2)} still owed in service.`;
+
+  const q = giftPackageSearch.toLowerCase();
+  const rows = allGiftPackages.filter(matchesGiftPackageFilter).filter(p => !q
+    || [p.buyerName, p.buyerEmail, p.recipientName, p.recipientEmail, p.code].some(v => (v || '').toLowerCase().includes(q)));
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-light);padding:24px;">No gift packages match.</td></tr>`;
+    return;
+  }
+
+  const small = (text) => `<div style="font-size:11px;color:var(--text-light);margin-top:2px;">${escapeHtml(text)}</div>`;
+  const btn = (label, onclick, extra = '') => `<button class="btn-secondary" style="white-space:nowrap;padding:4px 10px;font-size:12px;margin:0 4px 4px 0;${extra}" onclick="${onclick}">${label}</button>`;
+  tbody.innerHTML = rows.map(p => {
+    const id = escapeHtml(p.id);
+    const member = p.redeemedByMemberId ? allMembers.find(m => m.id === p.redeemedByMemberId) : null;
+    const isPaid = p.status === 'paid';
+    const emailStatus = !isPaid && p.status !== 'voided' ? 'Not sent' : (GIFT_PACKAGE_EMAIL_LABELS[p.deliveryStatus] || '–');
+    const stripeLink = p.paymentIntentId ? `<div style="font-size:11px;margin-top:2px;"><a href="https://dashboard.stripe.com/payments/${encodeURIComponent(p.paymentIntentId)}" target="_blank" rel="noopener" style="color:var(--rust);">View in Stripe</a></div>` : '';
+    const items = p.items || [];
+    const visits = p.status === 'voided' ? `Voided${small(`${p.visitsAtVoid ?? 0} visits unused`)}`
+      : isPaid ? `${items.map(i => `<div>${i.visitsRemaining} of ${i.quantity} ${escapeHtml(giftPackageNoun(i.serviceKey, i.quantity))}</div>`).join('')}${small(member ? `On ${member.name || 'member'}'s account` : p.redeemedByMemberId ? 'On an account' : 'Not on an account')}`
+      : capitalize(p.status);
+    return `
+    <tr>
+      <td>${escapeHtml(p.packageLabel || '–')}${small(fmtEventTicketDate(p.createdAt))}</td>
+      <td>${escapeHtml(p.buyerName || '–')}${small(p.buyerEmail || '')}</td>
+      <td>${escapeHtml(p.recipientName || '–')}${small(p.recipientEmail || '')}</td>
+      <td>$${((p.amountCents || 0) / 100).toFixed(2)}${stripeLink}</td>
+      <td>${visits}</td>
+      <td>${escapeHtml(emailStatus)}${isPaid && p.deliveryStatus === 'scheduled' ? small(p.deliverOn || '') : ''}${p.deliveryError && isPaid ? small(p.deliveryError.slice(0, 80)) : ''}</td>
+      <td style="white-space:nowrap;font-family:monospace;font-size:12px;">${escapeHtml(p.code || '–')}</td>
+      <td style="min-width:150px;">${isPaid ? [
+        btn('Send Email', `resendGiftPackage('${id}', this)`),
+        ...items.filter(i => i.visitsRemaining < i.quantity).map(i => btn(`Add Back: ${escapeHtml(giftPackageNoun(i.serviceKey, 2))}`, `addGiftPackageVisits('${id}', '${escapeHtml(i.serviceKey)}', this)`)),
+        btn('Void', `voidGiftPackage('${id}', this)`, 'color:#b42318;'),
+      ].join('') : ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+window.filterGiftPackages = (filter, button) => {
+  giftPackageFilter = filter;
+  document.querySelectorAll('.gift-package-filter').forEach(b => b.classList.remove('active'));
+  button.classList.add('active');
+  renderGiftPackagesTable();
+};
+
+window.searchGiftPackages = (value) => {
+  giftPackageSearch = value.trim();
+  renderGiftPackagesTable();
+};
+
+window.resendGiftPackage = async (id, button) => {
+  const p = allGiftPackages.find(x => x.id === id);
+  if (!p) return;
+  const email = prompt(`Send ${p.recipientName}'s gift email to this address. Change it here if it was wrong:`, p.recipientEmail);
+  if (email === null) return;
+  const recipientEmail = email.trim();
+  if (!recipientEmail) return;
+
+  let sendNow = true;
+  if (p.deliveryStatus === 'scheduled') {
+    sendNow = confirm(`This gift is scheduled for ${p.deliverOn}.\n\nOK sends it now. Cancel keeps that date${recipientEmail !== p.recipientEmail ? ' and saves the new address' : ''}.`);
+    if (!sendNow && recipientEmail === p.recipientEmail) return;
+  } else if (!confirm(`Send the gift email and code to ${recipientEmail}?`)) {
+    return;
+  }
+
+  button.disabled = true;
+  try {
+    await httpsCallable(fns, 'adminResendGiftPackage')({ giftPackageId: id, recipientEmail, sendNow });
+    await loadGiftPackages();
+  } catch (e) {
+    alert(`Couldn't send: ${e.message}`);
+    button.disabled = false;
+  }
+};
+
+window.addGiftPackageVisits = async (id, serviceKey, button) => {
+  const p = allGiftPackages.find(x => x.id === id);
+  const item = p?.items?.find(i => i.serviceKey === serviceKey);
+  if (!item) return;
+  const most = item.quantity - item.visitsRemaining;
+  const input = prompt(`How many ${giftPackageNoun(serviceKey, 2)} should go back on this package? Use this after refunding a booking they paid for. (1–${most})`, '1');
+  if (input === null) return;
+  const visits = Number(input.trim());
+  if (!Number.isInteger(visits) || visits < 1 || visits > most) { alert(`Enter a whole number from 1 to ${most}.`); return; }
+
+  button.disabled = true;
+  try {
+    await httpsCallable(fns, 'adminAddGiftPackageVisits')({ giftPackageId: id, serviceKey, visits });
+    await loadGiftPackages();
+  } catch (e) {
+    alert(`Couldn't add visits back: ${e.message}`);
+    button.disabled = false;
+  }
+};
+
+window.voidGiftPackage = async (id, button) => {
+  const p = allGiftPackages.find(x => x.id === id);
+  if (!p) return;
+  if (!confirm(`Void ${p.packageLabel} for ${p.recipientName}?\n\nThe code stops working, any visits left are removed, and an unsent email won't go out. This can't be undone.\n\nThis does NOT refund ${p.buyerName}. Refund them in Stripe separately.`)) return;
+
+  button.disabled = true;
+  try {
+    await httpsCallable(fns, 'adminVoidGiftPackage')({ giftPackageId: id });
+    await loadGiftPackages();
+  } catch (e) {
+    alert(`Couldn't void: ${e.message}`);
+    button.disabled = false;
   }
 };
 
@@ -9295,6 +9495,15 @@ window.openMemberDetail = async (id) => {
     ${reviewDismissHTML}
     ${friendsFamilyHTML}
     ${applyReferralCodeHTML}
+    <div style="background:var(--sand-light);border-radius:6px;padding:8px 12px;margin-top:4px;margin-bottom:12px;">
+      <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:6px;">Gift packages</div>
+      <div id="memberGiftPackages" style="font-size:12px;color:var(--text-mid);margin-bottom:8px;">Loading…</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="text" id="applyGiftPackageInput" placeholder="GIFT-XXXXX-XXXXX" autocomplete="off" style="flex:1;min-width:0;padding:6px 8px;font-size:13px;border:1px solid var(--border);border-radius:4px;">
+        <button class="btn-secondary" style="padding:4px 12px;font-size:12px;white-space:nowrap;" onclick="applyGiftPackageForMember('${member.id}')">Apply Code</button>
+      </div>
+      <div id="applyGiftPackageResult" style="font-size:12px;margin-top:6px;"></div>
+    </div>
     ${chargeCurrentMonthHTML}
     ${cancelMembershipHTML}
     ${resendBookingHTML}
@@ -9320,6 +9529,7 @@ window.openMemberDetail = async (id) => {
     </div>
     ${renderVetEmergencyDetail(member)}
   `;
+  loadMemberGiftPackages(member.id);
   document.getElementById('memberDetailModal').classList.add('open');
 };
 
@@ -9496,6 +9706,44 @@ window.lookupReferralCodeForMember = async (memberId) => {
     }
   } catch (e) {
     previewEl.innerHTML = `<div style="font-size:12px;color:#b91c1c;">${escapeHtml(e.message)}</div>`;
+  }
+};
+
+// Gift packages on the member modal: what they have left, and applying a code
+// for them (adminRedeemGiftPackage, functions/index.js). Skips rendering if the
+// modal has since moved on to a different member.
+async function loadMemberGiftPackages(memberId) {
+  const render = (html) => {
+    const el = document.getElementById('memberGiftPackages');
+    if (el && el.dataset.memberId === memberId) el.innerHTML = html;
+  };
+  const el = document.getElementById('memberGiftPackages');
+  if (el) el.dataset.memberId = memberId;
+  try {
+    const { data } = await httpsCallable(fns, 'getGiftPackages')({ memberId });
+    render(data.packages.length
+      ? data.packages.map(p => `<div><strong>${p.visitsRemaining} ${escapeHtml(p.noun)} left</strong> of ${p.visitsTotal}, from ${escapeHtml(p.buyerName)}</div>`).join('')
+      : 'None on this account.');
+  } catch (e) {
+    render(`<span style="color:#b91c1c;">Couldn't load gift packages: ${escapeHtml(e.message)}</span>`);
+  }
+}
+
+window.applyGiftPackageForMember = async (memberId) => {
+  const input = document.getElementById('applyGiftPackageInput');
+  const resultEl = document.getElementById('applyGiftPackageResult');
+  const code = input?.value.trim();
+  if (!code) return;
+  if (!confirm(`Add gift code "${code}" to this member's account?`)) return;
+  try {
+    const { data } = await httpsCallable(fns, 'adminRedeemGiftPackage')({ memberId, code });
+    input.value = '';
+    resultEl.style.color = 'var(--navy)';
+    resultEl.textContent = `Added: ${data.packageLabel}.`;
+    await loadMemberGiftPackages(memberId);
+  } catch (e) {
+    resultEl.style.color = '#b91c1c';
+    resultEl.textContent = e.message;
   }
 };
 
@@ -11160,7 +11408,7 @@ window.avSelectDate = avSelectDate;
 
 
 
-const viewTitles = { overview: 'Overview', calendar: 'Walk Calendar', walkers: 'Walkers', payouts: 'Payouts', revenue: 'Revenue', members: 'Members', availability: 'Meet & Greet Availability', requests: 'Requests', reviews: 'Reviews', referrals: 'Referral Codes', events: 'Puppies & Pilates', conversations: 'Messages', emaillog: 'Email Log' };
+const viewTitles = { giftpackages: 'Gift Packages', overview: 'Overview', calendar: 'Walk Calendar', walkers: 'Walkers', payouts: 'Payouts', revenue: 'Revenue', members: 'Members', availability: 'Meet & Greet Availability', requests: 'Requests', reviews: 'Reviews', referrals: 'Referral Codes', events: 'Puppies & Pilates', conversations: 'Messages', emaillog: 'Email Log' };
 window.toggleSidebar = (force) => {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebarOverlay');
@@ -11186,6 +11434,7 @@ window.switchView = (view) => {
   const btnRefreshReferrals = '<button class="btn-secondary" onclick="loadReferralCodes(true)">Refresh</button>';
   const btnRefreshEmailLog = '<button class="btn-secondary" onclick="loadEmailLog(true)">Refresh</button>';
   const btnRefreshEventTickets = '<button class="btn-secondary" onclick="loadEventTickets()">Refresh</button>';
+  const btnRefreshGiftPackages = '<button class="btn-secondary" onclick="loadGiftPackages()">Refresh</button>';
   const btnRefreshRevenue = '<button class="btn-secondary" onclick="loadRevenue()">Refresh</button>';
   const viewActions = {
     overview: btnSchedule + btnNewReservation + btnMember,
@@ -11195,6 +11444,7 @@ window.switchView = (view) => {
     requests: btnNewReservation,
     referrals: btnRefreshReferrals,
     events: btnRefreshEventTickets,
+    giftpackages: btnRefreshGiftPackages,
     emaillog: btnRefreshEmailLog,
     revenue: btnRefreshRevenue,
   };
@@ -11235,6 +11485,7 @@ window.switchView = (view) => {
 
   // Guest List: same load-once posture as Referral Codes / Email Log,
   // for the same reason — Refresh covers "check again."
+  if (view === 'giftpackages') loadGiftPackages();
   if (view === 'events' && !window._eventTicketsInit) {
     window._eventTicketsInit = true;
     loadEventTickets();

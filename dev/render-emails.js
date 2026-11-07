@@ -442,6 +442,29 @@ const RENDERS = [
     },
   },
 
+  // ── gift packages ───────────────────────────────────────────────────────
+  {
+    template: 'gift-package-purchased',
+    variant: 'scheduled',
+    label: 'Buyer receipt, delivery scheduled for later',
+    petCount: 0,
+    data: { buyerName: 'Pat Lee', recipientName: 'Sam Rivers', packageLabel: '5 30-minute walks', amountCents: 15000, deliverOn: '2026-12-25', deliversToday: false },
+  },
+  {
+    template: 'gift-package-delivered',
+    variant: 'with-message',
+    label: 'Recipient gift with a personal message',
+    petCount: 0,
+    data: { recipientName: 'Sam Rivers', buyerName: 'Pat Lee', message: 'For all those early mornings with Biscuit. Merry Christmas!', packageLabel: '5 30-minute walks', code: 'GIFT-ABCDE-FGHJK' },
+  },
+  {
+    template: 'gift-package-admin',
+    variant: 'sold',
+    label: 'Internal notice of a sale',
+    petCount: 0,
+    data: { kind: 'sold', buyerName: 'Pat Lee', buyerEmail: 'pat@example.com', recipientName: 'Sam Rivers', recipientEmail: 'sam@example.com', packageLabel: '5 30-minute walks', amountCents: 15000, deliverOn: '2026-12-25', code: 'GIFT-ABCDE-FGHJK' },
+  },
+
   // ── waitlist-area-accepted ──────────────────────────────────────────────
   {
     template: 'waitlist-area-accepted',

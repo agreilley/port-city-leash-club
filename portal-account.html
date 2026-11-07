@@ -623,6 +623,23 @@
         </div>
       </div>
 
+      <!-- Gift Packages: enter a code from a gift email (redeemGiftPackage) and
+           see visits left (getGiftPackages). Visits come off one-time bookings
+           automatically when they're charged. -->
+      <div class="section-card">
+        <h2 class="section-title">Gift Packages</h2>
+        <div id="giftPackageList" style="font-size:14px; color:#4A4A4A; margin-bottom:16px;">Loading…</div>
+        <div class="field-row">
+          <div class="field-group">
+            <label class="field-label" for="giftPackageCode">Have a gift code?</label>
+            <input class="field-input" id="giftPackageCode" type="text" placeholder="GIFT-XXXXX-XXXXX" autocomplete="off" autocapitalize="characters" maxlength="30">
+          </div>
+        </div>
+        <div class="section-actions">
+          <button class="btn btn-secondary" id="giftPackageRedeemBtn" onclick="redeemGiftPackageClicked()">Add to My Account</button>
+        </div>
+      </div>
+
       <!-- Payment History — upcoming charges (subscription preview from
            Stripe + any confirmed-but-not-yet-charged reservation, read
            straight from Firestore) and past payments (Stripe invoices +
@@ -940,6 +957,7 @@ async function loadPageData() {
   // this in once the call resolves.
   refreshCardOnFile();
   loadPaymentHistory();
+  loadGiftPackages();
   // Membership info
   const isTravelOnly = memberData.tier === 'Travel';
   if (el('membershipTier')) el('membershipTier').textContent = isTravelOnly ? 'Pet Sitting (no walk membership)' : (memberData.tier || 'Member');
@@ -1521,6 +1539,54 @@ function renderPaymentHistory(payments) {
     <div class="payment-status status-${esc(p.status)}">${esc(STATUS_LABELS[p.status] || p.status)}</div>
   </div>`).join('');
 }
+
+async function loadGiftPackages() {
+  const listEl = document.getElementById('giftPackageList');
+  try {
+    const { data } = await httpsCallable(functions, 'getGiftPackages')();
+    listEl.replaceChildren();
+    if (!data.packages.length) {
+      listEl.textContent = 'You have no gift packages on your account.';
+      return;
+    }
+    data.packages.forEach((p) => {
+      const row = document.createElement('div');
+      row.style.padding = '4px 0';
+      const strong = document.createElement('strong');
+      strong.textContent = `${p.visitsRemaining} ${p.noun} left`;
+      row.append(strong, ` of ${p.visitsTotal}, from ${p.buyerName}`);
+      listEl.append(row);
+    });
+    const note = document.createElement('div');
+    note.style.cssText = 'font-size:13px; margin-top:8px;';
+    note.textContent = 'Visits come off your one-time bookings automatically when they are charged. They cover the standard price of each visit, and don\'t apply to regular Leash Club membership walks.';
+    listEl.append(note);
+  } catch (e) {
+    console.error('loadGiftPackages failed:', e);
+    listEl.textContent = "We couldn't load your gift packages. Please refresh the page to try again.";
+  }
+}
+
+window.redeemGiftPackageClicked = async () => {
+  const input = document.getElementById('giftPackageCode');
+  const btn = document.getElementById('giftPackageRedeemBtn');
+  const code = input.value.trim();
+  if (!code) {
+    showError('Please enter your gift code.');
+    return;
+  }
+  btn.disabled = true;
+  try {
+    const { data } = await httpsCallable(functions, 'redeemGiftPackage')({ code });
+    input.value = '';
+    showSuccess(`${data.packageLabel} added to your account.`);
+    await loadGiftPackages();
+  } catch (e) {
+    showError(e.message || "We couldn't add that code. Please try again, or email hello@portcityleashclub.com.");
+  } finally {
+    btn.disabled = false;
+  }
+};
 
 async function loadPaymentHistory() {
   const list = document.getElementById('paymentHistoryList');

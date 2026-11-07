@@ -87,6 +87,65 @@ export const SERVICE_KEY_ALIASES = {
 export const EXTRA_PET_FEE = 10;
 export const MEDICATION_FEE = 10;
 
+// Gift packages: a buyer picks a quantity of any of these on gift-packages.html,
+// all under one payment and one code. Keyed by SERVICE_PRICES entry, so a package
+// always costs today's list price. The page previews with this and
+// createGiftPackagePaymentIntent charges with it, so the two can't disagree. min
+// keeps a meet and greet from being all for one small visit; the max per service
+// and per order limit the loss on a stolen card.
+export const GIFT_PACKAGE_OPTIONS = {
+  'standard-walk':  { singular: '30-minute walk', plural: '30-minute walks', min: 2, max: 20 },
+  'drop-in-visit':  { singular: 'drop-in visit',  plural: 'drop-in visits',  min: 2, max: 20 },
+  'overnight-stay': { singular: 'overnight',      plural: 'overnights',      min: 1, max: 7 },
+};
+
+export const GIFT_PACKAGE_MAX_ORDER = 1000;
+
+export function giftPackageNoun(serviceKey, count) {
+  const option = GIFT_PACKAGE_OPTIONS[serviceKey];
+  return count === 1 ? option.singular : option.plural;
+}
+
+// items is [{ serviceKey, quantity }]. Throws on anything outside the options
+// above, so a bad request can never reach a charge.
+export function calculateGiftPackageOrder(items) {
+  if (!Array.isArray(items) || !items.length) throw new Error('Please choose at least one service.');
+  const seen = new Set();
+  const priced = items.map(({ serviceKey, quantity } = {}) => {
+    const option = Object.hasOwn(GIFT_PACKAGE_OPTIONS, serviceKey) ? GIFT_PACKAGE_OPTIONS[serviceKey] : null;
+    if (!option || seen.has(serviceKey)) throw new Error('Unknown gift package service.');
+    seen.add(serviceKey);
+    if (!Number.isInteger(quantity) || quantity < option.min || quantity > option.max) {
+      throw new Error(`Please choose between ${option.min} and ${option.max} ${option.plural}.`);
+    }
+    const unitPrice = SERVICE_PRICES[serviceKey].price;
+    return { serviceKey, quantity, unitPrice, total: unitPrice * quantity, label: `${quantity} ${giftPackageNoun(serviceKey, quantity)}` };
+  });
+  const total = priced.reduce((sum, item) => sum + item.total, 0);
+  if (total > GIFT_PACKAGE_MAX_ORDER) {
+    throw new Error(`Each order can be up to $${GIFT_PACKAGE_MAX_ORDER.toLocaleString('en-US')}. For a larger gift, please email hello@portcityleashclub.com.`);
+  }
+  const labels = priced.map((item) => item.label);
+  const label = labels.length < 3 ? labels.join(' and ') : `${labels.slice(0, -1).join(', ')}, and ${labels.at(-1)}`;
+  return { items: priced, total, label };
+}
+
+// What one package visit takes off a booking of this service, at today's rates.
+// Every walk type draws on a walk package, and a 45-minute walk still pays its
+// upcharge. A member's walk is covered at their lower rate. Returns null for
+// anything a package can't pay for.
+export function giftPackageVisitValue(bookingServiceKey) {
+  const key = resolveServiceKey(bookingServiceKey);
+  const walkKeys = { 'standard-walk': 0, 'member-walk': 0, 'extended-walk': WALK_EXTENSION_PRICE, 'member-extended-walk': WALK_EXTENSION_PRICE };
+  if (Object.hasOwn(walkKeys, key)) {
+    return { packageKey: 'standard-walk', dollars: SERVICE_PRICES[key].price - walkKeys[key] };
+  }
+  if (key === 'drop-in-visit' || key === 'overnight-stay') {
+    return { packageKey: key, dollars: SERVICE_PRICES[key].price };
+  }
+  return null;
+}
+
 export function resolveServiceKey(key) {
   return SERVICE_KEY_ALIASES[key] || key;
 }
