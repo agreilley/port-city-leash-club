@@ -1438,6 +1438,7 @@
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button class="btn-secondary" onclick="closeModal('requestModal')">Close</button>
       <button class="btn-secondary" id="requestDeclineBtn" style="display:none;color:var(--rust);">Decline</button>
+      <button class="btn-secondary" id="requestQuietDeclineBtn" style="display:none;color:var(--rust);" title="Declines the request without emailing the customer">Decline without email</button>
       <button class="btn-primary" id="requestActionBtn">Convert to Member</button>
     </div>
   </div>
@@ -6918,6 +6919,19 @@ window.openRequestItem = async (id) => {
   const declineBtn = document.getElementById('requestDeclineBtn');
   declineBtn.style.display = 'none';
   declineBtn.textContent = 'Decline';
+  // "Decline without email": only for the two request types whose Decline
+  // emails the customer (service_request, overnight_request). Hidden on
+  // every open; the branches below that wire those declines turn it on.
+  const quietDeclineBtn = document.getElementById('requestQuietDeclineBtn');
+  quietDeclineBtn.style.display = 'none';
+  quietDeclineBtn.textContent = 'Decline without email';
+  quietDeclineBtn.disabled = false;
+  const showQuietDecline = () => {
+    quietDeclineBtn.style.display = 'block';
+    quietDeclineBtn.onclick = item.type === 'overnight_request'
+      ? () => declineOvernightRequest(item.id, item, false)
+      : () => declineServiceRequest(item.id, item, false);
+  };
   // Reset the gate on every open — it only applies to membership_request
   // and net-new service_request now, and a previously-opened request must
   // not leave the button enabled here.
@@ -6963,6 +6977,7 @@ window.openRequestItem = async (id) => {
     declineBtn.onclick = isMembership
       ? () => declineMembershipRequest(item.id)
       : () => declineServiceRequest(item.id, item);
+    if (!isMembership) showQuietDecline();
 
     // Creating the account starts real billing (membership) or is
     // otherwise irreversible enough to warrant the same speed bump
@@ -7087,6 +7102,7 @@ window.openRequestItem = async (id) => {
     declineBtn.onclick = item.type === 'overnight_request'
       ? () => declineOvernightRequest(item.id, item)
       : () => declineServiceRequest(item.id, item);
+    showQuietDecline();
   } else if (isUnresolvedServiceRequest) {
     // Pet sitting (drop-ins and overnight stays) schedules the charge for 24
     // hours out (see runServiceOrOvernightCharge, functions/index.js) rather
@@ -7096,12 +7112,14 @@ window.openRequestItem = async (id) => {
     actionBtn.onclick = () => confirmRequestDates(item.id, item);
     declineBtn.style.display = 'block';
     declineBtn.onclick = () => declineServiceRequest(item.id, item);
+    showQuietDecline();
   } else if (isUnresolvedOvernight) {
     // Always schedules the charge for 24 hours out now — see runServiceOrOvernightCharge.
     actionBtn.textContent = 'Confirm and schedule charge'; actionBtn.style.display = 'block';
     actionBtn.onclick = () => confirmRequestDates(item.id, item);
     declineBtn.style.display = 'block';
     declineBtn.onclick = () => declineOvernightRequest(item.id, item);
+    showQuietDecline();
     // Friends & Family — renderOvernightReview's acknowledgment checkbox
     // starts unchecked; the charge action must start disabled to match,
     // overriding the unconditional setActionBtnEnabled(actionBtn, true)
@@ -8270,21 +8288,34 @@ window.createServiceRequestAccount = async (submissionId) => {
 // by the time it's declined under the new flow, same orphan-cleanup need
 // declineMembershipRequest already has. See runDeclineRequestOrphanCleanup
 // (functions/index.js) for what actually gets deleted.
-window.declineServiceRequest = async (submissionId, item) => {
-  const btn = document.getElementById('requestDeclineBtn');
-  btn.textContent = 'Declining…'; btn.disabled = true;
+// Shared by declineServiceRequest/declineOvernightRequest: notify=false is
+// the "Decline without email" button, which asks first (there's no undo and
+// the customer hears nothing), then disables both decline buttons while the
+// call runs. Returns null if admin backs out of the confirm.
+function beginRequestDecline(item, notify) {
+  if (!notify && !confirm(`Decline this request without emailing ${item?.ownerName || item?.name || 'the customer'}?\n\nThe request is closed and cleaned up the same as Decline, but no email is sent.`)) return null;
+  const btn = document.getElementById(notify ? 'requestDeclineBtn' : 'requestQuietDeclineBtn');
+  const other = document.getElementById(notify ? 'requestQuietDeclineBtn' : 'requestDeclineBtn');
+  const label = btn.textContent;
+  btn.textContent = 'Declining…'; btn.disabled = true; other.disabled = true;
+  return () => { btn.textContent = label; btn.disabled = false; other.disabled = false; };
+}
+
+window.declineServiceRequest = async (submissionId, item, notify = true) => {
+  const restore = beginRequestDecline(item, notify);
+  if (!restore) return;
   try {
     const fn = httpsCallable(fns, 'declineServiceRequest');
-    await fn({ submissionId });
+    await fn({ submissionId, notify });
 
     closeModal('requestModal');
     const msg = document.createElement('div');
     msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#C17B6F;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
-    msg.textContent = 'Service request declined';
+    msg.textContent = notify ? 'Service request declined' : 'Service request declined, no email sent';
     document.body.appendChild(msg);
     setTimeout(() => msg.remove(), 3000);
   } catch (e) {
-    btn.textContent = 'Decline'; btn.disabled = false;
+    restore();
     alert('Error: ' + e.message);
   }
 };
@@ -8363,25 +8394,25 @@ window.acceptWaitlistArea = async (submissionId, item) => {
   }
 };
 
-window.declineOvernightRequest = async (submissionId, item) => {
-  const btn = document.getElementById('requestDeclineBtn');
-  btn.textContent = 'Declining…'; btn.disabled = true;
+window.declineOvernightRequest = async (submissionId, item, notify = true) => {
+  const restore = beginRequestDecline(item, notify);
+  if (!restore) return;
   try {
     // Routed through the same-named Cloud Function now (functions/index.js)
     // instead of a plain updateDoc — the only reason to do that at all is
     // so it can email the member that their request was declined, same as
     // declineServiceRequest. Nothing else about the status write changed.
     const fn = httpsCallable(fns, 'declineOvernightRequest');
-    await fn({ submissionId });
+    await fn({ submissionId, notify });
 
     closeModal('requestModal');
     const msg = document.createElement('div');
     msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#C17B6F;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
-    msg.textContent = 'Request declined';
+    msg.textContent = notify ? 'Request declined' : 'Request declined, no email sent';
     document.body.appendChild(msg);
     setTimeout(() => msg.remove(), 3000);
   } catch (e) {
-    btn.textContent = 'Decline'; btn.disabled = false;
+    restore();
     alert('Error: ' + e.message);
   }
 };

@@ -1482,7 +1482,11 @@ async function reservationAlreadyDeclinedFor(submissionId) {
 
 exports.declineServiceRequest = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API_KEY] }, async (request) => {
   await assertIsAdmin(request.auth);
-  const { submissionId } = request.data || {};
+  // notify: false is the dashboard's "Decline without email" — same
+  // cleanup and status change, just no request-declined email (for when
+  // the customer already told us they don't need care, e.g. a pet passed
+  // away). Anything other than an explicit false still emails.
+  const { submissionId, notify } = request.data || {};
   if (!submissionId) throw new HttpsError('invalid-argument', 'submissionId is required.');
 
   const subRef = db.collection('submissions').doc(submissionId);
@@ -1501,7 +1505,7 @@ exports.declineServiceRequest = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API
   // submission itself (the public form collects them) — sendRequestDeclinedEmail
   // reads those first and only falls back to the member doc for an
   // established member's request, which cleanup never deletes.
-  if (!(await reservationAlreadyDeclinedFor(submissionId))) {
+  if (notify !== false && !(await reservationAlreadyDeclinedFor(submissionId))) {
     await sendRequestDeclinedEmail(sub, `sub:${submissionId}`);
   }
   return result;
@@ -1516,7 +1520,8 @@ exports.declineServiceRequest = onCall({ secrets: [STRIPE_SECRET_KEY, RESEND_API
 // the status write itself is otherwise unchanged.
 exports.declineOvernightRequest = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
   await assertIsAdmin(request.auth);
-  const { submissionId } = request.data || {};
+  // notify: false skips the email, same as declineServiceRequest above.
+  const { submissionId, notify } = request.data || {};
   if (!submissionId) throw new HttpsError('invalid-argument', 'submissionId is required.');
 
   const subRef = db.collection('submissions').doc(submissionId);
@@ -1536,7 +1541,7 @@ exports.declineOvernightRequest = onCall({ secrets: [RESEND_API_KEY] }, async (r
   await subRef.set({
     status: 'declined', read: true, declinedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
-  if (!(await reservationAlreadyDeclinedFor(submissionId))) {
+  if (notify !== false && !(await reservationAlreadyDeclinedFor(submissionId))) {
     await sendRequestDeclinedEmail(sub, `sub:${submissionId}`);
   }
   return { success: true };
