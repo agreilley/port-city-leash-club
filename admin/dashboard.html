@@ -1248,7 +1248,7 @@
     <button class="modal-close" onclick="closeModal('addWalkModal')">×</button>
     <div class="modal-title">Schedule a Walk</div>
     <div class="form-grid">
-      <div class="form-field"><label>Member</label><select id="wm-member"><option value="">Select member...</option></select></div>
+      <div class="form-field"><label>Member</label><select id="wm-member" onchange="refreshAddWalkCharge()"><option value="">Select member...</option></select></div>
       <div class="form-field"><label>Date</label><input type="date" id="wm-date" onchange="refreshAddWalkWalkerLabels()"></div>
       <div class="form-field"><label>Time Slot</label>
         <!-- Populated by populateTimeSlotSelects() from time-slots.js, not
@@ -1258,6 +1258,11 @@
       <div class="form-field"><label>Walker</label><select id="wm-walker"><option value="">Unassigned</option></select></div>
       <div class="form-field full"><label>Notes</label><textarea id="wm-notes" rows="2" placeholder="Any special instructions..."></textarea></div>
     </div>
+    <!-- Shown only for a client with no monthly bill (refreshAddWalkCharge). -->
+    <label id="wm-charge-row" style="display:none;align-items:flex-start;gap:8px;margin-top:14px;font-size:13px;cursor:pointer;">
+      <input type="checkbox" id="wm-charge" checked style="margin-top:2px;">
+      <span id="wm-charge-label"></span>
+    </label>
     <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">
       <button class="btn-secondary" onclick="closeModal('addWalkModal')">Cancel</button>
       <button class="btn-primary" onclick="submitAddWalk()">Schedule Walk</button>
@@ -2770,6 +2775,20 @@ function renderTodoLive() {
   if (flaggedMembers) {
     rows.push(todoRow({ text: `Review ${plural(flaggedMembers, 'member billing issue')}`, sub: 'Flagged on the Members tab', onclick: "switchView('members')", urgent: true }));
   }
+  // Walks for a client with no monthly bill that haven't been charged or
+  // marked no charge (see walkNeedsOwnCharge). Add Walk charges these when
+  // it saves, so this mostly catches a failed charge. Opens the walk, where
+  // Charge / No charge live.
+  allWalks
+    .map(w => ({ w, member: allMembers.find(m => m.id === (w.memberId || '').trim()) }))
+    .filter(({ w, member }) => walkNeedsOwnCharge(w, member) && ['uncharged', 'failed'].includes(walkChargeState(w)))
+    .sort((a, b) => (a.w.date?.toMillis?.() || 0) - (b.w.date?.toMillis?.() || 0))
+    .forEach(({ w, member }) => rows.push(todoRow({
+      text: `${walkChargeState(w) === 'failed' ? 'Walk charge failed' : 'Charge walk'}: ${escapeHtml(member.name || 'client')}`,
+      sub: `${todoShortDate(w.date?.toDate?.() || new Date(w.date))} · no monthly bill, $${adminWalkPrice(member)}`,
+      onclick: `openWalkModal('${escapeHtml(w.id)}')`,
+      urgent: true,
+    })));
 
   // Meet & greets today and tomorrow.
   allRequests
@@ -5881,6 +5900,7 @@ window.openWalkModal = async (walkId) => {
     </div>
     <div class="modal-field"><div class="modal-label">Completion Notes</div><div class="modal-value">${escapeHtml(walk.notes || '–')}</div></div>
     ${(Array.isArray(walk.photoUrls) && walk.photoUrls.length) || walk.photoUrl ? `<div class="modal-field" style="margin-top:10px;">${completionPhotosHtml(walk.photoUrls, walk.photoUrl, 'Walk photo', '100%')}</div>` : ''}
+    ${walkChargeSectionHTML(walk, member)}
     <hr class="modal-divider">
     ${assignmentHTML}
     ${walk.status !== 'completed' ? `
@@ -6173,7 +6193,50 @@ window.openAddWalkModal = () => {
   // Default date to today
   document.getElementById('wm-date').value = new Date().toISOString().slice(0, 10);
   document.getElementById('wm-notes').value = '';
+  document.getElementById('wm-charge').checked = true;
+  refreshAddWalkCharge();
   document.getElementById('addWalkModal').classList.add('open');
+};
+
+// ── Walks the monthly bill never reaches ──
+// A Travel-tier client, or a member whose subscription ended, has no
+// monthly walk bill, so a walk added for them with Add Walk is charged on
+// its own through chargeWalk (functions/index.js; same rule as its
+// walkHasNoMonthlyBilling, and the price is worked out there too). Walks
+// with a submissionId were booked as their own request and charged there;
+// billedPeriod ones were billed monthly. Added 2026-11-11 after an Add Walk
+// walk for a Travel client went uncharged while the walker was still paid.
+// A member doc with no tier is a leftover, not a client (e.g. the
+// hasActiveSubscription-only stub a Data Review delete can leave behind,
+// which still has old walks pointing at it), so it never counts.
+function memberHasNoMonthlyBilling(member) {
+  return !!member?.tier && (member.tier === 'Travel' || member.hasActiveSubscription === false);
+}
+function adminWalkPrice(member) {
+  return SERVICE_PRICES[member?.tier === 'Member' ? 'member-walk' : 'standard-walk'].price;
+}
+function walkNeedsOwnCharge(walk, member) {
+  return !!walk && walk.status !== 'cancelled' && !walk.submissionId && !walk.billedPeriod
+    && walk.demo !== true && memberHasNoMonthlyBilling(member);
+}
+// 'charged' | 'failed' | 'waived' | 'uncharged' — read off the walk doc,
+// where chargeWalk's chargeCustomerCard writes lastChargeAttempt.
+function walkChargeState(walk) {
+  const a = walk.lastChargeAttempt;
+  if (a?.status === 'charged' && a.chargeKey === `walk:${walk.id}`) return 'charged';
+  if (walk.chargeWaived) return 'waived';
+  if (a?.status === 'failed' && a.chargeKey === `walk:${walk.id}`) return 'failed';
+  return 'uncharged';
+}
+
+window.refreshAddWalkCharge = () => {
+  const member = allMembers.find(m => m.id === document.getElementById('wm-member').value);
+  const show = !!member && memberHasNoMonthlyBilling(member);
+  document.getElementById('wm-charge-row').style.display = show ? 'flex' : 'none';
+  if (show) {
+    document.getElementById('wm-charge-label').textContent =
+      `Charge their card $${adminWalkPrice(member)} now. ${member.tier === 'Travel' ? 'Travel clients' : 'This member'} aren't on a monthly bill, so this walk won't be charged any other way. Untick for a free walk.`;
+  }
 };
 
 window.submitAddWalk = async () => {
@@ -6183,13 +6246,75 @@ window.submitAddWalk = async () => {
   const walkerId = document.getElementById('wm-walker').value || null;
   const notes = document.getElementById('wm-notes').value;
   if (!memberId || !date) { alert('Please select a member and date.'); return; }
+  const member = allMembers.find(m => m.id === memberId);
+  const ownCharge = memberHasNoMonthlyBilling(member);
+  const chargeNow = ownCharge && document.getElementById('wm-charge').checked;
   // Store as noon UTC so the date doesn't shift to the previous day in US
   // timezones (new Date('2026-07-08') = midnight UTC = Jul 7 8pm EDT).
   const [y, m, d] = date.split('-').map(Number);
   const walkDate = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-  await addDoc(collection(db, 'walks'), { memberId, date: Timestamp.fromDate(walkDate), timeSlot, walkerId, notes, status: 'scheduled', createdAt: serverTimestamp() });
+  const ref = await addDoc(collection(db, 'walks'), {
+    memberId, date: Timestamp.fromDate(walkDate), timeSlot, walkerId, notes, status: 'scheduled', createdAt: serverTimestamp(),
+    // Unticked on purpose: a free walk, kept off the To Do charge list.
+    ...(ownCharge && !chargeNow ? { chargeWaived: true } : {}),
+  });
   closeModal('addWalkModal');
+  if (chargeNow) {
+    try {
+      const res = await httpsCallable(fns, 'chargeWalk')({ walkId: ref.id });
+      const charged = res.data?.alreadyCharged ? 'already charged' : `charged $${res.data?.amountInDollars}`;
+      alert(`Walk added and ${member?.name || 'the client'} was ${charged}.`);
+    } catch (e) {
+      alert(`The walk was added, but the charge failed: ${e.message}\n\nIt's on the Overview To Do list so you can charge it once that's sorted.`);
+    }
+  }
 };
+
+window.chargeWalkFromModal = async (walkId) => {
+  const walk = allWalks.find(w => w.id === walkId);
+  const member = allMembers.find(m => m.id === (walk?.memberId || '').trim());
+  if (!walk || !member) return;
+  const dateLabel = (walk.date?.toDate?.() || new Date(walk.date)).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  if (!confirm(`Charge ${member.name}'s card $${adminWalkPrice(member)} for the walk on ${dateLabel}?`)) return;
+  const btn = document.getElementById('walkChargeBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Charging…'; }
+  try {
+    const res = await httpsCallable(fns, 'chargeWalk')({ walkId });
+    alert(res.data?.alreadyCharged ? 'This walk was already charged.' : `Charged $${res.data?.amountInDollars}.`);
+    closeModal('walkModal');
+  } catch (e) {
+    alert(`The charge failed: ${e.message}`);
+    if (btn) { btn.disabled = false; btn.textContent = `Charge $${adminWalkPrice(member)}`; }
+  }
+};
+
+window.waiveWalkCharge = async (walkId) => {
+  if (!confirm('Mark this walk as no charge? It comes off the To Do list and won\'t be charged.')) return;
+  try {
+    await updateDoc(doc(db, 'walks', walkId), { chargeWaived: true, updatedAt: serverTimestamp() });
+    closeModal('walkModal');
+  } catch (e) {
+    alert('Could not update this walk: ' + e.message);
+  }
+};
+
+function walkChargeSectionHTML(walk, member) {
+  if (!walkNeedsOwnCharge(walk, member)) return '';
+  const state = walkChargeState(walk);
+  const price = adminWalkPrice(member);
+  const body = state === 'charged'
+    ? `<div class="modal-value" style="color:var(--green);">Charged $${escapeHtml(String(walk.lastChargeAttempt.amount ?? price))}</div>`
+    : state === 'waived'
+      ? `<div class="modal-value">No charge</div>`
+      : `<div class="modal-value" style="color:var(--rust);margin-bottom:8px;">${state === 'failed'
+          ? `Charge failed: ${escapeHtml(walk.lastChargeAttempt.reason || 'unknown error')}`
+          : 'Not charged. This client has no monthly bill, so this walk is charged on its own.'}</div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-primary" id="walkChargeBtn" style="flex:1;" onclick="chargeWalkFromModal('${escapeHtml(walk.id)}')">Charge $${price}</button>
+          <button class="btn-secondary" onclick="waiveWalkCharge('${escapeHtml(walk.id)}')">No charge</button>
+        </div>`;
+  return `<hr class="modal-divider"><div class="modal-field"><div class="modal-label">Payment</div>${body}</div>`;
+}
 
 window.openNewReservationModal = () => {
   const memberSel = document.getElementById('nr-member');

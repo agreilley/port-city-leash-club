@@ -2139,6 +2139,64 @@ exports.chargeSavedCard = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (reques
   return chargeCustomerCard(stripe, subRef, sub, { chargeKey, amountInDollars, description });
 });
 
+// Charges one walk added with the admin Add Walk button, for a client the
+// monthly walk bill never reaches (Travel tier, or a membership that has
+// ended). Those walks used to be put on the calendar and never charged,
+// while the walker was still paid for them (added 2026-11-11). Called by
+// Add Walk's "Charge their card" box and by the Overview To Do item that
+// lists such walks after the fact.
+//
+// The price is worked out here from the member's tier, never sent by the
+// client: the standard walk price for Travel, the member walk price for a
+// Member-tier client whose subscription ended, same pairing as the portal's
+// extra walk. A walk the extension flow made 45 minutes was charged for the
+// extra time on its own, so only the base walk is charged here. No email,
+// by decision. The charge result lands on the walk doc itself
+// (lastChargeAttempt etc., via chargeCustomerCard), which is what the To Do
+// item reads to drop it.
+// A member doc with no tier is a leftover, not a client (see the matching
+// memberHasNoMonthlyBilling in admin/dashboard.html), so it never qualifies.
+function walkHasNoMonthlyBilling(member) {
+  return !!member?.tier && (member.tier === 'Travel' || member.hasActiveSubscription === false);
+}
+
+exports.chargeWalk = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { walkId } = request.data || {};
+  if (!walkId || typeof walkId !== 'string') throw new HttpsError('invalid-argument', 'walkId is required.');
+
+  const walkRef = db.collection('walks').doc(walkId);
+  const walk = (await walkRef.get()).data();
+  if (!walk) throw new HttpsError('not-found', 'Walk not found.');
+  if (!walk.memberId || !walk.date?.toDate) throw new HttpsError('failed-precondition', 'This walk has no member or date.');
+  if (walk.status === 'cancelled') throw new HttpsError('failed-precondition', 'This walk was canceled.');
+  if (walk.submissionId) throw new HttpsError('failed-precondition', 'This walk was booked as its own request and charged there.');
+  if (walk.billedPeriod) throw new HttpsError('failed-precondition', 'This walk was already billed on a monthly bill.');
+  if (walk.chargeWaived) throw new HttpsError('failed-precondition', 'This walk was marked as no charge.');
+
+  const member = (await db.collection('members').doc(walk.memberId).get()).data();
+  if (!walkHasNoMonthlyBilling(member)) {
+    throw new HttpsError('failed-precondition', 'This member has a monthly subscription, so this walk is charged on their monthly bill.');
+  }
+
+  const { SERVICE_PRICES } = await import('./pricing.js');
+  const serviceKey = member.tier === 'Member' ? 'member-walk' : 'standard-walk';
+  const amountInDollars = SERVICE_PRICES[serviceKey].price;
+  const dogs = Array.isArray(member.dogs) ? member.dogs.map(d => d?.name).filter(Boolean) : [];
+  const description = `Port City Leash Club - ${SERVICE_PRICES[serviceKey].name} ${isoDateStr(walk.date.toDate())}${dogs.length ? ` (${dogs.join(', ')})` : ''}`;
+
+  const stripe = stripeClient(STRIPE_SECRET_KEY.value());
+  // One chargeKey per walk: a repeat click returns the earlier charge
+  // instead of charging twice (chargeCustomerCard's alreadyCharged check).
+  const result = await chargeCustomerCard(stripe, walkRef, walk, {
+    chargeKey: `walk:${walkId}`,
+    amountInDollars,
+    description,
+    giftBooking: { serviceKey, visits: 1, travelDiscountApplied: false },
+  });
+  return { ...result, amountInDollars };
+});
+
 // A reservation whose card keeps failing stops being retried automatically
 // after this many consecutive failures (roughly 1 hour at the 15-minute
 // schedule below) — a declined card doesn't get better by asking again every
