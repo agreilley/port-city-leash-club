@@ -846,7 +846,7 @@ exports.getServiceRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeout
   if (!isDate(startDate) || !isDate(endDate) || endDate < startDate) {
     throw new HttpsError('invalid-argument', 'startDate and endDate must be YYYY-MM-DD, with endDate on or after startDate.');
   }
-  const { MEMBER_WALK_RATE, WALK_EXTENSION_PRICE } = await import('./pricing.js');
+  const { MEMBER_WALK_RATE, WALK_EXTENSION_PRICE, SERVICE_PRICES } = await import('./pricing.js');
   const { stayNightDates, stayDateKey, nightIsDone } = await import('./visit-slots.js');
   const { calculateWalkPayout, calculateOvernightPayout } = await import('./walker-pricing.js');
   const stripe = stripeClient(STRIPE_SECRET_KEY.value());
@@ -888,11 +888,38 @@ exports.getServiceRevenueReport = onCall({ secrets: [STRIPE_SECRET_KEY], timeout
     subsById[id] = { ...subSnap.data(), walkCount: Math.max(1, live) };
   }));
 
+  // Walks for a client with no monthly bill (Travel, or a membership that
+  // ended — walkHasNoMonthlyBilling) are charged one at a time by chargeWalk,
+  // so they're counted like one-off walks: the tier price, paid once charged,
+  // $0 when marked no charge. Before 2026-11-11 they fell into the
+  // membership branch below at MEMBER_WALK_RATE and never showed as paid.
+  const ownChargeMemberIds = [...new Set(walkDocs.filter(w => !w.submissionId && !w.billedPeriod).map(w => w.memberId))];
+  const ownChargeMembers = {};
+  await Promise.all(ownChargeMemberIds.map(async (id) => {
+    const m = (await db.collection('members').doc(id).get()).data();
+    if (walkHasNoMonthlyBilling(m)) ownChargeMembers[id] = m;
+  }));
+
   walkDocs.forEach(w => {
     const date = isoDateStr(w.date.toDate());
     const state = stateFor(date, w.status === 'completed');
     const walkerPayCents = Math.round((typeof w.payout?.amount === 'number' ? w.payout.amount : calculateWalkPayout(w)) * 100);
-    if (w.submissionId) {
+    const ownChargeMember = !w.submissionId && !w.billedPeriod ? ownChargeMembers[w.memberId] : null;
+    if (ownChargeMember) {
+      const isCharged = w.lastChargeAttempt?.status === 'charged' && w.lastChargeAttempt.chargeKey === `walk:${w.id}`;
+      const priceCents = w.chargeWaived && !isCharged
+        ? 0
+        : Math.round(SERVICE_PRICES[ownChargeMember.tier === 'Member' ? 'member-walk' : 'standard-walk'].price * 100);
+      const g = `walk:${w.id}`;
+      groups[g] = {
+        memberId: w.memberId, firstDate: date, priceCents, kind: 'oneoff',
+        paid: isCharged || !!w.chargeWaived,
+        // Charged: the credit actually taken. No charge: nothing to credit.
+        // Not charged yet: null, so the estimate below fills it in.
+        creditCents: isCharged ? appliedCreditCents(w) : w.chargeWaived ? 0 : null,
+      };
+      addRow({ date, state, kind: 'walk', category: 'extraWalks', memberId: w.memberId, group: g, priceCents, walkerPayCents });
+    } else if (w.submissionId) {
       const sub = subsById[w.submissionId];
       const totalCents = Math.round((sub?.amountInDollars ?? sub?.estimatedTotal ?? 0) * 100);
       const g = `sub:${w.submissionId}`;
