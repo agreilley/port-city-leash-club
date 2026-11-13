@@ -26,6 +26,47 @@ fs.mkdirSync(OUT_DIR, { recursive: true });
 // Each entry: { template, variant, label, petCount, data }
 // petCount is just for the index page label — it's not read by any template.
 const RENDERS = [
+  // ── meet-greet-reminder ──────────────────────────────────────────────
+  {
+    template: 'meet-greet-reminder',
+    variant: 'with-pets',
+    label: 'Membership/service request (pet names known)',
+    petCount: 2,
+    data: {
+      firstName: 'Jamie',
+      petNames: ['Bailey', 'Max'],
+      meetGreetDateStr: '2026-11-14',
+      meetGreetSlot: '5:00pm',
+      address: '412 Market St, Wilmington, NC 28401',
+    },
+  },
+  {
+    template: 'meet-greet-reminder',
+    variant: 'no-pets',
+    label: 'Admin-added meet & greet (no pet names)',
+    petCount: 0,
+    data: {
+      firstName: 'Morgan',
+      petNames: [],
+      meetGreetDateStr: '2026-11-14',
+      meetGreetSlot: '10:30am',
+      address: '',
+    },
+  },
+  {
+    template: 'meet-greet-reminder',
+    variant: 'today',
+    label: 'Added/rescheduled by admin for later today',
+    petCount: 1,
+    data: {
+      firstName: 'Riley',
+      petNames: ['Duke'],
+      meetGreetDateStr: '2026-11-14',
+      meetGreetSlot: '4:30pm',
+      isToday: true,
+      address: '88 Dock St, Wilmington, NC 28401',
+    },
+  },
   // ── membership-request-received ──────────────────────────────────────
   {
     template: 'membership-request-received',

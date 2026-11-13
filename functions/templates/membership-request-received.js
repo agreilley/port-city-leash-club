@@ -59,7 +59,7 @@ function html(data) {
     <p style="margin:0 0 20px;">Thanks so much for reaching out about ${planPhrase(data.tier)} for ${namesEsc}. We've got your request and we're looking over the details now.</p>
     <p style="margin:0 0 20px;">The next step is your meet and greet, a quick, friendly visit before your walks begin.</p>
     ${meetGreetBlock}
-    <p style="margin:20px 0 0;">Alison, our founder, will come by to meet ${namesEsc} and walk you through how everything works. It's a great time to ask any questions you have. Please have a spare key or entry details ready, and Alison will take those with her for future walks.</p>
+    <p style="margin:20px 0 0;">Alison, our founder, will come by to meet ${namesEsc} and walk you through how everything works. It's a great time to ask any questions you have. We'll also go over how to get in for future walks, whether that's a spare key, a lockbox, or a door code.</p>
     <p style="margin:20px 0 0;">We won't start your membership or any billing until after we've met. From there, we'll get your walks on the calendar and you'll be all set.</p>
     <p style="margin:20px 0 0;">${escapeHtml(meetClosingLine(data.dogNames))} Questions in the meantime? Just reply here and it'll come straight to us.</p>
     ${renderSignoffHtml(TEAM_SIGNOFF)}
@@ -97,7 +97,7 @@ function text(data) {
   }
 
   lines.push(
-    `Alison, our founder, will come by to meet ${names} and walk you through how everything works. It's a great time to ask any questions you have. Please have a spare key or entry details ready, and Alison will take those with her for future walks.`,
+    `Alison, our founder, will come by to meet ${names} and walk you through how everything works. It's a great time to ask any questions you have. We'll also go over how to get in for future walks, whether that's a spare key, a lockbox, or a door code.`,
     '',
     `We won't start your membership or any billing until after we've met. From there, we'll get your walks on the calendar and you'll be all set.`,
     '',

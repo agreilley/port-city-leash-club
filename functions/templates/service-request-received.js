@@ -78,7 +78,7 @@ function html(data) {
     <p style="margin:0 0 20px;">Thanks so much for reaching out about ${escapeHtml(c.reachedOutAbout)}. We've got your request and we're looking over ${c.lookingOverWhat} now.</p>
     <p style="margin:0 0 20px;">The next step is your meet and greet, a quick, friendly visit ${c.nextStepFraming}.</p>
     ${meetGreetBlock}
-    <p style="margin:20px 0 0;">Alison, our founder, will come by to meet ${escapeHtml(c.names)} and ${c.visitPurpose}. It's a great time to ask any questions you have. Please have a spare key or entry details ready, and Alison will take those with her for ${c.futureVisitsNoun}.</p>
+    <p style="margin:20px 0 0;">Alison, our founder, will come by to meet ${escapeHtml(c.names)} and ${c.visitPurpose}. It's a great time to ask any questions you have. We'll also go over how to get in for ${c.futureVisitsNoun}, whether that's a spare key, a lockbox, or a door code.</p>
     <p style="margin:20px 0 0;">${c.confirmLine}</p>
     <p style="margin:20px 0 0;">${escapeHtml(meetClosingLine(data.petNames))} Questions in the meantime? Just reply here and it'll come straight to us.</p>
     ${renderSignoffHtml(TEAM_SIGNOFF)}
@@ -116,7 +116,7 @@ function text(data) {
   }
 
   lines.push(
-    `Alison, our founder, will come by to meet ${c.names} and ${c.visitPurpose}. It's a great time to ask any questions you have. Please have a spare key or entry details ready, and Alison will take those with her for ${c.futureVisitsNoun}.`,
+    `Alison, our founder, will come by to meet ${c.names} and ${c.visitPurpose}. It's a great time to ask any questions you have. We'll also go over how to get in for ${c.futureVisitsNoun}, whether that's a spare key, a lockbox, or a door code.`,
     '',
     c.confirmLine,
     '',

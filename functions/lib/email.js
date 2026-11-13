@@ -63,6 +63,7 @@ const TEMPLATES = {
   'walk-reschedule-update': require('../templates/walk-reschedule-update'),
   'walk-extension-declined': require('../templates/walk-extension-declined'),
   'stay-wrap-up': require('../templates/stay-wrap-up'),
+  'meet-greet-reminder': require('../templates/meet-greet-reminder'),
   'walker-schedule-update': require('../templates/walker-schedule-update'),
   'gift-package-purchased': require('../templates/gift-package-purchased'),
   'gift-package-delivered': require('../templates/gift-package-delivered'),

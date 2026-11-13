@@ -4095,6 +4095,91 @@ exports.sendStayWrapUpEmails = onSchedule({
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// 3c-ii-b. Meet & greet reminder: 24 hours before each meet and greet
+//    (functions/templates/meet-greet-reminder.js). Runs every 30 minutes
+//    because meet & greet slots are on the hour or half hour, so each
+//    reminder lands at the same clock time as the meet and greet, the day
+//    before.
+//
+//    A run sends for every meet and greet starting in the next 24 hours that
+//    hasn't been reminded yet (idempotencyKey per submission + date + time;
+//    sendEmail skips one already sent). So one booked less than 24 hours out
+//    is caught by the next run instead of being missed, with one exception,
+//    by decision (2026-11-13): a client who booked it themselves less than
+//    24 hours ahead is skipped, since their request-received email from a
+//    few hours earlier already has the time and address. Meet & greets
+//    added, linked, or rescheduled from the admin side send no email to the
+//    client at all, so those still get the reminder right away, worded
+//    "today" when it's later the same day.
+//
+//    submissions/{id}.meetGreetDateTime is "YYYY-MM-DD h:mmam", so a string
+//    range over today and tomorrow finds the candidates with no index. That
+//    covers membership requests, public service requests, and admin-added
+//    'meet_greet' placeholders. Admin cancel clears meetGreetDateTime and a
+//    linked placeholder hands it to the real request, so neither is
+//    double-sent; declined/canceled are skipped, matching the admin To Do
+//    card. A reschedule changes the key, so the new time gets its own reminder.
+// ─────────────────────────────────────────────────────────────────────────
+const MEET_GREET_REMINDER_LEAD_MS = 24 * 60 * 60 * 1000;
+
+// "2026-11-14" + "5:30pm" -> the UTC instant of 5:30pm Eastern that day, or
+// null if the slot isn't a clock time.
+function meetGreetStartsAt(dateStr, slot) {
+  const m = String(slot || '').match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+  if (!m) return null;
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const hour = (Number(m[1]) % 12) + (m[3].toLowerCase() === 'pm' ? 12 : 0);
+  return easternTimeToUtc(year, month - 1, day, hour, Number(m[2]));
+}
+
+exports.sendMeetGreetReminders = onSchedule({
+  schedule: '*/30 * * * *',
+  timeZone: 'America/New_York',
+  secrets: [RESEND_API_KEY],
+}, async () => {
+  const now = Date.now();
+  const { year, monthIndex, day } = easternTodayParts();
+  const todayStr = isoDateStr(new Date(Date.UTC(year, monthIndex, day)));
+  const dayAfterStr = isoDateStr(new Date(Date.UTC(year, monthIndex, day + 2)));
+  const snap = await db.collection('submissions')
+    .where('meetGreetDateTime', '>=', `${todayStr} `)
+    .where('meetGreetDateTime', '<', `${dayAfterStr} `)
+    .get();
+
+  let sent = 0, lateSelfBooked = 0;
+  for (const doc of snap.docs) {
+    const sub = doc.data();
+    const meetGreet = parseMeetGreetDateTime(sub.meetGreetDateTime);
+    const startsAt = meetGreet && meetGreetStartsAt(meetGreet.dateStr, meetGreet.slot);
+    if (!startsAt) continue;
+    const startMs = startsAt.getTime();
+    if (startMs <= now || startMs - now > MEET_GREET_REMINDER_LEAD_MS) continue;
+    if (['declined', 'cancelled', 'canceled'].includes(sub.status) || sub.meetGreetCompletedAt || !sub.email) continue;
+
+    const selfBooked = !sub.adminCreated && !sub.meetGreetScheduledByAdminAt && !sub.meetGreetRescheduledAt;
+    const bookedMs = sub.createdAt?.toMillis?.();
+    if (selfBooked && bookedMs && startMs - bookedMs < MEET_GREET_REMINDER_LEAD_MS) { lateSelfBooked++; continue; }
+
+    const result = await sendEmail({
+      to: sub.email,
+      template: 'meet-greet-reminder',
+      data: {
+        firstName: (sub.ownerName || sub.name || '').trim().split(/\s+/)[0] || 'there',
+        petNames: Array.isArray(sub.dogs) ? sub.dogs.map((d) => d && d.name).filter(Boolean) : [],
+        meetGreetDateStr: meetGreet.dateStr,
+        meetGreetSlot: meetGreet.slot,
+        isToday: meetGreet.dateStr === todayStr,
+        address: sub.address || null,
+      },
+      idempotencyKey: `meet-greet-reminder:${doc.id}:${meetGreet.dateStr}:${meetGreet.slot}`,
+    });
+    if (result.ok) sent++;
+    else console.error(`sendMeetGreetReminders: submissions/${doc.id} failed: ${result.error}`);
+  }
+  if (sent || lateSelfBooked) console.log(`sendMeetGreetReminders: sent or already sent ${sent}, skipped late self-booked ${lateSelfBooked}`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // 3c-iii. Walker schedule update: 5pm ET daily, one email per walker
 //    listing every walk, drop-in visit, and overnight night put on their
 //    schedule since the last update, and anything taken off it
