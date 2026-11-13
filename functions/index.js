@@ -6504,6 +6504,53 @@ function generateAddOnDropInVisits(addOnDropIns) {
   })));
 }
 
+// Walkers lined up on the request before its dates were confirmed (admin
+// dashboard: submissions/{id}.tentativeWalkers — see isTentativePetSitting in
+// admin/dashboard.html) carried onto the new reservation. The default becomes
+// the stay's walkerId; a day's cover goes on every visit that day; a night's
+// cover goes on that night. A walker who's since been deactivated (or deleted)
+// is dropped, and a cover for a date the review moved out of the stay simply
+// matches nothing. Returns the fields to add to the overnights doc, with
+// `visits` always included (unchanged when nothing carries over).
+async function carryOverTentativeWalkers(tentative, visits, { serviceType, startDate, endDate }) {
+  if (!tentative || typeof tentative !== 'object') return { visits };
+  const entries = [tentative, ...Object.values(tentative.days || {}), ...Object.values(tentative.nights || {})];
+  const ids = [...new Set(entries.map((e) => (e?.walkerId || '').trim()).filter(Boolean))];
+  if (!ids.length) return { visits };
+  const active = {};
+  await Promise.all(ids.map(async (id) => {
+    const snap = await db.collection('walkers').doc(id).get();
+    if (snap.exists && (snap.data().status || 'active') === 'active') active[id] = snap.data().name || '';
+  }));
+  const pick = (e) => {
+    const id = (e?.walkerId || '').trim();
+    return id && Object.prototype.hasOwnProperty.call(active, id) ? id : '';
+  };
+
+  const { stayNightDates } = await import('./visit-slots.js');
+  const { overnightWalkerIds } = await import('./walker-pricing.js');
+  const def = pick(tentative);
+  const out = {
+    visits: visits.map((v) => {
+      const id = pick(tentative.days?.[v.date]);
+      return id && id !== def ? { ...v, walkerId: id, walkerName: active[id] } : v;
+    }),
+  };
+  if (def) {
+    out.walkerId = def;
+    out.walkerName = active[def];
+  }
+  const nights = {};
+  stayNightDates({ serviceType, startDate, endDate }).forEach((date) => {
+    const id = pick(tentative.nights?.[date]);
+    if (id && id !== def) nights[date] = { walkerId: id, walkerName: active[id] };
+  });
+  if (Object.keys(nights).length) out.nights = nights;
+  const walkerIds = overnightWalkerIds({ walkerId: def, visits: out.visits, nights: out.nights });
+  if (walkerIds.length) out.walkerIds = walkerIds;
+  return out;
+}
+
 // Day-by-day plan for an overnight stay's confirmation email, built from the
 // visits actually booked on its overnights doc (included + extra) rather than
 // any rule about which day a night's drop-in lands on — admin places those
@@ -6768,13 +6815,30 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
       };
     }
 
+    const serviceType = isOvernightRequest ? (reviewed.service || sub.serviceType || 'overnight') : serviceKey;
+    // Per-visit tracking — see generateOvernightVisits' own comment for
+    // why this is safe to write in the same create call rather than a
+    // follow-up update (no payout/pricing field above depends on it).
+    // Add-on drop-ins get their own entries (addOn: true) alongside the
+    // stay's regular visits so the walker sees and completes them the
+    // same way.
+    const visits = [
+      ...generateOvernightVisits(reviewed, isCheckin),
+      ...generateAddOnDropInVisits(reviewed.addOnDropIns),
+    ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    // Walkers lined up while the request was tentative: walkerId, the
+    // visits' and nights' covers, and walkerIds (who can see the stay).
+    const lineup = await carryOverTentativeWalkers(sub.tentativeWalkers, visits, {
+      serviceType, startDate: reviewed.startDate, endDate: reviewed.endDate,
+    });
+
     const overnightRef = await db.collection('overnights').add({
       memberId,
       memberName,
       dogName,
       startDate: reviewed.startDate,
       endDate: reviewed.endDate,
-      serviceType: isOvernightRequest ? (reviewed.service || sub.serviceType || 'overnight') : serviceKey,
+      serviceType,
       notes: sub.notes || '',
       status: 'confirmed',
       confirmedAt: FieldValue.serverTimestamp(),
@@ -6793,16 +6857,10 @@ async function runServiceOrOvernightBookingDoc(sub, submissionId, memberId, revi
       // Holiday rate stamp (markDatesConfirmed) — calculateOvernightPayout
       // pays the walker's holiday percent off these dates.
       ...(reviewed.holidayRate ? { holidayRate: reviewed.holidayRate } : {}),
-      // Per-visit tracking — see generateOvernightVisits' own comment for
-      // why this is safe to write in the same create call rather than a
-      // follow-up update (no payout/pricing field above depends on it).
-      // Add-on drop-ins get their own entries (addOn: true) alongside the
-      // stay's regular visits so the walker sees and completes them the
-      // same way.
-      visits: [
-        ...generateOvernightVisits(reviewed, isCheckin),
-        ...generateAddOnDropInVisits(reviewed.addOnDropIns),
-      ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)),
+      // visits, plus walkerId/walkerName/nights/walkerIds when walkers were
+      // lined up on the request (carryOverTentativeWalkers). Spread after
+      // walkerId: '' above so a carried-over default replaces it.
+      ...lineup,
       confirmedTotalCents: Math.round(reviewed.amountInDollars * 100),
       // See markDatesConfirmed — chargeCustomerCard's Friends & Family guard
       // reads this off whichever doc it's handed, and chargeScheduledReservations

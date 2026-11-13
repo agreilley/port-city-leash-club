@@ -111,6 +111,10 @@
      the request. Outline rather than border so the chip's size doesn't change. */
   .walk-chip.resched-pending { outline: 1px dashed var(--rust); outline-offset: -1px; }
   .walk-chip.tentative.t-resched { border-color: var(--rust); color: var(--rust); }
+  /* A tentative pet-sitting day or night with no walker lined up yet
+     (submissions/{id}.tentativeWalkers): still dashed and unfilled, in the
+     unassigned red, so a coverage gap stands out before the meet & greet. */
+  .walk-chip.tentative.unassigned { background: transparent; border-color: #991B1B; color: #991B1B; }
   /* Phone view (js/calendar-mobile.js): dots in the grid, the tapped day's
      chips listed under it. Both hidden on desktop; shown in the mobile query. */
   .cal-dots, .cal-day-list { display: none; }
@@ -125,6 +129,7 @@
   .cal-dot.dot-tentative.dot-dropin { border-color: #B04A0C; }
   .cal-dot.dot-tentative.dot-overnight { border-color: #1E4E8C; }
   .cal-dot.dot-tentative.dot-resched { border-color: var(--rust); }
+  .cal-dot.dot-tentative.dot-unassigned { background: transparent; border-color: #991B1B; }
   .cal-dot.dot-done { opacity: 0.45; }
   .cal-dot-more { font-size: 10px; font-weight: 600; color: var(--text-mid); line-height: 7px; }
   .cal-day-list-title { font-size: 15px; font-weight: 500; color: var(--navy); margin-bottom: 10px; }
@@ -3226,6 +3231,175 @@ function tentativeShowsBeforeCutoff(r) {
   return names.some(n => TENTATIVE_CHIPS_ALWAYS_DOGS.includes(String(n || '').trim().toLowerCase()));
 }
 
+// ── TENTATIVE WALKER LINE-UP ────────────────────────────────────────────────
+// Walkers lined up on a pet-sitting request before its dates are confirmed
+// (usually while it waits on the meet & greet), so coverage can be planned
+// ahead. Stored on the request itself, submissions/{id}.tentativeWalkers:
+//   { walkerId, walkerName,                      — the default for the stay
+//     days:   { 'YYYY-MM-DD': { walkerId, walkerName } },  — that day's drop-ins
+//     nights: { 'YYYY-MM-DD': { walkerId, walkerName } } } — that night
+// A day or night with no entry falls to the default, same rule as
+// visitWalkerId / nightWalkerId on a confirmed stay. Per day rather than per
+// visit because the visit times aren't picked until the dates are reviewed.
+//
+// Admin only: walkers can't read submissions (firestore.rules), and the 5pm
+// assignment digest reads only walks and overnights, so nobody hears about
+// tentative work. markDatesConfirmed carries the line-up onto the new
+// overnights doc (carryOverTentativeWalkers, functions/index.js), and from
+// then on it's an ordinary assignment the digest reports.
+function isTentativePetSitting(r) {
+  if (r?.type !== 'service_request' && r?.type !== 'overnight_request') return false;
+  if (r.datesConfirmedAt || ['declined', 'cancelled', 'confirmed'].includes(r.status)) return false;
+  const key = resolveServiceKey(r.service);
+  // An overnight_request with no service is an overnight stay (see
+  // runServiceOrOvernightBookingDoc's serviceType fallback).
+  return key === 'overnight-stay' || key === 'drop-in-visit' || (r.type === 'overnight_request' && !r.service);
+}
+
+// The work a tentative request implies, from what the customer asked for:
+// days with drop-ins ({ date, visits }) and, for an overnight stay, its
+// nights (start date up to, not including, the end date). Mirrors the
+// defaults the review grids pre-fill from the same fields.
+function tentativeStayPlan(r) {
+  const start = dateKey(r.startDate);
+  const end = dateKey(r.endDate) || start;
+  if (!start || end < start) return { isCheckin: false, days: [], nights: [] };
+  const isCheckin = resolveServiceKey(r.service) === 'drop-in-visit';
+  const dates = [];
+  for (let d = bookingDay(start); dateKey(d) <= end; d.setDate(d.getDate() + 1)) dates.push(dateKey(d));
+  const counts = (list) => {
+    const out = {};
+    (Array.isArray(list) ? list : []).forEach(e => { if (e?.date) out[e.date] = Math.max(0, parseInt(e.visits, 10) || 0); });
+    return out;
+  };
+  let days;
+  if (isCheckin) {
+    const sched = counts(r.visitSchedule);
+    const perDay = parseInt(r.visitsPerDay, 10) || 1;
+    days = dates.map(date => ({ date, visits: sched[date] ?? perDay }));
+  } else {
+    const hasIncluded = Array.isArray(r.requestedIncludedDropIns) && r.requestedIncludedDropIns.length;
+    const included = counts(r.requestedIncludedDropIns);
+    const extras = counts(r.requestedAddOnDropIns);
+    days = dates.map(date => ({
+      date,
+      visits: (hasIncluded ? (included[date] || 0) : (date === end ? 0 : 1)) + (extras[date] || 0),
+    }));
+  }
+  return { isCheckin, days: days.filter(d => d.visits > 0), nights: isCheckin ? [] : dates.filter(d => d < end) };
+}
+
+function tentativeDayWalkerId(r, date) {
+  const t = r?.tentativeWalkers || {};
+  return (t.days?.[date]?.walkerId || '').trim() || (t.walkerId || '').trim();
+}
+function tentativeNightWalkerId(r, date) {
+  const t = r?.tentativeWalkers || {};
+  return (t.nights?.[date]?.walkerId || '').trim() || (t.walkerId || '').trim();
+}
+
+// One dropdown: the default walker (kind 'default'), or one day's / night's
+// cover. Covers list everyone active except the default; "(off)" marks
+// approved time off on that date.
+function tentativeWalkerSelectHTML(r, kind, date) {
+  const t = r.tentativeWalkers || {};
+  const def = (t.walkerId || '').trim();
+  const cur = kind === 'default' ? def : ((kind === 'day' ? t.days : t.nights)?.[date]?.walkerId || '').trim();
+  const off = (w) => date && walkerOffOn(w, date) ? ' (off)' : '';
+  const defWalker = allWalkers.find(w => w.id === def);
+  const opts = allWalkers
+    .filter(w => (kind === 'default' || w.id !== def) && (w.status === 'active' || w.id === cur))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    .map(w => `<option value="${escapeHtml(w.id)}" ${w.id === cur ? 'selected' : ''}>${escapeHtml(w.name)}${off(w)}</option>`).join('');
+  const blank = kind === 'default'
+    ? 'Nobody yet'
+    : def ? `Default (${escapeHtml(defWalker?.name || def)})${defWalker ? off(defWalker) : ''}` : 'Default (nobody yet)';
+  const isCover = kind !== 'default' && cur;
+  const missing = kind === 'default' ? !cur : !cur && !def;
+  return `<select style="flex:0 1 240px;min-width:0;border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:4px 6px;font-size:12px;font-family:'DM Sans',sans-serif;${isCover ? 'font-weight:600;color:var(--navy);' : missing ? 'color:#991B1B;' : ''}"
+    onchange="setTentativeWalker('${escapeHtml(r.id)}', '${kind}', '${date || ''}', this.value)">
+    <option value="" ${cur ? '' : 'selected'}>${blank}</option>${opts}</select>`;
+}
+
+// The "Lined-up walkers" section at the top of the request modal, for an
+// unconfirmed pet-sitting request only ('' otherwise).
+function tentativeWalkersSectionHTML(r) {
+  if (!isTentativePetSitting(r)) return '';
+  const plan = tentativeStayPlan(r);
+  const fmt = (d) => new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const row = (label, select) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px solid rgba(0,0,0,0.05);">
+      <span style="font-size:13px;color:var(--navy);white-space:nowrap;">${label}</span>${select}</div>`;
+  const dates = [...new Set([...plan.days.map(d => d.date), ...plan.nights])].sort();
+  const rows = dates.flatMap(date => {
+    const out = [];
+    const day = plan.days.find(d => d.date === date);
+    if (day) out.push(row(`${fmt(date)} · ${day.visits} drop-in${day.visits === 1 ? '' : 's'}`, tentativeWalkerSelectHTML(r, 'day', date)));
+    if (plan.nights.includes(date)) out.push(row(`${fmt(date)} · night`, tentativeWalkerSelectHTML(r, 'night', date)));
+    return out;
+  }).join('');
+  return `<div id="tentative-walkers" style="background:#F7F8FA;border:1px solid rgba(0,0,0,0.08);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+    <div style="font-weight:500;font-size:13px;color:var(--navy);">Lined-up walkers</div>
+    <div style="font-size:12px;color:var(--text-light);margin:2px 0 8px;">Only you see these. They carry over onto the reservation when you confirm the dates, and walkers hear about it then.</div>
+    ${row('<strong>Default walker</strong>', tentativeWalkerSelectHTML(r, 'default', ''))}
+    ${rows || '<div style="font-size:12px;color:var(--text-light);padding-top:6px;">No dates on this request yet.</div>'}
+  </div>`;
+}
+
+// Saves one dropdown. Writes the whole tentativeWalkers map (one admin, and
+// the modal holds the latest copy from the submissions listener). Only the
+// section is redrawn, so nothing typed into the review fields below is lost.
+window.setTentativeWalker = async (requestId, kind, date, walkerId) => {
+  const r = allRequests.find(x => x.id === requestId);
+  if (!r) return;
+  const walkerName = walkerId ? (allWalkers.find(w => w.id === walkerId)?.name || '') : '';
+  const t = r.tentativeWalkers || {};
+  const next = { walkerId: t.walkerId || '', walkerName: t.walkerName || '', days: { ...(t.days || {}) }, nights: { ...(t.nights || {}) } };
+  if (kind === 'default') {
+    next.walkerId = walkerId;
+    next.walkerName = walkerName;
+    // A cover that now matches the default is no longer a cover.
+    ['days', 'nights'].forEach(k => Object.keys(next[k]).forEach(d => { if (next[k][d]?.walkerId === walkerId) delete next[k][d]; }));
+  } else {
+    const map = kind === 'day' ? next.days : next.nights;
+    if (walkerId) map[date] = { walkerId, walkerName }; else delete map[date];
+  }
+  const redraw = (tw) => {
+    const el = document.getElementById('tentative-walkers');
+    if (el) el.outerHTML = tentativeWalkersSectionHTML({ ...r, tentativeWalkers: tw });
+  };
+  try {
+    await updateDoc(doc(db, 'submissions', requestId), { tentativeWalkers: next });
+    redraw(next);
+  } catch (e) {
+    alert('Could not save the walker: ' + e.message);
+    redraw(t);
+  }
+};
+
+// Chip text for one tentative pet-sitting day: who's lined up, and what's
+// still open. null when the day has no work in it (an overnight stay's
+// return day with no drop-ins), which keeps the plain tentative chip.
+function tentativeDayCoverage(r, dateStr) {
+  const plan = tentativeStayPlan(r);
+  const needDay = plan.days.some(d => d.date === dateStr);
+  const needNight = plan.nights.includes(dateStr);
+  if (!needDay && !needNight) return null;
+  const dayId = needDay ? tentativeDayWalkerId(r, dateStr) : '';
+  const nightId = needNight ? tentativeNightWalkerId(r, dateStr) : '';
+  const walker = (id) => id ? allWalkers.find(w => w.id === id) : null;
+  const first = (id) => walker(id)?.name?.split(' ')[0] || (id ? 'Unknown' : '');
+  const names = [...new Set([dayId, nightId].filter(Boolean))].map(first);
+  const offNames = [...new Set([dayId, nightId].filter(Boolean))].filter(id => walker(id) && walkerOffOn(walker(id), dateStr)).map(first);
+  const dayOpen = needDay && !dayId, nightOpen = needNight && !nightId;
+  const open = dayOpen && nightOpen ? 'Unassigned' : dayOpen ? (plan.isCheckin ? 'Unassigned' : 'drop-in open') : nightOpen ? 'night open' : '';
+  const detail = [
+    needDay ? `${plan.isCheckin ? 'Drop-ins' : 'Drop-in'}: ${dayId ? first(dayId) : 'nobody yet'}` : '',
+    needNight ? `Night: ${nightId ? first(nightId) : 'nobody yet'}` : '',
+    offNames.length ? `${offNames.join(' and ')} ${offNames.length === 1 ? 'is' : 'are'} off this day` : '',
+  ].filter(Boolean).join(' · ');
+  return { names, open, off: offNames.length > 0, detail };
+}
+
 function renderCalendarDays() {
   const container = document.getElementById('calendarDays');
   const firstDay = new Date(calendarYear, calendarMonth, 1).getDay();
@@ -3486,14 +3660,19 @@ function renderCalendarDays() {
         : (SERVICE_PRICES[key]?.name
           || (r.service === 'overnight' ? 'Overnight Stay' : r.service === 'checkin' ? 'Drop-In Visit' : r.service)
           || 'Service');
-      const label = escapeHtml(`${tName} \u00b7 Tentative`);
+      // Pet sitting shows who's lined up for the day (tentativeWalkers) and
+      // goes red when a day's drop-ins or night has nobody.
+      const cov = isTentativePetSitting(r) ? tentativeDayCoverage(r, dateStr) : null;
+      const label = escapeHtml(cov
+        ? `${cov.off ? '\u26a0 ' : ''}${tName}${cov.names.length ? ` / ${cov.names.join(' + ')}` : ''} \u00b7 Tentative${cov.open ? ` \u00b7 ${cov.open}` : ''}`
+        : `${tName} \u00b7 Tentative`);
       // The membership wording says "membership hasn't started" rather than
       // "not scheduled yet": the day itself is a projection from a recurring
       // schedule, not a specific booking anyone has committed to a date.
       const title = escapeHtml(isMembershipReq
         ? `${tName} \u00b7 ${serviceName} \u00b7 Membership hasn't started \u2014 awaiting meet & greet${r.days ? ` \u00b7 ${r.days}` : ''}`
-        : `${tName} \u00b7 ${serviceName} \u00b7 Not scheduled yet \u2014 awaiting meet & greet`);
-      return `<div class="walk-chip tentative ${variant}" onclick="openRequestItem('${r.id}')" title="${title}">${label}</div>`;
+        : `${tName} \u00b7 ${serviceName} \u00b7 Not scheduled yet \u2014 awaiting meet & greet${cov ? ` \u00b7 ${cov.detail}` : ''}`);
+      return `<div class="walk-chip tentative ${variant}${cov?.open ? ' unassigned' : ''}" onclick="openRequestItem('${r.id}')" title="${title}">${label}</div>`;
     }).join('');
     // Confirmed-but-not-yet-generated membership days (see projectedMap).
     // Styled exactly like a real walk chip, since the schedule is confirmed.
@@ -3544,7 +3723,7 @@ function calendarDotClass(chip) {
     : c.contains('c-dropin') || c.contains('t-checkin') ? 'dot-dropin'
     : c.contains('c-overnight') || c.contains('t-overnight') ? 'dot-overnight'
     : 'dot-walk';
-  if (c.contains('tentative')) return `dot-tentative ${service}`;
+  if (c.contains('tentative')) return `dot-tentative ${c.contains('unassigned') ? 'dot-unassigned' : service}`;
   if (c.contains('unassigned')) return 'dot-unassigned';
   return `${service}${c.contains('done') ? ' dot-done' : ''}`;
 }
@@ -7039,6 +7218,12 @@ window.openRequestItem = async (id) => {
         });
     }
   }
+
+  // Lined-up walkers for an unconfirmed pet-sitting request, above whichever
+  // view rendered: the review form, or the read-only fields a net-new public
+  // request shows before its account exists.
+  const tentativeWalkersHTML = tentativeWalkersSectionHTML(item);
+  if (tentativeWalkersHTML) document.getElementById('requestModalContent').insertAdjacentHTML('afterbegin', tentativeWalkersHTML);
 
   const actionBtn = document.getElementById('requestActionBtn');
   const declineBtn = document.getElementById('requestDeclineBtn');
