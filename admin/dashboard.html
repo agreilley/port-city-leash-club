@@ -157,7 +157,7 @@
 
   /* ── TO DO (Overview) ── */
   .todo-card { margin-bottom: 28px; }
-  .todo-cols { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .todo-cols { display: grid; grid-template-columns: repeat(4, 1fr); }
   .todo-col { padding: 16px 20px; min-width: 0; }
   .todo-col + .todo-col { border-left: 1px solid rgba(0,0,0,0.07); }
   .todo-col-title { font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-light); margin-bottom: 10px; }
@@ -182,6 +182,11 @@
   .todo-empty { font-size: 13px; color: var(--text-light); padding: 4px 0; }
   .todo-add { display: flex; gap: 8px; margin-top: 10px; }
   .todo-add input { flex: 1; min-width: 0; border: 1px solid rgba(0,0,0,0.14); border-radius: 4px; padding: 7px 10px; font-size: 13px; font-family: 'DM Sans', sans-serif; }
+  @media (max-width: 1200px) {
+    .todo-cols { grid-template-columns: repeat(2, 1fr); }
+    .todo-col:nth-child(odd) { border-left: none; }
+    .todo-col:nth-child(n+3) { border-top: 1px solid rgba(0,0,0,0.07); }
+  }
   @media (max-width: 900px) {
     .todo-cols { grid-template-columns: 1fr; }
     .todo-col + .todo-col { border-left: none; border-top: 1px solid rgba(0,0,0,0.07); }
@@ -595,7 +600,8 @@
       </div>
       <!-- To Do: live items computed from data already loaded (they disappear
            once handled), this week's repeating checklist (adminTodos/week_*),
-           and one-off items (adminTodos docs with type 'item'). See renderTodos. -->
+           one-off items (adminTodos docs with type 'item'), and ad/post ideas
+           (type 'idea'). See renderTodos. -->
       <div class="table-card todo-card">
         <div class="table-header">
           <div class="table-title">To Do</div>
@@ -614,6 +620,14 @@
             <div id="todoItems"></div>
             <form class="todo-add" onsubmit="addTodoItem(event)">
               <input id="todoAddInput" type="text" placeholder="Add a to-do" maxlength="200" autocomplete="off">
+              <button class="btn-secondary" type="submit">Add</button>
+            </form>
+          </div>
+          <div class="todo-col">
+            <div class="todo-col-title">Ad/Post Ideas</div>
+            <div id="todoIdeas"></div>
+            <form class="todo-add" onsubmit="addTodoItem(event, 'idea')">
+              <input id="todoIdeaInput" type="text" placeholder="Add an idea" maxlength="200" autocomplete="off">
               <button class="btn-secondary" type="submit">Add</button>
             </form>
           </div>
@@ -2643,6 +2657,7 @@ function updateStats() {
 let todoSettings = null;
 let todoWeeks = {};   // weekKey -> week doc data
 let todoItems = [];
+let todoIdeas = [];   // adminTodos docs with type 'idea' (Ad/Post Ideas column)
 let todoRenderQueued = false;
 
 const TODO_SETTINGS_DEFAULTS = {
@@ -2701,16 +2716,20 @@ function subscribeTodos() {
     let settings = null;
     const weeks = {};
     const items = [];
+    const ideas = [];
     snap.forEach(d => {
       const data = d.data();
       if (d.id === 'settings') settings = data;
       else if (d.id.startsWith('week_')) weeks[d.id.slice(5)] = data;
       else if (data.type === 'item') items.push({ id: d.id, ...data });
+      else if (data.type === 'idea') ideas.push({ id: d.id, ...data });
     });
     if (!settings && !snap.metadata.fromCache) { seedTodos(); return; }
     todoSettings = { ...TODO_SETTINGS_DEFAULTS, ...(settings || {}) };
     todoWeeks = weeks;
-    todoItems = items.sort((a, b) => (a.createdAt?.toMillis?.() || 0) - (b.createdAt?.toMillis?.() || 0));
+    const byCreated = (a, b) => (a.createdAt?.toMillis?.() || 0) - (b.createdAt?.toMillis?.() || 0);
+    todoItems = items.sort(byCreated);
+    todoIdeas = ideas.sort(byCreated);
     scheduleTodoRender();
   }, err => console.error('adminTodos subscription error', err.code, err.message));
 }
@@ -2968,12 +2987,19 @@ function renderTodoWeekly() {
 }
 
 function renderTodoItems() {
-  const el = document.getElementById('todoItems');
+  renderTodoList('todoItems', todoItems);
+  renderTodoList('todoIdeas', todoIdeas);
+}
+
+// Shared by "Other to-dos" and "Ad/Post Ideas".
+function renderTodoList(elId, list) {
+  const el = document.getElementById(elId);
+  if (!el) return;
   if (!todoSettings) { el.innerHTML = ''; return; }
   // Done items stay visible (struck through) for the rest of the week they
   // were checked, then drop off. They're kept, not deleted.
   const monday = bookingDay(todoWeekKey());
-  const shown = todoItems.filter(i => !i.done || (i.doneAt?.toDate?.() || new Date()) >= monday);
+  const shown = list.filter(i => !i.done || (i.doneAt?.toDate?.() || new Date()) >= monday);
   el.innerHTML = shown.length ? shown.map(i => `
     <div class="todo-row${i.done ? ' done' : ''}">
       <input type="checkbox" ${i.done ? 'checked' : ''} onchange="toggleTodoItem('${escapeHtml(i.id)}', this.checked)">
@@ -3011,14 +3037,14 @@ window.setTodoFollowers = async (field, raw) => {
   }
 };
 
-window.addTodoItem = async (e) => {
+window.addTodoItem = async (e, type = 'item') => {
   e.preventDefault();
-  const input = document.getElementById('todoAddInput');
+  const input = document.getElementById(type === 'idea' ? 'todoIdeaInput' : 'todoAddInput');
   const text = input.value.trim();
   if (!text) return;
   input.value = '';
   try {
-    await addDoc(collection(db, 'adminTodos'), { type: 'item', text, done: false, createdAt: serverTimestamp() });
+    await addDoc(collection(db, 'adminTodos'), { type, text, done: false, createdAt: serverTimestamp() });
   } catch (err) {
     input.value = text;
     alert(`Couldn't add: ${err.message}`);
@@ -3035,8 +3061,8 @@ window.toggleTodoItem = async (id, done) => {
 };
 
 window.removeTodoItem = async (id) => {
-  const item = todoItems.find(i => i.id === id);
-  if (!confirm(`Remove "${item?.text || 'this to-do'}"?`)) return;
+  const item = todoItems.find(i => i.id === id) || todoIdeas.find(i => i.id === id);
+  if (!confirm(`Remove "${item?.text || 'this item'}"?`)) return;
   try {
     await deleteDoc(doc(db, 'adminTodos', id));
   } catch (e) {
