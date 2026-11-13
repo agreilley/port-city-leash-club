@@ -99,9 +99,13 @@
       <button type="submit" class="login-btn" id="loginBtn">Sign In</button>
     </form>
 
-    <div class="divider"><span>New member?</span></div>
-    <div class="signup-link">
-      Sign up on the main website to get started with <a href="membership-request.html">The Leash Club</a>
+    <!-- A client we just booked has an account but often no password yet:
+         send them to the password page, not the sign-up form (which created
+         duplicate requests, 2026-11-13). -->
+    <div class="divider"><span>Haven't set your password yet?</span></div>
+    <a href="portal-password-reset" class="login-btn" style="display:block;text-align:center;text-decoration:none;background:#fff;color:#C17B6F;border:1px solid #C17B6F;margin-bottom:4px;">Set Your Password</a>
+    <div class="signup-link" style="margin-top:14px;font-size:12px;">
+      New to Port City Leash Club? <a href="membership-request.html">Request membership</a> or <a href="service-request.html">book pet sitting</a>.
     </div>
   </div>
 

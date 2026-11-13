@@ -62,6 +62,29 @@ function chargeLine(data) {
   return `Your card will be charged $${data.chargeAmountDollars.toFixed(2)} on ${date}.`;
 }
 
+// The portal / card section, shared by html() and text(). null = nothing to show.
+//   New client, no card: one button that sets their password, then lands on Add Card.
+//   New client with a card (or a walk extension): a portal-setup button.
+//   Existing client, no card: Add Your Card, plus how to get in without a password.
+function cardCopy(data, dogCount) {
+  const expired = `If the link has expired, go to the portal sign-in page and tap "Set Your Password" for a new one.`;
+  if (data.isNewAccount && data.portalSetupLink) {
+    return data.needsCard ? {
+      paragraphs: [`Since this is your first booking with us, we've set up a portal account for you. Set your password, then add a card so we can process the charge for this walk.`],
+      href: data.portalSetupLink, label: 'Set Up Your Portal', after: expired,
+    } : {
+      paragraphs: [`Since this is your first time booking with us, we've set up a portal account so you can see your booking, update your ${possessive(dogCount, 'dog', 'dogs')} profile, and message us anytime.`],
+      href: data.portalSetupLink, label: 'Set Up Your Portal', after: null,
+    };
+  }
+  if (!data.needsCard) return null;
+  return {
+    paragraphs: [`We don't have a card on file for you yet. Add one so we can process the charge for this walk.`],
+    href: data.addCardUrl, label: 'Add Your Card',
+    after: `You'll sign in to your portal first. If you haven't set a password yet, tap "Set Your Password" on the sign-in page.`,
+  };
+}
+
 async function whenValue(data) {
   const formatted = (await Promise.all((data.walks || []).map(formatWalkWhen))).filter(Boolean);
   return formatted.join('; ') || 'Time to be confirmed';
@@ -85,15 +108,15 @@ async function html(data) {
     ],
   });
 
-  // isNewAccount is only ever true from confirmWalkExtension now — a new
-  // customer's meet-greet-to-account-creation-to-first-booking path moved
-  // entirely to completeMeetGreetAndCreateAccount + portal-access, which
-  // send their own portal-setup link before this template's send site
-  // (sendServiceOrOvernightConfirmationEmail) is ever reached. Don't assume
-  // this branch still covers a new customer's confirmation email.
-  const portalSection = data.isNewAccount && data.portalSetupLink ? `
-    <p style="margin:20px 0 0;">Since this is your first time booking with us, we've set up a portal account so you can see your booking, update your ${possessive(dogCount, 'dog', 'dogs')} profile, and message us anytime.</p>
-    ${renderButtonHtml({ href: data.portalSetupLink, label: 'Set Up Your Portal Access' })}
+  // One portal/card section (cardCopy): a new client's set-password button
+  // replaces Add Your Card, so there's never two buttons that do different
+  // things. sendServiceOrOvernightConfirmationEmail sets isNewAccount for a
+  // client who has never signed in (portalSetupForMember).
+  const card = cardCopy(data, dogCount);
+  const portalSection = card ? `
+    ${card.paragraphs.map(p => `<p style="margin:20px 0 0;">${escapeHtml(p)}</p>`).join('')}
+    ${renderButtonHtml({ href: card.href, label: card.label })}
+    ${card.after ? `<p style="margin:20px 0 0;">${escapeHtml(card.after)}</p>` : ''}
   ` : '';
 
   // The new-account CTA paragraph directly above already tells them they
@@ -104,11 +127,6 @@ async function html(data) {
     ? `If you have any questions, just reply here and it'll come straight to us.`
     : `If anything about your ${possessive(dogCount, 'dog', 'dogs')} care has changed, you can update their profile anytime in the portal. And if you have any questions, just reply here and it'll come straight to us.`;
 
-  const cardSection = data.needsCard ? `
-    <p style="margin:20px 0 0;">We don't have a card on file for you yet — add one so we can process the charge for this walk.</p>
-    ${renderButtonHtml({ href: data.addCardUrl, label: 'Add Your Card' })}
-  ` : '';
-
   const body = `
     <p style="margin:0 0 20px;">Hi ${escapeHtml(data.firstName || 'there')},</p>
     <p style="margin:0 0 20px;">Great news, your walk is booked and we've got ${escapeHtml(names)} covered.</p>
@@ -116,7 +134,6 @@ async function html(data) {
     <p style="margin:20px 0 0;">Your walker will send photos and a note afterward so you can see how it went.</p>
     ${chargeLine(data) ? `<p style="margin:20px 0 0;">${escapeHtml(chargeLine(data))}</p>` : ''}
     ${portalSection}
-    ${cardSection}
     <p style="margin:20px 0 0;">${closingLine}</p>
     ${renderSignoffHtml(TEAM_SIGNOFF)}
   `;
@@ -145,21 +162,13 @@ async function text(data) {
     ...(chargeLine(data) ? [chargeLine(data), ''] : []),
   ];
 
-  if (data.isNewAccount && data.portalSetupLink) {
+  const card = cardCopy(data, dogCount);
+  if (card) {
     lines.push(
-      `Since this is your first time booking with us, we've set up a portal account so you can see your booking, update your ${possessive(dogCount, 'dog', 'dogs')} profile, and message us anytime.`,
+      ...card.paragraphs.flatMap(p => [p, '']),
+      `${card.label}: ${card.href}`,
       '',
-      `Set up your portal access: ${data.portalSetupLink}`,
-      '',
-    );
-  }
-
-  if (data.needsCard) {
-    lines.push(
-      `We don't have a card on file for you yet — add one so we can process the charge for this walk.`,
-      '',
-      `Add your card: ${data.addCardUrl}`,
-      '',
+      ...(card.after ? [card.after, ''] : []),
     );
   }
 

@@ -6277,50 +6277,41 @@ exports.completeMeetGreetAndCreateAccount = onCall({
     accountCreatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
 
-  // Portal-access email — the entire point of this moment for the
-  // recipient: the meet & greet is done, here's how to get in and add a
-  // card. A thrown failure here is a real problem (the account exists with
-  // no way for its owner to discover it yet) but never unwinds the account
-  // itself — same "warn, don't roll back" contract as sendOnboardingEmail.
-  const portalUrl = `${BUSINESS_PORTAL_ORIGIN}/portal-login`;
-  const portalSetupLink = await authAdmin.generatePasswordResetLink(sub.email, { url: `${portalUrl}?welcome=1` });
-  const petNames = (memberDoc.dogs || []).map((d) => d && d.name).filter(Boolean);
-  const firstName = (memberDoc.name || '').trim().split(/\s+/)[0] || 'there';
-
-  let emailData;
+  // Portal-access email — memberships only. A membership has no dates step,
+  // so this is the moment its owner learns how to get in and add a card. A
+  // thrown failure here is a real problem (the account exists with no way
+  // for its owner to discover it yet) but never unwinds the account itself
+  // — same "warn, don't roll back" contract as sendOnboardingEmail.
+  //
+  // A walk or pet sitting request sends nothing here (since 2026-11-13).
+  // Admin usually confirms its dates right after, and two emails seconds
+  // apart, each with its own card button, confused new clients. Their one
+  // email is the booking confirmation, which carries the set-password link
+  // for anyone who hasn't signed in yet (portalSetupForMember).
+  let emailResult = { ok: true, error: null };
   if (isMembership) {
+    const portalUrl = `${BUSINESS_PORTAL_ORIGIN}/portal-login`;
+    // After setting a password and signing in, land on Add Card (portal-login's ?next=).
+    const portalSetupLink = await authAdmin.generatePasswordResetLink(sub.email, {
+      url: `${portalUrl}?welcome=1&next=${encodeURIComponent('/portal-account?addCard=1')}`,
+    });
+    const petNames = (memberDoc.dogs || []).map((d) => d && d.name).filter(Boolean);
+    const firstName = (memberDoc.name || '').trim().split(/\s+/)[0] || 'there';
     const orderedDays = VALID_WALK_DAYS.filter((d) => memberDoc.defaultWalkDays.includes(d));
-    emailData = {
-      firstName,
-      petNames,
-      kind: 'membership',
-      tier: memberDoc.tier,
-      frequency: orderedDays.length ? orderedDays.map((d) => d[0].toUpperCase() + d.slice(1)).join(', ') : null,
-      portalSetupLink,
-    };
-  } else {
-    const { SERVICE_PRICES, resolveServiceKey } = await import('./pricing.js');
-    const { formatDateRange } = require('./templates/_layout');
-    const serviceLabel = SERVICE_PRICES[resolveServiceKey(sub.service)]?.name || null;
-    const startStr = sub.startDate?.toDate ? isoDateStr(sub.startDate.toDate()) : null;
-    const endStr = sub.endDate?.toDate ? isoDateStr(sub.endDate.toDate()) : null;
-    const requestedDatesStr = startStr ? formatDateRange(startStr, endStr) : null;
-    emailData = {
-      firstName,
-      petNames,
-      kind: 'service',
-      serviceLabel,
-      requestedDatesStr,
-      portalSetupLink,
-    };
+    emailResult = await sendEmail({
+      to: sub.email,
+      template: 'portal-access',
+      data: {
+        firstName,
+        petNames,
+        kind: 'membership',
+        tier: memberDoc.tier,
+        frequency: orderedDays.length ? orderedDays.map((d) => d[0].toUpperCase() + d.slice(1)).join(', ') : null,
+        portalSetupLink,
+      },
+      idempotencyKey: `portal-access:${uid}`,
+    });
   }
-
-  const emailResult = await sendEmail({
-    to: sub.email,
-    template: 'portal-access',
-    data: emailData,
-    idempotencyKey: `portal-access:${uid}`,
-  });
 
   // A brand-new membership account never has a card yet, so this can't
   // actually start billing here — but it's what flags admin about the
@@ -6338,6 +6329,9 @@ exports.completeMeetGreetAndCreateAccount = onCall({
     memberId: uid,
     emailSent: emailResult.ok,
     emailError: emailResult.error || null,
+    // false for a walk or pet sitting request: its welcome goes out with
+    // the booking confirmation instead (dashboard toast wording).
+    welcomeEmailSentNow: isMembership,
     ...(friendsFamilyRedemption ? { friendsFamilyRedemption } : {}),
   };
 });
@@ -7226,6 +7220,35 @@ async function runServiceOrOvernightCharge(sub, submissionId, memberId, reviewed
 // itself is untouched, still used by confirmWalkExtension (unrelated to
 // this migration) and by the still-live old confirmServiceRequest/
 // confirmOvernight during this build.
+// For a booking confirmation: a client who has never signed in to the portal
+// gets a fresh set-password link (isNewAccount/portalSetupLink, which the
+// confirmation templates turn into one "Set Up Your Portal" button). After
+// setting a password they sign in and land on Add Card when there's no card
+// yet. Anyone who has signed in before gets the plain email. Best effort: a
+// failed lookup sends the plain email rather than blocking the confirmation.
+async function portalSetupForMember(memberId, email, needsCard) {
+  const plain = { isNewAccount: false, portalSetupLink: null };
+  if (!memberId || !email) return plain;
+  try {
+    const { getAuth } = require('firebase-admin/auth');
+    const user = await getAuth().getUser(memberId);
+    // "Never signed in": no token refresh yet, and no sign-in time other than
+    // the account's own creation (the Auth emulator stamps lastSignInTime at
+    // creation; a real sign-in also sets lastRefreshTime).
+    const md = user.metadata || {};
+    const neverSignedIn = !md.lastRefreshTime && (!md.lastSignInTime || md.lastSignInTime === md.creationTime);
+    if (!neverSignedIn) return plain;
+    const next = needsCard ? '/portal-account?addCard=1' : '/portal-dashboard';
+    const portalSetupLink = await getAuth().generatePasswordResetLink(email, {
+      url: `${BUSINESS_PORTAL_ORIGIN}/portal-login?welcome=1&next=${encodeURIComponent(next)}`,
+    });
+    return { isNewAccount: true, portalSetupLink };
+  } catch (e) {
+    console.error(`portalSetupForMember: couldn't check portal sign-in for ${memberId}:`, e.message);
+    return plain;
+  }
+}
+
 async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, memberId, reviewed, chargeResult, cardOnFile = true) {
   const { SERVICE_PRICES, resolveServiceKey } = await import('./pricing.js');
   const isOvernightRequest = sub.type === 'overnight_request';
@@ -7348,18 +7371,14 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
     };
   }
 
-  // isNewAccount is always false here — unlike confirmServiceRequest/
-  // confirmOvernight, which could still be confirming a brand-new
-  // customer's very first booking in the same client action, account
-  // creation under the new flow always already happened earlier, at meet-
-  // greet completion (completeMeetGreetAndCreateAccount), with its own
-  // dedicated portal-access email. A second portal-setup link here would
-  // be redundant. Flagged in section 1 — the isNewAccount:true branch in
-  // all three templates below is now unreachable from this call site.
+  // A client who has never signed in gets their set-password link here: a
+  // walk or pet sitting request's account is created with no email of its
+  // own (completeMeetGreetAndCreateAccount, since 2026-11-13), so this
+  // confirmation is their welcome too.
   return sendEmail({
     to: member.email,
     template,
-    data: { ...data, isNewAccount: false, portalSetupLink: null },
+    data: { ...data, ...(await portalSetupForMember(memberId, member.email, needsCard)) },
     idempotencyKey: `booking-confirmed:${submissionId}`,
   });
 }
@@ -8153,7 +8172,7 @@ exports.resendBookingConfirmationEmail = onCall({
   const result = await sendEmail({
     to: member.email,
     template,
-    data: { ...data, isNewAccount: false, portalSetupLink: null },
+    data: { ...data, ...(await portalSetupForMember(record.memberId, member.email, needsCard)) },
     idempotencyKey: `booking-confirmed:resend:${recordType}:${id}:${Date.now()}`,
   });
   if (!result.ok) {

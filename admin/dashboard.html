@@ -8645,12 +8645,16 @@ window.createServiceRequestAccount = async (submissionId) => {
   btn.textContent = 'Creating account…'; btn.disabled = true;
   try {
     const completeMeetGreetAndCreateAccount = httpsCallable(fns, 'completeMeetGreetAndCreateAccount');
-    await completeMeetGreetAndCreateAccount({ submissionId, meetGreetCompleted: true });
+    const createResult = await completeMeetGreetAndCreateAccount({ submissionId, meetGreetCompleted: true });
 
     closeModal('requestModal');
     const msg = document.createElement('div');
     msg.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2D9E5E;color:white;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;';
-    msg.textContent = 'Account created — portal access email sent';
+    // Walk and pet sitting requests get their welcome (set-password link)
+    // with the booking confirmation once dates are confirmed.
+    msg.textContent = createResult.data?.welcomeEmailSentNow === false
+      ? 'Account created — their welcome email goes out when you confirm the dates'
+      : 'Account created — portal access email sent';
     document.body.appendChild(msg);
     setTimeout(() => msg.remove(), 3000);
   } catch (e) {

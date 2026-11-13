@@ -9,6 +9,10 @@
 // membership_request and net-new (public-form) service_request. The card-
 // on-file ask is the actual point of the email, not an afterthought.
 //
+// Since 2026-11-13 only memberships get it: a walk or pet sitting request's
+// welcome rides on its booking confirmation instead (portalSetupForMember in
+// functions/index.js). The 'service' kind below is kept but no longer sent.
+//
 // overnight_request never reaches this template: it only ever comes from an
 // existing member who already has portal access from an earlier request.
 //
@@ -27,6 +31,9 @@ const {
   escapeHtml, joinNames, possessive, TEAM_SIGNOFF,
   renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
+
+// The set-password link expires; the sign-in page's "Set Your Password" button always sends a new one.
+const EXPIRED_LINE = `If the link has expired, go to the portal sign-in page and tap "Set Your Password" for a new one.`;
 
 function isMembership(data) {
   return data.kind === 'membership';
@@ -77,8 +84,9 @@ function html(data) {
       heading: escapeHtml(block.heading),
       rows: block.rows.map(r => ({ label: r.label, value: escapeHtml(r.value) })),
     })}
-    <p style="margin:20px 0 0;">Add a card in your portal and we'll ${escapeHtml(nextStepPhrase(data))}. You'll get one more email once everything's set.</p>
-    ${renderButtonHtml({ href: data.portalSetupLink, label: 'Add Your Card' })}
+    <p style="margin:20px 0 0;">Tap below to set your portal password, then add a card and we'll ${escapeHtml(nextStepPhrase(data))}. You'll get one more email once everything's set.</p>
+    ${renderButtonHtml({ href: data.portalSetupLink, label: 'Set Up Your Portal' })}
+    <p style="margin:20px 0 0;">${escapeHtml(EXPIRED_LINE)}</p>
     <p style="margin:20px 0 0;">Once you're in, you can update your ${possessive(petCount, 'pet', 'pets')} profile and check in on things anytime.</p>
     <p style="margin:20px 0 0;">We're looking forward to it.</p>
     ${renderSignoffHtml(TEAM_SIGNOFF)}
@@ -102,9 +110,11 @@ function text(data) {
     '',
     renderBlockText(block),
     '',
-    `Add a card in your portal and we'll ${nextStepPhrase(data)}. You'll get one more email once everything's set.`,
+    `Set your portal password, then add a card and we'll ${nextStepPhrase(data)}. You'll get one more email once everything's set.`,
     '',
-    `Add your card: ${data.portalSetupLink}`,
+    `Set up your portal: ${data.portalSetupLink}`,
+    '',
+    EXPIRED_LINE,
     '',
     `Once you're in, you can update your ${possessive(petCount, 'pet', 'pets')} profile and check in on things anytime.`,
     '',

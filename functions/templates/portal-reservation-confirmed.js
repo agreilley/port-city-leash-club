@@ -43,7 +43,33 @@
 //     // the charge-date sentence below would otherwise state a date/amount
 //     // that was never actually scheduled
 //   addCardUrl: string,            // portal-account.html's Update Payment Method flow; required when needsCard is true
+//   isNewAccount: boolean,         // never signed in to the portal (portalSetupForMember) —
+//   portalSetupLink: string|null,  //   this email is their welcome, so one set-password button replaces Add Your Card
 // }
+
+// The card / portal-setup paragraphs, shared by html() and text().
+//   New client, no card: one button that sets their password, then lands on Add Card.
+//   Existing client, no card: Add Your Card, plus how to get in without a password.
+//   New client who somehow already has a card: a portal-setup button only.
+function cardCopy(data) {
+  const amount = fmtDollars(chargeDollars(data));
+  const expired = `If the link has expired, go to the portal sign-in page and tap "Set Your Password" for a new one.`;
+  if (data.isNewAccount && data.portalSetupLink) {
+    return data.needsCard ? {
+      paragraphs: [`Since this is your first booking with us, we've set up a portal account for you. Set your password, then add a card so we can process the ${amount} charge for this reservation.`],
+      href: data.portalSetupLink, label: 'Set Up Your Portal', after: expired,
+    } : {
+      paragraphs: [`Since this is your first booking with us, we've set up a portal account for you, where you can see your booking and update your pet profiles.`],
+      href: data.portalSetupLink, label: 'Set Up Your Portal', after: null,
+    };
+  }
+  if (!data.needsCard) return { paragraphs: [], href: null, label: null, after: null };
+  return {
+    paragraphs: [`We don't have a card on file for you yet. Add one so we can process the ${amount} charge for this reservation.`],
+    href: data.addCardUrl, label: 'Add Your Card',
+    after: `You'll sign in to your portal first. If you haven't set a password yet, tap "Set Your Password" on the sign-in page.`,
+  };
+}
 
 const {
   escapeHtml, formatDateRange, formatCalendarDate, joinNames, pluralNoun, possessive, TEAM_SIGNOFF, addOnDropInRows, stayPlanRows, stayPlanNote,
@@ -116,6 +142,8 @@ function chargeSentence(data) {
 const ROUTINE_LINE = `We'll follow your usual routine for feeding, walks, and any medications, and we'll send you updates along the way so you can relax and enjoy your trip.`;
 function closingLine(data) {
   const petCount = (data.petNames || []).filter(Boolean).length || 1;
+  // A first booking has no earlier care details to have "changed" — same as walk-confirmed.
+  if (data.isNewAccount) return `If you have any questions, just reply here and it'll come straight to us.`;
   return `If anything about your ${possessive(petCount, 'pet', 'pets')} care has changed, you can update their profile anytime in the portal. And if you have any questions, just reply here and it'll come straight to us.`;
 }
 
@@ -145,11 +173,15 @@ function html(data) {
     <p style="margin:20px 0 0;">${escapeHtml(stayPlanNote(data.addOnDropIns))}</p>
   ` : '';
 
+  const card = cardCopy(data);
   const billingHtml = data.needsCard ? `
-    <p style="margin:20px 0 0;">We don't have a card on file for you yet — add one so we can process the ${escapeHtml(fmtDollars(chargeDollars(data)))} charge for this reservation.</p>
-    ${renderButtonHtml({ href: data.addCardUrl, label: 'Add Your Card' })}
+    ${card.paragraphs.map(p => `<p style="margin:20px 0 0;">${escapeHtml(p)}</p>`).join('')}
+    ${renderButtonHtml({ href: card.href, label: card.label })}
+    ${card.after ? `<p style="margin:20px 0 0;">${escapeHtml(card.after)}</p>` : ''}
     <p style="margin:20px 0 0;">If your plans change, reservations canceled within 48 hours of the start date may still be charged.</p>
   ` : `
+    ${card.paragraphs.map(p => `<p style="margin:20px 0 0;">${escapeHtml(p)}</p>`).join('')}
+    ${card.href ? renderButtonHtml({ href: card.href, label: card.label }) : ''}
     <p style="margin:20px 0 0;">${escapeHtml(chargeSentence(data))}</p>
     <p style="margin:20px 0 0;">If your plans change, reservations canceled within 48 hours of the start date may still be charged. This is the same policy that applies to scheduled walks.</p>
   `;
@@ -204,16 +236,18 @@ function text(data) {
 
   lines.push(ROUTINE_LINE, '');
 
+  const card = cardCopy(data);
   if (data.needsCard) {
     lines.push(
-      `We don't have a card on file for you yet — add one so we can process the ${fmtDollars(chargeDollars(data))} charge for this reservation.`,
+      ...card.paragraphs.flatMap(p => [p, '']),
+      `${card.label}: ${card.href}`,
       '',
-      `Add your card: ${data.addCardUrl}`,
-      '',
+      ...(card.after ? [card.after, ''] : []),
       `If your plans change, reservations canceled within 48 hours of the start date may still be charged.`,
       '',
     );
   } else {
+    if (card.href) lines.push(...card.paragraphs.flatMap(p => [p, '']), `${card.label}: ${card.href}`, '');
     lines.push(
       chargeSentence(data),
       '',
