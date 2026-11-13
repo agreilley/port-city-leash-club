@@ -3990,11 +3990,11 @@ const NEEDS_REVIEW_LABELS = {
   },
   reservation_charge_failed: {
     label: 'Reservation charge failed',
-    title: "A confirmed pet sitting reservation's scheduled charge (24 hours after confirmation) failed — usually because the member had no card on file yet. Once that's fixed, use Retry Charge below to charge it in-app, or charge manually in Stripe if you'd rather.",
+    title: "A confirmed reservation's scheduled charge (walk or pet sitting) was declined. It retries on its own for about a week. Once the card is fixed, use Retry Charge below to charge it in-app, or charge manually in Stripe if you'd rather.",
   },
   no_card_on_file: {
     label: 'No card on file',
-    title: "A service or overnight request was confirmed for this member with no card on file — the booking, reservation, and confirmation email all went through as normal (the member's email says a card is still needed), but there's nothing to charge yet. Once they add one, the scheduled or next charge will go through normally — dismiss this once it does.",
+    title: "A confirmed reservation's charge is due, but this member hasn't added a card yet, so nothing has been charged. It charges automatically within 15 minutes of them adding one, and this flag clears on its own then.",
   },
   finalize_charge_failed: {
     label: 'Finalize failed',
@@ -6167,7 +6167,13 @@ window.cancelWalk = async (walkId) => {
   const date = walk.date?.toDate?.() || new Date(walk.date);
   const dateLabel = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const who = member?.name ? `${member.name}'s` : 'this';
-  const msg = (walk.billedPeriod || walk.submissionId)
+  // A one-off walk booked as its own request is charged 24 hours after
+  // confirming (or once a card is added). Until then, canceling it means it's
+  // never charged: chargeScheduledReservations checks the walk is still on
+  // the calendar before charging.
+  const walkSub = walk.submissionId ? (window.allRequests || allRequests).find(r => r.id === walk.submissionId) : null;
+  const notChargedYet = !!walkSub?.chargePending && walkSub?.lastChargeAttempt?.status !== 'charged';
+  const msg = (walk.billedPeriod || (walk.submissionId && !notChargedYet))
     ? `Cancel ${who} walk on ${dateLabel}?\n\nThis walk has already been charged. Canceling removes it from the calendar but does NOT refund it — issue any refund separately.`
     : `Cancel ${who} walk on ${dateLabel}?\n\nIt will be removed from the calendar and won't be billed.`;
   if (!confirm(msg)) return;
@@ -7477,10 +7483,9 @@ window.openRequestItem = async (id) => {
       : () => declineServiceRequest(item.id, item);
     showQuietDecline();
   } else if (isUnresolvedServiceRequest) {
-    // Pet sitting (drop-ins and overnight stays) schedules the charge for 24
-    // hours out (see runServiceOrOvernightCharge, functions/index.js) rather
-    // than charging now — only a walk still charges immediately.
-    actionBtn.textContent = SERVICE_PRICES[resolveServiceKey(item.service)]?.unit === 'night' ? 'Confirm and schedule charge' : 'Confirm & Charge';
+    // Walks and pet sitting both schedule the charge for 24 hours out (see
+    // runServiceOrOvernightCharge, functions/index.js) rather than charging now.
+    actionBtn.textContent = 'Confirm and schedule charge';
     actionBtn.style.display = 'block';
     actionBtn.onclick = () => confirmRequestDates(item.id, item);
     declineBtn.style.display = 'block';
@@ -8474,8 +8479,7 @@ window.confirmRequestDates = async (submissionId, item) => {
     }
   }
   const isOvernightRequest = item.type === 'overnight_request';
-  const originalLabel = isOvernightRequest || SERVICE_PRICES[resolveServiceKey(item.service)]?.unit === 'night'
-    ? 'Confirm and schedule charge' : 'Confirm & Charge';
+  const originalLabel = 'Confirm and schedule charge';
   btn.textContent = 'Confirming…'; btn.disabled = true;
   try {
     const service = document.getElementById('rev-service')?.value || item.service;
@@ -9779,8 +9783,17 @@ window.openMemberDetail = async (id) => {
         && o.chargeAttempt?.status !== 'charged'
         && ((o.chargeRetry?.count || 0) > 0 || o.chargeAttempt?.status === 'failed'))
     : [];
+  // A one-time walk's scheduled charge lives on its submission, with the
+  // same failure markers (lastChargeAttempt instead of chargeAttempt).
+  const failedWalkSubs = billing.needsReviewReason === 'reservation_charge_failed'
+    ? allRequests.filter(r => r.memberId === member.id && r.chargePending
+        && r.lastChargeAttempt?.status !== 'charged'
+        && ((r.chargeRetry?.count || 0) > 0 || r.lastChargeAttempt?.status === 'failed'))
+    : [];
   const retryChargeHTML = failedOvernights.map(o =>
     `<button class="btn-secondary" id="retryReservationChargeBtn-${escapeHtml(o.id)}" style="display:block;margin-top:8px;padding:4px 12px;font-size:12px;" onclick="retryReservationCharge('${escapeHtml(o.id)}')">Retry Charge — ${escapeHtml(fmtReviewDate(o.startDate))}${typeof o.confirmedTotalCents === 'number' ? ` ($${(o.confirmedTotalCents / 100).toFixed(2)})` : ''}</button>`
+  ).join('') + failedWalkSubs.map(r =>
+    `<button class="btn-secondary" id="retryReservationChargeBtn-${escapeHtml(r.id)}" style="display:block;margin-top:8px;padding:4px 12px;font-size:12px;" onclick="retryReservationCharge('${escapeHtml(r.id)}', 'walk')">Retry Charge — Walk ${escapeHtml(fmtReviewDate(r.startDate))}${typeof r.confirmedTotalCents === 'number' ? ` ($${(r.confirmedTotalCents / 100).toFixed(2)})` : ''}</button>`
   ).join('');
   const reviewDismissHTML = billing.needsReview ? `
     <div style="font-size:12px;color:#b45309;background:#fffbeb;border-radius:6px;padding:8px 12px;margin-top:4px;margin-bottom:12px;">
@@ -10021,8 +10034,9 @@ window.dismissMemberBillingReview = async (memberId) => {
 // charge_failed path does: this is a REAL new charge attempt, not a
 // resend, and the server has no way to know if admin already charged it
 // manually in Stripe instead of waiting.
-window.retryReservationCharge = async (overnightId) => {
-  const o = allOvernights.find(x => x.id === overnightId);
+window.retryReservationCharge = async (overnightId, kind) => {
+  const isWalk = kind === 'walk';
+  const o = isWalk ? allRequests.find(x => x.id === overnightId) : allOvernights.find(x => x.id === overnightId);
   const amount = typeof o?.confirmedTotalCents === 'number' ? `$${(o.confirmedTotalCents / 100).toFixed(2)}` : 'the reservation total';
   const confirmed = confirm(
     `This attempts a NEW charge of ${amount} against this member's card on file — not a resend, a real charge.\n\n` +
@@ -10033,7 +10047,7 @@ window.retryReservationCharge = async (overnightId) => {
   if (btn) { btn.textContent = 'Charging…'; btn.disabled = true; }
   try {
     const retryReservationChargeFn = httpsCallable(fns, 'retryReservationCharge');
-    await retryReservationChargeFn({ overnightId });
+    await retryReservationChargeFn(isWalk ? { submissionId: overnightId } : { overnightId });
     alert('Charge succeeded.');
     if (o?.memberId) openMemberDetail(o.memberId);
   } catch (e) {

@@ -1166,12 +1166,15 @@ exports.removeCardOnFile = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (reque
   // relies on.
   let hasPendingReservationCharge = false;
   if (noRecurringObligation) {
-    const pendingSnap = await db.collection('overnights')
-      .where('memberId', '==', uid)
-      .where('chargePending', '==', true)
-      .limit(1)
-      .get();
-    hasPendingReservationCharge = !pendingSnap.empty;
+    // A one-time walk's scheduled charge sits on its submission instead.
+    // portal-account.html's client hint can't see that one (members can't
+    // read submissions), so it may show Remove; this server check still
+    // blocks it.
+    const [pendingSnap, pendingWalkSnap] = await Promise.all([
+      db.collection('overnights').where('memberId', '==', uid).where('chargePending', '==', true).limit(1).get(),
+      db.collection('submissions').where('memberId', '==', uid).where('chargePending', '==', true).limit(1).get(),
+    ]);
+    hasPendingReservationCharge = !pendingSnap.empty || !pendingWalkSnap.empty;
   }
 
   if (!noRecurringObligation || hasPendingReservationCharge) {
@@ -1720,6 +1723,16 @@ async function previewChargeCredits(memberId, amountInDollars, giftBooking = nul
 //
 // giftBooking is passed only by the walk and pet sitting charges, so a walk
 // extension's upcharge (chargeSavedCard) can never use up a package visit.
+// The two "this member has no card" failures in chargeCustomerCard, tagged so
+// the scheduled sweep can tell "waiting on a card" apart from a real decline.
+// Both are thrown before anything is written or sent to Stripe, so a caller
+// that treats them as "not yet" leaves nothing half-done behind.
+function noCardError(message) {
+  const err = new HttpsError('failed-precondition', message);
+  err.noCard = true;
+  return err;
+}
+
 async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountInDollars, description, attemptField = 'lastChargeAttempt', giftBooking = null }) {
   const memberId = docData?.memberId || null;
   if (!memberId) {
@@ -1730,7 +1743,7 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
   const billingData = billingSnap.data() || {};
   const stripeCustomerId = billingData.stripeCustomerId;
   if (!stripeCustomerId) {
-    throw new HttpsError('failed-precondition', 'No saved card found for this member.');
+    throw noCardError('No saved card found for this member.');
   }
 
   // Idempotency guard #1: never charge the same chargeKey twice, however
@@ -1853,7 +1866,7 @@ async function chargeCustomerCard(stripe, docRef, docData, { chargeKey, amountIn
     const customer = await stripe.customers.retrieve(stripeCustomerId);
     const paymentMethods = await stripe.paymentMethods.list({ customer: customer.id, type: 'card' });
     if (!paymentMethods.data.length) {
-      throw new HttpsError('failed-precondition', 'Customer has no saved payment method.');
+      throw noCardError('Customer has no saved payment method.');
     }
 
     try {
@@ -2279,11 +2292,16 @@ const MANUAL_CHARGE_RETRY_MIN_MINUTES = 15;
 const CHARGEABLE_OVERNIGHT_STATUSES = ['confirmed', 'completed'];
 
 // ─────────────────────────────────────────────────────────────────────────
-// 2b. Charge pet-sitting reservations (check-in visits and overnight stays)
-//    24 hours after admin confirms them — confirmServiceRequest/confirmOvernight
-//    (admin/dashboard.html) write chargeScheduledFor, confirmedTotalCents, and
-//    chargePending: true onto the overnights doc at confirm time, but never
-//    charge immediately; this is what actually charges the card later.
+// 2b. Charge confirmed reservations — pet sitting (check-in visits and
+//    overnight stays) and, since 2026-11, one-time walks — 24 hours after
+//    admin confirms them (or 48h before start for a few clients). Confirming
+//    writes chargeScheduledFor, confirmedTotalCents, and chargePending: true
+//    (on the overnights doc for pet sitting, on the submission for a walk)
+//    but never charges immediately; this is what actually charges the card.
+//
+//    A member with no card yet is waited on, not failed: no retry counted,
+//    and "No card on file" is flagged once, when the charge is actually due.
+//    The first sweep after they add a card charges it.
 //
 //    Query filters on chargePending == true — a single equality filter, so
 //    no composite index is needed, same reasoning as resumePausedMemberships'
@@ -2329,98 +2347,168 @@ exports.chargeScheduledReservations = onSchedule({
 }, async () => {
   const stripe = stripeClient(STRIPE_SECRET_KEY.value());
   const now = new Date();
-  const dueSnap = await db.collection('overnights').where('chargePending', '==', true).get();
-
-  for (const candidate of dueSnap.docs) {
-    const data = candidate.data();
-    const scheduledFor = data.chargeScheduledFor?.toDate ? data.chargeScheduledFor.toDate() : null;
-    if (!scheduledFor || scheduledFor > now) continue;
-    if (data.chargeAttempt?.status === 'charged') continue; // cheap skip before the fresh re-read below
-    // Legacy cap, kept so reservations that recorded failures before
-    // chargeRetry existed stay capped rather than becoming eligible again.
-    if (data.chargeAttempt?.status === 'failed' && (data.chargeAttempt.failureCount || 0) >= MAX_SCHEDULED_CHARGE_ATTEMPTS) continue;
-
-    // Retry pacing. chargeRetry is THIS sweep's own bookkeeping, deliberately
-    // separate from chargeAttempt: chargeCustomerCard only writes chargeAttempt
-    // once a Stripe call has actually failed, but the most common failure here
-    // never reaches Stripe at all — a member with no stripeCustomerId yet
-    // throws long before the PaymentIntent, leaving nothing written. Those
-    // reservations were retried every 15 minutes indefinitely, with no counter
-    // ever incrementing to cap them. Counting attempts here instead covers both
-    // kinds of failure with one number, so the cap and the backoff apply
-    // whether or not the card was ever actually reached.
-    const retryCount = data.chargeRetry?.count || 0;
-    if (retryCount >= MAX_SCHEDULED_CHARGE_ATTEMPTS) continue; // capped — needsReview already flagged, leave for manual resolution
-    const lastAttemptAt = data.chargeRetry?.lastAttemptAt?.toDate ? data.chargeRetry.lastAttemptAt.toDate() : null;
-    if (lastAttemptAt) {
-      const waitHours = SCHEDULED_CHARGE_BACKOFF_HOURS[Math.min(retryCount, SCHEDULED_CHARGE_BACKOFF_HOURS.length - 1)];
-      if (now.getTime() - lastAttemptAt.getTime() < waitHours * 60 * 60 * 1000) continue;
-    }
-
-    // Fresh read immediately before charging — see comment above.
-    const freshSnap = await candidate.ref.get();
-    const freshData = freshSnap.data();
-    if (!freshData || !CHARGEABLE_OVERNIGHT_STATUSES.includes(freshData.status)) continue;
-
-    const isCheckin = freshData.serviceType === 'checkin' || freshData.serviceType === 'drop-in-visit';
+  // Pet sitting charges live on the overnights doc; a one-time walk's lives
+  // on its submission (runServiceOrOvernightCharge), the same doc its charge
+  // was always recorded on. Same sweep, same retry rules, for both.
+  const [overnightSnap, walkSubSnap] = await Promise.all([
+    db.collection('overnights').where('chargePending', '==', true).get(),
+    db.collection('submissions').where('chargePending', '==', true).get(),
+  ]);
+  const candidates = [
+    ...overnightSnap.docs.map((doc) => ({ doc, kind: 'overnight' })),
+    ...walkSubSnap.docs.map((doc) => ({ doc, kind: 'walk' })),
+  ];
+  for (const { doc, kind } of candidates) {
     try {
-      await chargeCustomerCard(stripe, candidate.ref, freshData, {
-        chargeKey: `scheduled-reservation:${candidate.id}`,
-        amountInDollars: (freshData.confirmedTotalCents || 0) / 100,
-        description: `Port City Leash Club - ${isCheckin ? 'Drop-In Visits' : 'Overnight Stay'}`,
-        attemptField: 'chargeAttempt',
-        giftBooking: giftBookingFromOvernight(freshData),
-      });
-      await candidate.ref.set({ chargePending: false }, { merge: true });
-
-      // A prior run through this same loop may have already flagged the
-      // member for reservation_charge_failed (e.g. no card on file yet) —
-      // if THIS run's retry just succeeded (a card was since added), that
-      // flag is now stale and must be cleared here, the same way
-      // retryReservationCharge's own success path already does. Without
-      // this, a reservation that self-resolves via the automatic 15-minute
-      // sweep leaves a permanent false-positive "Reservation charge failed"
-      // badge on the member with no matching chargePending doc left to
-      // retry against — nothing else ever clears it.
-      if (freshData.memberId) {
-        const billing = billingRef(freshData.memberId);
-        const billingSnap = await billing.get();
-        if (billingSnap.data()?.needsReviewReason === 'reservation_charge_failed') {
-          await billing.set({ needsReview: false, needsReviewReason: null }, { merge: true }).catch(() => {});
-        }
-      }
+      await sweepScheduledCharge(stripe, doc, kind, now);
     } catch (e) {
-      console.error(
-        `chargeScheduledReservations: charge failed for overnights/${candidate.id} `
-        + `(memberId=${freshData.memberId || 'unknown'}, amount=${(freshData.confirmedTotalCents || 0) / 100}):`,
-        e.message
-      );
-      // Record the attempt BEFORE anything that could itself throw, so a
-      // failure can never leave the counter un-advanced and put this doc back
-      // on a 15-minute loop. Written unconditionally, including for failures
-      // that never reached Stripe — that's the whole reason this lives here
-      // rather than being read off chargeAttempt. reason is for a human
-      // reading the doc; the cap and backoff only ever look at count and
-      // lastAttemptAt.
-      await candidate.ref.set({
-        chargeRetry: {
-          count: retryCount + 1,
-          lastAttemptAt: FieldValue.serverTimestamp(),
-          reason: e.message,
-        },
-      }, { merge: true }).catch(writeErr => {
-        console.error(`chargeScheduledReservations: failed to record chargeRetry for overnights/${candidate.id}:`, writeErr.message);
-      });
-      if (freshData.memberId) {
-        await billingRef(freshData.memberId).set({
-          needsReview: true, needsReviewReason: 'reservation_charge_failed',
-        }, { merge: true }).catch(writeErr => {
-          console.error(`chargeScheduledReservations: failed to write needsReview for ${freshData.memberId}:`, writeErr.message);
-        });
-      }
+      // sweepScheduledCharge records its own failures; this only stops one
+      // unexpected error from ending the whole run.
+      console.error(`chargeScheduledReservations: unexpected error on ${doc.ref.path}:`, e.message);
     }
   }
 });
+
+// What a scheduled charge needs to know about its own doc: which attempt
+// field it records on, the charge key, amount, description, and gift package
+// booking. Overnights keep the exact values the sweep has always used; a walk
+// uses the ones its old charge-at-confirm used, so a walk confirmed before
+// this change and retried after it is still recognized as the same charge.
+async function scheduledChargeParams(kind, id, data) {
+  if (kind === 'overnight') {
+    const isCheckin = data.serviceType === 'checkin' || data.serviceType === 'drop-in-visit';
+    return {
+      attemptField: 'chargeAttempt',
+      chargeKey: `scheduled-reservation:${id}`,
+      amountInDollars: (data.confirmedTotalCents || 0) / 100,
+      description: `Port City Leash Club - ${isCheckin ? 'Drop-In Visits' : 'Overnight Stay'}`,
+      giftBooking: giftBookingFromOvernight(data),
+    };
+  }
+  const { SERVICE_PRICES, resolveServiceKey } = await import('./pricing.js');
+  return {
+    attemptField: 'lastChargeAttempt',
+    chargeKey: id,
+    amountInDollars: (data.confirmedTotalCents || 0) / 100,
+    description: serviceChargeDescription(data.service, data, SERVICE_PRICES, resolveServiceKey),
+    giftBooking: { serviceKey: resolveServiceKey(data.service), visits: Math.max(data.unitCount || 1, 1), travelDiscountApplied: false },
+  };
+}
+
+// A scheduled walk charge is only owed while the walk it pays for is still
+// on the calendar. Admin's Cancel walk deletes the walk doc, so a walk
+// canceled before its charge came due is never charged.
+async function scheduledWalkStillBooked(sub) {
+  if (sub.status !== 'confirmed' || !sub.memberId || !sub.startDate?.toDate) return false;
+  const walkSnap = await db.collection('walks').doc(`${sub.memberId}_${isoDateStr(sub.startDate.toDate())}`).get();
+  const walk = walkSnap.data();
+  return !!walk && walk.submissionId === sub.id && walk.status !== 'cancelled';
+}
+
+async function sweepScheduledCharge(stripe, candidate, kind, now) {
+  const data = candidate.data();
+  const scheduledFor = data.chargeScheduledFor?.toDate ? data.chargeScheduledFor.toDate() : null;
+  if (!scheduledFor || scheduledFor > now) return;
+  const attemptField = kind === 'overnight' ? 'chargeAttempt' : 'lastChargeAttempt';
+  if (data[attemptField]?.status === 'charged') return; // cheap skip before the fresh re-read below
+  // Legacy cap, kept so reservations that recorded failures before
+  // chargeRetry existed stay capped rather than becoming eligible again.
+  if (data[attemptField]?.status === 'failed' && (data[attemptField].failureCount || 0) >= MAX_SCHEDULED_CHARGE_ATTEMPTS) return;
+
+  // Retry pacing. chargeRetry is THIS sweep's own bookkeeping, deliberately
+  // separate from chargeAttempt: chargeCustomerCard only writes chargeAttempt
+  // once a Stripe call has actually failed. Counting attempts here covers
+  // every kind of real failure with one number, so the cap and the backoff
+  // apply whether or not the card was ever actually reached. "No card yet"
+  // is not counted (see the noCard branch below).
+  const retryCount = data.chargeRetry?.count || 0;
+  if (retryCount >= MAX_SCHEDULED_CHARGE_ATTEMPTS) return; // capped — needsReview already flagged, leave for manual resolution
+  const lastAttemptAt = data.chargeRetry?.lastAttemptAt?.toDate ? data.chargeRetry.lastAttemptAt.toDate() : null;
+  if (lastAttemptAt) {
+    const waitHours = SCHEDULED_CHARGE_BACKOFF_HOURS[Math.min(retryCount, SCHEDULED_CHARGE_BACKOFF_HOURS.length - 1)];
+    if (now.getTime() - lastAttemptAt.getTime() < waitHours * 60 * 60 * 1000) return;
+  }
+
+  // Fresh read immediately before charging — admin may have canceled or
+  // changed this exact booking since the query ran.
+  const freshSnap = await candidate.ref.get();
+  const freshData = freshSnap.data();
+  if (!freshData) return;
+  if (kind === 'overnight') {
+    if (!CHARGEABLE_OVERNIGHT_STATUSES.includes(freshData.status)) return;
+  } else if (!(await scheduledWalkStillBooked({ ...freshData, id: candidate.id }))) {
+    await candidate.ref.set({ chargePending: false, chargeAwaitingCard: false, chargeCanceledReason: 'walk_not_on_calendar' }, { merge: true });
+    return;
+  }
+
+  // Already known to be waiting on a card, and still no card: nothing to
+  // try. confirmCardOnFile (or getCardOnFile correcting a stale flag) sets
+  // cardOnFile true when one is added, and the next sweep charges it.
+  const billing = freshData.memberId ? billingRef(freshData.memberId) : null;
+  const billingData = billing ? ((await billing.get()).data() || {}) : {};
+  if (freshData.chargeAwaitingCard && billingData.cardOnFile !== true) return;
+
+  const params = await scheduledChargeParams(kind, candidate.id, freshData);
+  try {
+    await chargeCustomerCard(stripe, candidate.ref, freshData, params);
+    await candidate.ref.set({
+      chargePending: false, chargeAwaitingCard: false,
+      ...(kind === 'walk' ? { paymentStatus: 'charged' } : {}),
+    }, { merge: true });
+
+    // A prior run may have flagged the member for reservation_charge_failed;
+    // this success makes that flag stale, so clear it here, the same way
+    // retryReservationCharge's own success path does.
+    if (billing && billingData.needsReviewReason === 'reservation_charge_failed') {
+      await billing.set({ needsReview: false, needsReviewReason: null }, { merge: true }).catch(() => {});
+    }
+  } catch (e) {
+    if (e.noCard) {
+      // The member hasn't added a card yet. Not a failed attempt: no retry
+      // counted, no backoff, no "charge failed" flag. The charge stays
+      // pending and goes through on the first sweep after a card is added.
+      // Flag "No card on file" once, now that the charge is actually due —
+      // never over another open needsReview reason (single slot), and
+      // onBillingNeedsReview emails admin only on the false→true change.
+      console.log(`chargeScheduledReservations: ${candidate.ref.path} is due but member ${freshData.memberId || 'unknown'} has no card yet — waiting.`);
+      await candidate.ref.set({ chargeAwaitingCard: true }, { merge: true }).catch(writeErr => {
+        console.error(`chargeScheduledReservations: failed to mark ${candidate.ref.path} awaiting card:`, writeErr.message);
+      });
+      if (billing && !billingData.needsReview) {
+        await billing.set({ needsReview: true, needsReviewReason: 'no_card_on_file' }, { merge: true }).catch(writeErr => {
+          console.error(`chargeScheduledReservations: failed to flag no_card_on_file for ${freshData.memberId}:`, writeErr.message);
+        });
+      }
+      return;
+    }
+    console.error(
+      `chargeScheduledReservations: charge failed for ${candidate.ref.path} `
+      + `(memberId=${freshData.memberId || 'unknown'}, amount=${params.amountInDollars}):`,
+      e.message
+    );
+    // Record the attempt BEFORE anything that could itself throw, so a
+    // failure can never leave the counter un-advanced and put this doc back
+    // on a 15-minute loop. reason is for a human reading the doc; the cap
+    // and backoff only ever look at count and lastAttemptAt.
+    await candidate.ref.set({
+      chargeAwaitingCard: false,
+      chargeRetry: {
+        count: retryCount + 1,
+        lastAttemptAt: FieldValue.serverTimestamp(),
+        reason: e.message,
+      },
+    }, { merge: true }).catch(writeErr => {
+      console.error(`chargeScheduledReservations: failed to record chargeRetry for ${candidate.ref.path}:`, writeErr.message);
+    });
+    if (billing) {
+      await billing.set({
+        needsReview: true, needsReviewReason: 'reservation_charge_failed',
+      }, { merge: true }).catch(writeErr => {
+        console.error(`chargeScheduledReservations: failed to write needsReview for ${freshData.memberId}:`, writeErr.message);
+      });
+    }
+  }
+}
 
 // retryReservationCharge: admin-only manual retry for a reservation whose
 // scheduled charge failed (see NEEDS_REVIEW_LABELS.reservation_charge_failed,
@@ -2437,33 +2525,50 @@ exports.chargeScheduledReservations = onSchedule({
 // than once if it fails again.
 exports.retryReservationCharge = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
   await assertIsAdmin(request.auth);
-  const { overnightId } = request.data || {};
-  if (!overnightId) throw new HttpsError('invalid-argument', 'overnightId is required.');
+  // overnightId for pet sitting; submissionId for a one-time walk, whose
+  // scheduled charge lives on its submission (runServiceOrOvernightCharge).
+  const { overnightId, submissionId } = request.data || {};
+  if (!overnightId && !submissionId) throw new HttpsError('invalid-argument', 'overnightId or submissionId is required.');
+  const kind = overnightId ? 'overnight' : 'walk';
+  const attemptField = kind === 'overnight' ? 'chargeAttempt' : 'lastChargeAttempt';
 
-  const ref = db.collection('overnights').doc(overnightId);
+  const ref = kind === 'overnight'
+    ? db.collection('overnights').doc(overnightId)
+    : db.collection('submissions').doc(submissionId);
   const snap = await ref.get();
   const data = snap.data();
   if (!data) throw new HttpsError('not-found', 'Reservation not found.');
-  if (!CHARGEABLE_OVERNIGHT_STATUSES.includes(data.status)) {
-    throw new HttpsError('failed-precondition', `This reservation's status (${data.status}) can't be charged.`);
+  if (kind === 'overnight') {
+    if (!CHARGEABLE_OVERNIGHT_STATUSES.includes(data.status)) {
+      throw new HttpsError('failed-precondition', `This reservation's status (${data.status}) can't be charged.`);
+    }
+  } else {
+    if (!data.chargePending) {
+      throw new HttpsError('failed-precondition', "This walk has no scheduled charge to retry.");
+    }
+    if (!(await scheduledWalkStillBooked({ ...data, id: snap.id }))) {
+      throw new HttpsError('failed-precondition', "This walk is no longer on the calendar, so there's nothing to charge.");
+    }
   }
-  if (data.chargeAttempt?.status === 'charged') {
+  if (data[attemptField]?.status === 'charged') {
     throw new HttpsError('failed-precondition', 'This reservation was already charged.');
   }
   // Settled outside this system (dismissBillingReview, after an admin charged
   // the card directly in Stripe). chargePending is already false so the button
   // shouldn't render at all — this is the defensive half, since charging here
   // would be charging a member who has already paid.
-  if (data.chargeAttempt?.status === 'resolved_externally') {
+  if (data[attemptField]?.status === 'resolved_externally') {
     throw new HttpsError('failed-precondition', 'This reservation was already settled outside the app — it was marked resolved when its review flag was dismissed. Charging here would double-charge the member.');
   }
   // Only a reservation whose scheduled charge has actually FAILED can be
   // retried — the same failure markers dismissBillingReview keys off
   // (chargeRetry.count from the sweep, which also covers failures that never
-  // reached Stripe; chargeAttempt.status 'failed' for older and manual-retry
-  // failures). Without this, a reservation that simply isn't due yet could be
-  // charged early from here; it will charge on schedule by itself.
-  const hasFailed = (data.chargeRetry?.count || 0) > 0 || data.chargeAttempt?.status === 'failed';
+  // reached Stripe; the attempt field's status 'failed' for older and
+  // manual-retry failures). Without this, a reservation that simply isn't
+  // due yet could be charged early from here; it will charge on schedule by
+  // itself. One that's only waiting on a card isn't failed either — it
+  // charges by itself once the card is added.
+  const hasFailed = (data.chargeRetry?.count || 0) > 0 || data[attemptField]?.status === 'failed';
   if (!hasFailed) {
     throw new HttpsError('failed-precondition', "This reservation's charge hasn't failed — it will charge automatically when it's due. Nothing to retry.");
   }
@@ -2472,21 +2577,17 @@ exports.retryReservationCharge = onCall({ secrets: [STRIPE_SECRET_KEY] }, async 
   // constant idempotency key made a rapid re-click replay the cached decline
   // instead of re-presenting the card. Now that a retry is a real attempt,
   // the rail has to be explicit.
-  const lastFailedAt = data.chargeAttempt?.failedAt?.toDate ? data.chargeAttempt.failedAt.toDate() : null;
+  const lastFailedAt = data[attemptField]?.failedAt?.toDate ? data[attemptField].failedAt.toDate() : null;
   if (lastFailedAt && (Date.now() - lastFailedAt.getTime()) / (60 * 1000) < MANUAL_CHARGE_RETRY_MIN_MINUTES) {
     throw new HttpsError('failed-precondition', `This charge failed less than ${MANUAL_CHARGE_RETRY_MIN_MINUTES} minutes ago. Give it a few minutes before retrying — if the card itself is the problem, it needs fixing first, since an immediate retry will just decline again.`);
   }
 
   const stripe = stripeClient(STRIPE_SECRET_KEY.value());
-  const isCheckin = data.serviceType === 'checkin' || data.serviceType === 'drop-in-visit';
-  await chargeCustomerCard(stripe, ref, data, {
-    chargeKey: `scheduled-reservation:${overnightId}`,
-    amountInDollars: (data.confirmedTotalCents || 0) / 100,
-    description: `Port City Leash Club - ${isCheckin ? 'Drop-In Visits' : 'Overnight Stay'}`,
-    attemptField: 'chargeAttempt',
-    giftBooking: giftBookingFromOvernight(data),
-  });
-  await ref.set({ chargePending: false }, { merge: true });
+  await chargeCustomerCard(stripe, ref, data, await scheduledChargeParams(kind, snap.id, data));
+  await ref.set({
+    chargePending: false, chargeAwaitingCard: false,
+    ...(kind === 'walk' ? { paymentStatus: 'charged' } : {}),
+  }, { merge: true });
 
   // Only clears the review flag on an EXACT reason match — same posture as
   // confirmCardOnFile/getCardOnFile's own needsReview clears — so this
@@ -2865,6 +2966,30 @@ exports.dismissBillingReview = onCall({}, async (request) => {
         },
       }, { merge: true }).catch(e => {
         console.error(`dismissBillingReview: failed to clear chargePending on overnights/${resDoc.id}:`, e.message);
+      });
+    }
+    // Same for a one-time walk's scheduled charge, which sits on its
+    // submission and records its attempts in lastChargeAttempt.
+    const pendingWalkSnap = await db.collection('submissions')
+      .where('memberId', '==', memberId)
+      .where('chargePending', '==', true)
+      .get();
+    for (const subDoc of pendingWalkSnap.docs) {
+      const subData = subDoc.data() || {};
+      if (subData.lastChargeAttempt?.status === 'charged') continue;
+      const hasFailed = (subData.chargeRetry?.count || 0) > 0
+        || subData.lastChargeAttempt?.status === 'failed';
+      if (!hasFailed) continue;
+      await subDoc.ref.set({
+        chargePending: false,
+        lastChargeAttempt: {
+          ...(subData.lastChargeAttempt || {}),
+          status: 'resolved_externally',
+          resolvedBy: request.auth.uid,
+          resolvedAt: FieldValue.serverTimestamp(),
+        },
+      }, { merge: true }).catch(e => {
+        console.error(`dismissBillingReview: failed to clear chargePending on submissions/${subDoc.id}:`, e.message);
       });
     }
   }
@@ -7016,7 +7141,43 @@ async function runServiceOrOvernightCharge(sub, submissionId, memberId, reviewed
     return { paymentStatus: 'scheduled', chargeScheduledFor, chargeTiming };
   }
 
-  // Immediate charge — a walk.
+  // A one-time walk is charged by the same scheduled sweep as pet sitting
+  // (chargeScheduledReservations), 24 hours after confirming — the same grace
+  // period, the same automatic retries, and a member with no card yet is
+  // simply waited on instead of failing once at confirm with nothing
+  // retrying it after they add one. Until 2026-11 walks charged right here.
+  // The charge is scheduled on this submission (the doc a walk's charge has
+  // always been recorded on), keyed by submissionId as before.
+  const isWalk = !isOvernightRequest && SERVICE_PRICES[serviceKey]?.unit === 'walk';
+  if (isWalk) {
+    // A re-run (finalize retry after a failed email) keeps the schedule
+    // already written rather than pushing the charge date back.
+    if (sub.lastChargeAttempt?.status === 'charged' || sub.paymentStatus === 'charged') {
+      return { paymentStatus: 'charged', chargeScheduledFor: null };
+    }
+    if (!(reviewed.amountInDollars > 0)) {
+      await subRef.set({ paymentStatus: 'skipped', chargePending: false }, { merge: true });
+      return { paymentStatus: 'skipped', chargeScheduledFor: null };
+    }
+    if (sub.chargePending && sub.chargeScheduledFor) {
+      return { paymentStatus: 'scheduled', chargeScheduledFor: sub.chargeScheduledFor };
+    }
+    // A walk whose charge-at-confirm already failed before this change (an
+    // admin Retry lands here) is due now, not another 24 hours out.
+    const chargeScheduledFor = (sub.lastChargeAttempt?.status === 'failed' || sub.paymentStatus === 'failed')
+      ? Timestamp.now()
+      : Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
+    await subRef.set({
+      paymentStatus: 'scheduled',
+      chargePending: true,
+      chargeScheduledFor,
+      confirmedTotalCents: Math.round(reviewed.amountInDollars * 100),
+    }, { merge: true });
+    return { paymentStatus: 'scheduled', chargeScheduledFor };
+  }
+
+  // Immediate charge — only a service key SERVICE_PRICES doesn't know
+  // (neither a walk nor a night), which no current form produces.
   // amountInDollars <= 0 means nothing to charge (no card, or admin zeroed
   // it out) — chargeAndTrackPayment's exact contract, preserved here.
   let paymentStatus, chargeError = null, creditApplied = 0, referralDiscountApplied = 0;
@@ -7099,8 +7260,13 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
   // for a scheduled one (every pet-sitting reservation), previewed from the
   // member's billing doc with the same math the charge will use.
   const isScheduledCharge = chargeResult.paymentStatus === 'scheduled';
+  // A walk has no overnights doc to read its gift package booking from; use
+  // the same booking its scheduled charge passes (scheduledChargeParams).
+  const walkGiftBooking = isWalk
+    ? { serviceKey, visits: Math.max(reviewed.unitCount || 1, 1), travelDiscountApplied: false }
+    : null;
   const credits = isScheduledCharge
-    ? await previewChargeCredits(memberId, reviewed.amountInDollars, await giftBookingForSubmission(submissionId))
+    ? await previewChargeCredits(memberId, reviewed.amountInDollars, walkGiftBooking || await giftBookingForSubmission(submissionId))
     : { creditApplied: chargeResult.creditApplied || 0, referralDiscountApplied: chargeResult.referralDiscountApplied || 0 };
   const hasCredits = credits.creditApplied > 0 || credits.referralDiscountApplied > 0;
 
@@ -7157,6 +7323,11 @@ async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, member
       walkTypeLabel: serviceInfo?.name || 'Walk',
       durationMinutes: serviceInfo?.minutes || 30,
       walks: [{ dateStr: startDateStr, slot: reviewed.timeSlot }],
+      // When the scheduled charge runs (chargeScheduledReservations) and
+      // what it takes after credits — the same preview pet sitting shows.
+      chargeDateStr: isScheduledCharge && chargeResult.chargeScheduledFor?.toDate
+        ? isoDateStr(chargeResult.chargeScheduledFor.toDate()) : null,
+      chargeAmountDollars: Math.max(0, Math.round(((reviewed.amountInDollars || 0) - credits.creditApplied - credits.referralDiscountApplied) * 100) / 100),
       needsCard, addCardUrl,
     };
   } else {
@@ -7430,24 +7601,11 @@ async function finalizeSubmissionIfReady(submissionId, { viaExplicitRetry = fals
       }
       emailResult = await sendMembershipConfirmationEmail(sub.memberId, submissionId);
     } else {
-      // Flagged immediately, not left to surface only when the eventual
-      // charge attempt fails — a scheduled reservation (check-in/overnight)
-      // doesn't even ATTEMPT a charge for another 24 hours, so without this,
-      // admin would have no way to know a card is needed until then. Never
-      // overwrites an existing, still-unresolved needsReview reason, same
-      // posture as recordFinalizeFailure's own write.
-      if (!cardOnFile) {
-        try {
-          const billingSnapNow = await billingRef(sub.memberId).get();
-          if (!billingSnapNow.data()?.needsReview) {
-            await billingRef(sub.memberId).set({
-              needsReview: true, needsReviewReason: 'no_card_on_file',
-            }, { merge: true });
-          }
-        } catch (e) {
-          console.error(`finalizeSubmissionIfReady: failed to flag no_card_on_file for ${sub.memberId}:`, e.message);
-        }
-      }
+      // No "No card on file" flag here any more: every walk and pet sitting
+      // booking is charged later by chargeScheduledReservations, and that is
+      // where a missing card is flagged — when the charge actually comes
+      // due, not the moment admin confirms (a new member usually hasn't had
+      // the chance to add one yet). The confirmation email still asks them to.
       const chargeResult = await runServiceOrOvernightCharge(sub, submissionId, sub.memberId, sub);
       emailResult = await sendServiceOrOvernightConfirmationEmail(sub, submissionId, sub.memberId, sub, chargeResult, cardOnFile);
       if (chargeResult.paymentStatus === 'failed') {

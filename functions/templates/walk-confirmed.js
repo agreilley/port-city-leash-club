@@ -20,6 +20,9 @@
 //     // only); confirmWalkExtension's own calls never pass this, so it degrades to no note, which is
 //     // correct there — an extension is already charged by the time this email sends.
 //   addCardUrl: string|undefined, // portal-account.html's Update Payment Method flow; required when needsCard is true
+//   chargeDateStr: string|null|undefined, // 'YYYY-MM-DD' the scheduled charge runs (24h after confirming);
+//     // only sendServiceOrOvernightConfirmationEmail passes it. Absent → no charge line.
+//   chargeAmountDollars: number|undefined, // what that charge takes, after credits
 // }
 
 const {
@@ -46,6 +49,17 @@ async function formatWalkWhen(w) {
   if (bucket) return `${dateLabel}, ${bucket.toLowerCase()}`;
   const clock = formatMeetGreetSlot(w.slot);
   return clock ? `${dateLabel} at ${clock}` : dateLabel;
+}
+
+// "Your card will be charged $30.00 on Saturday, November 14." Only when a
+// charge date was passed and there's a card to charge; the no-card note
+// covers the other case. A walk fully covered by credit says so instead of
+// "$0.00".
+function chargeLine(data) {
+  if (data.needsCard || !data.chargeDateStr) return null;
+  const date = formatCalendarDate(data.chargeDateStr) || data.chargeDateStr;
+  if (!(data.chargeAmountDollars > 0)) return `Your account credit covers this walk, so your card won't be charged.`;
+  return `Your card will be charged $${data.chargeAmountDollars.toFixed(2)} on ${date}.`;
 }
 
 async function whenValue(data) {
@@ -100,6 +114,7 @@ async function html(data) {
     <p style="margin:0 0 20px;">Great news, your walk is booked and we've got ${escapeHtml(names)} covered.</p>
     ${block}
     <p style="margin:20px 0 0;">Your walker will send photos and a note afterward so you can see how it went.</p>
+    ${chargeLine(data) ? `<p style="margin:20px 0 0;">${escapeHtml(chargeLine(data))}</p>` : ''}
     ${portalSection}
     ${cardSection}
     <p style="margin:20px 0 0;">${closingLine}</p>
@@ -127,6 +142,7 @@ async function text(data) {
     '',
     `Your walker will send photos and a note afterward so you can see how it went.`,
     '',
+    ...(chargeLine(data) ? [chargeLine(data), ''] : []),
   ];
 
   if (data.isNewAccount && data.portalSetupLink) {

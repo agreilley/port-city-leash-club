@@ -68,7 +68,11 @@ const REASON_INFO = {
   },
   reservation_charge_failed: {
     label: 'Reservation charge failed',
-    blurb: "A confirmed pet sitting reservation's scheduled charge failed. Charge manually in Stripe once resolved.",
+    blurb: "A confirmed reservation's scheduled charge (walk or pet sitting) was declined. It retries on its own for about a week; once the card is fixed you can also use Retry Charge on the member, or charge manually in Stripe.",
+  },
+  no_card_on_file: {
+    label: 'No card on file',
+    blurb: "A confirmed reservation's charge is due, but this member hasn't added a card yet. Nothing has been charged. It charges automatically within 15 minutes of them adding one, and this flag clears on its own then.",
   },
   finalize_charge_failed: {
     label: 'Finalize failed',
