@@ -6351,6 +6351,93 @@ exports.applyReferralCodeToMember = onCall({}, async (request) => {
   return { success: true, discountPercent: result.discountPercent };
 });
 
+// Admin-side fix for a request whose customer has a referral code but didn't
+// enter it on the form (a membership, service, or overnight request). Writes
+// the code onto the submission, the same field the public form would have
+// set, so everything downstream treats it identically:
+//  - no account yet: completeMeetGreetAndCreateAccount copies it onto the
+//    new member's billing doc (and claims a Friends & Family slot).
+//  - account already exists: it's copied onto billing here, the same way,
+//    as long as the member has no code yet and hasn't made a first payment
+//    (referralCreditChecked) — after that the one-time discount is already
+//    decided and adding a code would do nothing.
+// The discount itself is still applied at charge time (computeChargeCredits).
+exports.applyReferralCodeToRequest = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+  const { submissionId, code } = request.data || {};
+  if (!submissionId || typeof code !== 'string' || !code.trim()) {
+    throw new HttpsError('invalid-argument', 'submissionId and code are required.');
+  }
+  const codeId = code.trim().toUpperCase();
+
+  const subRef = db.collection('submissions').doc(submissionId);
+  const subSnap = await subRef.get();
+  if (!subSnap.exists) throw new HttpsError('not-found', 'Request not found.');
+  const sub = subSnap.data();
+  if (!['membership_request', 'service_request', 'overnight_request'].includes(sub.type)) {
+    throw new HttpsError('failed-precondition', 'Referral codes only apply to membership and pet sitting requests.');
+  }
+  if (sub.status === 'declined') {
+    throw new HttpsError('failed-precondition', 'This request was declined.');
+  }
+  if (sub.referredByCode) {
+    throw new HttpsError('failed-precondition', `This request already has code ${sub.referredByCode}.`);
+  }
+
+  const codeSnap = await db.collection('referralCodes').doc(codeId).get();
+  if (!codeSnap.exists) throw new HttpsError('not-found', `No code "${codeId}" found.`);
+  const codeData = codeSnap.data();
+  if (codeData.status !== 'active') throw new HttpsError('failed-precondition', 'This code is not active.');
+  if (isReferralCodeExpired(codeData)) throw new HttpsError('failed-precondition', 'This code has expired.');
+  const isFriendsFamily = codeData.source === 'friends_family';
+  if (isFriendsFamily) {
+    const max = Number.isInteger(codeData.maxRedemptions) ? codeData.maxRedemptions : 0;
+    const count = Number.isInteger(codeData.redemptionCount) ? codeData.redemptionCount : 0;
+    if (count >= max) throw new HttpsError('failed-precondition', 'This code has already reached its redemption limit.');
+  }
+
+  // Account already exists: attach to billing now, since the account-
+  // creation step that would normally copy it has already run.
+  const memberId = sub.memberId || null;
+  if (memberId) {
+    const billingData = (await billingRef(memberId).get()).data() || {};
+    if (billingData.referredByCode) {
+      throw new HttpsError('failed-precondition', `This member already has code ${billingData.referredByCode} on their account.`);
+    }
+    if (isFriendsFamily) {
+      if (billingData.travelDiscountPercent > 0 || billingData.pendingReferralCredit > 0) {
+        throw new HttpsError('failed-precondition', 'This member already has a discount or credit on file — refusing to stack a second one.');
+      }
+      const result = await claimFriendsFamilyRedemption(codeId, memberId, { redeemedVia: 'admin', submissionId, adminUid: request.auth.uid });
+      if (!result.claimed) throw new HttpsError('failed-precondition', `Couldn't apply this code: ${result.reason}.`);
+    } else {
+      if (billingData.referralCreditChecked) {
+        throw new HttpsError('failed-precondition', "This member has already made their first payment, so a new-client code can't apply anymore.");
+      }
+      await billingRef(memberId).set({ referredByCode: codeId, referralSubmissionId: submissionId }, { merge: true });
+    }
+  }
+
+  await subRef.set({
+    referredByCode: codeId,
+    referralCodeAddedByAdmin: true,
+    referralCodeAddedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  // Friends & Family writes its own redemption doc (keyed by member) when
+  // the slot is claimed; every other code gets the same tracking row a
+  // form-entered code gets.
+  if (!isFriendsFamily) await recordSubmissionReferralRedemption(codeId, submissionId, sub);
+
+  return {
+    success: true,
+    code: codeId,
+    attachedToAccount: !!memberId,
+    source: codeData.source || null,
+    amountCents: isFriendsFamily ? null : (codeData.amountCents ?? 5000),
+    discountPercent: isFriendsFamily ? (codeData.discountPercent || null) : null,
+  };
+});
+
 // ─────────────────────────────────────────────────────────────────────────
 // SECTION 1 — structure only. runServiceOrOvernightBookingDoc and
 // runServiceOrOvernightCharge implement the four charge branches ported
@@ -9643,6 +9730,39 @@ async function sendContactAlert(sub) {
   }
 }
 
+// Records a submission's referral code under referralCodes/{code}/redemptions
+// (doc ID = the submission ID, so a retry overwrites rather than duplicates)
+// and links a matching portal invite as booked. Tracking only — never issues
+// credit. Shared by onNewSubmission (code typed on the form) and
+// applyReferralCodeToRequest (code added by admin afterward). Never throws.
+async function recordSubmissionReferralRedemption(code, submissionId, sub) {
+  try {
+    const codeRef = db.collection('referralCodes').doc(code);
+    const codeSnap = await codeRef.get();
+    if (!codeSnap.exists || codeSnap.data().status !== 'active') return;
+    await codeRef.collection('redemptions').doc(submissionId).set({
+      name: sub.ownerName || sub.name || null,
+      submissionType: sub.type,
+      status: 'invited',
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    // A friend the member invited from the portal (sendReferralInvite)
+    // is now a real request — link the invite to it so the portal and
+    // admin lists show one "Booked" row instead of an invite plus a
+    // redemption for the same person.
+    const subEmail = normalizeEmail(sub.email);
+    if (subEmail) {
+      const inviteRef = codeRef.collection('invites').doc(referralInviteEmailHash(subEmail));
+      const inviteSnap = await inviteRef.get();
+      if (inviteSnap.exists) {
+        await inviteRef.set({ status: 'booked', redemptionId: submissionId }, { merge: true });
+      }
+    }
+  } catch (e) {
+    console.error(`Referral redemption tracking failed for code ${code}:`, e.message);
+  }
+}
+
 exports.onNewSubmission = onDocumentCreated({
   document: 'submissions/{submissionId}',
   secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, RESEND_API_KEY],
@@ -9662,32 +9782,7 @@ exports.onNewSubmission = onDocumentCreated({
   // doc ID is the submission's own ID, so a retried trigger delivery
   // overwrites the same doc instead of creating a duplicate.
   if (sub.referredByCode) {
-    try {
-      const codeRef = db.collection('referralCodes').doc(sub.referredByCode);
-      const codeSnap = await codeRef.get();
-      if (codeSnap.exists && codeSnap.data().status === 'active') {
-        await codeRef.collection('redemptions').doc(event.params.submissionId).set({
-          name: sub.ownerName || sub.name || null,
-          submissionType: sub.type,
-          status: 'invited',
-          createdAt: FieldValue.serverTimestamp(),
-        });
-        // A friend the member invited from the portal (sendReferralInvite)
-        // is now a real request — link the invite to it so the portal and
-        // admin lists show one "Booked" row instead of an invite plus a
-        // redemption for the same person.
-        const subEmail = normalizeEmail(sub.email);
-        if (subEmail) {
-          const inviteRef = codeRef.collection('invites').doc(referralInviteEmailHash(subEmail));
-          const inviteSnap = await inviteRef.get();
-          if (inviteSnap.exists) {
-            await inviteRef.set({ status: 'booked', redemptionId: event.params.submissionId }, { merge: true });
-          }
-        }
-      }
-    } catch (e) {
-      console.error(`Referral redemption tracking failed for code ${sub.referredByCode}:`, e.message);
-    }
+    await recordSubmissionReferralRedemption(sub.referredByCode, event.params.submissionId, sub);
   }
 
   // Requester-facing "we got your request" email, routed by submission

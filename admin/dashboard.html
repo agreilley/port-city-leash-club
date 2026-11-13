@@ -3345,6 +3345,67 @@ function tentativeWalkersSectionHTML(r) {
   </div>`;
 }
 
+// Referral code on a membership / pet sitting request: shows the one on
+// file, or lets admin add one the customer forgot to enter
+// (applyReferralCodeToRequest, functions/index.js). The discount itself is
+// still taken off at charge time, same as a code typed on the form.
+function requestReferralCodeSectionHTML(r) {
+  if (!r || !['membership_request', 'service_request', 'overnight_request'].includes(r.type)) return '';
+  if (r.status === 'declined') return '';
+  const box = (inner) => `<div id="request-referral-code" style="background:#F7F8FA;border:1px solid rgba(0,0,0,0.08);border-radius:8px;padding:12px 14px;margin-top:14px;">
+    <div style="font-weight:500;font-size:13px;color:var(--navy);margin-bottom:6px;">Referral code</div>${inner}</div>`;
+  if (r.referredByCode) {
+    return box(`<div style="font-size:13px;color:var(--navy);"><strong>${escapeHtml(r.referredByCode)}</strong>${r.referralCodeAddedByAdmin ? ' <span style="font-size:12px;color:var(--text-light);">(added by you)</span>' : ''}</div>`);
+  }
+  return box(`
+    <div style="font-size:12px;color:var(--text-light);margin-bottom:8px;">None entered. If they have one, add it here and it comes off their first charge.</div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <input type="text" id="requestReferralCodeInput" placeholder="Referral code" style="flex:1;padding:6px 8px;font-size:13px;border:1px solid var(--border);border-radius:4px;text-transform:uppercase;">
+      <button class="btn-secondary" id="requestReferralCodeBtn" style="padding:4px 12px;font-size:12px;white-space:nowrap;" onclick="addReferralCodeToRequest('${escapeHtml(r.id)}')">Add Code</button>
+    </div>
+    <div id="requestReferralCodeResult" style="font-size:12px;margin-top:6px;"></div>`);
+}
+
+window.addReferralCodeToRequest = async (requestId) => {
+  const input = document.getElementById('requestReferralCodeInput');
+  const btn = document.getElementById('requestReferralCodeBtn');
+  const resultEl = document.getElementById('requestReferralCodeResult');
+  const code = input?.value.trim().toUpperCase();
+  if (!code) return;
+  if (!confirm(`Add referral code "${code}" to this request?`)) return;
+  btn.disabled = true;
+  resultEl.style.color = 'var(--text-light)';
+  resultEl.textContent = 'Adding…';
+  try {
+    const { data } = await httpsCallable(fns, 'applyReferralCodeToRequest')({ submissionId: requestId, code });
+    const what = data.discountPercent
+      ? `${data.discountPercent}% Friends and family discount`
+      : `up to $${(data.amountCents / 100).toFixed(2)} off their first charge (never more than half of it)`;
+    // Patch the cached copies so the modal and the review pricing see the
+    // code before the listeners catch up (a private/billing write never
+    // fires the members listener).
+    const r = allRequests.find(x => x.id === requestId);
+    if (r) { r.referredByCode = data.code; r.referralCodeAddedByAdmin = true; }
+    if (r?.memberId && memberBilling[r.memberId]) {
+      memberBilling[r.memberId] = {
+        ...memberBilling[r.memberId],
+        referredByCode: data.code,
+        ...(data.discountPercent ? { travelDiscountPercent: data.discountPercent, travelDiscountActive: true } : {}),
+      };
+    }
+    const section = document.getElementById('request-referral-code');
+    if (section && r) {
+      section.outerHTML = requestReferralCodeSectionHTML(r);
+      document.getElementById('request-referral-code')?.insertAdjacentHTML('beforeend',
+        `<div style="font-size:12px;color:var(--navy);margin-top:6px;">Added: ${escapeHtml(what)}.</div>`);
+    }
+  } catch (e) {
+    btn.disabled = false;
+    resultEl.style.color = '#b91c1c';
+    resultEl.textContent = e.message;
+  }
+};
+
 // Saves one dropdown. Writes the whole tentativeWalkers map (one admin, and
 // the modal holds the latest copy from the submissions listener). Only the
 // section is redrawn, so nothing typed into the review fields below is lost.
@@ -7224,6 +7285,8 @@ window.openRequestItem = async (id) => {
   // request shows before its account exists.
   const tentativeWalkersHTML = tentativeWalkersSectionHTML(item);
   if (tentativeWalkersHTML) document.getElementById('requestModalContent').insertAdjacentHTML('afterbegin', tentativeWalkersHTML);
+  const referralCodeHTML = requestReferralCodeSectionHTML(item);
+  if (referralCodeHTML) document.getElementById('requestModalContent').insertAdjacentHTML('beforeend', referralCodeHTML);
 
   const actionBtn = document.getElementById('requestActionBtn');
   const declineBtn = document.getElementById('requestDeclineBtn');
