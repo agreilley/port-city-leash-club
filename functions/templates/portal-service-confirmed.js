@@ -4,7 +4,7 @@
 // drop-in, from confirmOvernight() or confirmServiceRequest() (when the
 // service is pet-sitting-family) in admin/dashboard.html. Reused verbatim
 // for BOTH an existing member's portal request AND a brand-new client's
-// first booking after their meet and greet — the only thing that differs
+// first booking after their meet & greet — the only thing that differs
 // is whether a portal-access link is included, since a new client has no
 // other way to ever set a password and log in. Existing members already
 // have portal access, so they get no link at all rather than a redundant
@@ -91,7 +91,7 @@ function html(data) {
   ` : '';
 
   const routineLine = data.isNewAccount
-    ? `We'll follow the routine we went over at your meet and greet, and we'll send you updates along the way so you can relax and enjoy your trip.`
+    ? `We'll follow the routine we went over at your meet &amp; greet, and we'll send you updates along the way so you can relax and enjoy your trip.`
     : `We'll follow your usual routine for feeding, walks, and any medications, and we'll send you updates along the way so you can relax and enjoy your trip.`;
 
   // Same fix as walk-confirmed: the CTA paragraph directly above already
@@ -132,7 +132,7 @@ function text(data) {
   const names = joinNames(data.petNames) || 'your pets';
   const petCount = (data.petNames || []).filter(Boolean).length || 1;
   const routineLine = data.isNewAccount
-    ? `We'll follow the routine we went over at your meet and greet, and we'll send you updates along the way so you can relax and enjoy your trip.`
+    ? `We'll follow the routine we went over at your meet & greet, and we'll send you updates along the way so you can relax and enjoy your trip.`
     : `We'll follow your usual routine for feeding, walks, and any medications, and we'll send you updates along the way so you can relax and enjoy your trip.`;
 
   const lines = [

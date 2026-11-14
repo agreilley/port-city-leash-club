@@ -6,7 +6,7 @@
 // Visit); can also be a single extra walk, which has no endDateStr (Dates
 // shows one day) and a null unitCount (no Length row). Extending an
 // existing walk is different: see portal-walk-request-received, sourced
-// from walk_extension submissions. No meet and greet section, unlike
+// from walk_extension submissions. No meet & greet section, unlike
 // the public-form templates: an existing member has already had one.
 //
 // data: {

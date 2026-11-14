@@ -8,7 +8,7 @@
 // phrasing renders, walk-flavored copy modeled on
 // membership-request-received's already-approved language, since a
 // brand-new client can request a standalone walk through this same form
-// with its own meet and greet.
+// with its own meet & greet.
 //
 // data: {
 //   firstName: string,
@@ -62,21 +62,21 @@ function html(data) {
   const mg = buildMeetGreet(data);
 
   const meetGreetBlock = mg ? renderBlockHtml({
-    eyebrow: 'Your meet and greet',
+    eyebrow: 'Your meet & greet',
     heading: `${escapeHtml(mg.dateLabel)} at ${escapeHtml(mg.slotLabel)}`,
     rows: [
       { label: 'Where', value: `your home${data.address ? ` at ${escapeHtml(data.address)}` : ''}` },
     ],
   }) : `
     <p style="margin:24px 0;padding:20px 24px;background-color:${SAND};border-radius:4px;font-size:14px;color:${NAVY};">
-      We don't have a meet and greet on the calendar yet. We'll reach out shortly to find a time that works.
+      We don't have a meet &amp; greet on the calendar yet. We'll reach out shortly to find a time that works.
     </p>
   `;
 
   const body = `
     <p style="margin:0 0 20px;">Hi ${escapeHtml(data.firstName || 'there')},</p>
     <p style="margin:0 0 20px;">Thanks so much for reaching out about ${escapeHtml(c.reachedOutAbout)}. We've got your request and we're looking over ${c.lookingOverWhat} now.</p>
-    <p style="margin:0 0 20px;">The next step is your meet and greet, a quick, friendly visit ${c.nextStepFraming}.</p>
+    <p style="margin:0 0 20px;">The next step is your meet &amp; greet, a quick, friendly visit ${c.nextStepFraming}.</p>
     ${meetGreetBlock}
     <p style="margin:20px 0 0;">Alison, our founder, will come by to meet ${escapeHtml(c.names)} and ${c.visitPurpose}. It's a great time to ask any questions you have. We'll also go over how to get in for ${c.futureVisitsNoun}, whether that's a spare key, a lockbox, or a door code.</p>
     <p style="margin:20px 0 0;">${c.confirmLine}</p>
@@ -85,7 +85,7 @@ function html(data) {
   `;
 
   return wrapHtml({
-    preheader: mg ? `Your meet and greet is set for ${mg.dateLabel} at ${mg.slotLabel}.` : `We've got your request and we're looking it over now.`,
+    preheader: mg ? `Your meet & greet is set for ${mg.dateLabel} at ${mg.slotLabel}.` : `We've got your request and we're looking it over now.`,
     bodyHtml: body,
   });
 }
@@ -99,20 +99,20 @@ function text(data) {
     '',
     `Thanks so much for reaching out about ${c.reachedOutAbout}. We've got your request and we're looking over ${c.lookingOverWhat} now.`,
     '',
-    `The next step is your meet and greet, a quick, friendly visit ${c.nextStepFraming}.`,
+    `The next step is your meet & greet, a quick, friendly visit ${c.nextStepFraming}.`,
     '',
   ];
 
   if (mg) {
     lines.push(renderBlockText({
-      eyebrow: 'Your meet and greet',
+      eyebrow: 'Your meet & greet',
       heading: `${mg.dateLabel} at ${mg.slotLabel}`,
       rows: [
         { label: 'Where', value: `your home${data.address ? ` at ${data.address}` : ''}` },
       ],
     }), '');
   } else {
-    lines.push(`We don't have a meet and greet on the calendar yet. We'll reach out shortly to find a time that works.`, '');
+    lines.push(`We don't have a meet & greet on the calendar yet. We'll reach out shortly to find a time that works.`, '');
   }
 
   lines.push(

@@ -4,7 +4,7 @@
 // from the same place that email always fired from — the Convert-to-Member
 // flow in admin/dashboard.html, which is already gated behind the
 // meetGreetCompletedAt checkbox, so this already only ever sends after the
-// meet and greet is done. Intentionally warmer than the request-received
+// meet & greet is done. Intentionally warmer than the request-received
 // templates: this is the "you're in" moment, not a status update.
 //
 // Always a genuinely new account (Convert-to-Member always creates one), so

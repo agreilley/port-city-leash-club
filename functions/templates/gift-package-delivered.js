@@ -13,18 +13,18 @@ const {
 
 const REQUEST_URL = 'https://www.portcityleashclub.com/service-request';
 const STEPS = [
-  "Request your first visit using the link below. We'll set up a free meet and greet so we can get to know you and your pet.",
-  "After your meet and greet, we'll send you a link to set up your account. Sign in, go to Account, and enter your code under Gift Packages. If you'd rather we do it for you, just reply to this email.",
-  'Your visits come off your bookings automatically when they are charged.',
+  "Request your first visit using the link below. We'll set up a free meet & greet so we can get to know you and your pet.",
+  "After your meet & greet, we'll send you a link to set up your account. Sign in, go to Account, and enter your code under Gift packages. If you'd rather we add it for you, just reply to this email.",
+  "Once it's on your account, we'll apply it to your bookings automatically.",
 ];
-const TERMS = 'Your gift covers the standard price of each visit on one-time bookings and does not expire. Holiday rates, extra pets, medication, and 45-minute walks are extra, and it doesn\'t apply to regular Leash Club membership walks. It has no cash value and can only be used for Port City Leash Club services.';
+const TERMS = 'Your gift covers the standard price of each visit and never expires. Add-ons and holiday rates are extra. It has no cash value and can only be used for Port City Leash Club services.';
 
 function firstName(name) {
   return (name || '').trim().split(/\s+/)[0] || 'there';
 }
 
 function subject(data) {
-  return `${data.buyerName} sent you a gift from Port City Leash Club`;
+  return `A gift for you from ${data.buyerName}`;
 }
 
 function html(data) {
@@ -38,7 +38,7 @@ function html(data) {
   });
   const body = `
     <p style="margin:0 0 20px;">Hi ${escapeHtml(firstName(data.recipientName))},</p>
-    <p style="margin:0 0 20px;">${escapeHtml(data.buyerName)} sent you pet care from Port City Leash Club, a dog walking and pet sitting team in Wilmington, NC.</p>
+    <p style="margin:0 0 20px;">${escapeHtml(data.buyerName)} bought you a gift from Port City Leash Club, a dog walking and pet sitting team in Wilmington, NC. We can't wait to meet you and your pet!</p>
     ${block}
     ${renderCodeBlockHtml(data.code)}
     <p style="margin:0 0 12px;">Here's how to use it:</p>
@@ -56,7 +56,7 @@ function text(data) {
   const lines = [
     `Hi ${firstName(data.recipientName)},`,
     '',
-    `${data.buyerName} sent you pet care from Port City Leash Club, a dog walking and pet sitting team in Wilmington, NC.`,
+    `${data.buyerName} bought you a gift from Port City Leash Club, a dog walking and pet sitting team in Wilmington, NC. We can't wait to meet you and your pet!`,
     '',
     renderBlockText({
       eyebrow: 'Your gift',

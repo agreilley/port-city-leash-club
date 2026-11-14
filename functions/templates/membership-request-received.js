@@ -2,8 +2,8 @@
 //
 // Sent the moment a membership_request submission is created (see
 // onNewSubmission in functions/index.js). Confirms the request landed and
-// hands over everything needed to show up for the meet and greet, since
-// it's booked at submission time via the same form. If no meet and greet is
+// hands over everything needed to show up for the meet & greet, since
+// it's booked at submission time via the same form. If no meet & greet is
 // on file (the calendar picker had no availability, or the requester
 // skipped it), that section is dropped for a plain "we'll be in touch" line
 // rather than rendering broken/blank details.
@@ -43,21 +43,21 @@ function html(data) {
   const mg = buildMeetGreet(data);
 
   const meetGreetBlock = mg ? renderBlockHtml({
-    eyebrow: 'Your meet and greet',
+    eyebrow: 'Your meet & greet',
     heading: `${escapeHtml(mg.dateLabel)} at ${escapeHtml(mg.slotLabel)}`,
     rows: [
       { label: 'Where', value: `your home${data.address ? ` at ${escapeHtml(data.address)}` : ''}` },
     ],
   }) : `
     <p style="margin:24px 0;padding:20px 24px;background-color:${SAND};border-radius:4px;font-size:14px;color:${NAVY};">
-      We don't have a meet and greet on the calendar yet. We'll reach out shortly to find a time that works.
+      We don't have a meet &amp; greet on the calendar yet. We'll reach out shortly to find a time that works.
     </p>
   `;
 
   const body = `
     <p style="margin:0 0 20px;">Hi ${escapeHtml(data.firstName || 'there')},</p>
     <p style="margin:0 0 20px;">Thanks so much for reaching out about ${planPhrase(data.tier)} for ${namesEsc}. We've got your request and we're looking over the details now.</p>
-    <p style="margin:0 0 20px;">The next step is your meet and greet, a quick, friendly visit before your walks begin.</p>
+    <p style="margin:0 0 20px;">The next step is your meet &amp; greet, a quick, friendly visit before your walks begin.</p>
     ${meetGreetBlock}
     <p style="margin:20px 0 0;">Alison, our founder, will come by to meet ${namesEsc} and walk you through how everything works. It's a great time to ask any questions you have. We'll also go over how to get in for future walks, whether that's a spare key, a lockbox, or a door code.</p>
     <p style="margin:20px 0 0;">We won't start your membership or any billing until after we've met. From there, we'll get your walks on the calendar and you'll be all set.</p>
@@ -66,7 +66,7 @@ function html(data) {
   `;
 
   return wrapHtml({
-    preheader: mg ? `Your meet and greet is set for ${mg.dateLabel} at ${mg.slotLabel}.` : `We've got your membership request and we're looking it over now.`,
+    preheader: mg ? `Your meet & greet is set for ${mg.dateLabel} at ${mg.slotLabel}.` : `We've got your membership request and we're looking it over now.`,
     bodyHtml: body,
   });
 }
@@ -80,20 +80,20 @@ function text(data) {
     '',
     `Thanks so much for reaching out about ${planPhrase(data.tier)} for ${names}. We've got your request and we're looking over the details now.`,
     '',
-    `The next step is your meet and greet, a quick, friendly visit before your walks begin.`,
+    `The next step is your meet & greet, a quick, friendly visit before your walks begin.`,
     '',
   ];
 
   if (mg) {
     lines.push(renderBlockText({
-      eyebrow: 'Your meet and greet',
+      eyebrow: 'Your meet & greet',
       heading: `${mg.dateLabel} at ${mg.slotLabel}`,
       rows: [
         { label: 'Where', value: `your home${data.address ? ` at ${data.address}` : ''}` },
       ],
     }), '');
   } else {
-    lines.push(`We don't have a meet and greet on the calendar yet. We'll reach out shortly to find a time that works.`, '');
+    lines.push(`We don't have a meet & greet on the calendar yet. We'll reach out shortly to find a time that works.`, '');
   }
 
   lines.push(

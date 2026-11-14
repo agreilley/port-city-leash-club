@@ -1,12 +1,12 @@
 // functions/templates/meet-greet-reminder.js
 //
-// Sent 24 hours before a booked meet and greet — see sendMeetGreetReminders,
+// Sent 24 hours before a booked meet & greet — see sendMeetGreetReminders,
 // functions/index.js. A short heads-up with the time and place. Entry is
 // framed as something to go over together, not "we'll take your spare key":
 // many clients leave a key under the mat or similar for the first visit
 // instead (Alison, 2026-11-13).
 //
-// Goes to every submission with a meet and greet in the next 24 hours:
+// Goes to every submission with a meet & greet in the next 24 hours:
 // membership requests, public service requests, and the admin "+ Add meet &
 // greet" placeholders (type 'meet_greet', which carry no pet names — the copy
 // reads fine without them).
@@ -46,7 +46,7 @@ function paragraphs(data) {
   const names = joinNames(data.petNames);
   const { slotLabel } = when(data);
   return {
-    opening: `Just a reminder that your meet and greet is ${dayWord(data)} at ${slotLabel}.`,
+    opening: `Just a reminder that your meet & greet is ${dayWord(data)} at ${slotLabel}.`,
     visit: `Alison, our founder, will come by to meet ${names || 'everyone'} and walk you through how everything works. It's also a good time to go over how we'll get in for future visits, whether that's a spare key, a lockbox, or a door code.`,
     reschedule: `If something has come up and ${data.isToday ? 'that time' : 'tomorrow'} no longer works, just reply to this email and we'll find a new time.`,
     closing: meetClosingLine(data.petNames),
@@ -56,7 +56,7 @@ function paragraphs(data) {
 function block(data, esc) {
   const { dateLabel, slotLabel } = when(data);
   return {
-    eyebrow: 'Your meet and greet',
+    eyebrow: 'Your meet & greet',
     heading: `${esc(dateLabel)} at ${esc(slotLabel)}`,
     rows: [
       { label: 'Where', value: `your home${data.address ? ` at ${esc(data.address)}` : ''}` },
@@ -77,7 +77,7 @@ function html(data) {
     ${renderSignoffHtml(TEAM_SIGNOFF)}
   `;
   return wrapHtml({
-    preheader: `Your meet and greet is ${dayWord(data)} at ${slotLabel}.`,
+    preheader: `Your meet & greet is ${dayWord(data)} at ${slotLabel}.`,
     bodyHtml: body,
   });
 }

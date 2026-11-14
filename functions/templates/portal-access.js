@@ -1,7 +1,7 @@
 // functions/templates/portal-access.js
 //
 // Sent by completeMeetGreetAndCreateAccount the moment a portal account is
-// created — after the meet and greet, before any card or billing exists.
+// created — after the meet & greet, before any card or billing exists.
 // Replaces the old member-welcome.js, which fired at Convert-to-Member (a
 // moment that used to also start billing in the same step) and assumed a
 // schedule/walks already existed. Account creation is now decoupled from

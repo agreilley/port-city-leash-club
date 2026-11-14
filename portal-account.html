@@ -459,7 +459,7 @@
     <!-- Main Content -->
     <div class="main-content">
       <div class="page-header">
-        <h1>Account Settings</h1>
+        <h1>Account settings</h1>
         <p>Manage your membership and preferences</p>
       </div>
 
@@ -468,7 +468,7 @@
 
       <!-- Membership Snapshot -->
       <div class="section-card">
-        <h2 class="section-title">Your Membership</h2>
+        <h2 class="section-title">Your membership</h2>
         <div class="membership-card">
           <div class="membership-header">
             <div>
@@ -489,7 +489,7 @@
            hidden and switched between its two states (request form vs. pending
            notice) by loadPageData(), below. -->
       <div class="section-card" id="become-member" style="display:none;">
-        <h2 class="section-title">Become a Leash Club Member</h2>
+        <h2 class="section-title">Become a Leash Club member</h2>
         <p style="font-size: 13px; color: #7A7A7A; margin-bottom: 20px;">Add recurring dog walks to your account. Tell us your preferred days and time — we'll confirm and get your first walks on the calendar.</p>
 
         <div id="become-member-form">
@@ -550,7 +550,7 @@
 
       <!-- Default Walk Schedule -->
       <div class="section-card" id="walk-schedule">
-        <h2 class="section-title">Default Walk Schedule</h2>
+        <h2 class="section-title">Default walk schedule</h2>
         <p style="font-size: 13px; color: #7A7A7A; margin-bottom: 20px;">Changes take effect starting the first of next month</p>
 
         <div class="field-group" style="margin-bottom: 20px;">
@@ -594,7 +594,7 @@
 
       <!-- Billing & Payment -->
       <div class="section-card">
-        <h2 class="section-title">Billing & Payment</h2>
+        <h2 class="section-title">Billing & payment</h2>
 
         <!-- Always shown, not conditional on card state — the point is to
              set expectations before a member ever wonders "did that go
@@ -627,7 +627,7 @@
            see visits left (getGiftPackages). Visits come off one-time bookings
            automatically when they're charged. -->
       <div class="section-card">
-        <h2 class="section-title">Gift Packages</h2>
+        <h2 class="section-title">Gift packages</h2>
         <div id="giftPackageList" style="font-size:14px; color:#4A4A4A; margin-bottom:16px;">Loading…</div>
         <div class="field-row">
           <div class="field-group">
@@ -645,7 +645,7 @@
            straight from Firestore) and past payments (Stripe invoices +
            PaymentIntents, via getPaymentHistory). See loadPaymentHistory(). -->
       <div class="section-card">
-        <h2 class="section-title">Payment History</h2>
+        <h2 class="section-title">Payment history</h2>
 
         <div id="upcomingPaymentsBlock" style="display:none;">
           <div class="payment-section-label">Upcoming</div>
@@ -660,7 +660,7 @@
 
       <!-- Personal Information -->
       <div class="section-card">
-        <h2 class="section-title">Personal Information</h2>
+        <h2 class="section-title">Personal information</h2>
 
         <div class="field-row">
           <div class="field-group">
@@ -699,7 +699,7 @@
 
       <!-- Password & Security -->
       <div class="section-card">
-        <h2 class="section-title">Password & Security</h2>
+        <h2 class="section-title">Password & security</h2>
 
         <p style="font-size: 13px; color: #7A7A7A; margin-bottom: 16px;">Change the password you use to sign in to your member portal.</p>
 
@@ -717,7 +717,7 @@
            the end of a settings page, not interrupting the Personal
            Information → Password & Security pair above it. -->
       <div class="section-card">
-        <h2 class="section-title">Get in Touch</h2>
+        <h2 class="section-title">Get in touch</h2>
         <p style="color:#7A7A7A;margin-bottom:16px;">Questions about your membership, a walk, or your dog? Send us a message and we'll reply within 24 hours, or email us directly.</p>
         <div class="section-actions" style="align-items:center;">
           <a href="portal-contact.html" style="text-decoration:none;"><button class="btn btn-primary">Contact Us</button></a>
@@ -731,7 +731,7 @@
   <!-- Change Password modal -->
   <div id="passwordModal" style="display:none; position:fixed; inset:0; background:rgba(13,27,42,0.5); z-index:10000; align-items:center; justify-content:center; padding:20px;">
     <div style="background:#fff; border-radius:16px; padding:28px; width:100%; max-width:420px; box-shadow:0 20px 60px rgba(0,0,0,0.2);">
-      <h2 style="font-size:18px; font-weight:600; color:#0D1B2A; margin-bottom:20px;">Change Password</h2>
+      <h2 style="font-size:18px; font-weight:600; color:#0D1B2A; margin-bottom:20px;">Change password</h2>
 
       <!-- Modal-local error line — stays visible above the dialog, matches the status component -->
       <div id="passwordModalError" role="alert" style="display:none; background:#F4F0EA; border:1px solid rgba(13,27,42,0.08); border-left:4px solid #C17B6F; border-radius:6px; padding:14px 16px; margin-bottom:20px; font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; line-height:1.5; color:#0D1B2A;"></div>
@@ -763,7 +763,7 @@
        via confirmCardOnFile, which independently re-verifies it with Stripe. -->
   <div id="cardModal" style="display:none; position:fixed; inset:0; background:rgba(13,27,42,0.5); z-index:10000; align-items:center; justify-content:center; padding:20px;">
     <div style="background:#fff; border-radius:16px; padding:28px; width:100%; max-width:420px; box-shadow:0 20px 60px rgba(0,0,0,0.2);">
-      <h2 id="cardModalTitle" style="font-size:18px; font-weight:600; color:#0D1B2A; margin-bottom:20px;">Update Payment Method</h2>
+      <h2 id="cardModalTitle" style="font-size:18px; font-weight:600; color:#0D1B2A; margin-bottom:20px;">Update payment method</h2>
 
       <!-- Modal-local error line — stays visible above the dialog, matches the status component -->
       <div id="cardModalError" role="alert" style="display:none; background:#F4F0EA; border:1px solid rgba(13,27,42,0.08); border-left:4px solid #C17B6F; border-radius:6px; padding:14px 16px; margin-bottom:20px; font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; line-height:1.5; color:#0D1B2A;"></div>
@@ -1559,7 +1559,7 @@ async function loadGiftPackages() {
     });
     const note = document.createElement('div');
     note.style.cssText = 'font-size:13px; margin-top:8px;';
-    note.textContent = 'Visits come off your one-time bookings automatically when they are charged. They cover the standard price of each visit, and don\'t apply to regular Leash Club membership walks.';
+    note.textContent = 'We apply your gift to your bookings automatically. It covers the standard price of each visit, and add-ons and holiday rates are extra.';
     listEl.append(note);
   } catch (e) {
     console.error('loadGiftPackages failed:', e);
