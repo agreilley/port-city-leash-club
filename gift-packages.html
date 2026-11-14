@@ -39,14 +39,17 @@
   .btn-nav:hover { background: var(--rust); color: white; }
   .hamburger { display: none; }
 
-  .page-hero { background: var(--sand-light); padding: 72px 48px; border-bottom: 1px solid rgba(0,0,0,0.06); }
-  .hero-inner { max-width: 760px; margin: 0 auto; text-align: center; }
-  .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--rust-dark); margin-bottom: 16px; }
-  h1 { font-family: 'Cormorant Garamond', serif; font-size: 52px; font-weight: 300; line-height: 1.06; color: var(--navy); margin-bottom: 18px; }
-  .hero-sub { font-size: 17px; color: var(--text-mid); line-height: 1.75; }
+  /* Same heading system as the homepage sections: sea-green eyebrow over a
+     short serif title, left-aligned with the content below. */
+  .page-hero { background: var(--sand-light); padding: 72px 48px 64px; border-bottom: 1px solid rgba(0,0,0,0.06); }
+  .hero-inner { max-width: 1100px; margin: 0 auto; }
+  .eyebrow { font-size: 13px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 12px; }
+  h1 { font-family: 'Cormorant Garamond', serif; font-size: 42px; font-weight: 300; line-height: 1.1; color: var(--navy); margin-bottom: 16px; }
+  .hero-sub { font-size: 15px; color: var(--text-mid); line-height: 1.7; max-width: 620px; }
 
   main { padding: 64px 48px 90px; }
-  .form-shell { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 32px; align-items: start; }
+  .form-shell { max-width: 1100px; margin: 0 auto; }
+  .form-shell > div { max-width: 720px; }
   .form-card { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 40px; }
   .form-section { border-top: 1px solid rgba(0,0,0,0.07); padding-top: 28px; margin-top: 28px; }
   .form-section.first { border-top: none; padding-top: 0; margin-top: 0; }
@@ -67,7 +70,6 @@
   .char-count { font-size: 12px; color: var(--text-light); text-align: right; }
   .honeypot-field { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 
-  .choose-hint { font-size: 14px; color: var(--text-mid); margin-bottom: 14px; }
   .service-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid rgba(0,0,0,0.14); border-radius: 8px; background: var(--warm-white); margin-bottom: 10px; }
   .service-row.selected { border-color: var(--rust); background: var(--sand-light); }
   .service-name { display: block; font-size: 15px; font-weight: 500; color: var(--navy); line-height: 1.3; letter-spacing: 0; }
@@ -91,19 +93,19 @@
   .gift-success h2 { font-size: 32px; margin-bottom: 12px; }
   .gift-success p { font-size: 15px; color: var(--text-mid); line-height: 1.7; max-width: 440px; margin: 0 auto; }
 
-  .sidebar { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 88px; }
-  .sidebar-card { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 28px; }
-  .sidebar-card h2 { font-size: 24px; margin-bottom: 14px; }
   .summary-line { font-size: 15px; color: var(--navy); font-weight: 500; line-height: 1.5; }
   .summary-line.empty { color: var(--text-mid); font-weight: 400; }
   .summary-line.problem { color: var(--rust-dark); font-weight: 400; font-size: 13px; }
   .gift-summary { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 16px; padding: 16px 18px; background: var(--sand-light); border-radius: 8px; }
   .summary-total { display: flex; align-items: baseline; gap: 10px; flex-shrink: 0; font-size: 14px; color: var(--text-mid); }
   .summary-total strong { font-family: 'Cormorant Garamond', serif; font-size: 34px; font-weight: 400; color: var(--navy); line-height: 1; }
-  .good-to-know { list-style: none; display: flex; flex-direction: column; gap: 10px; }
-  .good-to-know li { font-size: 13px; color: var(--text-mid); line-height: 1.6; }
-  .contact-note { font-size: 13px; color: var(--text-mid); }
-  .contact-note a { color: var(--rust-dark); }
+  .terms-box { background: var(--sand-light); border-radius: 8px; padding: 16px 18px; }
+  .terms-title { font-size: 13px; font-weight: 500; color: var(--navy); margin-bottom: 8px; }
+  .good-to-know { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .good-to-know li { position: relative; padding-left: 14px; font-size: 13px; color: var(--text-mid); line-height: 1.6; }
+  .good-to-know li::before { content: ''; position: absolute; left: 0; top: 9px; width: 4px; height: 4px; border-radius: 50%; background: var(--seafoam); }
+  .after-buy { font-size: 13px; color: var(--text-mid); text-align: center; margin-top: 12px; }
+  .after-buy a { color: var(--rust-dark); }
 
   footer { background: var(--navy); color: rgba(255,255,255,0.6); padding: 48px; display: flex; justify-content: space-between; align-items: center; }
   .footer-brand { font-family: 'Cormorant Garamond', serif; font-size: 18px; color: white; line-height: 1.4; }
@@ -112,10 +114,6 @@
   .footer-links a { display: inline-block; padding: 12px 0; font-size: 13px; color: rgba(255,255,255,0.7); text-decoration: none; }
   .footer-links a:hover { color: white; }
 
-  @media (max-width: 1000px) {
-    .form-shell { grid-template-columns: minmax(0, 1fr); }
-    .sidebar { position: static; }
-  }
   @media (max-width: 768px) {
     nav { padding: 0 20px; height: 56px; }
     .nav-links { display: none; flex-direction: column; align-items: stretch; position: fixed; top: 56px; left: 0; right: 0; background: var(--warm-white); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 16px 20px 24px; gap: 0; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
@@ -127,7 +125,7 @@
     .hamburger { display: flex; flex-direction: column; gap: 5px; cursor: pointer; padding: 8px; background: none; border: none; }
     .hamburger span { display: block; width: 22px; height: 2px; background: var(--navy); border-radius: 2px; }
     .page-hero { padding: 48px 20px; }
-    h1 { font-size: 38px; }
+    h1 { font-size: 28px; }
     main { padding: 32px 16px 64px; }
     .form-card { padding: 24px 20px; }
     .form-grid { grid-template-columns: minmax(0, 1fr); }
@@ -157,9 +155,9 @@
 
 <div class="page-hero">
   <div class="hero-inner">
-    <div class="eyebrow">Gift Pet Care</div>
-    <h1>Give someone a little help with their pet</h1>
-    <p class="hero-sub">Choose walks, drop-in visits, or overnights for a pet owner in the Wilmington area. We'll email them the gift, and they can use it whenever they need us.</p>
+    <div class="eyebrow">Walks, drop-ins, and overnights</div>
+    <h1>Give the Gift of Pet Care</h1>
+    <p class="hero-sub">For the pet owner in your life who could use a hand. Choose their visits, and we'll email them the gift.</p>
   </div>
 </div>
 
@@ -176,7 +174,6 @@
 
         <fieldset class="form-section first">
           <legend><h2>Choose your gift</h2></legend>
-          <p class="choose-hint">Choose as many as you'd like.</p>
           <div id="serviceOptions"></div>
           <div class="gift-summary" aria-live="polite">
             <div id="summaryLines"></div>
@@ -190,12 +187,12 @@
             <div class="field"><label for="recipientName">Their name</label><input type="text" id="recipientName" maxlength="100" autocomplete="off" required></div>
             <div class="field"><label for="recipientEmail">Their email</label><input type="email" id="recipientEmail" maxlength="320" autocomplete="off" required></div>
             <div class="field full">
+              <label class="check-line"><input type="checkbox" id="serviceAreaConfirmed" required><span>They live in our service area. <a href="/#map" target="_blank" rel="noopener">Check their address</a></span></label>
+            </div>
+            <div class="field full">
               <label for="message">Your message <span class="optional">(optional)</span></label>
               <textarea id="message" maxlength="300"></textarea>
               <div class="char-count"><span id="messageCount">0</span>/300</div>
-            </div>
-            <div class="field full">
-              <label class="check-line"><input type="checkbox" id="serviceAreaConfirmed" required><span>They live in our service area. <a href="/#map" target="_blank" rel="noopener">Check their address</a></span></label>
             </div>
           </div>
         </fieldset>
@@ -213,10 +210,20 @@
         </fieldset>
 
         <fieldset class="form-section">
-          <legend><h2>Your details</h2></legend>
+          <legend><h2>Your information</h2></legend>
           <div class="form-grid">
             <div class="field"><label for="buyerName">Your name</label><input type="text" id="buyerName" maxlength="100" autocomplete="name" required></div>
             <div class="field"><label for="buyerEmail">Your email</label><input type="email" id="buyerEmail" maxlength="320" autocomplete="email" required></div>
+            <div class="field full terms-box">
+              <div class="terms-title">Good to know</div>
+              <ul class="good-to-know">
+                <li>The gift doesn't expire.</li>
+                <li>It covers the standard price of each visit on one-time bookings. Add-ons, holiday rates, and longer walks are charged separately.</li>
+                <li>It can't be used for regular Leash Club walks.</li>
+                <li>Every new client starts with a free meet and greet.</li>
+                <li>If we can't care for their pet, we'll refund you in full.</li>
+              </ul>
+            </div>
             <div class="field full">
               <label for="cardElementMount">Card details</label>
               <div id="cardElementMount"></div>
@@ -224,6 +231,7 @@
             </div>
           </div>
           <button type="submit" class="btn-submit" id="submitBtn">Buy gift</button>
+          <p class="after-buy">Your receipt comes by email, and you can reach us anytime at <a href="mailto:hello@portcityleashclub.com">hello@portcityleashclub.com</a>.</p>
         </fieldset>
       </form>
 
@@ -233,20 +241,6 @@
       </div>
     </div>
 
-    <aside class="sidebar">
-      <div class="sidebar-card terms">
-        <h2>Good to know</h2>
-        <ul class="good-to-know">
-          <li>The gift does not expire.</li>
-          <li>It covers the standard price of each visit on one-time bookings, not regular Leash Club membership walks. Holiday rates, extra pets, medication, and 45-minute walks are extra.</li>
-          <li>We meet every new client and pet first, at no charge.</li>
-          <li>It has no cash value and can only be used for our services. If we can't care for the recipient's pet, we'll refund you in full.</li>
-        </ul>
-      </div>
-      <div class="sidebar-card contact">
-        <p class="contact-note">Questions? Email <a href="mailto:hello@portcityleashclub.com">hello@portcityleashclub.com</a>.</p>
-      </div>
-    </aside>
   </div>
 </main>
 
