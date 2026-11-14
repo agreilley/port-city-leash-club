@@ -136,6 +136,8 @@
     .hero-inner { grid-template-columns: minmax(0, 1fr); gap: 32px; }
     .form-shell { grid-template-columns: minmax(0, 1fr); }
     .sidebar { position: static; }
+    /* Desktop only: on a stacked layout it would sit below the Buy button. */
+    .how-it-works { display: none; }
   }
   @media (max-width: 768px) {
     nav { padding: 0 20px; height: 56px; }
@@ -273,7 +275,7 @@
     </div>
 
     <aside class="sidebar">
-      <div class="sidebar-card">
+      <div class="sidebar-card how-it-works">
         <h3>How it works</h3>
         <ol class="sidebar-steps">
           <li>Pick the visits you'd like to give.</li>
