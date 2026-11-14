@@ -11,8 +11,6 @@ const {
   TEAM_SIGNOFF, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
-const REFUND_LINE = "If it turns out we can't care for their pet, for example because they live outside our service area, we'll refund you in full.";
-
 function formatDollars(cents) {
   return `$${(cents / 100).toFixed(2).replace(/\.00$/, '')}`;
 }
@@ -49,7 +47,6 @@ function html(data) {
     <p style="margin:0 0 20px;">Hi ${escapeHtml(firstName(data.buyerName))},</p>
     <p style="margin:0 0 20px;">Thank you for your gift. ${escapeHtml(deliveryLine(data))}</p>
     ${block}
-    <p style="margin:20px 0 0;">${escapeHtml(REFUND_LINE)}</p>
     <p style="margin:20px 0 0;">Questions, or need to fix an email address? Just reply here and it'll come straight to us.</p>
     ${renderSignoffHtml(TEAM_SIGNOFF)}
   `;
@@ -71,8 +68,6 @@ function text(data) {
         { label: 'Paid', value: formatDollars(data.amountCents) },
       ],
     }),
-    '',
-    REFUND_LINE,
     '',
     "Questions, or need to fix an email address? Just reply here and it'll come straight to us.",
     '',
