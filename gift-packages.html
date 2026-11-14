@@ -39,17 +39,31 @@
   .btn-nav:hover { background: var(--rust); color: white; }
   .hamburger { display: none; }
 
-  /* Same heading system as the homepage sections: sea-green eyebrow over a
-     short serif title, left-aligned with the content below. */
-  .page-hero { background: var(--sand-light); padding: 72px 48px 64px; border-bottom: 1px solid rgba(0,0,0,0.06); }
-  .hero-inner { max-width: 1100px; margin: 0 auto; }
-  .eyebrow { font-size: 13px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 12px; }
-  h1 { font-family: 'Cormorant Garamond', serif; font-size: 42px; font-weight: 300; line-height: 1.1; color: var(--navy); margin-bottom: 16px; }
-  .hero-sub { font-size: 15px; color: var(--text-mid); line-height: 1.7; max-width: 620px; }
+  /* Same layout as careers.html and puppies-and-pilates.html: text on the
+     left, a white facts card on the right, then the form with a sidebar. */
+  .page-hero { background: var(--sand-light); padding: 80px 48px 72px; border-bottom: 1px solid rgba(0,0,0,0.06); }
+  .hero-inner { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
+  .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam); margin-bottom: 16px; }
+  h1 { font-family: 'Cormorant Garamond', serif; font-size: 48px; font-weight: 300; line-height: 1.04; color: var(--navy); margin-bottom: 20px; }
+  .hero-sub { font-size: 16px; color: var(--text-mid); line-height: 1.8; }
+  .gift-facts { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 28px 32px; }
+  .gift-fact { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 16px 0; border-top: 1px solid rgba(0,0,0,0.07); }
+  .gift-fact:first-child { border-top: none; padding-top: 0; }
+  .gift-fact:last-child { padding-bottom: 0; }
+  .gift-fact-label { font-size: 15px; font-weight: 500; color: var(--navy); }
+  .gift-fact-value { font-size: 14px; color: var(--text-mid); text-align: right; }
 
   main { padding: 64px 48px 90px; }
-  .form-shell { max-width: 1100px; margin: 0 auto; }
-  .form-shell > div { max-width: 720px; }
+  .form-shell { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 32px; align-items: start; }
+  .sidebar { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 88px; }
+  .sidebar-card { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 28px; }
+  .sidebar-card h3, .navy-card h3 { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 300; color: var(--navy); margin-bottom: 12px; }
+  .sidebar-steps { padding-left: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .sidebar-steps li { font-size: 13px; color: var(--text-mid); line-height: 1.6; }
+  .navy-card { background: var(--navy); border-radius: 10px; padding: 28px; }
+  .navy-card h3 { color: white; margin-bottom: 10px; }
+  .navy-card p { font-size: 13px; color: rgba(255,255,255,0.7); line-height: 1.7; }
+  .navy-card a { color: var(--seafoam-light, #C5D5D1); }
   .form-card { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 40px; }
   .form-section { border-top: 1px solid rgba(0,0,0,0.07); padding-top: 28px; margin-top: 28px; }
   .form-section.first { border-top: none; padding-top: 0; margin-top: 0; }
@@ -114,6 +128,11 @@
   .footer-links a { display: inline-block; padding: 12px 0; font-size: 13px; color: rgba(255,255,255,0.7); text-decoration: none; }
   .footer-links a:hover { color: white; }
 
+  @media (max-width: 1000px) {
+    .hero-inner { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+    .form-shell { grid-template-columns: minmax(0, 1fr); }
+    .sidebar { position: static; }
+  }
   @media (max-width: 768px) {
     nav { padding: 0 20px; height: 56px; }
     .nav-links { display: none; flex-direction: column; align-items: stretch; position: fixed; top: 56px; left: 0; right: 0; background: var(--warm-white); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 16px 20px 24px; gap: 0; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
@@ -125,7 +144,8 @@
     .hamburger { display: flex; flex-direction: column; gap: 5px; cursor: pointer; padding: 8px; background: none; border: none; }
     .hamburger span { display: block; width: 22px; height: 2px; background: var(--navy); border-radius: 2px; }
     .page-hero { padding: 48px 20px; }
-    h1 { font-size: 28px; }
+    h1 { font-size: 38px; }
+    .gift-facts { padding: 24px 20px; }
     main { padding: 32px 16px 64px; }
     .form-card { padding: 24px 20px; }
     .form-grid { grid-template-columns: minmax(0, 1fr); }
@@ -155,9 +175,17 @@
 
 <div class="page-hero">
   <div class="hero-inner">
-    <div class="eyebrow">Walks, drop-ins, and overnights</div>
-    <h1>Give the Gift of Pet Care</h1>
-    <p class="hero-sub">For the pet owner in your life who could use a hand. Choose their visits, and we'll email them the gift.</p>
+    <div>
+      <div class="eyebrow">Walks, drop-ins, and overnights</div>
+      <h1>Give the Gift of Pet Care</h1>
+      <p class="hero-sub">For the pet owner in your life who could use a hand. Choose their visits, and we'll email them the gift.</p>
+    </div>
+    <div class="gift-facts">
+      <div class="gift-fact"><span class="gift-fact-label">30-minute walks</span><span class="gift-fact-value">$<span data-price="standard-walk">30</span> each</span></div>
+      <div class="gift-fact"><span class="gift-fact-label">Drop-in visits</span><span class="gift-fact-value">$<span data-price="drop-in-visit">25</span> each</span></div>
+      <div class="gift-fact"><span class="gift-fact-label">Overnights</span><span class="gift-fact-value">$<span data-price="overnight-stay">115</span> each</span></div>
+      <div class="gift-fact"><span class="gift-fact-label">Delivery</span><span class="gift-fact-value">By email, now or on a date you choose</span></div>
+    </div>
   </div>
 </div>
 
@@ -231,7 +259,7 @@
             </div>
           </div>
           <button type="submit" class="btn-submit" id="submitBtn">Buy gift</button>
-          <p class="after-buy">Your receipt comes by email, and you can reach us anytime at <a href="mailto:hello@portcityleashclub.com">hello@portcityleashclub.com</a>.</p>
+          <p class="after-buy">Your receipt comes by email.</p>
         </fieldset>
       </form>
 
@@ -240,6 +268,21 @@
         <p id="giftSuccessText"></p>
       </div>
     </div>
+
+    <aside class="sidebar">
+      <div class="sidebar-card">
+        <h3>How it works</h3>
+        <ol class="sidebar-steps">
+          <li>Choose their visits and pay.</li>
+          <li>We email them the gift with a code, right away or on the morning you choose.</li>
+          <li>They book with us, and their visits come off automatically.</li>
+        </ol>
+      </div>
+      <div class="navy-card">
+        <h3>Questions?</h3>
+        <p>Email us at <a href="mailto:hello@portcityleashclub.com">hello@portcityleashclub.com</a> and we'll get back to you within 24 hours.</p>
+      </div>
+    </aside>
 
   </div>
 </main>
@@ -295,6 +338,8 @@
       </select>
     </div>`;
   }).join('');
+
+  document.querySelectorAll('[data-price]').forEach((el) => { el.textContent = SERVICE_PRICES[el.dataset.price].price; });
 
   function selectedItems() {
     return [...document.querySelectorAll('#serviceOptions select')]
