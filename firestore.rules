@@ -863,7 +863,7 @@ service cloud.firestore {
       }
     }
 
-    // giftPackages/{id}: one doc per order on gift-packages.html, including the
+    // giftPackages/{id}: one doc per order on gifts.html, including the
     // redeemable code once paid. Every write goes through the Admin SDK (see
     // createGiftPackagePaymentIntent in functions/index.js), and only admin can
     // read. giftPackageThrottle has no rule, so it stays fully closed to clients.

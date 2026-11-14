@@ -11411,7 +11411,7 @@ exports.validateReferralCode = onCall({}, async (request) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// GIFT PACKAGES: prepaid visits sold as a gift on gift-packages.html.
+// GIFT PACKAGES: prepaid visits sold as a gift on gifts.html.
 //
 // giftPackages/{id} is written only through the Admin SDK (no client access,
 // see firestore.rules) because each paid doc holds a redeemable code.
@@ -11605,18 +11605,24 @@ exports.createGiftPackagePaymentIntent = onCall({ secrets: [STRIPE_SECRET_KEY] }
     throw new HttpsError('invalid-argument', 'Please confirm the recipient lives in our service area.');
   }
 
-  const { calculateGiftPackageOrder } = await import('./pricing.js');
+  const { calculateGiftPackageOrder, giftPackagePromotionOn } = await import('./pricing.js');
+  const promotion = giftPackagePromotionOn(easternTodayString());
   let priced;
   try {
-    priced = calculateGiftPackageOrder(payload.items);
+    priced = calculateGiftPackageOrder(payload.items, { promotion });
   } catch (e) {
     throw new HttpsError('invalid-argument', e.message);
+  }
+  // The page sends the total it showed. If a sale started or ended in between,
+  // stop rather than charge a different amount than the buyer saw.
+  const amountCents = Math.round(priced.total * 100);
+  if (Number.isInteger(payload.expectedTotalCents) && payload.expectedTotalCents !== amountCents) {
+    throw new HttpsError('failed-precondition', 'Our prices just changed. Please check your total and try again.');
   }
   const deliverOn = resolveGiftPackageDeliverOn(payload.deliverOn);
 
   await assertGiftPackageRateLimit(request.rawRequest?.ip);
 
-  const amountCents = Math.round(priced.total * 100);
   const ref = db.collection('giftPackages').doc();
   await ref.set({
     status: 'pending',
@@ -11628,6 +11634,9 @@ exports.createGiftPackagePaymentIntent = onCall({ secrets: [STRIPE_SECRET_KEY] }
       unitPriceCents: Math.round(item.unitPrice * 100),
     })),
     amountCents,
+    listAmountCents: Math.round(priced.listTotal * 100),
+    discountPercent: priced.discountPercent,
+    ...(promotion ? { promotionName: promotion.name } : {}),
     packageLabel: priced.label,
     deliverOn,
     serviceAreaConfirmed: true,
@@ -11641,7 +11650,7 @@ exports.createGiftPackagePaymentIntent = onCall({ secrets: [STRIPE_SECRET_KEY] }
       amount: amountCents,
       currency: 'usd',
       receipt_email: buyerEmail,
-      description: `Port City Leash Club gift package: ${priced.label}`,
+      description: `Port City Leash Club gift package: ${priced.label}${promotion ? ` (${promotion.name} ${promotion.percent}% off)` : ''}`,
       metadata: { giftPackageId: ref.id, packageLabel: priced.label },
     });
     await ref.set({ paymentIntentId: paymentIntent.id }, { merge: true });

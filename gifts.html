@@ -8,9 +8,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gift Pet Care | Port City Leash Club</title>
 <meta name="description" content="Give someone in Wilmington, NC prepaid dog walks, drop-in visits, or overnight pet sitting from Port City Leash Club.">
-<link rel="canonical" href="https://www.portcityleashclub.com/gift-packages">
+<link rel="canonical" href="https://www.portcityleashclub.com/gifts">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://www.portcityleashclub.com/gift-packages">
+<meta property="og:url" content="https://www.portcityleashclub.com/gifts">
 <meta property="og:site_name" content="Port City Leash Club">
 <meta property="og:title" content="Gift Pet Care | Port City Leash Club">
 <meta property="og:description" content="Give someone in Wilmington, NC prepaid dog walks, drop-in visits, or overnight pet sitting.">
@@ -52,6 +52,10 @@
   .gift-fact:last-child { padding-bottom: 0; }
   .gift-fact-label { font-size: 15px; font-weight: 500; color: var(--navy); }
   .gift-fact-value { font-size: 14px; color: var(--text-mid); text-align: right; }
+  .gift-facts-link { display: inline-block; margin-top: 18px; font-size: 13px; color: var(--rust-dark); }
+  .sale-banner { display: none; margin-top: 24px; background: white; border-left: 3px solid var(--rust); border-radius: 4px; padding: 12px 16px; font-size: 14px; line-height: 1.6; color: var(--text-mid); }
+  .sale-banner strong { color: var(--navy); font-weight: 600; }
+  .was-price { text-decoration: line-through; color: var(--text-light); margin-right: 4px; }
 
   main { padding: 64px 48px 90px; }
   .form-shell { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 32px; align-items: start; }
@@ -179,12 +183,14 @@
       <div class="eyebrow">Walks, drop-ins, and overnights</div>
       <h1>Give the Gift of Pet Care</h1>
       <p class="hero-sub">For the pet owner in your life who could use a hand. Choose their visits, and we'll email them the gift.</p>
+      <div class="sale-banner" id="saleBanner"></div>
     </div>
     <div class="gift-facts">
-      <div class="gift-fact"><span class="gift-fact-label">30-minute walks</span><span class="gift-fact-value">$<span data-price="standard-walk">30</span> each</span></div>
-      <div class="gift-fact"><span class="gift-fact-label">Drop-in visits</span><span class="gift-fact-value">$<span data-price="drop-in-visit">25</span> each</span></div>
-      <div class="gift-fact"><span class="gift-fact-label">Overnights</span><span class="gift-fact-value">$<span data-price="overnight-stay">115</span> each</span></div>
+      <div class="gift-fact"><span class="gift-fact-label">30-minute walks</span><span class="gift-fact-value" data-price="standard-walk">$30 each</span></div>
+      <div class="gift-fact"><span class="gift-fact-label">Drop-in visits</span><span class="gift-fact-value" data-price="drop-in-visit">$25 each</span></div>
+      <div class="gift-fact"><span class="gift-fact-label">Overnights</span><span class="gift-fact-value" data-price="overnight-stay">$115 each</span></div>
       <div class="gift-fact"><span class="gift-fact-label">Delivery</span><span class="gift-fact-value">By email, now or on a date you choose</span></div>
+      <a class="gift-facts-link" href="/faq#services">What's included in each visit?</a>
     </div>
   </div>
 </div>
@@ -245,11 +251,9 @@
             <div class="field full terms-box">
               <div class="terms-title">Good to know</div>
               <ul class="good-to-know">
-                <li>The gift doesn't expire.</li>
-                <li>It covers the standard price of each visit on one-time bookings. Add-ons, holiday rates, and longer walks are charged separately.</li>
-                <li>It can't be used for regular Leash Club walks.</li>
-                <li>Every new client starts with a free meet and greet.</li>
-                <li>If we can't care for their pet, we'll refund you in full.</li>
+                <li>The gift never expires.</li>
+                <li>It covers the standard price of each visit. Add-ons and holiday rates are extra.</li>
+                <li>It can't be used for Leash Club membership walks.</li>
               </ul>
             </div>
             <div class="field full">
@@ -306,7 +310,7 @@
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
   import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
   import { showError, clearStatus } from '/js/status.js';
-  import { SERVICE_PRICES, GIFT_PACKAGE_OPTIONS, calculateGiftPackageOrder } from '/pricing.js';
+  import { SERVICE_PRICES, GIFT_PACKAGE_OPTIONS, calculateGiftPackageOrder, giftPackagePromotionOn } from '/pricing.js';
 
   const app = initializeApp({
     apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
@@ -324,13 +328,27 @@
   const titleCase = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
   // ── Choosing a package ──────────────────────────────────────────────────
+  const easternToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+  const promotion = giftPackagePromotionOn(easternToday);
+  const money = (n) => (Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`);
+  const salePrice = (key) => Math.round(SERVICE_PRICES[key].price * (100 - (promotion?.percent || 0))) / 100;
+  // "$30 each", or "$30 $27 each" with the first struck through during the sale.
+  const priceHtml = (key) => (promotion
+    ? `<span class="was-price">${money(SERVICE_PRICES[key].price)}</span>${money(salePrice(key))} each`
+    : `${money(SERVICE_PRICES[key].price)} each`);
+  if (promotion) {
+    const ends = new Date(`${promotion.endsOn}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
+    $('saleBanner').innerHTML = `<strong>${promotion.name}: ${promotion.percent}% off every gift</strong> through ${ends}.`;
+    $('saleBanner').style.display = 'block';
+  }
+
   $('serviceOptions').innerHTML = Object.entries(GIFT_PACKAGE_OPTIONS).map(([key, option]) => {
     const quantities = Array.from({ length: option.max - option.min + 1 }, (_, i) => option.min + i);
     return `
     <div class="service-row" data-service="${key}">
       <label for="qty-${key}">
         <span class="service-name">${titleCase(option.plural)}</span>
-        <span class="service-price">$${SERVICE_PRICES[key].price} each</span>
+        <span class="service-price">${priceHtml(key)}</span>
       </label>
       <select id="qty-${key}" data-service="${key}">
         <option value="0">None</option>
@@ -339,7 +357,7 @@
     </div>`;
   }).join('');
 
-  document.querySelectorAll('[data-price]').forEach((el) => { el.textContent = SERVICE_PRICES[el.dataset.price].price; });
+  document.querySelectorAll('[data-price]').forEach((el) => { el.innerHTML = priceHtml(el.dataset.price); });
 
   function selectedItems() {
     return [...document.querySelectorAll('#serviceOptions select')]
@@ -352,7 +370,7 @@
     const items = selectedItems();
     if (!items.length) return { problem: 'Please choose at least one service.', empty: true };
     try {
-      return { priced: calculateGiftPackageOrder(items) };
+      return { priced: calculateGiftPackageOrder(items, { promotion }) };
     } catch (error) {
       return { problem: error.message };
     }
@@ -370,12 +388,14 @@
       select.closest('.service-row').classList.toggle('selected', Number(select.value) > 0);
     });
     const { priced, problem, empty } = priceSelection();
-    const total = priced ? priced.total : selectedItems().reduce((sum, item) => sum + SERVICE_PRICES[item.serviceKey].price * item.quantity, 0);
+    const total = priced ? priced.total : selectedItems().reduce((sum, item) => sum + salePrice(item.serviceKey) * item.quantity, 0);
     $('summaryLines').replaceChildren(...(priced
       ? priced.items.map((item) => summaryLine(titleCase(item.label)))
       : [summaryLine(empty ? 'Nothing chosen yet' : problem, empty ? 'empty' : 'problem')]));
-    $('summaryTotal').textContent = `$${total}`;
-    $('submitBtn').textContent = priced ? `Buy gift for $${priced.total}` : 'Buy gift';
+    $('summaryTotal').innerHTML = priced && priced.listTotal !== priced.total
+      ? `<span class="was-price">${money(priced.listTotal)}</span>${money(priced.total)}`
+      : money(total);
+    $('submitBtn').textContent = priced ? `Buy gift for ${money(priced.total)}` : 'Buy gift';
   }
 
   document.querySelectorAll('#serviceOptions select').forEach((select) => select.addEventListener('change', renderPackage));
@@ -384,7 +404,6 @@
   // ── Message and delivery date ───────────────────────────────────────────
   $('message').addEventListener('input', () => { $('messageCount').textContent = $('message').value.length; });
 
-  const easternToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
   $('deliverOn').min = easternToday;
   const latest = new Date(`${easternToday}T00:00:00Z`);
   latest.setUTCDate(latest.getUTCDate() + 365);
@@ -416,6 +435,7 @@
     const sendOnDate = document.querySelector('input[name=delivery]:checked').value === 'date';
     return {
       items: selectedItems(),
+      expectedTotalCents: priceSelection().priced ? Math.round(priceSelection().priced.total * 100) : null,
       recipientName: $('recipientName').value.trim(),
       recipientEmail: $('recipientEmail').value.trim(),
       message: $('message').value.trim(),

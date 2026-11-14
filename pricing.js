@@ -87,19 +87,28 @@ export const SERVICE_KEY_ALIASES = {
 export const EXTRA_PET_FEE = 10;
 export const MEDICATION_FEE = 10;
 
-// Gift packages: a buyer picks a quantity of any of these on gift-packages.html,
+// Gift packages: a buyer picks a quantity of any of these on gifts.html,
 // all under one payment and one code. Keyed by SERVICE_PRICES entry, so a package
 // always costs today's list price. The page previews with this and
-// createGiftPackagePaymentIntent charges with it, so the two can't disagree. min
-// keeps a meet and greet from being all for one small visit; the max per service
-// and per order limit the loss on a stolen card.
+// createGiftPackagePaymentIntent charges with it, so the two can't disagree. The
+// max per service and per order limit the loss on a stolen card.
 export const GIFT_PACKAGE_OPTIONS = {
-  'standard-walk':  { singular: '30-minute walk', plural: '30-minute walks', min: 2, max: 20 },
-  'drop-in-visit':  { singular: 'drop-in visit',  plural: 'drop-in visits',  min: 2, max: 20 },
+  'standard-walk':  { singular: '30-minute walk', plural: '30-minute walks', min: 1, max: 20 },
+  'drop-in-visit':  { singular: 'drop-in visit',  plural: 'drop-in visits',  min: 1, max: 20 },
   'overnight-stay': { singular: 'overnight',      plural: 'overnights',      min: 1, max: 7 },
 };
 
 export const GIFT_PACKAGE_MAX_ORDER = 1000;
+
+// The Black Friday sale: percent off every visit, on Eastern-time calendar dates
+// from startsOn through endsOn. The order function and the page both decide with
+// giftPackagePromotionOn, so the sale starts and stops by itself.
+export const GIFT_PACKAGE_PROMOTION = { name: 'Black Friday', percent: 10, startsOn: '2026-11-23', endsOn: '2026-11-30' };
+
+export function giftPackagePromotionOn(dateStr) {
+  const p = GIFT_PACKAGE_PROMOTION;
+  return p && dateStr >= p.startsOn && dateStr <= p.endsOn ? p : null;
+}
 
 export function giftPackageNoun(serviceKey, count) {
   const option = GIFT_PACKAGE_OPTIONS[serviceKey];
@@ -107,8 +116,11 @@ export function giftPackageNoun(serviceKey, count) {
 }
 
 // items is [{ serviceKey, quantity }]. Throws on anything outside the options
-// above, so a bad request can never reach a charge.
-export function calculateGiftPackageOrder(items) {
+// above, so a bad request can never reach a charge. With a promotion, each visit
+// is discounted (rounded to the cent) and the order total is the sum of those, so
+// what's charged and what each visit cost always agree. The order limit applies
+// to the list price.
+export function calculateGiftPackageOrder(items, { promotion = null } = {}) {
   if (!Array.isArray(items) || !items.length) throw new Error('Please choose at least one service.');
   const seen = new Set();
   const priced = items.map(({ serviceKey, quantity } = {}) => {
@@ -118,16 +130,24 @@ export function calculateGiftPackageOrder(items) {
     if (!Number.isInteger(quantity) || quantity < option.min || quantity > option.max) {
       throw new Error(`Please choose between ${option.min} and ${option.max} ${option.plural}.`);
     }
-    const unitPrice = SERVICE_PRICES[serviceKey].price;
-    return { serviceKey, quantity, unitPrice, total: unitPrice * quantity, label: `${quantity} ${giftPackageNoun(serviceKey, quantity)}` };
+    const listUnitPrice = SERVICE_PRICES[serviceKey].price;
+    const unitCents = Math.round(listUnitPrice * 100 * (100 - (promotion?.percent || 0)) / 100);
+    return {
+      serviceKey, quantity, listUnitPrice,
+      unitPrice: unitCents / 100,
+      listTotal: listUnitPrice * quantity,
+      total: (unitCents * quantity) / 100,
+      label: `${quantity} ${giftPackageNoun(serviceKey, quantity)}`,
+    };
   });
-  const total = priced.reduce((sum, item) => sum + item.total, 0);
-  if (total > GIFT_PACKAGE_MAX_ORDER) {
+  const listTotal = priced.reduce((sum, item) => sum + item.listTotal, 0);
+  const total = priced.reduce((sum, item) => sum + Math.round(item.total * 100), 0) / 100;
+  if (listTotal > GIFT_PACKAGE_MAX_ORDER) {
     throw new Error(`Each order can be up to $${GIFT_PACKAGE_MAX_ORDER.toLocaleString('en-US')}. For a larger gift, please email hello@portcityleashclub.com.`);
   }
   const labels = priced.map((item) => item.label);
   const label = labels.length < 3 ? labels.join(' and ') : `${labels.slice(0, -1).join(', ')}, and ${labels.at(-1)}`;
-  return { items: priced, total, label };
+  return { items: priced, total, listTotal, discountPercent: promotion?.percent || 0, label };
 }
 
 // What one package visit takes off a booking of this service, at today's rates.
