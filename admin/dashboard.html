@@ -2901,11 +2901,11 @@ function renderTodoLive() {
   const unreadConvos = allConversations.filter(c => c.unreadByAdmin).length;
   if (unreadConvos) rows.push(todoRow({ text: `Reply to ${plural(unreadConvos, 'unread message')}`, onclick: "switchView('conversations')" }));
 
-  // Seasonal: "Gift cards" was added to every page's top menu for the 2026 holidays
+  // Seasonal: "Gift Cards" was added to every page's top menu for the 2026 holidays
   // (the footer's "Gift cards" link stays year-round). Shows from Jan 4, 2027
   // until the menu link is taken out; delete this block when that's done.
   if (todayKey >= '2027-01-04') {
-    rows.push(todoRow({ text: 'Take Gift cards out of the top menu', sub: 'Keep the footer link. Ask Claude to do it on all 12 pages.' }));
+    rows.push(todoRow({ text: 'Take Gift Cards out of the top menu', sub: 'Keep the footer link. Ask Claude to do it on all 12 pages.' }));
   }
 
   // Payouts: generated but not marked paid, or last week's completed work
