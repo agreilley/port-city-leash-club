@@ -100,10 +100,10 @@ export const GIFT_PACKAGE_OPTIONS = {
 
 export const GIFT_PACKAGE_MAX_ORDER = 1000;
 
-// The Black Friday sale: percent off every visit, on Eastern-time calendar dates
+// The Thanksgiving gift sale (Nov 16-30, 2026): percent off every visit, on Eastern-time calendar dates
 // from startsOn through endsOn. The order function and the page both decide with
 // giftPackagePromotionOn, so the sale starts and stops by itself.
-export const GIFT_PACKAGE_PROMOTION = { name: 'Black Friday', percent: 10, startsOn: '2026-11-23', endsOn: '2026-11-30' };
+export const GIFT_PACKAGE_PROMOTION = { name: 'Thanksgiving sale', percent: 10, startsOn: '2026-11-16', endsOn: '2026-11-30' };
 
 export function giftPackagePromotionOn(dateStr) {
   const p = GIFT_PACKAGE_PROMOTION;
