@@ -11540,6 +11540,7 @@ async function deliverGiftPackage(giftPackageId, giftPackage) {
     template: 'gift-package-delivered',
     data: {
       recipientName: giftPackage.recipientName,
+      petName: giftPackage.petName || null,
       buyerName: giftPackage.buyerName,
       message: giftPackage.message,
       packageLabel: giftPackage.packageLabel,
@@ -11636,6 +11637,7 @@ exports.createGiftPackagePaymentIntent = onCall({ secrets: [STRIPE_SECRET_KEY] }
   const recipientName = giftPackageText(payload.recipientName, 100);
   const recipientEmail = giftPackageText(payload.recipientEmail, 320);
   const message = giftPackageText(payload.message, GIFT_PACKAGE_MESSAGE_MAX_LENGTH);
+  const petName = giftPackageText(payload.petName, 60);
   if (!buyerName) throw new HttpsError('invalid-argument', 'Please enter your name.');
   if (!isValidGiftPackageEmail(buyerEmail)) throw new HttpsError('invalid-argument', 'Please enter a valid email address for yourself.');
   if (!recipientName) throw new HttpsError('invalid-argument', "Please enter the recipient's name.");
@@ -11666,6 +11668,7 @@ exports.createGiftPackagePaymentIntent = onCall({ secrets: [STRIPE_SECRET_KEY] }
   await ref.set({
     status: 'pending',
     buyerName, buyerEmail, recipientName, recipientEmail,
+    petName: petName || null,
     message: message || null,
     items: priced.items.map((item) => ({
       serviceKey: item.serviceKey,
@@ -11884,6 +11887,7 @@ exports.adminResendGiftPackage = onCall({ secrets: [RESEND_API_KEY] }, async (re
     template: 'gift-package-delivered',
     data: {
       recipientName: giftPackage.recipientName,
+      petName: giftPackage.petName || null,
       buyerName: giftPackage.buyerName,
       message: giftPackage.message,
       packageLabel: giftPackage.packageLabel,

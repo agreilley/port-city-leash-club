@@ -222,6 +222,7 @@
           <div class="form-grid">
             <div class="field"><label for="recipientName">Their name</label><input type="text" id="recipientName" maxlength="100" autocomplete="off" required></div>
             <div class="field"><label for="recipientEmail">Their email</label><input type="email" id="recipientEmail" maxlength="320" autocomplete="off" required></div>
+            <div class="field"><label for="petName">Their pet's name <span class="optional">(optional)</span></label><input type="text" id="petName" maxlength="60" autocomplete="off"></div>
             <div class="field full">
               <label class="check-line"><input type="checkbox" id="serviceAreaConfirmed" required><span>They live in our service area. <a href="/#map" target="_blank" rel="noopener">Check their address</a></span></label>
             </div>
@@ -439,6 +440,7 @@
       expectedTotalCents: priceSelection().priced ? Math.round(priceSelection().priced.total * 100) : null,
       recipientName: $('recipientName').value.trim(),
       recipientEmail: $('recipientEmail').value.trim(),
+      petName: $('petName').value.trim(),
       message: $('message').value.trim(),
       serviceAreaConfirmed: $('serviceAreaConfirmed').checked,
       deliverOn: sendOnDate ? $('deliverOn').value : '',

@@ -5326,7 +5326,7 @@ function renderGiftPackagesTable() {
     <tr>
       <td>${escapeHtml(p.packageLabel || '–')}${small(fmtEventTicketDate(p.createdAt))}</td>
       <td>${escapeHtml(p.buyerName || '–')}${small(p.buyerEmail || '')}</td>
-      <td>${escapeHtml(p.recipientName || '–')}${small(p.recipientEmail || '')}</td>
+      <td>${escapeHtml(p.recipientName || '–')}${p.petName ? ` <span style="color:var(--text-light);">(${escapeHtml(p.petName)})</span>` : ''}${small(p.recipientEmail || '')}</td>
       <td>$${((p.amountCents || 0) / 100).toFixed(2)}${stripeLink}</td>
       <td>${visits}</td>
       <td>${escapeHtml(emailStatus)}${isPaid && p.deliveryStatus === 'scheduled' ? small(p.deliverOn || '') : ''}${p.deliveryError && isPaid ? small(p.deliveryError.slice(0, 80)) : ''}</td>

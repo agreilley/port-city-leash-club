@@ -5,13 +5,26 @@
 // request form's promo box, and it goes on their account at the meet & greet
 // (completeMeetGreetAndCreateAccount). Existing clients reply, or use the portal.
 //
-// data: { recipientName, buyerName, message (may be null), packageLabel, code }
+// data: { recipientName, petName (may be null), buyerName, message (may be null), packageLabel, code }
 
 const {
   escapeHtml, renderBlockHtml, renderBlockText, renderCodeBlockHtml, renderCodeBlockText,
   renderButtonHtml, TEAM_SIGNOFF, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
+const SITE_URL = 'https://www.portcityleashclub.com';
+const POSITIONING = "We're Wilmington's newest dog walking and pet sitting company, and we're working hard to become its most trusted pet care team.";
+const UPDATES = "You'll get an update after every visit, so you'll always know how it went.";
+const LINK_STYLE = 'color:#C17B6F;';
+
+// Who we are, with the services linked to the homepage.
+function aboutUsHtml() {
+  const services = `<a href="${SITE_URL}/#services" style="${LINK_STYLE}">drop-in visits and overnight stays</a>`;
+  const membership = `<a href="${SITE_URL}/#membership" style="${LINK_STYLE}">Leash Club membership</a>`;
+  return `${escapeHtml(POSITIONING)} From ${services} to weekly dog walks with our ${membership}, our small local team gets to know your pet and their routine. ${escapeHtml(UPDATES)}`;
+}
+
+const ABOUT_US_TEXT = `${POSITIONING} From drop-in visits and overnight stays to weekly dog walks with our Leash Club membership, our small local team gets to know your pet and their routine (${SITE_URL}). ${UPDATES}`;
 const REQUEST_URL = 'https://www.portcityleashclub.com/service-request';
 const HOW_TO_USE = "To use it, request your first visit with the button below and enter your code in the promo code box. We'll take care of the rest.";
 const EXISTING_CLIENTS = "Already one of our clients? Just reply to this email and we'll add it to your account.";
@@ -21,8 +34,14 @@ function firstName(name) {
   return (name || '').trim().split(/\s+/)[0] || 'there';
 }
 
+// "you and Biscuit" when the buyer gave the pet's name, otherwise "you and your pet".
+function opening(data) {
+  const pet = (data.petName || '').trim() || 'your pet';
+  return `Great news for you and ${pet}! ${data.buyerName} sent you a gift card from Port City Leash Club.`;
+}
+
 function subject(data) {
-  return `A gift for you from ${data.buyerName}`;
+  return `${data.buyerName} sent you a gift 🐾`;
 }
 
 function html(data) {
@@ -36,7 +55,8 @@ function html(data) {
   });
   const body = `
     <p style="margin:0 0 20px;">Hi ${escapeHtml(firstName(data.recipientName))},</p>
-    <p style="margin:0 0 20px;">${escapeHtml(data.buyerName)} bought you a gift from Port City Leash Club! We're a small dog walking and pet sitting team in Wilmington, NC, and we can't wait to meet you and your pet.</p>
+    <p style="margin:0 0 20px;">${escapeHtml(opening(data))}</p>
+    <p style="margin:0 0 20px;">${aboutUsHtml()}</p>
     ${block}
     ${renderCodeBlockHtml(data.code)}
     <p style="margin:0 0 12px;">${escapeHtml(HOW_TO_USE)}</p>
@@ -45,14 +65,16 @@ function html(data) {
     <p style="margin:0;font-size:13px;">${escapeHtml(TERMS)}</p>
     ${renderSignoffHtml(TEAM_SIGNOFF)}
   `;
-  return wrapHtml({ preheader: `${data.packageLabel} from ${data.buyerName}.`, bodyHtml: body });
+  return wrapHtml({ preheader: `${data.packageLabel} for you and your pet, from ${data.buyerName}.`, bodyHtml: body });
 }
 
 function text(data) {
   const lines = [
     `Hi ${firstName(data.recipientName)},`,
     '',
-    `${data.buyerName} bought you a gift from Port City Leash Club! We're a small dog walking and pet sitting team in Wilmington, NC, and we can't wait to meet you and your pet.`,
+    opening(data),
+    '',
+    ABOUT_US_TEXT,
     '',
     renderBlockText({
       eyebrow: 'Your gift',

@@ -24,13 +24,13 @@ function deliveryValue(data) {
 }
 
 function subject() {
-  return 'Your Port City Leash Club gift is confirmed';
+  return 'Your gift is all set 🐾';
 }
 
 function deliveryLine(data) {
   return data.deliversToday
-    ? `We've emailed ${data.recipientName} their gift and how to use it.`
-    : `We'll email ${data.recipientName} their gift and how to use it on the morning of ${formatCalendarDate(data.deliverOn)}.`;
+    ? `We've sent ${firstName(data.recipientName)} their gift.`
+    : `We'll send ${firstName(data.recipientName)} their gift on the morning of ${formatCalendarDate(data.deliverOn)}.`;
 }
 
 function html(data) {
@@ -45,7 +45,7 @@ function html(data) {
   });
   const body = `
     <p style="margin:0 0 20px;">Hi ${escapeHtml(firstName(data.buyerName))},</p>
-    <p style="margin:0 0 20px;">Thank you for your gift. ${escapeHtml(deliveryLine(data))}</p>
+    <p style="margin:0 0 20px;">Thanks so much for your order. ${escapeHtml(deliveryLine(data))}</p>
     ${block}
     <p style="margin:20px 0 0;">Questions, or need to fix an email address? Just reply here and it'll come straight to us.</p>
     ${renderSignoffHtml(TEAM_SIGNOFF)}
@@ -57,7 +57,7 @@ function text(data) {
   const lines = [
     `Hi ${firstName(data.buyerName)},`,
     '',
-    `Thank you for your gift. ${deliveryLine(data)}`,
+    `Thanks so much for your order. ${deliveryLine(data)}`,
     '',
     renderBlockText({
       eyebrow: 'Your gift',
