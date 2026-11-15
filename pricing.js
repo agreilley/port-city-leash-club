@@ -115,6 +115,63 @@ export function giftPackageNoun(serviceKey, count) {
   return count === 1 ? option.singular : option.plural;
 }
 
+// What's left on one gift item, for the portal and admin: "2 overnights left",
+// "1 overnight left, plus $15 toward another", or "$90 toward an overnight".
+// partialCents is value left over from a switch (switchGiftPackageItems),
+// short of a whole visit; it comes off the next visit of that service.
+export function giftPackageItemSummary(item) {
+  const visits = item.visitsRemaining || 0;
+  const partial = item.partialCents || 0;
+  const money = (cents) => `$${Number.isInteger(cents / 100) ? cents / 100 : (cents / 100).toFixed(2)}`;
+  const one = GIFT_PACKAGE_OPTIONS[item.serviceKey].singular;
+  const article = /^[aeiou]/i.test(one) ? 'an' : 'a';
+  if (!visits && partial) return `${money(partial)} toward ${article} ${one}`;
+  const base = `${visits} ${giftPackageNoun(item.serviceKey, visits)} left`;
+  return partial ? `${base}, plus ${money(partial)} toward another` : base;
+}
+
+// Switches unused visits of one gift service to another, at today's standard
+// price of each, for a recipient who'd rather use their gift on something
+// else. Value that doesn't make a whole visit is kept as partialCents on the
+// new service and comes off the next visit of it, so nothing is lost. Any
+// leftover value on the old service moves too. Pure: returns the new items
+// and a record of the switch, and throws on anything invalid.
+export function switchGiftPackageItems(items, fromKey, toKey, visits) {
+  if (!GIFT_PACKAGE_OPTIONS[fromKey] || !GIFT_PACKAGE_OPTIONS[toKey]) throw new Error('Choose one of the gift services.');
+  if (fromKey === toKey) throw new Error('Choose a different service to switch to.');
+  const from = items.find((i) => i.serviceKey === fromKey);
+  if (!from) throw new Error("This gift doesn't include that service.");
+  if (!Number.isInteger(visits) || visits < 0 || visits > (from.visitsRemaining || 0)) {
+    throw new Error(`Enter a whole number from 0 to ${from.visitsRemaining || 0}.`);
+  }
+  const fromPartial = from.partialCents || 0;
+  if (visits === 0 && !fromPartial) throw new Error('There is nothing left to switch.');
+  const fromPriceCents = SERVICE_PRICES[fromKey].price * 100;
+  const toPriceCents = SERVICE_PRICES[toKey].price * 100;
+  const valueCents = visits * fromPriceCents + fromPartial;
+
+  const existing = items.find((i) => i.serviceKey === toKey);
+  const totalCents = valueCents + (existing?.partialCents || 0);
+  const newVisits = Math.floor(totalCents / toPriceCents);
+  const partialCents = totalCents - newVisits * toPriceCents;
+  // What the buyer paid per visit, scaled to the new service, so the admin's
+  // "still owed" total stays in line with what was actually paid.
+  const paidRatio = (from.unitPriceCents || fromPriceCents) / fromPriceCents;
+  const to = existing
+    ? { ...existing, quantity: existing.quantity + newVisits, visitsRemaining: (existing.visitsRemaining || 0) + newVisits, partialCents }
+    : { serviceKey: toKey, quantity: newVisits, unitPriceCents: Math.round(toPriceCents * paidRatio), visitsRemaining: newVisits, partialCents };
+
+  const next = items
+    .map((i) => {
+      if (i.serviceKey === fromKey) return { ...i, quantity: i.quantity - visits, visitsRemaining: i.visitsRemaining - visits, partialCents: 0 };
+      if (i.serviceKey === toKey) return to;
+      return i;
+    })
+    .filter((i) => i.quantity > 0 || i.visitsRemaining > 0 || i.partialCents > 0);
+  if (!existing) next.push(to);
+  return { items: next, record: { fromServiceKey: fromKey, toServiceKey: toKey, visits, valueCents, newVisits, partialCents } };
+}
+
 // items is [{ serviceKey, quantity }]. Throws on anything outside the options
 // above, so a bad request can never reach a charge. With a promotion, each visit
 // is discounted (rounded to the cent) and the order total is the sum of those, so

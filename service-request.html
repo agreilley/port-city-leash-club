@@ -499,6 +499,8 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       // meaning, cleared at the same triggers below.
       window._referralPreviewDiscountPercent = null;
       window._referralPreviewCodeType = null;
+      // Gift codes only: [{ serviceKey, visitsRemaining }] from validateReferralCode.
+      window._referralPreviewGiftItems = null;
 
       function setReferralCodeStatus(text, color) {
         referralCodeStatus.textContent = text;
@@ -512,6 +514,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         window._referralPreviewAmountCents = null;
         window._referralPreviewDiscountPercent = null;
         window._referralPreviewCodeType = null;
+        window._referralPreviewGiftItems = null;
       }
 
       referralCodeInput.addEventListener('input', () => {
@@ -546,6 +549,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
             window._referralPreviewAmountCents = typeof result.data.amountCents === 'number' ? result.data.amountCents : null;
             window._referralPreviewDiscountPercent = typeof result.data.discountPercent === 'number' ? result.data.discountPercent : null;
             window._referralPreviewCodeType = result.data.codeType || null;
+            window._referralPreviewGiftItems = Array.isArray(result.data.giftItems) ? result.data.giftItems : null;
             setReferralCodeStatus(result.data.codeType === 'gift' ? "Gift code applied. We'll add it to your account after your meet & greet." : 'Code applied.', 'var(--seafoam)');
           } else {
             clearReferralPreview();
@@ -767,7 +771,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
 <script type="module">
   import { createOvernightVisitPicker } from '/js/overnight-visit-picker.js';
-  import { SERVICE_PRICES as PRICES, calculateServiceTotal, calculateDropInScheduleTotal, calculateAddOnDropInTotal, isTravelDiscountService, calculateHolidaySurcharge, HOLIDAY_RATE_PERCENT } from './pricing.js';
+  import { SERVICE_PRICES as PRICES, calculateServiceTotal, calculateDropInScheduleTotal, calculateAddOnDropInTotal, isTravelDiscountService, calculateHolidaySurcharge, HOLIDAY_RATE_PERCENT, giftPackageVisitValue } from './pricing.js';
   import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
   import { showSuccess, showError } from '/js/status.js';
 
@@ -995,7 +999,26 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     let previewNoteText = '';
     if (grandTotal > 0) {
       const preDiscountTotalCents = Math.round(grandTotal * 100);
-      if (window._referralPreviewCodeType === 'friends_family') {
+      if (window._referralPreviewCodeType === 'gift') {
+        // Same rule as planGiftPackageCredit at charge time: each covered visit
+        // comes off at its standard price, and add-ons, extra drop-ins on an
+        // overnight, and holiday rates stay on the bill.
+        const value = giftPackageVisitValue(service);
+        const item = value && (window._referralPreviewGiftItems || []).find((i) => i.serviceKey === value.packageKey);
+        const bookedVisits = isWalk ? 1 : isDropIn ? (totalVisits || 0) : (days || 0);
+        const covered = item ? Math.min(bookedVisits, item.visitsRemaining || 0) : 0;
+        // Leftover value from a switch covers part of one more visit.
+        const partialCents = item && bookedVisits > covered ? Math.min(item.partialCents || 0, Math.round(value.dollars * 100)) : 0;
+        if (covered > 0 || partialCents > 0) {
+          previewDiscountCents = Math.min(covered * Math.round(value.dollars * 100) + partialCents, preDiscountTotalCents);
+          previewLineLabel = covered > 0
+            ? `Gift card (${covered} ${isWalk ? 'walk' : isDropIn ? 'visit' : 'night'}${covered === 1 ? '' : 's'})`
+            : 'Gift card';
+          previewNoteText = holiday.total || extraPetLine || medsLine || extras.total
+            ? 'Your gift card covers the standard price of each visit. Add-ons and holiday rates are extra.'
+            : '';
+        }
+      } else if (window._referralPreviewCodeType === 'friends_family') {
         if (isPetSitting && typeof window._referralPreviewDiscountPercent === 'number') {
           // Math.round(cents * pct / 100) — the cents-domain equivalent of
           // pricing.js's applyTravelDiscount (Math.round(dollars * pct)/100)
@@ -1033,7 +1056,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     linesEl.innerHTML   = lines || '<div class="order-empty">Select a service and dates to see your estimate.</div>';
     if (barTotal) barTotal.textContent = grandTotal > 0 ? displayTotal : '$—';
     if (orderNoteEl) {
-      orderNoteEl.style.display = previewDiscountCents > 0 ? 'block' : 'none';
+      orderNoteEl.style.display = previewDiscountCents > 0 && previewNoteText ? 'block' : 'none';
       if (previewDiscountCents > 0) orderNoteEl.textContent = previewNoteText;
     }
     window._lastEstimatedTotal = grandTotal;

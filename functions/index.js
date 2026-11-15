@@ -11383,7 +11383,14 @@ exports.validateReferralCode = onCall({}, async (request) => {
     const gift = await findGiftPackageByCode(code);
     if (!gift || gift.status !== 'paid') return { valid: false, reason: 'not_found' };
     if (gift.redeemedByMemberId) return { valid: false, reason: 'gift_redeemed' };
-    return { valid: true, reason: null, codeType: 'gift', packageLabel: gift.packageLabel };
+    // What's left on the gift, so the request form's summary can take it off
+    // the estimate. Only service keys and visit counts, nothing about the buyer.
+    const giftItems = (gift.items || []).map((item) => ({
+      serviceKey: item.serviceKey,
+      visitsRemaining: Number.isInteger(item.visitsRemaining) ? item.visitsRemaining : item.quantity,
+      partialCents: item.partialCents || 0,
+    })).filter((item) => item.visitsRemaining > 0 || item.partialCents > 0);
+    return { valid: true, reason: null, codeType: 'gift', packageLabel: gift.packageLabel, giftItems };
   }
   const codeData = snap.data();
   if (codeData.status !== 'active') return { valid: false, reason: 'inactive' };
@@ -11783,7 +11790,7 @@ async function planGiftPackageCredit(memberId, billingData, booking, amountCents
   const snap = await db.collection('giftPackages').where('redeemedByMemberId', '==', memberId).get();
   const packages = snap.docs
     .map((d) => ({ id: d.id, redeemedAtMs: d.data().redeemedAtMs || 0, status: d.data().status, item: (d.data().items || []).find((i) => i.serviceKey === value.packageKey) }))
-    .filter((p) => p.status === 'paid' && p.item?.visitsRemaining > 0)
+    .filter((p) => p.status === 'paid' && (p.item?.visitsRemaining > 0 || p.item?.partialCents > 0))
     .sort((a, b) => a.redeemedAtMs - b.redeemedAtMs);
   if (!packages.length) return none;
 
@@ -11794,15 +11801,33 @@ async function planGiftPackageCredit(memberId, billingData, booking, amountCents
   // Never spends a visit the charge has no room for, such as when an admin set
   // a lower total by hand.
   let visitsLeft = Math.min(booking.visits, Math.ceil(amountCents / visitCents));
-  const allocations = [];
+  // Whole visits first, oldest package first. Then leftover value from a
+  // switch (partialCents) covers part of a visit still unpaid, one visit per
+  // leftover amount.
+  const byId = new Map();
   for (const pkg of packages) {
     if (visitsLeft <= 0) break;
-    const visits = Math.min(visitsLeft, pkg.item.visitsRemaining);
-    allocations.push({ id: pkg.id, serviceKey: value.packageKey, visits });
-    visitsLeft -= visits;
+    const visits = Math.min(visitsLeft, pkg.item.visitsRemaining || 0);
+    if (visits > 0) {
+      byId.set(pkg.id, { id: pkg.id, serviceKey: value.packageKey, visits, partialCents: 0 });
+      visitsLeft -= visits;
+    }
   }
+  let partialUsedCents = 0;
+  for (const pkg of packages) {
+    if (visitsLeft <= 0) break;
+    const partial = Math.min(pkg.item.partialCents || 0, visitCents);
+    if (partial > 0) {
+      const a = byId.get(pkg.id) || { id: pkg.id, serviceKey: value.packageKey, visits: 0, partialCents: 0 };
+      a.partialCents = partial;
+      byId.set(pkg.id, a);
+      partialUsedCents += partial;
+      visitsLeft -= 1;
+    }
+  }
+  const allocations = [...byId.values()];
   const visitsUsed = allocations.reduce((sum, a) => sum + a.visits, 0);
-  return { creditCents: Math.min(visitsUsed * visitCents, amountCents), visitsUsed, allocations };
+  return { creditCents: Math.min(visitsUsed * visitCents + partialUsedCents, amountCents), visitsUsed, allocations };
 }
 
 async function commitGiftPackageCredit(allocations, memberId, chargeKey) {
@@ -11810,12 +11835,12 @@ async function commitGiftPackageCredit(allocations, memberId, chargeKey) {
     const refs = allocations.map((a) => db.collection('giftPackages').doc(a.id));
     const snaps = await Promise.all(refs.map((ref) => tx.get(ref)));
     snaps.forEach((snap, i) => {
-      const { serviceKey, visits } = allocations[i];
+      const { serviceKey, visits, partialCents = 0 } = allocations[i];
       tx.update(refs[i], {
         items: (snap.data()?.items || []).map((item) => (item.serviceKey === serviceKey
-          ? { ...item, visitsRemaining: Math.max(0, item.visitsRemaining - visits) }
+          ? { ...item, visitsRemaining: Math.max(0, item.visitsRemaining - visits), partialCents: Math.max(0, (item.partialCents || 0) - partialCents) }
           : item)),
-        redemptions: FieldValue.arrayUnion({ chargeKey, memberId, serviceKey, visits, at: Timestamp.now() }),
+        redemptions: FieldValue.arrayUnion({ chargeKey, memberId, serviceKey, visits, partialCents, at: Timestamp.now() }),
       });
     });
   });
@@ -11925,6 +11950,29 @@ exports.adminAddGiftPackageVisits = onCall({}, async (request) => {
   });
 });
 
+// Switches unused visits to a different service when a recipient asks (the
+// gift email offers this). See switchGiftPackageItems in pricing.js.
+exports.adminSwitchGiftPackageVisits = onCall({}, async (request) => {
+  await assertIsAdmin(request.auth);
+  const ref = giftPackageRefFromRequest(request);
+  const { switchGiftPackageItems } = await import('./pricing.js');
+  return db.runTransaction(async (tx) => {
+    const giftPackage = (await tx.get(ref)).data();
+    if (!giftPackage || giftPackage.status !== 'paid') throw new HttpsError('failed-precondition', 'Only a paid gift package can be switched.');
+    let result;
+    try {
+      result = switchGiftPackageItems(giftPackage.items || [], request.data?.fromServiceKey, request.data?.toServiceKey, Number(request.data?.visits));
+    } catch (e) {
+      throw new HttpsError('invalid-argument', e.message);
+    }
+    tx.update(ref, {
+      items: result.items,
+      switches: FieldValue.arrayUnion({ ...result.record, at: Timestamp.now() }),
+    });
+    return result.record;
+  });
+});
+
 // Stops a package working, and stops its email if it hasn't gone out. This does
 // not refund the buyer. That's done in Stripe, so the money side stays a
 // separate, deliberate step.
@@ -11936,7 +11984,7 @@ exports.adminVoidGiftPackage = onCall({}, async (request) => {
     if (!giftPackage || giftPackage.status !== 'paid') throw new HttpsError('failed-precondition', 'Only a paid gift package can be voided.');
     tx.update(ref, {
       status: 'voided',
-      items: giftPackage.items.map((item) => ({ ...item, visitsRemaining: 0 })),
+      items: giftPackage.items.map((item) => ({ ...item, visitsRemaining: 0, partialCents: 0 })),
       visitsAtVoid: giftPackage.items.reduce((sum, item) => sum + item.visitsRemaining, 0),
       voidedAt: FieldValue.serverTimestamp(),
       deliveryStatus: giftPackage.deliveryStatus === 'sent' ? 'sent' : 'canceled',
@@ -11971,7 +12019,7 @@ exports.getGiftPackages = onCall({}, async (request) => {
     memberId = String(request.data.memberId);
   }
   const snap = await db.collection('giftPackages').where('redeemedByMemberId', '==', memberId).get();
-  const { giftPackageNoun } = await import('./pricing.js');
+  const { giftPackageNoun, giftPackageItemSummary } = await import('./pricing.js');
   return {
     packages: snap.docs
       .map((d) => d.data())
@@ -11982,6 +12030,8 @@ exports.getGiftPackages = onCall({}, async (request) => {
         visitsRemaining: item.visitsRemaining,
         visitsTotal: item.quantity,
         noun: giftPackageNoun(item.serviceKey, item.visitsRemaining),
+        partialCents: item.partialCents || 0,
+        summary: giftPackageItemSummary(item),
       }))),
   };
 });

@@ -1570,7 +1570,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { getStorage, ref as storageRef, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
-import { giftPackageNoun, SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalkExtensionTotal, WALK_EXTENSION_PRICE, EXTRA_PET_FEE, MEDICATION_FEE, applyTravelDiscount, isTravelDiscountService, calculateAddOnDropInTotal, calculateHolidaySurcharge, withHolidaySurcharge, isHolidayRateRequest, holidayWindowsRunningOut } from '../pricing.js';
+import { giftPackageNoun, giftPackageItemSummary, GIFT_PACKAGE_OPTIONS, SERVICE_PRICES, resolveServiceKey, calculateServiceTotal, calculateWalkExtensionTotal, WALK_EXTENSION_PRICE, EXTRA_PET_FEE, MEDICATION_FEE, applyTravelDiscount, isTravelDiscountService, calculateAddOnDropInTotal, calculateHolidaySurcharge, withHolidaySurcharge, isHolidayRateRequest, holidayWindowsRunningOut } from '../pricing.js';
 // Walk time-of-day slot: keys + base label + clock range, shared with every
 // other page that shows or picks one (see time-slots.js's own header
 // comment). Deliberately NOT the careers/screening availability grids —
@@ -5281,8 +5281,8 @@ const GIFT_PACKAGE_EMAIL_LABELS = { sent: 'Sent', scheduled: 'Scheduled', failed
 function matchesGiftPackageFilter(p) {
   switch (giftPackageFilter) {
     case 'unredeemed': return p.status === 'paid' && !p.redeemedByMemberId;
-    case 'active': return p.status === 'paid' && (p.items || []).some(i => i.visitsRemaining > 0);
-    case 'usedup': return p.status === 'paid' && (p.items || []).every(i => i.visitsRemaining === 0);
+    case 'active': return p.status === 'paid' && (p.items || []).some(i => i.visitsRemaining > 0 || i.partialCents > 0);
+    case 'usedup': return p.status === 'paid' && (p.items || []).every(i => i.visitsRemaining === 0 && !(i.partialCents > 0));
     case 'emailproblem': return p.status === 'paid' && (p.deliveryStatus === 'failed' || p.deliveryStatus === 'failed_final');
     case 'voided': return p.status === 'voided';
     case 'unpaid': return p.status === 'pending' || p.status === 'failed';
@@ -5298,7 +5298,13 @@ function renderGiftPackagesTable() {
   // valued at what the buyer paid per visit.
   const paid = allGiftPackages.filter(p => p.status === 'paid');
   const soldCents = paid.reduce((sum, p) => sum + (p.amountCents || 0), 0);
-  const owedCents = paid.reduce((sum, p) => sum + (p.items || []).reduce((itemSum, i) => itemSum + (i.visitsRemaining || 0) * (i.unitPriceCents || 0), 0), 0);
+  // Leftover value from a switch (partialCents) is at standard price, so it's
+  // scaled by what the buyer paid per visit, like the visits are.
+  const owedCents = paid.reduce((sum, p) => sum + (p.items || []).reduce((itemSum, i) => {
+    const listCents = (SERVICE_PRICES[i.serviceKey]?.price || 0) * 100;
+    const partialOwed = listCents ? Math.round((i.partialCents || 0) * (i.unitPriceCents || listCents) / listCents) : 0;
+    return itemSum + (i.visitsRemaining || 0) * (i.unitPriceCents || 0) + partialOwed;
+  }, 0), 0);
   const summary = document.getElementById('giftPackagesSummary');
   if (summary) summary.textContent = `${paid.length} sold for $${(soldCents / 100).toFixed(2)}. Unused visits: $${(owedCents / 100).toFixed(2)} still owed in service.`;
 
@@ -5320,7 +5326,7 @@ function renderGiftPackagesTable() {
     const stripeLink = p.paymentIntentId ? `<div style="font-size:11px;margin-top:2px;"><a href="https://dashboard.stripe.com/payments/${encodeURIComponent(p.paymentIntentId)}" target="_blank" rel="noopener" style="color:var(--rust);">View in Stripe</a></div>` : '';
     const items = p.items || [];
     const visits = p.status === 'voided' ? `Voided${small(`${p.visitsAtVoid ?? 0} visits unused`)}`
-      : isPaid ? `${items.map(i => `<div>${i.visitsRemaining} of ${i.quantity} ${escapeHtml(giftPackageNoun(i.serviceKey, i.quantity))}</div>`).join('')}${small(member ? `On ${member.name || 'member'}'s account` : p.redeemedByMemberId ? 'On an account' : 'Not on an account')}`
+      : isPaid ? `${items.map(i => `<div>${escapeHtml(giftPackageItemSummary(i))}${i.quantity ? ` <span style="color:var(--text-light);">of ${i.quantity}</span>` : ''}</div>`).join('')}${p.switches?.length ? small('Switched by request') : ''}${small(member ? `On ${member.name || 'member'}'s account` : p.redeemedByMemberId ? 'On an account' : 'Not on an account')}`
       : capitalize(p.status);
     return `
     <tr>
@@ -5334,6 +5340,7 @@ function renderGiftPackagesTable() {
       <td style="min-width:150px;">${isPaid ? [
         btn('Send Email', `resendGiftPackage('${id}', this)`),
         ...items.filter(i => i.visitsRemaining < i.quantity).map(i => btn(`Add Back: ${escapeHtml(giftPackageNoun(i.serviceKey, 2))}`, `addGiftPackageVisits('${id}', '${escapeHtml(i.serviceKey)}', this)`)),
+        ...items.filter(i => i.visitsRemaining > 0 || i.partialCents > 0).map(i => btn(`Switch: ${escapeHtml(giftPackageNoun(i.serviceKey, 2))}`, `switchGiftPackageVisits('${id}', '${escapeHtml(i.serviceKey)}', this)`)),
         btn('Void', `voidGiftPackage('${id}', this)`, 'color:#b42318;'),
       ].join('') : ''}</td>
     </tr>`;
@@ -5374,6 +5381,39 @@ window.resendGiftPackage = async (id, button) => {
     await loadGiftPackages();
   } catch (e) {
     alert(`Couldn't send: ${e.message}`);
+    button.disabled = false;
+  }
+};
+
+// For a recipient who asks to use their gift on a different service. Converts
+// at today's standard prices; anything short of a whole visit is kept toward
+// the next visit of the new service (switchGiftPackageItems in pricing.js).
+window.switchGiftPackageVisits = async (id, fromKey, button) => {
+  const p = allGiftPackages.find(x => x.id === id);
+  const item = p?.items?.find(i => i.serviceKey === fromKey);
+  if (!item) return;
+  const targets = Object.keys(GIFT_PACKAGE_OPTIONS).filter(k => k !== fromKey);
+  const choice = prompt(`Switch ${giftPackageItemSummary(item)} to which service?\n\n${targets.map((k, n) => `${n + 1} = ${giftPackageNoun(k, 2)} ($${SERVICE_PRICES[k].price} each)`).join('\n')}`, '1');
+  if (choice === null) return;
+  const toKey = targets[Number(choice.trim()) - 1];
+  if (!toKey) { alert(`Enter ${targets.map((_, n) => n + 1).join(' or ')}.`); return; }
+
+  let visits = item.visitsRemaining || 0;
+  if (visits > 1) {
+    const input = prompt(`How many of the ${visits} unused ${giftPackageNoun(fromKey, visits)} should switch? ($${SERVICE_PRICES[fromKey].price} each)`, String(visits));
+    if (input === null) return;
+    visits = Number(input.trim());
+    if (!Number.isInteger(visits) || visits < 1 || visits > item.visitsRemaining) { alert(`Enter a whole number from 1 to ${item.visitsRemaining}.`); return; }
+  }
+  const valueCents = visits * SERVICE_PRICES[fromKey].price * 100 + (item.partialCents || 0);
+  if (!confirm(`Switch $${(valueCents / 100).toFixed(2)} of this gift to ${giftPackageNoun(toKey, 2)} at $${SERVICE_PRICES[toKey].price} each? Anything short of a whole visit comes off their next one.`)) return;
+
+  button.disabled = true;
+  try {
+    await httpsCallable(fns, 'adminSwitchGiftPackageVisits')({ giftPackageId: id, fromServiceKey: fromKey, toServiceKey: toKey, visits });
+    await loadGiftPackages();
+  } catch (e) {
+    alert(`Couldn't switch: ${e.message}`);
     button.disabled = false;
   }
 };
@@ -10170,7 +10210,7 @@ async function loadMemberGiftPackages(memberId) {
   try {
     const { data } = await httpsCallable(fns, 'getGiftPackages')({ memberId });
     render(data.packages.length
-      ? data.packages.map(p => `<div><strong>${p.visitsRemaining} ${escapeHtml(p.noun)} left</strong> of ${p.visitsTotal}, from ${escapeHtml(p.buyerName)}</div>`).join('')
+      ? data.packages.map(p => `<div><strong>${escapeHtml(p.summary || `${p.visitsRemaining} ${p.noun} left`)}</strong>, from ${escapeHtml(p.buyerName)}</div>`).join('')
       : 'None on this account.');
   } catch (e) {
     render(`<span style="color:#b91c1c;">Couldn't load gift packages: ${escapeHtml(e.message)}</span>`);

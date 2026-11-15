@@ -1553,13 +1553,13 @@ async function loadGiftPackages() {
       const row = document.createElement('div');
       row.style.padding = '4px 0';
       const strong = document.createElement('strong');
-      strong.textContent = `${p.visitsRemaining} ${p.noun} left`;
-      row.append(strong, ` of ${p.visitsTotal}, from ${p.buyerName}`);
+      strong.textContent = p.summary || `${p.visitsRemaining} ${p.noun} left`;
+      row.append(strong, `, from ${p.buyerName}`);
       listEl.append(row);
     });
     const note = document.createElement('div');
     note.style.cssText = 'font-size:13px; margin-top:8px;';
-    note.textContent = 'We apply your gift to your bookings automatically. It covers the standard price of each visit, and add-ons and holiday rates are extra.';
+    note.textContent = "We apply your gift to your bookings automatically. It covers the standard price of each visit, and add-ons and holiday rates are extra. Want to use it for a different service? Just let us know and we'll switch it for you.";
     listEl.append(note);
   } catch (e) {
     console.error('loadGiftPackages failed:', e);
