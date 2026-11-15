@@ -2735,6 +2735,14 @@ async function runCreateMembershipSubscription(submissionId, memberId) {
     // before, which those jobs never read — which is exactly why they used to
     // revert the proration set here.
     const startDate = toDateOrNull(sub?.startDate);
+    // A gift code in referredByCode isn't a referral: apply it (a no-op if it's
+    // already on this account) and leave the billing referral fields alone.
+    const subCodeIsGift = sub?.referredByCode ? !!(await findGiftPackageByCode(sub.referredByCode)) : false;
+    if (subCodeIsGift) {
+      await redeemGiftPackageForMember(sub.referredByCode, memberId).catch((e) => {
+        console.error(`runCreateMembershipSubscription: couldn't apply gift code for ${memberId}:`, e.message);
+      });
+    }
     // Atomic split write. The 4 billing fields go to the protected subdoc; the
     // member doc keeps membershipStartDate (scheduled jobs read it) and gains
     // hasActiveSubscription — a NON-sensitive boolean the crons filter on in
@@ -2757,7 +2765,7 @@ async function runCreateMembershipSubscription(submissionId, memberId) {
       // structurally: only written if billingSnap (read above, before this
       // batch was built) shows nothing already there — never overwrites a
       // real value with a second write, even a same-flow retry.
-      ...(billingSnap.data()?.referredByCode ? {} : {
+      ...(billingSnap.data()?.referredByCode || subCodeIsGift ? {} : {
         referredByCode: sub?.referredByCode || null,
         referralSubmissionId: submissionId,
       }),
@@ -6258,6 +6266,13 @@ exports.completeMeetGreetAndCreateAccount = onCall({
     const codeSnapForType = await db.collection('referralCodes').doc(sub.referredByCode).get();
     if (codeSnapForType.exists && codeSnapForType.data().source === 'friends_family') {
       friendsFamilyRedemption = await claimFriendsFamilyRedemption(sub.referredByCode, uid, { redeemedVia: 'self_service', submissionId });
+    } else if (!codeSnapForType.exists && await findGiftPackageByCode(sub.referredByCode)) {
+      // A gift code from the promo/referral box: put the gift on the new
+      // account. Never fatal, since the account itself is the point here, and
+      // admin can still apply the code from the member record.
+      await redeemGiftPackageForMember(sub.referredByCode, uid).catch((e) => {
+        console.error(`completeMeetGreetAndCreateAccount: couldn't apply gift code for ${uid}:`, e.message);
+      });
     } else {
       const billingSnapForReferral = await billingRef(uid).get();
       if (!billingSnapForReferral.data()?.referredByCode) {
@@ -11355,7 +11370,21 @@ exports.validateReferralCode = onCall({}, async (request) => {
   const code = typeof request.data?.code === 'string' ? request.data.code.trim().toUpperCase() : '';
   if (!code) return { valid: false, reason: null };
   const snap = await db.collection('referralCodes').doc(code).get();
-  if (!snap.exists) return { valid: false, reason: 'not_found' };
+  if (!snap.exists) {
+    // Not a referral code: it may be a gift code typed into the same box. This
+    // endpoint is public, so unknown-code lookups are rate-limited per IP to
+    // stop anyone guessing their way to someone else's gift.
+    if (!GIFT_PACKAGE_CODE_PATTERN.test(code)) return { valid: false, reason: 'not_found' };
+    try {
+      await assertGiftPackageRateLimit(request.rawRequest?.ip ? `giftlookup:${request.rawRequest.ip}` : null);
+    } catch (e) {
+      return { valid: false, reason: 'not_found' };
+    }
+    const gift = await findGiftPackageByCode(code);
+    if (!gift || gift.status !== 'paid') return { valid: false, reason: 'not_found' };
+    if (gift.redeemedByMemberId) return { valid: false, reason: 'gift_redeemed' };
+    return { valid: true, reason: null, codeType: 'gift', packageLabel: gift.packageLabel };
+  }
   const codeData = snap.data();
   if (codeData.status !== 'active') return { valid: false, reason: 'inactive' };
   // Same isReferralCodeExpired check resolveNewMemberReferralDiscount uses
@@ -11428,13 +11457,23 @@ const GIFT_PACKAGE_MAX_DELIVERY_ATTEMPTS = 5;
 const GIFT_PACKAGE_MAX_ORDERS_PER_HOUR = 10;
 const GIFT_PACKAGE_MAX_DELIVERY_DAYS_AHEAD = 365;
 const GIFT_PACKAGE_MESSAGE_MAX_LENGTH = 300;
-// No 0/O or 1/I, since a recipient may retype the code by hand.
-const GIFT_PACKAGE_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-
-function generateGiftPackageCode() {
-  const pick = (length) => Array.from({ length }, () => GIFT_PACKAGE_CODE_ALPHABET[crypto.randomInt(GIFT_PACKAGE_CODE_ALPHABET.length)]).join('');
-  return `GIFT-${pick(5)}-${pick(5)}`;
+// Gift codes use the same PCLC-XXXXXX format and look-alike-free alphabet as
+// referral codes (randomReferralCode). Before issuing one, check it isn't
+// already taken by another gift or a referral code, so a code always means one
+// thing. Early gift codes were GIFT-XXXXX-XXXXX, and redemption still accepts them.
+async function generateUniqueGiftPackageCode() {
+  for (let attempt = 0; attempt < REFERRAL_CODE_MAX_ATTEMPTS; attempt++) {
+    const code = randomReferralCode();
+    const [giftSnap, referralSnap] = await Promise.all([
+      db.collection('giftPackages').where('code', '==', code).limit(1).get(),
+      db.collection('referralCodes').doc(code).get(),
+    ]);
+    if (giftSnap.empty && !referralSnap.exists) return code;
+  }
+  throw new Error('generateUniqueGiftPackageCode: no free code after several attempts.');
 }
+
+const GIFT_PACKAGE_CODE_PATTERN = new RegExp(`^(PCLC-[${REFERRAL_CODE_ALPHABET}]{${REFERRAL_CODE_LENGTH}}|GIFT-[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5})$`);
 
 function easternTodayString() {
   const { year, monthIndex, day } = easternTodayParts();
@@ -11535,7 +11574,7 @@ async function deliverGiftPackage(giftPackageId, giftPackage) {
 // earlier call already got there.
 async function fulfillGiftPackage(giftPackageId, paymentIntent) {
   const ref = db.collection('giftPackages').doc(giftPackageId);
-  const code = generateGiftPackageCode();
+  const code = await generateUniqueGiftPackageCode();
   const outcome = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) return { paid: false };
@@ -11779,12 +11818,22 @@ async function commitGiftPackageCredit(allocations, memberId, chargeKey) {
   });
 }
 
+// The gift package a code belongs to, or null. Used where a gift code can
+// arrive through the request forms' promo/referral box, so it's never treated
+// as a referral code.
+async function findGiftPackageByCode(rawCode) {
+  const code = typeof rawCode === 'string' ? rawCode.trim().toUpperCase() : '';
+  if (!GIFT_PACKAGE_CODE_PATTERN.test(code)) return null;
+  const snap = await db.collection('giftPackages').where('code', '==', code).limit(1).get();
+  return snap.empty ? null : snap.docs[0].data();
+}
+
 // Attaches a paid package to a member's account. Saying the same thing for a
 // wrong code and someone else's code means this can't be used to probe codes.
 async function redeemGiftPackageForMember(rawCode, memberId) {
   const notFound = () => new HttpsError('not-found', "We couldn't find that code. Please check it and try again, or email hello@portcityleashclub.com.");
   const code = typeof rawCode === 'string' ? rawCode.trim().toUpperCase() : '';
-  if (!/^GIFT-[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/.test(code)) throw notFound();
+  if (!GIFT_PACKAGE_CODE_PATTERN.test(code)) throw notFound();
 
   const snap = await db.collection('giftPackages').where('code', '==', code).limit(1).get();
   if (snap.empty) throw notFound();
