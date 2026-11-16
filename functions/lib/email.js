@@ -68,6 +68,7 @@ const TEMPLATES = {
   'gift-package-purchased': require('../templates/gift-package-purchased'),
   'gift-package-delivered': require('../templates/gift-package-delivered'),
   'gift-package-admin': require('../templates/gift-package-admin'),
+  'password-setup': require('../templates/password-setup'),
 };
 
 const MAX_ATTEMPTS = 3;

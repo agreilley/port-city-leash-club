@@ -6305,11 +6305,9 @@ exports.completeMeetGreetAndCreateAccount = onCall({
   // for anyone who hasn't signed in yet (portalSetupForMember).
   let emailResult = { ok: true, error: null };
   if (isMembership) {
-    const portalUrl = `${BUSINESS_PORTAL_ORIGIN}/portal-login`;
-    // After setting a password and signing in, land on Add Card (portal-login's ?next=).
-    const portalSetupLink = await authAdmin.generatePasswordResetLink(sub.email, {
-      url: `${portalUrl}?welcome=1&next=${encodeURIComponent('/portal-account?addCard=1')}`,
-    });
+    // Our own 7-day link (see createPasswordSetupLink). After setting a
+    // password they're signed in and land on Add Card.
+    const portalSetupLink = await createPasswordSetupLink(uid, { purpose: 'welcome', next: '/portal-account?addCard=1' });
     const petNames = (memberDoc.dogs || []).map((d) => d && d.name).filter(Boolean);
     const firstName = (memberDoc.name || '').trim().split(/\s+/)[0] || 'there';
     const orderedDays = VALID_WALK_DAYS.filter((d) => memberDoc.defaultWalkDays.includes(d));
@@ -7254,15 +7252,193 @@ async function portalSetupForMember(memberId, email, needsCard) {
     const neverSignedIn = !md.lastRefreshTime && (!md.lastSignInTime || md.lastSignInTime === md.creationTime);
     if (!neverSignedIn) return plain;
     const next = needsCard ? '/portal-account?addCard=1' : '/portal-dashboard';
-    const portalSetupLink = await getAuth().generatePasswordResetLink(email, {
-      url: `${BUSINESS_PORTAL_ORIGIN}/portal-login?welcome=1&next=${encodeURIComponent(next)}`,
-    });
+    // Our own 7-day link, not Firebase's hour-long one (see createPasswordSetupLink).
+    const portalSetupLink = await createPasswordSetupLink(memberId, { purpose: 'welcome', next });
     return { isNewAccount: true, portalSetupLink };
   } catch (e) {
     console.error(`portalSetupForMember: couldn't check portal sign-in for ${memberId}:`, e.message);
     return plain;
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Our own set-password links (2026-11-15). Firebase's generatePasswordReset-
+// Link expires in about an hour, so a new client who opened their welcome
+// email the next day hit "expired" and had to ask for a second email. And
+// Firebase locked its reset-email template for this project (2026-11-13),
+// so the "Send Link" email could no longer carry our wording or reply-to.
+//
+// A link is a random 32-byte token. Only its SHA-256 hash is stored, as the
+// doc id in passwordSetupTokens/ (Admin SDK only; firestore.rules has no
+// match for it, so every client read and write is denied). Each token is
+// single use, and setting a password with one retires every other unused
+// token for that account. Welcome links last 7 days; a self-requested link
+// from "Send Link" lasts 24 hours.
+//
+// The rendered email (link included) is kept in emailLog, which only admin
+// can read. That's the same exposure the Firebase links always had there.
+// ─────────────────────────────────────────────────────────────────────────
+const PASSWORD_SETUP_TTL_MS = {
+  welcome: 7 * 24 * 60 * 60 * 1000,
+  reset: 24 * 60 * 60 * 1000,
+};
+
+function hashPasswordSetupToken(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
+// role: 'member' (signs in on the page, then goes to `next`) or 'walker'
+// (goes to the walker sign-in). next: a /portal-… path, member only.
+async function createPasswordSetupLink(uid, { purpose, role = 'member', next = '/portal-dashboard' }) {
+  if (!PASSWORD_SETUP_TTL_MS[purpose]) throw new Error(`createPasswordSetupLink: unknown purpose ${purpose}`);
+  const token = crypto.randomBytes(32).toString('base64url');
+  await db.collection('passwordSetupTokens').doc(hashPasswordSetupToken(token)).set({
+    uid,
+    purpose,
+    role,
+    next: role === 'member' ? next : null,
+    createdAt: FieldValue.serverTimestamp(),
+    expiresAt: Timestamp.fromMillis(Date.now() + PASSWORD_SETUP_TTL_MS[purpose]),
+    usedAt: null,
+  });
+  return `${BUSINESS_PORTAL_ORIGIN}/portal-password-reset?setup=${token}`;
+}
+
+// Hourly per-caller limit, keyed by a hash of the caller (IP or email).
+async function assertHourlyRateLimit(collection, caller, max) {
+  if (!caller) return;
+  const ref = db.collection(collection).doc(crypto.createHash('sha256').update(caller).digest('hex'));
+  const now = Date.now();
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const windowStartMs = snap.exists ? snap.data().windowStartMs : 0;
+    const count = snap.exists ? snap.data().count : 0;
+    if (now - windowStartMs >= 60 * 60 * 1000) {
+      tx.set(ref, { windowStartMs: now, count: 1 });
+      return;
+    }
+    if (count >= max) {
+      throw new HttpsError('resource-exhausted', 'Too many attempts. Please try again in an hour, or email hello@portcityleashclub.com.');
+    }
+    tx.set(ref, { windowStartMs, count: count + 1 });
+  });
+}
+
+// Reads a token without using it. Returns the doc data when usable, else null.
+async function readUsablePasswordSetupToken(token) {
+  if (typeof token !== 'string' || token.length < 20 || token.length > 100) return null;
+  const snap = await db.collection('passwordSetupTokens').doc(hashPasswordSetupToken(token)).get();
+  if (!snap.exists) return null;
+  const t = snap.data();
+  if (t.usedAt || !t.expiresAt || t.expiresAt.toMillis() <= Date.now()) return null;
+  return t;
+}
+
+// Public. Lets the page show "expired" before anyone types a password, and
+// pick welcome vs reset wording. Same answer for unknown, used and expired.
+exports.checkPasswordSetupLink = onCall(async (request) => {
+  await assertHourlyRateLimit('passwordSetupThrottle', request.rawRequest?.ip ? `check:${request.rawRequest.ip}` : null, 60);
+  const t = await readUsablePasswordSetupToken(request.data?.token);
+  if (!t) return { valid: false };
+  return { valid: true, welcome: t.purpose === 'welcome' };
+});
+
+// Public. Sets the password for the token's account and uses up the token.
+// Returns the account email so the page can sign the member straight in.
+exports.completePasswordSetup = onCall(async (request) => {
+  await assertHourlyRateLimit('passwordSetupThrottle', request.rawRequest?.ip ? `complete:${request.rawRequest.ip}` : null, 20);
+  const { token, password } = request.data || {};
+  if (typeof password !== 'string' || password.length < 6 || password.length > 128) {
+    throw new HttpsError('invalid-argument', 'Password must be at least 6 characters.');
+  }
+  const expired = new HttpsError('failed-precondition', 'This link is invalid or has expired.');
+  if (typeof token !== 'string' || token.length < 20 || token.length > 100) throw expired;
+
+  // Claim the token in a transaction so two submits can't both use it.
+  const ref = db.collection('passwordSetupTokens').doc(hashPasswordSetupToken(token));
+  const t = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return null;
+    const data = snap.data();
+    if (data.usedAt || !data.expiresAt || data.expiresAt.toMillis() <= Date.now()) return null;
+    tx.update(ref, { usedAt: FieldValue.serverTimestamp() });
+    return data;
+  });
+  if (!t) throw expired;
+
+  const { getAuth } = require('firebase-admin/auth');
+  let user;
+  try {
+    // Opening the emailed link proves they own the inbox, same as Firebase's own reset.
+    user = await getAuth().updateUser(t.uid, { password, emailVerified: true });
+  } catch (e) {
+    // Give the token back so they can try again with a different password.
+    await ref.update({ usedAt: null }).catch(() => {});
+    if (e.code === 'auth/invalid-password') {
+      throw new HttpsError('invalid-argument', 'Password must be at least 6 characters.');
+    }
+    console.error(`completePasswordSetup: updateUser failed for ${t.uid}:`, e.message);
+    if (e.code === 'auth/user-not-found') throw expired;
+    throw new HttpsError('internal', 'Something went wrong. Please try again.');
+  }
+
+  // Retire this account's other unused links (an older welcome, a second Send Link).
+  try {
+    const others = await db.collection('passwordSetupTokens')
+      .where('uid', '==', t.uid).where('usedAt', '==', null).get();
+    const batch = db.batch();
+    others.forEach((d) => batch.update(d.ref, { usedAt: FieldValue.serverTimestamp(), retired: true }));
+    if (!others.empty) await batch.commit();
+  } catch (e) {
+    console.error(`completePasswordSetup: couldn't retire other links for ${t.uid}:`, e.message);
+  }
+
+  return { email: user.email, role: t.role || 'member', next: t.next || null, welcome: t.purpose === 'welcome' };
+});
+
+// Public. "Send Link" on portal-password-reset.html. Always answers the
+// same way, whether or not the email has an account.
+exports.requestPasswordSetupEmail = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+  const email = typeof request.data?.email === 'string' ? request.data.email.trim().toLowerCase() : '';
+  if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new HttpsError('invalid-argument', 'Please enter a valid email address.');
+  }
+  await assertHourlyRateLimit('passwordSetupThrottle', request.rawRequest?.ip ? `send:${request.rawRequest.ip}` : null, 10);
+  await assertHourlyRateLimit('passwordSetupThrottle', `send-email:${email}`, 3);
+
+  const { getAuth } = require('firebase-admin/auth');
+  let user;
+  try {
+    user = await getAuth().getUserByEmail(email);
+  } catch (e) {
+    if (e.code !== 'auth/user-not-found') console.error('requestPasswordSetupEmail: lookup failed:', e.message);
+    return { ok: true };
+  }
+  if (user.disabled) return { ok: true };
+
+  let firstName = null;
+  let role = 'member';
+  try {
+    const [memberSnap, walkerSnap] = await Promise.all([
+      db.collection('members').doc(user.uid).get(),
+      db.collection('walkers').doc(user.uid).get(),
+    ]);
+    const name = (memberSnap.exists && memberSnap.data().name) || (walkerSnap.exists && walkerSnap.data().name) || '';
+    firstName = name.trim().split(/\s+/)[0] || null;
+    if (!memberSnap.exists && walkerSnap.exists) role = 'walker';
+  } catch (e) {
+    console.error(`requestPasswordSetupEmail: profile lookup failed for ${user.uid}:`, e.message);
+  }
+
+  const link = await createPasswordSetupLink(user.uid, { purpose: 'reset', role });
+  const result = await sendEmail({
+    to: user.email,
+    template: 'password-setup',
+    data: { firstName, link, validForText: '24 hours' },
+  });
+  if (!result.ok) console.error(`requestPasswordSetupEmail: send failed for ${user.uid}: ${result.error}`);
+  return { ok: true };
+});
 
 async function sendServiceOrOvernightConfirmationEmail(sub, submissionId, memberId, reviewed, chargeResult, cardOnFile = true) {
   const { SERVICE_PRICES, resolveServiceKey } = await import('./pricing.js');
