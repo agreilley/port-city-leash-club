@@ -1027,7 +1027,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           const owned = (window._referralPreviewGiftItems || [])
             .filter((i) => i.visitsRemaining > 0 || i.partialCents > 0)
             .map((i) => (i.visitsRemaining > 0 ? `${i.visitsRemaining} ${giftPackageNoun(i.serviceKey, i.visitsRemaining)}` : giftPackageItemSummary(i)));
-          if (owned.length) giftMismatchText = `Your gift card is for ${owned.join(' and ')}, so it isn't taken off this estimate. Want to use it for this instead?`;
+          if (owned.length) giftMismatchText = `Your gift card is for ${owned.join(' and ')}, so it won't come off this request. Want to use it for this instead?`;
         }
       } else if (window._referralPreviewCodeType === 'friends_family') {
         if (isPetSitting && typeof window._referralPreviewDiscountPercent === 'number') {
@@ -1067,16 +1067,23 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     linesEl.innerHTML   = lines || '<div class="order-empty">Select a service and dates to see your estimate.</div>';
     if (barTotal) barTotal.textContent = grandTotal > 0 ? displayTotal : '$—';
     if (orderNoteEl) {
+      orderNoteEl.style.display = previewDiscountCents > 0 && previewNoteText ? 'block' : 'none';
+      if (previewDiscountCents > 0) orderNoteEl.textContent = previewNoteText;
+    }
+    // A gift code's message under the code box follows the chosen service: it
+    // says so when the gift doesn't cover it, instead of "Gift code applied".
+    const codeStatusEl = document.getElementById('referralCodeStatus');
+    if (codeStatusEl && window._referralPreviewCodeType === 'gift') {
       if (giftMismatchText) {
         const mail = document.createElement('a');
         mail.href = 'mailto:hello@portcityleashclub.com';
         mail.textContent = 'hello@portcityleashclub.com';
         mail.style.color = 'inherit';
-        orderNoteEl.replaceChildren(`${giftMismatchText} Email us at `, mail, " and we'll switch it for you.");
-        orderNoteEl.style.display = 'block';
+        codeStatusEl.replaceChildren(`${giftMismatchText} Email us at `, mail, " and we'll switch it for you.");
+        codeStatusEl.style.color = 'var(--text-mid)';
       } else {
-        orderNoteEl.style.display = previewDiscountCents > 0 && previewNoteText ? 'block' : 'none';
-        if (previewDiscountCents > 0) orderNoteEl.textContent = previewNoteText;
+        codeStatusEl.textContent = "Gift code applied. We'll add it to your account after your meet & greet.";
+        codeStatusEl.style.color = 'var(--seafoam)';
       }
     }
     window._lastEstimatedTotal = grandTotal;
