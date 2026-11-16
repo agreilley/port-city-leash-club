@@ -465,7 +465,15 @@ function wrapText({ bodyText }) {
   return `${bodyText}\n\nPort City Leash Club\nWilmington, NC\nQuestions? Just reply to this email, or write to hello@portcityleashclub.com.\nFollow along on Instagram: @portcityleashclub (${INSTAGRAM_URL})\n`;
 }
 
+// Heading for a membership detail block. The stored tier is just 'Member',
+// which reads as bare and generic on its own in an email (2026-11-16).
+function membershipHeading(tier) {
+  if (tier === 'Member') return 'Leash Club Member';
+  return tier || 'Membership';
+}
+
 module.exports = {
+  membershipHeading,
   NAVY, SEAFOAM, SAND, SAND_LIGHT, CORAL, HEADING_FONT, BODY_FONT, SIGNOFF_NAME, TEAM_SIGNOFF,
   escapeHtml, formatCalendarDate, formatMeetGreetDate, formatMeetGreetSlot, formatWalkTimeSlot, formatDateRange,
   joinNames, meetClosingLine, pluralNoun, possessive, spellSmallNumber, addOnDropInRows, stayPlanRows, stayPlanNote,

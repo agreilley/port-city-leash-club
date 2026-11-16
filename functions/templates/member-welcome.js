@@ -23,6 +23,7 @@
 const {
   escapeHtml, formatCalendarDate, joinNames, possessive,
   TEAM_SIGNOFF, renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml, wrapHtml, wrapText,
+  membershipHeading,
 } = require('./_layout');
 
 function subject(data) {
@@ -42,7 +43,7 @@ function html(data) {
 
   const block = renderBlockHtml({
     eyebrow: 'Your membership',
-    heading: escapeHtml(data.tier || 'Membership'),
+    heading: escapeHtml(membershipHeading(data.tier)),
     rows: [
       { label: 'Schedule', value: escapeHtml(data.frequency || 'To be confirmed') },
       { label: 'First walk', value: escapeHtml(firstWalkValue(data)) },
@@ -77,7 +78,7 @@ function text(data) {
     '',
     renderBlockText({
       eyebrow: 'Your membership',
-      heading: data.tier || 'Membership',
+      heading: membershipHeading(data.tier),
       rows: [
         { label: 'Schedule', value: data.frequency || 'To be confirmed' },
         { label: 'First walk', value: firstWalkValue(data) },

@@ -30,6 +30,7 @@
 const {
   escapeHtml, joinNames, possessive, TEAM_SIGNOFF,
   renderBlockHtml, renderBlockText, renderButtonHtml, renderSignoffHtml, wrapHtml, wrapText,
+  membershipHeading,
 } = require('./_layout');
 
 // The set-password link expires; the sign-in page's "Set Your Password" button always sends a new one.
@@ -50,7 +51,7 @@ function detailBlock(data) {
   return isMembership(data)
     ? {
         eyebrow: 'Your membership',
-        heading: data.tier || 'Membership',
+        heading: membershipHeading(data.tier),
         rows: [{ label: 'Schedule', value: data.frequency || 'To be confirmed' }],
       }
     : {
