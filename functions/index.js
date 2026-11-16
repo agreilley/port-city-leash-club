@@ -7286,8 +7286,9 @@ function hashPasswordSetupToken(token) {
   return crypto.createHash('sha256').update(String(token)).digest('hex');
 }
 
-// role: 'member' (signs in on the page, then goes to `next`) or 'walker'
-// (goes to the walker sign-in). next: a /portal-… path, member only.
+// role: 'member' (signs in on the page, then goes to `next`), 'walker'
+// (goes to the walker sign-in) or 'admin' (goes to the admin sign-in).
+// next: a /portal-… path, member only.
 async function createPasswordSetupLink(uid, { purpose, role = 'member', next = '/portal-dashboard' }) {
   if (!PASSWORD_SETUP_TTL_MS[purpose]) throw new Error(`createPasswordSetupLink: unknown purpose ${purpose}`);
   const token = crypto.randomBytes(32).toString('base64url');
@@ -7415,16 +7416,21 @@ exports.requestPasswordSetupEmail = onCall({ secrets: [RESEND_API_KEY] }, async 
   }
   if (user.disabled) return { ok: true };
 
+  // Which sign-in they go back to comes from the account itself, never from
+  // the page that asked: admin first, then member, then walker. Since
+  // 2026-11-16 the walker and admin Forgot password pages call this too.
   let firstName = null;
   let role = 'member';
   try {
-    const [memberSnap, walkerSnap] = await Promise.all([
+    const [memberSnap, walkerSnap, adminSnap] = await Promise.all([
       db.collection('members').doc(user.uid).get(),
       db.collection('walkers').doc(user.uid).get(),
+      db.collection('admins').doc(user.uid).get(),
     ]);
     const name = (memberSnap.exists && memberSnap.data().name) || (walkerSnap.exists && walkerSnap.data().name) || '';
     firstName = name.trim().split(/\s+/)[0] || null;
-    if (!memberSnap.exists && walkerSnap.exists) role = 'walker';
+    if (adminSnap.exists) role = 'admin';
+    else if (!memberSnap.exists && walkerSnap.exists) role = 'walker';
   } catch (e) {
     console.error(`requestPasswordSetupEmail: profile lookup failed for ${user.uid}:`, e.message);
   }
@@ -7433,7 +7439,7 @@ exports.requestPasswordSetupEmail = onCall({ secrets: [RESEND_API_KEY] }, async 
   const result = await sendEmail({
     to: user.email,
     template: 'password-setup',
-    data: { firstName, link, validForText: '24 hours' },
+    data: { firstName, link, validForText: '24 hours', role },
   });
   if (!result.ok) console.error(`requestPasswordSetupEmail: send failed for ${user.uid}: ${result.error}`);
   return { ok: true };

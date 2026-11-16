@@ -10,7 +10,8 @@
 // data: {
 //   firstName: string|null,
 //   link: string,        // createPasswordSetupLink() output
-//   validForText: string // e.g. '24 hours'
+//   validForText: string, // e.g. '24 hours'
+//   role: 'member'|'walker'|'admin'|undefined // which sign-in page to point at
 // }
 
 const {
@@ -22,8 +23,17 @@ function subject() {
   return 'Set or reset your Port City Leash Club password';
 }
 
+// Walkers and admins have their own sign-in pages, each with a
+// "Forgot password?" link; members use the portal's "Set Your Password".
+const PLACES = {
+  member: { what: 'portal password', retry: 'go to the portal sign-in page and tap "Set Your Password"' },
+  walker: { what: 'walker portal password', retry: 'go to the walker sign-in page and tap "Forgot password?"' },
+  admin: { what: 'admin password', retry: 'go to the admin sign-in page and tap "Forgot password?"' },
+};
+const place = (data) => PLACES[data.role] || PLACES.member;
+
 function validLine(data) {
-  return `This link works for ${data.validForText || '24 hours'} and can be used once. If it has expired, go to the portal sign-in page and tap "Set Your Password" for a new one.`;
+  return `This link works for ${data.validForText || '24 hours'} and can be used once. If it has expired, ${place(data).retry} for a new one.`;
 }
 
 const IGNORE_LINE = `If you didn't ask for this, you can ignore this email. Your password won't change.`;
@@ -31,7 +41,7 @@ const IGNORE_LINE = `If you didn't ask for this, you can ignore this email. Your
 function html(data) {
   const body = `
     <p style="margin:0 0 20px;">Hi ${escapeHtml(data.firstName || 'there')},</p>
-    <p style="margin:0 0 20px;">Tap below to set or reset your Port City Leash Club portal password.</p>
+    <p style="margin:0 0 20px;">Tap below to set or reset your Port City Leash Club ${escapeHtml(place(data).what)}.</p>
     ${renderButtonHtml({ href: data.link, label: 'Set Your Password' })}
     <p style="margin:20px 0 0;">${escapeHtml(validLine(data))}</p>
     <p style="margin:20px 0 0;">${escapeHtml(IGNORE_LINE)}</p>
@@ -44,7 +54,7 @@ function text(data) {
   const lines = [
     `Hi ${data.firstName || 'there'},`,
     '',
-    'Tap the link below to set or reset your Port City Leash Club portal password.',
+    `Tap the link below to set or reset your Port City Leash Club ${place(data).what}.`,
     '',
     `Set your password: ${data.link}`,
     '',
