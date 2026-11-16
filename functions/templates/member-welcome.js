@@ -17,7 +17,7 @@
 //   tier: string,                 // 'Member' | 'Travel'
 //   frequency: string,            // e.g. 'Monday, Wednesday, Friday'
 //   firstWalkDateStr: string|null, // 'YYYY-MM-DD', or null if none found yet
-//   portalSetupLink: string,       // generatePasswordResetLink() output
+//   portalSetupLink: string,       // createPasswordSetupLink() output (7-day link)
 // }
 
 const {
