@@ -5963,11 +5963,9 @@ exports.deactivateWalker = onCall({}, async (request) => {
 // one-time service is confirmed for a new customer (confirmServiceRequest).
 // It welcomes them, confirms what they signed up for, and carries a
 // set-password link so they can reach the portal — no temp password is ever
-// relayed. The link is a Firebase password-reset link, which doubles as
-// first-time password setup; the Console Action URL is customized
-// project-wide to portal-password-reset.html (see that page, and the
-// ?welcome=1/continueUrl handling on the walker branch below), which
-// continues on to the right portal login afterward.
+// relayed. Since 2026-11-15 the link is our own 7-day set-password link
+// (createPasswordSetupLink) on portal-password-reset.html, which signs a
+// member in afterward or sends a walker on to the walker sign-in.
 //
 // Defined here, after GOOGLE_CLIENT_ID/SECRET and BUSINESS_EMAIL_ADDRESS: the
 // secrets array in the options object is read at module load, not call time,
@@ -6011,8 +6009,11 @@ exports.sendOnboardingEmail = onCall({
     // page every emailed action link lands on, Action URL being
     // project-wide — can tell a first-time link from a genuine reset and
     // show "set your password" copy instead of "reset password" copy.
-    const { getAuth } = require('firebase-admin/auth');
-    const link = await getAuth().generatePasswordResetLink(email, { url: `${portalUrl}?welcome=1` });
+    //
+    // Since 2026-11-15 the link is our own 7-day one (createPasswordSetupLink)
+    // instead of Firebase's hour-long link; the page sends walkers on to the
+    // walker sign-in afterward.
+    const link = await createPasswordSetupLink(walkerUid, { purpose: 'welcome', role: 'walker' });
 
     const subject = `Welcome to the team, ${firstName}`;
     const lines = [
@@ -6068,10 +6069,8 @@ exports.sendOnboardingEmail = onCall({
     console.error(`sendOnboardingEmail: failed to look up first walk date for member ${memberId}:`, e.message);
   }
 
-  const portalUrl = `${BUSINESS_PORTAL_ORIGIN}/portal-login`;
-  const { getAuth } = require('firebase-admin/auth');
-  // ?welcome=1 — see the matching comment on the walker branch above.
-  const portalSetupLink = await getAuth().generatePasswordResetLink(email, { url: `${portalUrl}?welcome=1` });
+  // Our own 7-day link (createPasswordSetupLink); signs them in to the dashboard.
+  const portalSetupLink = await createPasswordSetupLink(memberId, { purpose: 'welcome' });
 
   const result = await sendEmail({
     to: email,
@@ -8405,10 +8404,9 @@ exports.sendBookingConfirmedEmail = onCall({
 
   const finalData = { ...(data || {}) };
   if (isNewAccount) {
-    const { getAuth } = require('firebase-admin/auth');
     finalData.isNewAccount = true;
-    // ?welcome=1 — see the matching comment on sendOnboardingEmail's walker branch.
-    finalData.portalSetupLink = await getAuth().generatePasswordResetLink(member.email, { url: `${BUSINESS_PORTAL_ORIGIN}/portal-login?welcome=1` });
+    // Our own 7-day link (createPasswordSetupLink); signs them in to the dashboard.
+    finalData.portalSetupLink = await createPasswordSetupLink(memberId, { purpose: 'welcome' });
   } else {
     finalData.isNewAccount = false;
     finalData.portalSetupLink = null;
