@@ -110,6 +110,15 @@ export function giftPackagePromotionOn(dateStr) {
   return p && dateStr >= p.startsOn && dateStr <= p.endsOn ? p : null;
 }
 
+// Gift counts are spelled out ("two 30-minute walks"), so a count never sits
+// right next to the "30" in "30-minute" (AP/Chicago style). Gift quantities
+// top out at 20; anything past the list falls back to digits.
+const GIFT_COUNT_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
+export function giftPackageCount(n) {
+  return GIFT_COUNT_WORDS[n] ?? String(n);
+}
+
 export function giftPackageNoun(serviceKey, count) {
   const option = GIFT_PACKAGE_OPTIONS[serviceKey];
   return count === 1 ? option.singular : option.plural;
@@ -126,7 +135,7 @@ export function giftPackageItemSummary(item) {
   const one = GIFT_PACKAGE_OPTIONS[item.serviceKey].singular;
   const article = /^[aeiou]/i.test(one) ? 'an' : 'a';
   if (!visits && partial) return `${money(partial)} toward ${article} ${one}`;
-  const base = `${visits} ${giftPackageNoun(item.serviceKey, visits)} left`;
+  const base = `${giftPackageCount(visits)} ${giftPackageNoun(item.serviceKey, visits)} left`;
   return partial ? `${base}, plus ${money(partial)} toward another` : base;
 }
 
@@ -194,7 +203,7 @@ export function calculateGiftPackageOrder(items, { promotion = null } = {}) {
       unitPrice: unitCents / 100,
       listTotal: listUnitPrice * quantity,
       total: (unitCents * quantity) / 100,
-      label: `${quantity} ${giftPackageNoun(serviceKey, quantity)}`,
+      label: `${giftPackageCount(quantity)} ${giftPackageNoun(serviceKey, quantity)}`,
     };
   });
   const listTotal = priced.reduce((sum, item) => sum + item.listTotal, 0);

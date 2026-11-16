@@ -11,6 +11,8 @@ const {
   escapeHtml, formatCalendarDate, renderBlockHtml, renderBlockText, wrapHtml, wrapText,
 } = require('./_layout');
 
+const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
 function formatDollars(cents) {
   return `$${(cents / 100).toFixed(2).replace(/\.00$/, '')}`;
 }
@@ -40,7 +42,7 @@ function rows(data) {
 function html(data) {
   const block = renderBlockHtml({
     eyebrow: 'Gift package',
-    heading: escapeHtml(data.packageLabel),
+    heading: escapeHtml(capitalize(data.packageLabel)),
     rows: rows(data).map((r) => ({ label: r.label, value: escapeHtml(r.value) })),
   });
   return wrapHtml({
@@ -54,7 +56,7 @@ function text(data) {
     bodyText: [
       intro(data),
       '',
-      renderBlockText({ eyebrow: 'Gift package', heading: data.packageLabel, rows: rows(data) }),
+      renderBlockText({ eyebrow: 'Gift package', heading: capitalize(data.packageLabel), rows: rows(data) }),
     ].join('\n'),
   });
 }

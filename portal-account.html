@@ -1579,7 +1579,7 @@ window.redeemGiftPackageClicked = async () => {
   try {
     const { data } = await httpsCallable(functions, 'redeemGiftPackage')({ code });
     input.value = '';
-    showSuccess(`${data.packageLabel} added to your account.`);
+    showSuccess(`${data.packageLabel.charAt(0).toUpperCase()}${data.packageLabel.slice(1)} added to your account.`);
     await loadGiftPackages();
   } catch (e) {
     showError(e.message || "We couldn't add that code. Please try again, or email hello@portcityleashclub.com.");

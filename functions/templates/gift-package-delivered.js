@@ -12,6 +12,8 @@ const {
   renderButtonHtml, TEAM_SIGNOFF, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
+const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
 const SITE_URL = 'https://www.portcityleashclub.com';
 const POSITIONING = "We're Wilmington's newest dog walking and pet sitting company, and we're working hard to become its most trusted pet care team.";
 const UPDATES = "You'll get an update after every visit, so you'll always know how it went.";
@@ -48,7 +50,7 @@ function subject(data) {
 function html(data) {
   const block = renderBlockHtml({
     eyebrow: 'Your gift',
-    heading: escapeHtml(data.packageLabel),
+    heading: escapeHtml(capitalize(data.packageLabel)),
     rows: [
       { label: 'From', value: escapeHtml(data.buyerName) },
       data.message ? { label: 'Message', value: escapeHtml(data.message) } : null,
@@ -67,7 +69,7 @@ function html(data) {
     <p style="margin:0;font-size:13px;">${escapeHtml(TERMS)}</p>
     ${renderSignoffHtml(TEAM_SIGNOFF)}
   `;
-  return wrapHtml({ preheader: `${data.packageLabel} for you and your pet, from ${data.buyerName}.`, bodyHtml: body });
+  return wrapHtml({ preheader: `${capitalize(data.packageLabel)} for you and your pet, from ${data.buyerName}.`, bodyHtml: body });
 }
 
 function text(data) {
@@ -80,7 +82,7 @@ function text(data) {
     '',
     renderBlockText({
       eyebrow: 'Your gift',
-      heading: data.packageLabel,
+      heading: capitalize(data.packageLabel),
       rows: [
         { label: 'From', value: data.buyerName },
         data.message ? { label: 'Message', value: data.message } : null,

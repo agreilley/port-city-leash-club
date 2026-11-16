@@ -774,7 +774,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
 <script type="module">
   import { createOvernightVisitPicker } from '/js/overnight-visit-picker.js';
-  import { SERVICE_PRICES as PRICES, calculateServiceTotal, calculateDropInScheduleTotal, calculateAddOnDropInTotal, isTravelDiscountService, calculateHolidaySurcharge, HOLIDAY_RATE_PERCENT, giftPackageVisitValue, giftPackageNoun, giftPackageItemSummary } from './pricing.js';
+  import { SERVICE_PRICES as PRICES, calculateServiceTotal, calculateDropInScheduleTotal, calculateAddOnDropInTotal, isTravelDiscountService, calculateHolidaySurcharge, HOLIDAY_RATE_PERCENT, giftPackageVisitValue, giftPackageNoun, giftPackageItemSummary, giftPackageCount } from './pricing.js';
   import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
   import { showSuccess, showError } from '/js/status.js';
 
@@ -1027,7 +1027,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         if (!item || !(item.visitsRemaining > 0 || item.partialCents > 0)) {
           const owned = (window._referralPreviewGiftItems || [])
             .filter((i) => i.visitsRemaining > 0 || i.partialCents > 0)
-            .map((i) => (i.visitsRemaining > 0 ? `${i.visitsRemaining} ${giftPackageNoun(i.serviceKey, i.visitsRemaining)}` : giftPackageItemSummary(i)));
+            .map((i) => (i.visitsRemaining > 0 ? `${giftPackageCount(i.visitsRemaining)} ${giftPackageNoun(i.serviceKey, i.visitsRemaining)}` : giftPackageItemSummary(i)));
           if (owned.length) giftMismatchText = `Your gift card is for ${owned.join(' and ')}, so it won't come off this request. Want to use it for this instead?`;
         }
       } else if (window._referralPreviewCodeType === 'friends_family') {

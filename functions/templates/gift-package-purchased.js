@@ -11,6 +11,8 @@ const {
   TEAM_SIGNOFF, renderSignoffHtml, wrapHtml, wrapText,
 } = require('./_layout');
 
+const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
 function formatDollars(cents) {
   return `$${(cents / 100).toFixed(2).replace(/\.00$/, '')}`;
 }
@@ -36,7 +38,7 @@ function deliveryLine(data) {
 function html(data) {
   const block = renderBlockHtml({
     eyebrow: 'Your gift',
-    heading: escapeHtml(data.packageLabel),
+    heading: escapeHtml(capitalize(data.packageLabel)),
     rows: [
       { label: 'For', value: escapeHtml(data.recipientName) },
       { label: 'Delivery', value: escapeHtml(deliveryValue(data)) },
@@ -50,7 +52,7 @@ function html(data) {
     <p style="margin:20px 0 0;">Questions, or need to fix an email address? Just reply here and it'll come straight to us.</p>
     ${renderSignoffHtml(TEAM_SIGNOFF)}
   `;
-  return wrapHtml({ preheader: `${data.packageLabel} for ${data.recipientName}.`, bodyHtml: body });
+  return wrapHtml({ preheader: `${capitalize(data.packageLabel)} for ${data.recipientName}.`, bodyHtml: body });
 }
 
 function text(data) {
@@ -61,7 +63,7 @@ function text(data) {
     '',
     renderBlockText({
       eyebrow: 'Your gift',
-      heading: data.packageLabel,
+      heading: capitalize(data.packageLabel),
       rows: [
         { label: 'For', value: data.recipientName },
         { label: 'Delivery', value: deliveryValue(data) },
