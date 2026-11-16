@@ -773,7 +773,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 
 <script type="module">
   import { createOvernightVisitPicker } from '/js/overnight-visit-picker.js';
-  import { SERVICE_PRICES as PRICES, calculateServiceTotal, calculateDropInScheduleTotal, calculateAddOnDropInTotal, isTravelDiscountService, calculateHolidaySurcharge, HOLIDAY_RATE_PERCENT, giftPackageVisitValue } from './pricing.js';
+  import { SERVICE_PRICES as PRICES, calculateServiceTotal, calculateDropInScheduleTotal, calculateAddOnDropInTotal, isTravelDiscountService, calculateHolidaySurcharge, HOLIDAY_RATE_PERCENT, giftPackageVisitValue, giftPackageNoun, giftPackageItemSummary } from './pricing.js';
   import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
   import { showSuccess, showError } from '/js/status.js';
 
@@ -999,6 +999,9 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     let previewDiscountCents = 0;
     let previewLineLabel = '';
     let previewNoteText = '';
+    // Set when a valid gift card has nothing for the chosen service, so the
+    // summary says why nothing came off instead of looking broken.
+    let giftMismatchText = '';
     if (grandTotal > 0) {
       const preDiscountTotalCents = Math.round(grandTotal * 100);
       if (window._referralPreviewCodeType === 'gift') {
@@ -1019,6 +1022,12 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           previewNoteText = holiday.total || extraPetLine || medsLine || extras.total
             ? 'Your gift card covers the standard price of each visit. Add-ons and holiday rates are extra.'
             : '';
+        }
+        if (!item || !(item.visitsRemaining > 0 || item.partialCents > 0)) {
+          const owned = (window._referralPreviewGiftItems || [])
+            .filter((i) => i.visitsRemaining > 0 || i.partialCents > 0)
+            .map((i) => (i.visitsRemaining > 0 ? `${i.visitsRemaining} ${giftPackageNoun(i.serviceKey, i.visitsRemaining)}` : giftPackageItemSummary(i)));
+          if (owned.length) giftMismatchText = `Your gift card is for ${owned.join(' and ')}, so it isn't taken off this estimate. Want to use it for this instead?`;
         }
       } else if (window._referralPreviewCodeType === 'friends_family') {
         if (isPetSitting && typeof window._referralPreviewDiscountPercent === 'number') {
@@ -1058,8 +1067,17 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     linesEl.innerHTML   = lines || '<div class="order-empty">Select a service and dates to see your estimate.</div>';
     if (barTotal) barTotal.textContent = grandTotal > 0 ? displayTotal : '$—';
     if (orderNoteEl) {
-      orderNoteEl.style.display = previewDiscountCents > 0 && previewNoteText ? 'block' : 'none';
-      if (previewDiscountCents > 0) orderNoteEl.textContent = previewNoteText;
+      if (giftMismatchText) {
+        const mail = document.createElement('a');
+        mail.href = 'mailto:hello@portcityleashclub.com';
+        mail.textContent = 'hello@portcityleashclub.com';
+        mail.style.color = 'inherit';
+        orderNoteEl.replaceChildren(`${giftMismatchText} Email us at `, mail, " and we'll switch it for you.");
+        orderNoteEl.style.display = 'block';
+      } else {
+        orderNoteEl.style.display = previewDiscountCents > 0 && previewNoteText ? 'block' : 'none';
+        if (previewDiscountCents > 0) orderNoteEl.textContent = previewNoteText;
+      }
     }
     window._lastEstimatedTotal = grandTotal;
   }
