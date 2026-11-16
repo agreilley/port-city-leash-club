@@ -9682,11 +9682,20 @@ window.saveMember = async () => {
 
     // Welcome email. Carries a set-password link; a failure is a warning
     // and never undoes the member that was just created.
-    try {
-      const sendOnboardingEmail = httpsCallable(fns, 'sendOnboardingEmail');
-      await sendOnboardingEmail({ memberId: uid, kind: 'member' });
-    } catch (e) {
-      warnings.push(`Welcome email wasn't sent: ${e.message}`);
+    //
+    // Not for Travel (pet sitting only) clients, since 2026-11-16: the
+    // welcome is all about walks, a schedule and a walker. Their pet sitting
+    // confirmation carries the 7-day Set Up Your Portal button instead
+    // (portalSetupForMember in functions/index.js).
+    if (tier === 'Travel') {
+      notices.push('No welcome email was sent, since this is a pet sitting client. Their pet sitting confirmation will include the button to set up their portal.');
+    } else {
+      try {
+        const sendOnboardingEmail = httpsCallable(fns, 'sendOnboardingEmail');
+        await sendOnboardingEmail({ memberId: uid, kind: 'member' });
+      } catch (e) {
+        warnings.push(`Welcome email wasn't sent: ${e.message}`);
+      }
     }
 
     const subscriptionWarningText = warnings.join(' ');
@@ -9700,7 +9709,9 @@ window.saveMember = async () => {
         <div style="font-size:18px;font-weight:500;color:var(--navy);margin-bottom:8px;">Member account created!</div>
         <div style="font-size:13px;color:var(--text-light);margin-bottom:4px;">${escapeHtml(name)} can log in at:</div>
         <div style="font-size:13px;font-weight:500;color:var(--navy);margin-bottom:12px;">${window.location.origin}/portal-login</div>
-        <div style="font-size:12px;color:var(--text-light);margin-bottom:24px;">We've emailed ${escapeHtml(email)} a link to set their password and log in.</div>
+        <div style="font-size:12px;color:var(--text-light);margin-bottom:24px;">${tier === 'Travel'
+          ? `${escapeHtml(email)} will get their portal setup link with their pet sitting confirmation.`
+          : `We've emailed ${escapeHtml(email)} a link to set their password and log in.`}</div>
         <div id="am-subscription-warning" style="font-size:12px;color:#b45309;background:#fffbeb;border-radius:6px;padding:8px 12px;margin-bottom:16px;"></div>
         <div id="am-billing-notice" style="font-size:12px;color:var(--navy);background:var(--sand-light);border-radius:6px;padding:8px 12px;margin-bottom:16px;text-align:left;"></div>
         <button class="btn-primary" onclick="closeModal('addMemberModal');restoreAddMemberModal();" style="width:100%;">Done</button>
