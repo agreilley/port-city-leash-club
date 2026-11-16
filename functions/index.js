@@ -11548,16 +11548,17 @@ exports.validateReferralCode = onCall({}, async (request) => {
   const snap = await db.collection('referralCodes').doc(code).get();
   if (!snap.exists) {
     // Not a referral code: it may be a gift code typed into the same box. This
-    // endpoint is public, so unknown-code lookups are rate-limited per IP to
-    // stop anyone guessing their way to someone else's gift.
+    // endpoint is public, so wrong gift-style codes are limited per IP to stop
+    // anyone guessing their way to someone else's gift. Only misses count, so
+    // a real code checked over and over never locks its owner out.
     if (!GIFT_PACKAGE_CODE_PATTERN.test(code)) return { valid: false, reason: 'not_found' };
-    try {
-      await assertGiftPackageRateLimit(request.rawRequest?.ip ? `giftlookup:${request.rawRequest.ip}` : null);
-    } catch (e) {
+    const ip = request.rawRequest?.ip || null;
+    if (await giftLookupBlocked(ip)) return { valid: false, reason: 'too_many_tries' };
+    const gift = await findGiftPackageByCode(code);
+    if (!gift || gift.status !== 'paid') {
+      await countGiftLookupMiss(ip);
       return { valid: false, reason: 'not_found' };
     }
-    const gift = await findGiftPackageByCode(code);
-    if (!gift || gift.status !== 'paid') return { valid: false, reason: 'not_found' };
     if (gift.redeemedByMemberId) return { valid: false, reason: 'gift_redeemed' };
     // What's left on the gift, so the request form's summary can take it off
     // the estimate. Only service keys and visit counts, nothing about the buyer.
@@ -11693,6 +11694,32 @@ function resolveGiftPackageDeliverOn(value) {
 
 // Limits how often one caller can start a payment or try a code. Only a hash of
 // the caller's IP address or member id is stored.
+// Wrong gift-style codes from one IP in the code box (validateReferralCode):
+// GIFT_LOOKUP_MAX_MISSES an hour, then every gift-style code is refused,
+// real or not, until the hour is up.
+const GIFT_LOOKUP_MAX_MISSES = 10;
+function giftLookupThrottleRef(ip) {
+  return db.collection('giftPackageThrottle').doc(crypto.createHash('sha256').update(`giftmiss:${ip}`).digest('hex'));
+}
+async function giftLookupBlocked(ip) {
+  if (!ip) return false;
+  const snap = await giftLookupThrottleRef(ip).get();
+  if (!snap.exists) return false;
+  const { windowStartMs = 0, count = 0 } = snap.data();
+  return Date.now() - windowStartMs < 60 * 60 * 1000 && count >= GIFT_LOOKUP_MAX_MISSES;
+}
+async function countGiftLookupMiss(ip) {
+  if (!ip) return;
+  const ref = giftLookupThrottleRef(ip);
+  const now = Date.now();
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const windowStartMs = snap.exists ? snap.data().windowStartMs : 0;
+    const count = snap.exists ? snap.data().count : 0;
+    tx.set(ref, now - windowStartMs >= 60 * 60 * 1000 ? { windowStartMs: now, count: 1 } : { windowStartMs, count: count + 1 });
+  });
+}
+
 async function assertGiftPackageRateLimit(caller) {
   if (!caller) return;
   const key = crypto.createHash('sha256').update(caller).digest('hex');
