@@ -7334,6 +7334,40 @@ async function readUsablePasswordSetupToken(token) {
   return t;
 }
 
+// The page always says "check your inbox" (so it never reveals who has an
+// account), so a failed send would otherwise go unnoticed. Emails hello@
+// through Gmail rather than Resend, since Resend failing is the likely
+// cause. At most one alert an hour (passwordEmailAlerts/, Admin SDK only),
+// so a Resend outage doesn't flood the inbox. Never throws.
+async function alertPasswordEmailFailed(toEmail, error) {
+  try {
+    const hourKey = new Date().toISOString().slice(0, 13);
+    try {
+      await db.collection('passwordEmailAlerts').doc(hourKey).create({
+        to: toEmail, error: String(error || '').slice(0, 500), createdAt: FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      if (e.code === 6 || /already exists/i.test(e.message)) return; // already alerted this hour
+      throw e;
+    }
+    await sendGmailMessage({
+      to: BUSINESS_EMAIL_ADDRESS,
+      subject: 'A password email did not send',
+      body: [
+        `Someone asked for a password link for ${toEmail}, and the email did not send. The page told them to check their inbox, so they may be waiting.`,
+        '',
+        `Error: ${String(error || 'unknown').slice(0, 500)}`,
+        '',
+        `If it keeps happening, check Resend. You can send them a link yourself from the Forgot password page once it's working again.`,
+        '',
+        `You'll get at most one of these an hour.`,
+      ].join('\n'),
+    });
+  } catch (e) {
+    console.error(`alertPasswordEmailFailed: couldn't send the alert for ${toEmail}:`, e.message);
+  }
+}
+
 // Public. Lets the page show "expired" before anyone types a password, and
 // pick welcome vs reset wording. Same answer for unknown, used and expired.
 exports.checkPasswordSetupLink = onCall(async (request) => {
@@ -7382,6 +7416,14 @@ exports.completePasswordSetup = onCall(async (request) => {
     throw new HttpsError('internal', 'Something went wrong. Please try again.');
   }
 
+  // Sign the account out everywhere else, the way Firebase's own reset did.
+  // The page signs the member back in right after with the new password.
+  try {
+    await getAuth().revokeRefreshTokens(t.uid);
+  } catch (e) {
+    console.error(`completePasswordSetup: couldn't sign out other sessions for ${t.uid}:`, e.message);
+  }
+
   // Retire this account's other unused links (an older welcome, a second Send Link).
   try {
     const others = await db.collection('passwordSetupTokens')
@@ -7398,7 +7440,9 @@ exports.completePasswordSetup = onCall(async (request) => {
 
 // Public. "Send Link" on portal-password-reset.html. Always answers the
 // same way, whether or not the email has an account.
-exports.requestPasswordSetupEmail = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+exports.requestPasswordSetupEmail = onCall({
+  secrets: [RESEND_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET],
+}, async (request) => {
   const email = typeof request.data?.email === 'string' ? request.data.email.trim().toLowerCase() : '';
   if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new HttpsError('invalid-argument', 'Please enter a valid email address.');
@@ -7441,7 +7485,10 @@ exports.requestPasswordSetupEmail = onCall({ secrets: [RESEND_API_KEY] }, async 
     template: 'password-setup',
     data: { firstName, link, validForText: '24 hours', role },
   });
-  if (!result.ok) console.error(`requestPasswordSetupEmail: send failed for ${user.uid}: ${result.error}`);
+  if (!result.ok) {
+    console.error(`requestPasswordSetupEmail: send failed for ${user.uid}: ${result.error}`);
+    await alertPasswordEmailFailed(user.email, result.error);
+  }
   return { ok: true };
 });
 
