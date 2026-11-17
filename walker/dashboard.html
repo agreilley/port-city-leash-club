@@ -453,7 +453,7 @@ import { calculateEarnings, overnightEarnedSoFar, WALKER_RATES, WALKER_EXTRA_PET
 import { HOLIDAY_RATE_PERCENT } from '../pricing.js';
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
 import { AVAILABILITY_DAYS, AVAILABILITY_DAY_LABELS, AVAILABILITY_HOURS, hourLabel, hourBlockLabel, summarizeHours } from '../walker-availability.js';
-import { VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, buildStaySchedule, groupStayScheduleByDay, stayRowLabel, stayNightDates, nightWalkerId, stayReadyToClose, keyInstructionLabel } from '../visit-slots.js';
+import { VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, buildStaySchedule, groupStayScheduleByDay, stayRowLabel, stayNightDates, nightWalkerId, stayReadyToClose, keyInstructionLabel, stayDateKey } from '../visit-slots.js';
 import { showError } from '/js/status.js';
 
 // ─── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────────────
@@ -1428,17 +1428,45 @@ function renderOvernights() {
     } catch { return '–'; }
   }
 
+  // This walker's own days on the stay — the dates of their visits and
+  // nights (o.visits/o._nights are already filtered to them), collapsed
+  // into runs of consecutive days: "Nov 20 – 21 & Nov 25 – 27". The stay's
+  // own start/end alone read as the walker's start date even when someone
+  // else has the first days. Visit dates via walkDateStr, like the calendar.
+  function myDaysLabel(o) {
+    const keys = [...new Set([
+      ...o.visits.map(v => walkDateStr(v.date)),
+      ...o._nights.filter(k => o.nights?.[k]?.status !== 'skipped'),
+    ])].sort();
+    if (!keys.length) return '';
+    const fmtKey = (k) => new Date(`${k}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const nextKey = (k) => { const d = new Date(`${k}T12:00:00`); d.setDate(d.getDate() + 1); return stayDateKey(d); };
+    const runs = [];
+    keys.forEach(k => {
+      const last = runs[runs.length - 1];
+      if (last && nextKey(last.end) === k) last.end = k; else runs.push({ start: k, end: k });
+    });
+    return runs.map(r => {
+      if (r.start === r.end) return fmtKey(r.start);
+      const sameMonth = r.start.slice(0, 7) === r.end.slice(0, 7);
+      return `${fmtKey(r.start)} – ${sameMonth ? Number(r.end.slice(8)) : fmtKey(r.end)}`;
+    }).join(' & ');
+  }
+
   container.innerHTML = upcomingStays.map(o => {
     const member = allMembers.find(m => m.id === o.memberId);
     const memberName = escapeHtml(member?.name || o.memberName || '–');
     const dogNames = escapeHtml(getDogNames(member) || o.dogName || '–');
     const isCompleted = o.status === 'completed';
+    const myDays = myDaysLabel(o);
+    const stayRange = `${fmtDate(o.startDate)} – ${fmtDate(o.endDate)}`;
     return `<div class="walk-card" style="flex-direction:column;align-items:stretch;cursor:pointer;" onclick="openOvernightDetail('${o.id}')">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
           <div style="font-size:16px;font-weight:600;color:var(--navy);">${dogNames}</div>
           <div style="font-size:13px;color:var(--text-mid);">${memberName} · ${escapeHtml(o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin' ? 'Drop-In' : 'Overnight')}${o._covering ? ` · Covering ${[o.visits.length ? `${o.visits.length} visit${o.visits.length === 1 ? '' : 's'}` : '', o._nights.length ? `${o._nights.length} night${o._nights.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' & ')}` : ''}</div>
-          <div style="font-size:13px;color:var(--text-light);">${fmtDate(o.startDate)} – ${fmtDate(o.endDate)}${o.extraPet ? ' · Multiple pets' : ''}${o.medication ? ' · Medication' : ''}</div>
+          ${myDays ? `<div style="font-size:13px;color:var(--navy);font-weight:500;">Your days: ${escapeHtml(myDays)}</div>` : ''}
+          <div style="font-size:13px;color:var(--text-light);">${myDays ? 'Full reservation: ' : ''}${stayRange}${o.extraPet ? ' · Multiple pets' : ''}${o.medication ? ' · Medication' : ''}</div>
         </div>
         <span class="walk-status ${isCompleted ? 'completed' : 'scheduled'}">${isCompleted ? 'Completed' : 'Assigned'}</span>
       </div>
