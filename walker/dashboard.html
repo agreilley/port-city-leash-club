@@ -94,6 +94,11 @@
      color per walk time slot that had to be decoded from the legend. */
   .my-walk-chip .chip-time { font-weight: 700; margin-right: 4px; }
   .my-walk-chip .chip-key { font-weight: 700; }
+  /* In the desktop grid a chip is one clipped line, and the key (last)
+     was the part cut off on laptop widths — give it its own line there.
+     The phone list (.cal-day-list) wraps, so it stays inline. */
+  .calendar-days .my-walk-chip .chip-key { display: block; overflow: hidden; text-overflow: ellipsis; }
+  .calendar-days .my-walk-chip .chip-key-sep { display: none; }
   .my-walk-chip.walk { background: #EBF5EF; color: #1A5C30; border-left: 3px solid #1A5C30; }
   .my-walk-chip.dropin { background: #FDEBDD; color: #B04A0C; border-left: 3px solid #B04A0C; }
   .my-walk-chip.overnight { background: #E6EEFB; color: #1E4E8C; border-left: 3px solid #1E4E8C; }
@@ -686,21 +691,60 @@ function completionNeedsUpdate(entry, noteValue) {
   return !(noteValue || walkPhotoCount(entry));
 }
 
-// Note editor for an already-completed walk/visit. The note is the one part
-// of a completion with no recovery path until now: a failed photo upload
-// threw before the Firestore write, so a walker who retried after the error
-// lost whatever she had typed, and the completed record renders read-only.
-// Prefilled with the existing note so this doubles as a typo fix.
-function completionNoteEditorHtml(idPrefix, noteValue, willNotify, onclick) {
+// Update editor for an already-completed walk, visit or night: note and
+// photos in ONE box with ONE button, written in a single save. They used to
+// be separate Save Note / Add Photo buttons, and since the server sends the
+// owner's email on the first update to appear (walkHasUpdate /
+// visitHasUpdate, functions/index.js), saving the note first sent the email
+// right away and a photo added after it never reached the owner's inbox,
+// only the portal. One write means one email with both. Once the update has
+// gone out, the same box just edits the portal record ("Save Changes").
+// Prefilled with the existing note, so it doubles as a typo fix.
+function completionUpdateEditorHtml(idPrefix, entry, noteValue, onclick) {
+  const willNotify = completionNeedsUpdate(entry, noteValue);
+  const photosLeft = MAX_COMPLETION_PHOTOS - walkPhotoCount(entry);
   return `
     <div style="margin-top:12px;">
-      <label class="detail-label" style="display:block;margin-bottom:6px;">${noteValue ? 'Edit note' : 'Add a note'}
-        <span style="font-weight:400;color:#7A7A7A;">${willNotify ? '(this sends the owner their update)' : '(the owner\'s update already went out — this updates their portal record)'}</span>
+      <label class="detail-label" style="display:block;margin-bottom:6px;">${willNotify ? 'Send the owner an update' : 'Edit update'}
+        <span style="font-weight:400;color:#7A7A7A;">${willNotify ? '(note and photos go out together in one email)' : '(the owner\'s update already went out — this updates their portal record)'}</span>
       </label>
-      <textarea id="${idPrefix}Input" rows="2" placeholder="e.g. Great visit, ate well and went outside." style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${escapeHtml(noteValue || '')}</textarea>
+      <textarea id="${idPrefix}Note" rows="2" placeholder="e.g. Great visit, ate well and went outside." style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${escapeHtml(noteValue || '')}</textarea>
+      ${photosLeft > 0 ? `
+        <label class="detail-label" style="display:block;margin-top:10px;margin-bottom:6px;">Photos <span style="font-weight:400;color:#7A7A7A;">(up to ${photosLeft}${photosLeft < MAX_COMPLETION_PHOTOS ? ' more' : ''})</span></label>
+        <input type="file" id="${idPrefix}Photos" accept="image/*" multiple style="width:100%;">` : ''}
       <div id="${idPrefix}Error" style="color:#C17B6F;font-size:13px;margin-top:6px;display:none;"></div>
-      <button class="btn-complete" id="${idPrefix}Btn" style="margin-top:8px;" onclick="${onclick}">Save Note</button>
+      <button class="btn-complete" id="${idPrefix}Btn" style="margin-top:8px;" onclick="${onclick}">${willNotify ? 'Send Update' : 'Save Changes'}</button>
     </div>`;
+}
+
+// Submit for completionUpdateEditorHtml. Photos upload first (nothing is
+// written if one fails, and the typed note stays in the box), then note +
+// photos land in a single write via `write({ note, photoUrls? })`.
+async function saveCompletionUpdate({ idPrefix, entry, noteValue, upload, write, reopen }) {
+  const btn = document.getElementById(`${idPrefix}Btn`);
+  const errEl = document.getElementById(`${idPrefix}Error`);
+  const note = document.getElementById(`${idPrefix}Note`)?.value.trim() || '';
+  const existing = Array.isArray(entry?.photoUrls) && entry.photoUrls.length ? entry.photoUrls : (entry?.photoUrl ? [entry.photoUrl] : []);
+  const files = Array.from(document.getElementById(`${idPrefix}Photos`)?.files || []).slice(0, MAX_COMPLETION_PHOTOS - existing.length);
+  const showErr = (msg) => { errEl.textContent = msg; errEl.style.display = 'block'; };
+  if (!files.length && note === (noteValue || '')) { showErr('Type a note or choose a photo first.'); return; }
+
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = files.length ? 'Uploading…' : 'Saving…';
+  errEl.style.display = 'none';
+  const fail = (msg) => { showErr(msg); btn.disabled = false; btn.textContent = label; };
+
+  let newUrls = [];
+  try {
+    if (files.length) newUrls = await upload(files);
+  } catch (e) { fail(e.message); return; }
+  try {
+    await write({ note, ...(newUrls.length ? { photoUrls: [...existing, ...newUrls] } : {}) });
+    reopen();
+  } catch (e) {
+    fail(e.message === PREVIEW_BLOCKED ? e.message : 'That update couldn\'t be saved — check your signal and try again.');
+  }
 }
 
 function completionPhotosHtml(photoUrls, legacyPhotoUrl, altText) {
@@ -1131,15 +1175,7 @@ window.openVisitCompleteForm = (overnightId, visitId) => {
     ${isCompleted ? `
       <div class="detail-row"><span class="detail-label">Note</span><span class="detail-value">${escapeHtml(visit.note) || 'None'}</span></div>
       ${completionPhotosHtml(visit.photoUrls, visit.photoUrl, 'Visit photo')}
-      ${completionNoteEditorHtml('addVisitNote', visit.note, completionNeedsUpdate(visit, visit.note), `saveVisitNote('${overnightId}', '${visitId}')`)}
-      ${walkPhotoCount(visit) < MAX_COMPLETION_PHOTOS ? `
-        <div style="margin-top:12px;">
-          <label class="detail-label" style="display:block;margin-bottom:6px;">Add a photo</label>
-          <input type="file" id="addVisitPhotoInput" accept="image/*" multiple style="width:100%;">
-          <div id="addVisitPhotoError" style="color:#C17B6F;font-size:13px;margin-top:6px;display:none;"></div>
-          <button class="btn-complete" id="addVisitPhotoBtn" style="margin-top:8px;" onclick="addVisitPhoto('${overnightId}', '${visitId}')">Add Photo</button>
-        </div>
-      ` : ''}
+      ${completionUpdateEditorHtml('visitUpdate', visit, visit.note, `saveVisitUpdate('${overnightId}', '${visitId}')`)}
     ` : canComplete ? `
       <div style="margin-top:16px;">
         <label class="detail-label" style="display:block;margin-bottom:6px;">How'd it go? <span style="font-weight:400;color:#7A7A7A;">(sent to the owner)</span></label>
@@ -1232,70 +1268,20 @@ window.completeVisit = async (overnightId, visitId) => {
   }
 };
 
-// Visit counterpart to addWalkPhoto — same recovery path, but visits live
-// as array entries inside the overnights doc rather than their own doc, so
-// this rewrites the whole `visits` array like completeVisit does.
-window.addVisitPhoto = async (overnightId, visitId) => {
-  const btn = document.getElementById('addVisitPhotoBtn');
-  const errEl = document.getElementById('addVisitPhotoError');
-  const fileInput = document.getElementById('addVisitPhotoInput');
-  if (!fileInput?.files?.length) { errEl.textContent = 'Choose a photo first.'; errEl.style.display = 'block'; return; }
-
-  btn.disabled = true;
-  btn.textContent = 'Uploading…';
-  errEl.style.display = 'none';
-
-  try {
-    const o = myOvernights.find(x => x.id === overnightId);
-    const visit = o?.visits?.find(v => v.id === visitId);
-    const existing = Array.isArray(visit?.photoUrls) ? visit.photoUrls : (visit?.photoUrl ? [visit.photoUrl] : []);
-    const remaining = MAX_COMPLETION_PHOTOS - existing.length;
-    const newUrls = await uploadCompletionPhotos(Array.from(fileInput.files).slice(0, remaining), `overnight-photos/${overnightId}`, `${visitId}_`);
-    const photoUrls = [...existing, ...newUrls];
-    await updateVisit(overnightId, visitId, v => ({ ...v, photoUrls }));
-    if (visit) visit.photoUrls = photoUrls;
-    openVisitCompleteForm(overnightId, visitId);
-  } catch (e) {
-    errEl.textContent = e.message;
-    errEl.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = 'Add Photo';
-  }
-};
-
-// Note counterpart to addVisitPhoto. Writing the note is all this does — the
-// member's update email is the server's job: onOvernightVisitCompleted
-// (functions/index.js) treats a note added to an already-completed visit as
-// the update that was never sent and mails it then, so a visit completed
-// with neither note nor photo stops being permanently silent.
-window.saveVisitNote = async (overnightId, visitId) => {
-  const btn = document.getElementById('addVisitNoteBtn');
-  const errEl = document.getElementById('addVisitNoteError');
-  const input = document.getElementById('addVisitNoteInput');
-  const note = input?.value.trim() || '';
-
+// Note + photos on an already-completed visit (completionUpdateEditorHtml).
+// The owner's email is the server's job: onOvernightVisitCompleted
+// (functions/index.js) mails the first update to appear on a visit that was
+// completed with neither note nor photo.
+window.saveVisitUpdate = (overnightId, visitId) => {
   const o = myOvernights.find(x => x.id === overnightId);
   const visit = o?.visits?.find(v => v.id === visitId);
-  // Saving an empty box over an already-empty note is a no-op write that
-  // would still re-render the modal as if something happened.
-  if (!note && !visit?.note) { errEl.textContent = 'Type a note first.'; errEl.style.display = 'block'; return; }
-
-  btn.disabled = true;
-  btn.textContent = 'Saving…';
-  errEl.style.display = 'none';
-
-  try {
-    // Whole-array rewrite, same as completeVisit — a visit is an entry in
-    // the overnights doc's `visits` array, not a doc of its own.
-    await updateVisit(overnightId, visitId, v => ({ ...v, note }));
-    if (visit) visit.note = note;
-    openVisitCompleteForm(overnightId, visitId);
-  } catch (e) {
-    errEl.textContent = 'That note couldn\'t be saved — check your signal and try again.';
-    errEl.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = 'Save Note';
-  }
+  return saveCompletionUpdate({
+    idPrefix: 'visitUpdate', entry: visit, noteValue: visit?.note,
+    upload: (files) => uploadCompletionPhotos(files, `overnight-photos/${overnightId}`, `${visitId}_`),
+    // Whole-array rewrite, same as completeVisit.
+    write: async (patch) => { await updateVisit(overnightId, visitId, v => ({ ...v, ...patch })); if (visit) Object.assign(visit, patch); },
+    reopen: () => openVisitCompleteForm(overnightId, visitId),
+  });
 };
 
 // ── NIGHTS ──────────────────────────────────────────────────────────────────
@@ -1340,15 +1326,7 @@ window.openNightCompleteForm = (overnightId, date) => {
     ${isCompleted ? `
       <div class="detail-row"><span class="detail-label">Note</span><span class="detail-value">${escapeHtml(night.note) || 'None'}</span></div>
       ${completionPhotosHtml(night.photoUrls, null, 'Overnight photo')}
-      ${completionNoteEditorHtml('addNightNote', night.note, completionNeedsUpdate(night, night.note), `saveNightNote('${overnightId}', '${date}')`)}
-      ${walkPhotoCount(night) < MAX_COMPLETION_PHOTOS ? `
-        <div style="margin-top:12px;">
-          <label class="detail-label" style="display:block;margin-bottom:6px;">Add a photo</label>
-          <input type="file" id="addNightPhotoInput" accept="image/*" multiple style="width:100%;">
-          <div id="addNightPhotoError" style="color:#C17B6F;font-size:13px;margin-top:6px;display:none;"></div>
-          <button class="btn-complete" id="addNightPhotoBtn" style="margin-top:8px;" onclick="addNightPhoto('${overnightId}', '${date}')">Add Photo</button>
-        </div>
-      ` : ''}
+      ${completionUpdateEditorHtml('nightUpdate', night, night.note, `saveNightUpdate('${overnightId}', '${date}')`)}
     ` : isSkipped || closedUnmarked ? '' : canComplete ? `
       <div style="margin-top:16px;">
         <label class="detail-label" style="display:block;margin-bottom:6px;">How'd it go? <span style="font-weight:400;color:#7A7A7A;">(optional, sent to the owner)</span></label>
@@ -1413,54 +1391,17 @@ window.completeNight = async (overnightId, date) => {
   }
 };
 
-window.addNightPhoto = async (overnightId, date) => {
-  const btn = document.getElementById('addNightPhotoBtn');
-  const errEl = document.getElementById('addNightPhotoError');
-  const fileInput = document.getElementById('addNightPhotoInput');
-  if (!fileInput?.files?.length) { errEl.textContent = 'Choose a photo first.'; errEl.style.display = 'block'; return; }
-
-  btn.disabled = true;
-  btn.textContent = 'Uploading…';
-  errEl.style.display = 'none';
-
-  try {
-    const o = myOvernights.find(x => x.id === overnightId);
-    const existing = Array.isArray(o?.nights?.[date]?.photoUrls) ? o.nights[date].photoUrls : [];
-    const newUrls = await uploadCompletionPhotos(Array.from(fileInput.files).slice(0, MAX_COMPLETION_PHOTOS - existing.length), `overnight-photos/${overnightId}`, `night-${date}_`);
-    const photoUrls = [...existing, ...newUrls];
-    await updateNight(overnightId, date, n => ({ ...n, photoUrls }));
-    if (o?.nights?.[date]) o.nights[date].photoUrls = photoUrls;
-    openNightCompleteForm(overnightId, date);
-  } catch (e) {
-    errEl.textContent = e.message;
-    errEl.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = 'Add Photo';
-  }
-};
-
-window.saveNightNote = async (overnightId, date) => {
-  const btn = document.getElementById('addNightNoteBtn');
-  const errEl = document.getElementById('addNightNoteError');
-  const note = document.getElementById('addNightNoteInput')?.value.trim() || '';
+window.saveNightUpdate = (overnightId, date) => {
   const o = myOvernights.find(x => x.id === overnightId);
-  if (!note && !o?.nights?.[date]?.note) { errEl.textContent = 'Type a note first.'; errEl.style.display = 'block'; return; }
-
-  btn.disabled = true;
-  btn.textContent = 'Saving…';
-  errEl.style.display = 'none';
-
-  try {
-    await updateNight(overnightId, date, n => ({ ...n, note }));
-    if (o?.nights?.[date]) o.nights[date].note = note;
-    openNightCompleteForm(overnightId, date);
-  } catch (e) {
-    errEl.textContent = 'That note couldn\'t be saved — check your signal and try again.';
-    errEl.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = 'Save Note';
-  }
+  const night = o?.nights?.[date];
+  return saveCompletionUpdate({
+    idPrefix: 'nightUpdate', entry: night, noteValue: night?.note,
+    upload: (files) => uploadCompletionPhotos(files, `overnight-photos/${overnightId}`, `night-${date}_`),
+    write: async (patch) => { await updateNight(overnightId, date, n => ({ ...n, ...patch })); if (night) Object.assign(night, patch); },
+    reopen: () => openNightCompleteForm(overnightId, date),
+  });
 };
+
 
 // ── OVERNIGHT / CHECK-IN ASSIGNMENTS ────────────────────────────────────────────
 function renderOvernights() {
@@ -1532,12 +1473,31 @@ function renderOvernights() {
     const isCompleted = o.status === 'completed';
     const myDays = myDaysLabel(o);
     const stayRange = `${fmtDate(o.startDate)} – ${fmtDate(o.endDate)}`;
+    // One line per remaining day of this walker's own work, so the card is
+    // enough to plan from without opening it: "Wed, Nov 18 · 4–7pm,
+    // 8–10pm (Leave key)". Same rows as the detail modal's schedule.
+    const isCheckin = o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin';
+    const dayLines = groupStayScheduleByDay(
+      buildStaySchedule(o, isCheckin, { nightsFor: walkerDoc.id })
+        .filter(r => r.date >= today && !(r.kind === 'night' && r.night?.status === 'skipped'))
+    ).map(day => {
+      const label = new Date(`${day.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const items = day.rows.map(r => {
+        const entry = r.kind === 'night' ? r.night : r.visit;
+        const what = r.kind === 'night' ? 'Overnight' : (VISIT_SLOT_RANGES[r.visit.slot] || VISIT_SLOT_LABELS[r.visit.slot] || r.visit.slot || 'Visit');
+        const done = r.kind === 'night' ? r.night?.status === 'completed' : r.visit.status === 'completed';
+        const key = keyInstructionLabel(entry);
+        return `${done ? '✓ ' : ''}${what}${key ? ` (${key})` : ''}`;
+      }).join(', ');
+      return `<div style="font-size:13px;color:var(--text-mid);"><span style="font-weight:600;">${escapeHtml(label)}</span> · ${escapeHtml(items)}</div>`;
+    }).join('');
     return `<div class="walk-card" style="flex-direction:column;align-items:stretch;cursor:pointer;" onclick="openOvernightDetail('${o.id}')">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
           <div style="font-size:16px;font-weight:600;color:var(--navy);">${dogNames}</div>
           <div style="font-size:13px;color:var(--text-mid);">${memberName} · ${escapeHtml(o.serviceType === 'drop-in-visit' || o.serviceType === 'checkin' ? 'Drop-In' : 'Overnight')}${o._covering ? ` · Covering ${[o.visits.length ? `${o.visits.length} visit${o.visits.length === 1 ? '' : 's'}` : '', o._nights.length ? `${o._nights.length} night${o._nights.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' & ')}` : ''}</div>
           ${myDays ? `<div style="font-size:13px;color:var(--navy);font-weight:500;">Your days: ${escapeHtml(myDays)}</div>` : ''}
+          ${dayLines ? `<div style="margin:6px 0;">${dayLines}</div>` : ''}
           <div style="font-size:13px;color:var(--text-light);">${myDays ? 'Full reservation: ' : ''}${stayRange}${o.extraPet ? ' · Multiple pets' : ''}${o.medication ? ' · Medication' : ''}</div>
         </div>
         <span class="walk-status ${isCompleted ? 'completed' : 'scheduled'}">${isCompleted ? 'Completed' : 'Assigned'}</span>
@@ -1675,7 +1635,7 @@ function renderCalendar() {
       `<div class="my-walk-chip ${it.cls}" onclick="${it.onclick}" title="${escapeHtml(`${it.name} · ${it.title}${it.key ? ` · ${it.key}` : ''}`)}">`
       + (it.time ? `<span class="chip-time">${escapeHtml(it.time)}</span>` : '')
       + `<span class="chip-name">${escapeHtml(it.name)}</span>`
-      + (it.key ? ` <span class="chip-key">· ${escapeHtml(it.key)}</span>` : '') + '</div>'
+      + (it.key ? ` <span class="chip-key"><span class="chip-key-sep">· </span>${escapeHtml(it.key)}</span>` : '') + '</div>'
     ).join('');
     html += `<div class="calendar-day ${isToday ? 'today' : ''}"><div class="day-num">${d}</div>${chips}</div>`;
   }
@@ -1909,15 +1869,7 @@ window.openWalkDetail = (walkId) => {
     ${isCompleted ? `
       <div class="detail-row"><span class="detail-label">Walk Notes</span><span class="detail-value">${escapeHtml(walk.notes) || 'None'}</span></div>
       ${completionPhotosHtml(walk.photoUrls, walk.photoUrl, 'Walk photo')}
-      ${completionNoteEditorHtml('addWalkNote', walk.notes, completionNeedsUpdate(walk, walk.notes), `saveWalkNote('${walkId}')`)}
-      ${walkPhotoCount(walk) < MAX_COMPLETION_PHOTOS ? `
-        <div style="margin-top:12px;">
-          <label class="detail-label" style="display:block;margin-bottom:6px;">Add a photo</label>
-          <input type="file" id="addWalkPhotoInput" accept="image/*" multiple style="width:100%;">
-          <div id="addWalkPhotoError" style="color:#C17B6F;font-size:13px;margin-top:6px;display:none;"></div>
-          <button class="btn-complete" id="addWalkPhotoBtn" style="margin-top:8px;" onclick="addWalkPhoto('${walkId}')">Add Photo</button>
-        </div>
-      ` : ''}
+      ${completionUpdateEditorHtml('walkUpdate', walk, walk.notes, `saveWalkUpdate('${walkId}')`)}
     ` : !isCompleted && canComplete ? `
       <div style="margin-top:16px;">
         <label class="detail-label" style="display:block;margin-bottom:6px;">How'd it go? <span style="font-weight:400;color:#7A7A7A;">(sent to the owner)</span></label>
@@ -2010,66 +1962,26 @@ window.completeWalk = async (walkId) => {
   }
 };
 
-// Lets a walker attach a photo to a walk that's already been marked
-// completed — recovery path for exactly the failure that motivated this:
+// Lets a walker add a note and/or photos to a walk that's already been
+// marked completed — recovery path for exactly the failure that motivated this:
 // a walk-photo upload can fail (e.g. a stale auth token) after the rest of
 // completeWalk() already succeeded, and there was previously no way back in
 // to add the photo once status was 'completed'. Merges onto whatever
 // photos exist rather than replacing them, since a partial upload
 // (1 of 3 photos went through before the failure) is possible.
-window.addWalkPhoto = async (walkId) => {
-  const btn = document.getElementById('addWalkPhotoBtn');
-  const errEl = document.getElementById('addWalkPhotoError');
-  const fileInput = document.getElementById('addWalkPhotoInput');
-  if (!fileInput?.files?.length) { errEl.textContent = 'Choose a photo first.'; errEl.style.display = 'block'; return; }
-
-  btn.disabled = true;
-  btn.textContent = 'Uploading…';
-  errEl.style.display = 'none';
-
-  try {
-    const walk = myWalks.find(w => w.id === walkId);
-    const existing = Array.isArray(walk?.photoUrls) ? walk.photoUrls : (walk?.photoUrl ? [walk.photoUrl] : []);
-    const remaining = MAX_COMPLETION_PHOTOS - existing.length;
-    const newUrls = await uploadCompletionPhotos(Array.from(fileInput.files).slice(0, remaining), `walk-photos/${walkId}`);
-    const photoUrls = [...existing, ...newUrls];
-    await updateDoc(doc(db, 'walks', walkId), { photoUrls });
-    if (walk) walk.photoUrls = photoUrls;
-    openWalkDetail(walkId);
-  } catch (e) {
-    errEl.textContent = e.message;
-    errEl.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = 'Add Photo';
-  }
-};
-
-// Walk counterpart to saveVisitNote — see that function for why the server,
-// not this, sends the member's update. Walks store the note as `notes`
-// (plural) on their own doc; visits use `note` inside the visits array.
-window.saveWalkNote = async (walkId) => {
-  const btn = document.getElementById('addWalkNoteBtn');
-  const errEl = document.getElementById('addWalkNoteError');
-  const input = document.getElementById('addWalkNoteInput');
-  const notes = input?.value.trim() || '';
-
+window.saveWalkUpdate = (walkId) => {
   const walk = myWalks.find(w => w.id === walkId);
-  if (!notes && !walk?.notes) { errEl.textContent = 'Type a note first.'; errEl.style.display = 'block'; return; }
-
-  btn.disabled = true;
-  btn.textContent = 'Saving…';
-  errEl.style.display = 'none';
-
-  try {
-    await updateDoc(doc(db, 'walks', walkId), { notes });
-    if (walk) walk.notes = notes;
-    openWalkDetail(walkId);
-  } catch (e) {
-    errEl.textContent = 'That note couldn\'t be saved — check your signal and try again.';
-    errEl.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = 'Save Note';
-  }
+  return saveCompletionUpdate({
+    idPrefix: 'walkUpdate', entry: walk, noteValue: walk?.notes,
+    upload: (files) => uploadCompletionPhotos(files, `walk-photos/${walkId}`),
+    // Walks store the note as `notes` (plural) on their own doc.
+    write: async ({ note, photoUrls }) => {
+      const patch = { notes: note, ...(photoUrls ? { photoUrls } : {}) };
+      await updateDoc(doc(db, 'walks', walkId), patch);
+      if (walk) Object.assign(walk, patch);
+    },
+    reopen: () => openWalkDetail(walkId),
+  });
 };
 
 // ── SCHEDULE ──────────────────────────────────────────────────────────────────
