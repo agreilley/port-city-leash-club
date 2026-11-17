@@ -64,7 +64,7 @@ function html(data) {
     <p style="margin:-8px 0 20px;font-size:13px;">${escapeHtml(SWITCH_LINE)}</p>
     ${renderCodeBlockHtml(data.code)}
     <p style="margin:0 0 12px;">${escapeHtml(HOW_TO_USE)}</p>
-    ${renderButtonHtml({ href: REQUEST_URL, label: 'Request your first visit' })}
+    ${renderButtonHtml({ href: REQUEST_URL, label: 'Request Your First Visit' })}
     <p style="margin:0 0 20px;">${escapeHtml(EXISTING_CLIENTS)}</p>
     <p style="margin:0;font-size:13px;">${escapeHtml(TERMS)}</p>
     ${renderSignoffHtml(TEAM_SIGNOFF)}
@@ -95,7 +95,7 @@ function text(data) {
     '',
     HOW_TO_USE,
     '',
-    `Request your first visit: ${REQUEST_URL}`,
+    `Request Your First Visit: ${REQUEST_URL}`,
     '',
     EXISTING_CLIENTS,
     '',

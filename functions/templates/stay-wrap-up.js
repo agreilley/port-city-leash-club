@@ -60,7 +60,7 @@ function paragraphs(data) {
 }
 
 function buttonLabel(data) {
-  return data.hasFeedback ? 'View your stay' : 'Leave a review';
+  return data.hasFeedback ? 'View Your Stay' : 'Leave a Review';
 }
 
 function html(data) {

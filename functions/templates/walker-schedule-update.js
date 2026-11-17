@@ -114,7 +114,7 @@ function html(data) {
     <p style="margin:0 0 20px;">Hi ${escapeHtml(data.firstName || 'there')},</p>
     ${added.length ? `<p style="margin:0 0 28px;">${escapeHtml(c.addedIntro)}</p>${added.map(clientCardHtml).join('')}` : ''}
     ${removed.length ? `<p style="margin:${added.length ? '28px' : '0'} 0 28px;">${escapeHtml(c.removedIntro)}</p>${removed.map(clientCardHtml).join('')}` : ''}
-    ${renderButtonHtml({ href: data.dashboardUrl, label: 'Open your dashboard' })}
+    ${renderButtonHtml({ href: data.dashboardUrl, label: 'Open Your Dashboard' })}
     <p style="margin:0;">${escapeHtml(c.outro)}</p>
     ${renderSignoffHtml(SIGNOFF_NAME, 'Thanks so much.')}
   `;
@@ -141,7 +141,7 @@ function text(data) {
     lines.push(c.removedIntro, '');
     data.removed.forEach((client) => lines.push(...clientText(client)));
   }
-  lines.push(`Open your dashboard: ${data.dashboardUrl}`, '', c.outro, '', 'Thanks so much.', SIGNOFF_NAME);
+  lines.push(`Open Your Dashboard: ${data.dashboardUrl}`, '', c.outro, '', 'Thanks so much.', SIGNOFF_NAME);
   return wrapText({ bodyText: lines.join('\n') });
 }
 

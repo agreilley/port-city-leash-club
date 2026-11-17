@@ -175,7 +175,7 @@
     <li><a href="/#membership">Leash Club</a></li>
     <li><a href="/gifts">Gift Cards</a></li>
     <li><a href="/faq">FAQ</a></li>
-    <li><a class="btn-nav" href="/portal-login">Login</a></li>
+    <li><a class="btn-nav" href="/portal-login">Log In</a></li>
   </ul>
   <button class="hamburger" id="hamburger" type="button" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
 </nav>
@@ -265,7 +265,7 @@
               <div id="card-errors" role="alert"></div>
             </div>
           </div>
-          <button type="submit" class="btn-submit" id="submitBtn">Buy gift</button>
+          <button type="submit" class="btn-submit" id="submitBtn">Buy Gift Card</button>
           <p class="after-buy">Your receipt comes by email.</p>
         </fieldset>
       </form>
@@ -399,7 +399,7 @@
     $('summaryTotal').innerHTML = priced && priced.listTotal !== priced.total
       ? `<span class="was-price">${money(priced.listTotal)}</span>${money(priced.total)}`
       : money(total);
-    $('submitBtn').textContent = priced ? `Buy gift for ${money(priced.total)}` : 'Buy gift';
+    $('submitBtn').textContent = priced ? `Buy Gift Card for ${money(priced.total)}` : 'Buy Gift Card';
   }
 
   document.querySelectorAll('#serviceOptions select').forEach((select) => select.addEventListener('change', renderPackage));

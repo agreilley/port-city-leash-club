@@ -59,7 +59,7 @@ function html(data) {
     ${detailBlock}
     ${noteHtml}
     ${photoHtml}
-    ${renderButtonHtml({ href: data.portalUrl, label: 'View in your portal' })}
+    ${renderButtonHtml({ href: data.portalUrl, label: 'View in Your Portal' })}
     <p style="margin:20px 0 0;">If you have any questions, just reply to this email.</p>
     ${renderSignoffHtml(TEAM_SIGNOFF)}
   `;
@@ -96,7 +96,7 @@ function text(data) {
   }
 
   lines.push(
-    `View in your portal: ${data.portalUrl}`,
+    `View in Your Portal: ${data.portalUrl}`,
     '',
     'If you have any questions, just reply to this email.',
     '',
