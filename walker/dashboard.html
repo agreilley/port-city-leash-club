@@ -274,6 +274,7 @@
     <button class="btn-signout mobile-topbar-signout" onclick="signOut()">Sign out</button>
   </div>
   <div class="content">
+    <div id="previewBanner" style="display:none;background:#FEF3C7;color:#92400E;border-radius:6px;padding:8px 12px;margin-bottom:16px;font-size:13px;font-weight:500;">Admin preview — <span id="previewBannerName"></span> (read-only)</div>
 
     <!-- UPCOMING VIEW -->
     <div class="view active" id="view-upcoming">
@@ -445,10 +446,10 @@
 <script type="module">
 import { enhanceCalendar } from '/js/calendar-mobile.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { initializeFirestore, memoryLocalCache, collection, query, where, onSnapshot, doc, getDoc, updateDoc, getDocs, addDoc, serverTimestamp, Timestamp, runTransaction } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
-import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+import { getAuth, initializeAuth, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getFirestore, initializeFirestore, memoryLocalCache, collection, query, where, onSnapshot, doc, getDoc, updateDoc as fsUpdateDoc, getDocs, addDoc as fsAddDoc, serverTimestamp, Timestamp, runTransaction as fsRunTransaction } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { getStorage, ref as storageRef, uploadBytes as fsUploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+import { getFunctions, httpsCallable as fnHttpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 import { calculateEarnings, overnightEarnedSoFar, WALKER_RATES, WALKER_EXTRA_PET_FEE, WALKER_MEDICATION_FEE, visitWalkerId, isOvernightPayee, overnightClaimFor, overnightTipShare } from '../walker-pricing.js';
 import { HOLIDAY_RATE_PERCENT } from '../pricing.js';
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
@@ -477,9 +478,62 @@ const auth = initializeAuth(app, {
 });
 // Firestore already defaults to memory-only cache with no persistence
 // configured; making it explicit documents the choice on purpose.
-const db = initializeFirestore(app, { localCache: memoryLocalCache() });
+let db = initializeFirestore(app, { localCache: memoryLocalCache() });
 const fns = getFunctions(app);
 const storage = getStorage(app);
+
+// ── ADMIN PREVIEW MODE ────────────────────────────────────────────────────────
+// ?walkerId=<id> opens a read-only view of that walker's dashboard, for
+// admin/dashboard.html's "Preview Walker Portal" (an iframe). Same approach
+// as portal-dashboard.html's member preview: the admin's OWN session, read
+// through a second, default-named Firebase App (the identity admin/ uses —
+// 'walker-app' above is a separate session), honored only once admins/{uid}
+// exists for that signed-in user. The param alone never changes anything.
+//
+// Unlike the member portal, this page has real write paths (completing
+// walks/visits/nights, notes, photos, incident reports, schedule requests,
+// availability). Admin rules allow every one of them, so "read-only" is
+// enforced HERE: every write primitive the page uses is wrapped below and
+// refuses in preview mode. Any new write must go through these wrappers.
+const previewWalkerId = new URLSearchParams(location.search).get('walkerId');
+let isPreviewMode = false;
+const PREVIEW_BLOCKED = 'Admin preview is read-only. Nothing was saved.';
+function blockInPreview() { if (isPreviewMode) throw new Error(PREVIEW_BLOCKED); }
+const updateDoc = (...a) => { blockInPreview(); return fsUpdateDoc(...a); };
+const addDoc = (...a) => { blockInPreview(); return fsAddDoc(...a); };
+const runTransaction = (...a) => { blockInPreview(); return fsRunTransaction(...a); };
+const uploadBytes = (...a) => { blockInPreview(); return fsUploadBytes(...a); };
+const httpsCallable = (...a) => { const fn = fnHttpsCallable(...a); return (...args) => { blockInPreview(); return fn(...args); }; };
+
+function waitForAuthState(authInstance) {
+  return new Promise((resolve) => {
+    const unsubscribe = onAuthStateChanged(authInstance, (u) => { unsubscribe(); resolve(u); });
+  });
+}
+// True only for a signed-in user on the default app with an admins/{uid}
+// doc. On success, rebinds db to that admin-authenticated instance.
+async function verifyAdminForPreview() {
+  try {
+    const defaultApp = initializeApp(firebaseConfig);
+    const adminUser = await waitForAuthState(getAuth(defaultApp));
+    if (!adminUser) return false;
+    const adminDb = getFirestore(defaultApp);
+    const adminSnap = await getDoc(doc(adminDb, 'admins', adminUser.uid));
+    if (!adminSnap.exists()) return false;
+    db = adminDb;
+    return true;
+  } catch (e) {
+    console.error('admin verification failed:', e.message);
+    return false;
+  }
+}
+
+function applyPreviewModeUI() {
+  const banner = document.getElementById('previewBanner');
+  document.getElementById('previewBannerName').textContent = walkerDoc?.name || previewWalkerId;
+  banner.style.display = '';
+  document.querySelectorAll('.btn-signout').forEach(el => el.setAttribute('disabled', ''));
+}
 
 // Last-resort fallback for the "In an emergency" block below when a member
 // hasn't filled in a vet yet — this is the one number a walker can always
@@ -669,6 +723,24 @@ const authTimeoutId = setTimeout(() => {
 
 // ── AUTH GUARD ────────────────────────────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
+  if (previewWalkerId && await verifyAdminForPreview()) {
+    authResolved = true;
+    clearTimeout(authTimeoutId);
+    isPreviewMode = true;
+    try {
+      const snap = await getDoc(doc(db, 'walkers', previewWalkerId));
+      if (!snap.exists()) { showError("Couldn't find that walker."); return; }
+      const data = snap.data();
+      walkerDoc = { id: data.walkerId || snap.id, ...data };
+      document.getElementById('walkerName').textContent = walkerDoc.name || 'Walker';
+      applyPreviewModeUI();
+      loadData();
+    } catch (e) {
+      console.error('walker preview load:', e.message);
+      showError("Couldn't load this walker's dashboard.");
+    }
+    return; // never falls through to the walker-app redirect below
+  }
   authResolved = true;
   clearTimeout(authTimeoutId);
   if (!user) { window.location.href = 'index.html'; return; }
@@ -707,7 +779,7 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
-window.signOut = () => fbSignOut(auth).then(() => window.location.href = 'index.html');
+window.signOut = () => isPreviewMode ? undefined : fbSignOut(auth).then(() => window.location.href = 'index.html');
 
 // ── DATA ──────────────────────────────────────────────────────────────────────
 function loadData() {
