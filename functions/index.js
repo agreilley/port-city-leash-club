@@ -1700,6 +1700,50 @@ async function previewChargeCredits(memberId, amountInDollars, giftBooking = nul
   }
 }
 
+// Portal booking pages (portal-request-extras.html, portal-extend-walk.html)
+// show the signed-in member what their credits would take off an estimate
+// before they submit. Same math as the charge (planGiftPackageCredit, then
+// computeChargeCredits), keyed on request.auth.uid only, so a member can only
+// ever see their own. Commits nothing. amountInDollars is the page's estimate
+// AFTER any Friends & Family discount (the page applies that itself with
+// pricing.js's applyTravelDiscount, the same way the admin review does).
+// booking is { serviceKey, visits } for a walk or pet sitting estimate; a walk
+// extension passes none, since its upcharge never uses a package visit.
+exports.previewMyChargeCredits = onCall(async (request) => {
+  const memberId = request.auth?.uid;
+  if (!memberId) throw new HttpsError('unauthenticated', 'Please sign in.');
+  const amountInDollars = Number(request.data?.amountInDollars);
+  if (!Number.isFinite(amountInDollars) || amountInDollars <= 0 || amountInDollars > 20000) {
+    return { giftCredit: 0, giftVisitsUsed: 0, creditApplied: 0, referralDiscountApplied: 0 };
+  }
+  const rawBooking = request.data?.booking;
+  const visits = Math.floor(Number(rawBooking?.visits));
+  const serviceKey = typeof rawBooking?.serviceKey === 'string' ? rawBooking.serviceKey : '';
+  try {
+    const billingData = (await billingRef(memberId).get()).data() || {};
+    const { isTravelDiscountService } = await import('./pricing.js');
+    const discountOn = billingData.travelDiscountActive === true && billingData.travelDiscountPercent > 0;
+    const booking = serviceKey && visits > 0 && visits <= 500
+      ? { serviceKey, visits, travelDiscountApplied: discountOn && isTravelDiscountService(serviceKey) }
+      : null;
+    const requestedCents = Math.round(amountInDollars * 100);
+    const gift = await planGiftPackageCredit(memberId, billingData, booking, requestedCents);
+    const afterGiftCents = requestedCents - gift.creditCents;
+    const { creditAppliedCents, discountCents } = afterGiftCents > 0
+      ? await computeChargeCredits(memberId, billingData, afterGiftCents)
+      : { creditAppliedCents: 0, discountCents: 0 };
+    return {
+      giftCredit: gift.creditCents / 100,
+      giftVisitsUsed: gift.visitsUsed,
+      creditApplied: creditAppliedCents / 100,
+      referralDiscountApplied: discountCents / 100,
+    };
+  } catch (e) {
+    console.error(`previewMyChargeCredits: couldn't preview credits for ${memberId}:`, e.message);
+    return { giftCredit: 0, giftVisitsUsed: 0, creditApplied: 0, referralDiscountApplied: 0 };
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────
 // Core one-time-charge logic, extracted from chargeSavedCard below so it can
 // be shared with chargeScheduledReservations (the 24h-delayed reservation

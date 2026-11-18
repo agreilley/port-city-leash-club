@@ -204,6 +204,7 @@ import { WALK_EXTENSION_PRICE, calculateWalkExtensionTotal } from './pricing.js'
 import { WALK_TIME_SLOT_LABELS } from './time-slots.js';
 import { showSuccess, showError } from '/js/status.js';
 import { requireMemberDoc, showPortalLoadTimeout } from '/js/portal-guard.js';
+import { createCreditPreview, creditLines, money } from '/js/portal-credits.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
@@ -358,6 +359,8 @@ function updateSummary() {
   document.getElementById('confirmBtn').disabled = count === 0;
 
   if (count === 0) {
+    _summaryBase = { lines: '', total: 0 };
+    creditPreview.request(0, null); // drops any lookup still in flight
     document.getElementById('summaryLines').innerHTML = '<div class="summary-empty">Select walks above to see your total.</div>';
     return;
   }
@@ -373,7 +376,25 @@ function updateSummary() {
   }).join('');
   lines += `<div class="summary-line" style="border-top:1px solid rgba(255,255,255,0.2);margin-top:4px;padding-top:14px;"><span>${count} walk${count > 1 ? 's' : ''} extended</span><strong>$${total}</strong></div>`;
   document.getElementById('summaryLines').innerHTML = lines;
+  _summaryBase = { lines, total };
+  // No Friends & Family discount or gift card visits on an extension (it's a
+  // walk upcharge); account credit and a referral discount still apply.
+  creditPreview.request(total, null);
 }
+
+// Credits on the summary (js/portal-credits.js), appended when they arrive.
+let _summaryBase = { lines: '', total: 0 };
+const creditPreview = createCreditPreview({
+  onResult: (credits, amount) => {
+    if (amount !== _summaryBase.total || !(amount > 0)) return;
+    const { rows, total } = creditLines(credits, amount);
+    if (!rows.length) return;
+    let lines = _summaryBase.lines;
+    for (const [label, amt] of rows) lines += `<div class="summary-line"><span>${label}</span><strong>−${money(amt)}</strong></div>`;
+    document.getElementById('summaryLines').innerHTML = lines;
+    document.getElementById('summaryTotal').textContent = money(total);
+  },
+});
 
 window.confirmExtensions = async () => {
   const btn = document.getElementById('confirmBtn');
