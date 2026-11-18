@@ -520,7 +520,13 @@ function waitForAuthState(authInstance) {
 async function verifyAdminForPreview() {
   try {
     const defaultApp = initializeApp(firebaseConfig);
-    const adminUser = await waitForAuthState(getAuth(defaultApp));
+    // Same persistence as admin/dashboard.html, NOT plain getAuth(): getAuth()
+    // prefers IndexedDB and would move the admin's session out of
+    // localStorage, signing admin/dashboard.html out (see portal-dashboard.html).
+    const adminAuth = initializeAuth(defaultApp, {
+      persistence: [browserLocalPersistence, browserSessionPersistence, inMemoryPersistence]
+    });
+    const adminUser = await waitForAuthState(adminAuth);
     if (!adminUser) return false;
     const adminDb = getFirestore(defaultApp);
     const adminSnap = await getDoc(doc(adminDb, 'admins', adminUser.uid));

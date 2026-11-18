@@ -938,7 +938,7 @@ const app = initializeApp(firebaseConfig, 'member-app');
 // IndexedDB first, which hangs (never resolves, never rejects) under Safari
 // Private Browsing instead of failing fast. This skips straight to
 // localStorage-backed persistence, falling back further only if unavailable.
-// (The admin-preview default app below is untouched — separate concern.)
+// The admin-preview default app below uses this same chain (see getDefaultAuth).
 const auth = initializeAuth(app, {
   persistence: [browserLocalPersistence, browserSessionPersistence, inMemoryPersistence]
 });
@@ -1003,7 +1003,17 @@ let viewedMemberId = null;
 
 let defaultApp = null;
 function getDefaultAuth() {
-  if (!defaultApp) defaultApp = initializeApp(firebaseConfig); // same (unnamed) identity as admin/dashboard.html
+  if (!defaultApp) {
+    defaultApp = initializeApp(firebaseConfig); // same (unnamed) identity as admin/dashboard.html
+    // MUST match admin/dashboard.html's persistence exactly. Plain getAuth()
+    // uses IndexedDB first, and on startup Firebase MOVES a session it finds
+    // in another storage into its first choice and deletes the original —
+    // so opening a preview used to pull the admin's session out of
+    // localStorage, which signed admin/dashboard.html out.
+    return initializeAuth(defaultApp, {
+      persistence: [browserLocalPersistence, browserSessionPersistence, inMemoryPersistence]
+    });
+  }
   return getAuth(defaultApp);
 }
 
