@@ -584,6 +584,41 @@ const HEIC_EXTENSION_PATTERN = /\.hei[cf]$/i;
 // rule at all and every upload is denied with storage/unauthorized. That
 // regression shipped 2026-09-02 and went unnoticed until 2026-09-22 — do not
 // turn a prefix back into a path segment without deepening the rule first.
+// Downscales a photo to at most PHOTO_MAX_EDGE px on its long side and
+// re-encodes as JPEG. Plenty for the owner's email and portal grid, and
+// a few hundred KB instead of several MB over cell data. Leaves small
+// files alone (already fine, and re-encoding only costs quality) and
+// returns the original on any failure, so it can never block an upload
+// that would have worked before. Drawn from an <img>, which applies EXIF
+// orientation in every current browser, so portrait photos stay upright.
+const PHOTO_MAX_EDGE = 2048;
+const PHOTO_SHRINK_OVER_BYTES = 1.5 * 1024 * 1024;
+async function shrinkPhotoForUpload(file) {
+  if (file.size <= PHOTO_SHRINK_OVER_BYTES || /gif/i.test(file.type)) return file;
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const scale = Math.min(1, PHOTO_MAX_EDGE / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.naturalWidth * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; // transparent PNG areas would turn black in JPEG
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+  } catch (e) {
+    console.warn('Photo shrink failed, uploading original', e);
+    return file;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 async function uploadCompletionPhotos(fileList, storagePathPrefix, fileNamePrefix = '') {
   const files = Array.from(fileList || []).slice(0, MAX_COMPLETION_PHOTOS);
   const urls = [];
@@ -624,11 +659,14 @@ async function uploadCompletionPhotos(fileList, storagePathPrefix, fileNamePrefi
     if (!file.type.startsWith('image/')) {
       throw new Error('That file isn\'t an image — please choose a photo (JPG, PNG, etc.).');
     }
-    // Cap upload size at 8MB — plenty for a phone photo, avoids someone
-    // accidentally uploading a huge raw file over cell data. Checked on the
-    // possibly-converted file, since that's what actually gets uploaded —
-    // a re-encoded JPEG can end up larger than the original HEIC, which
-    // compresses more efficiently at the same visual quality.
+    // Newer iPhones shoot 24/48MP photos that can exceed the 8MB cap below
+    // (a walker hit it 2026-11-19). Shrink big ones on the phone first, so
+    // the cap is a backstop rather than something walkers run into.
+    file = await shrinkPhotoForUpload(file);
+    // Cap upload size at 8MB — mirrors the Storage rule. Checked on the
+    // possibly-converted, possibly-shrunk file, since that's what actually
+    // gets uploaded. Only reachable now if shrinking failed (e.g. the
+    // browser couldn't decode the image).
     if (file.size > 8 * 1024 * 1024) {
       throw new Error('Photo is too large — please use a smaller image (under 8MB).');
     }
