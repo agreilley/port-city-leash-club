@@ -5,7 +5,7 @@
 //   - time-slots.js (WALK_TIME_SLOTS) — that vocabulary is for scheduling a
 //     single walk (morning / early-afternoon / late-afternoon), a different
 //     service with different time buckets. A check-in/overnight visit can
-//     happen well outside walk hours (a last-out visit before bed), so
+//     happen well outside walk hours (a bedtime visit), so
 //     folding these into one shared vocabulary would force one file to keep
 //     both concerns' buckets in sync for no shared benefit.
 //   - the walker-screening slot vocabulary (walker-screening.html's
@@ -28,32 +28,18 @@ export const VISIT_SLOT_LABELS = {
   midday: 'Midday',
   afternoon: 'Afternoon',
   evening: 'Evening',
-  'last-out': 'Last Out',
+  'last-out': 'Bedtime',
 };
 
 // Chosen to spread a day's visits into distinct, non-overlapping windows a
-// member can actually picture: a morning let-out/feeding, a midday potty
-// break, an evening feeding/walk, and a last-out just before bed for a dog
-// that needs one more trip out overnight. Two-hour windows (set 2026-09-26)
-// that don't touch each other, so two adjacent slots on the same day never
-// read as the same visit twice. Separate from the walk windows in
-// time-slots.js on purpose — e.g. midday is 12–3pm here, not 11am–2pm.
+// member can actually picture: a morning let-out/feeding, a midday or
+// afternoon potty break, an evening feeding/walk, and a bedtime visit for a dog
+// that needs one more trip out overnight. Two-hour windows. Separate from the walk windows in
+// time-slots.js on purpose — e.g. morning is 7–9am here, not
+// 8–11am. Last changed 2026-11-24 (five windows, and 'last-out', whose key
+// predates it, renamed Bedtime). Midday and afternoon touch on purpose: a
+// day with 3-4 visits uses one or the other.
 export const VISIT_SLOT_RANGES = {
-  morning: '7–9am',
-  midday: '12–3pm',
-  afternoon: '2–4pm',
-  evening: '4–7pm',
-  'last-out': '8–10pm',
-};
-
-// The windows VISIT_SLOT_RANGES is about to switch to (decided 2026-11-24).
-// TEMPORARY, for the admin "Review visit times" list: it lets upcoming
-// visits be checked against the new hours before they go live. Delete, along
-// with that list, once VISIT_SLOT_RANGES holds these values. Until then
-// 'afternoon' overlaps the old midday window; it exists early so reviewed
-// visits can be moved onto it.
-export const NEXT_VISIT_SLOT_LABELS = { ...VISIT_SLOT_LABELS, 'last-out': 'Bedtime' };
-export const NEXT_VISIT_SLOT_RANGES = {
   morning: '7–9am',
   midday: '12–2pm',
   afternoon: '2–4pm',
@@ -177,23 +163,19 @@ export function visitTimeKey(visit) {
   return `${visit?.slot || ''}${w ? `@${w.start}-${w.end}` : ''}`;
 }
 
-// The time key the 5pm email compares. `notifiedTime` is set on a visit
-// moved by the "Review visit times" list, holding the key its walker already
-// knew, so that change isn't emailed. Any other time change clears it.
+// The time key the 5pm email compares. `notifiedTime` is only on visits moved
+// by the one-time review of 2026-11-24, whose changes weren't emailed: it
+// holds the key the walker already knew. Any other time change clears it.
 export function visitDigestTime(visit) {
   return typeof visit?.notifiedTime === 'string' ? visit.notifiedTime : visitTimeKey(visit);
 }
 
 // One visit with a new time. `window` null puts it on the slot's standard
-// hours. silent: the walker isn't emailed about it.
-export function withVisitTime(visit, { slot, window = null }, { silent = false } = {}) {
+// hours.
+export function withVisitTime(visit, { slot, window = null }) {
   const { window: _w, notifiedTime: _n, ...rest } = visit;
   const next = { ...rest, slot };
   if (window) next.window = { start: window.start, end: window.end };
-  if (silent) {
-    const known = visitDigestTime(visit);
-    if (known !== visitTimeKey(next)) next.notifiedTime = known;
-  }
   return next;
 }
 

@@ -35,7 +35,7 @@ const {
 // labels/ranges (time-slots.js), lowercased for prose. Those are ES modules
 // these CommonJS templates can't require synchronously.
 const WALK_SLOTS = { morning: 'morning (8–11am)', 'early-afternoon': 'early afternoon (11am–2pm)', 'late-afternoon': 'late afternoon (2–5pm)' };
-const VISIT_SLOTS = { morning: 'morning (7–9am)', midday: 'midday (12–3pm)', afternoon: 'afternoon (2–4pm)', evening: 'evening (4–7pm)', 'last-out': 'last out (8–10pm)' };
+const VISIT_SLOTS = { morning: 'morning (7–9am)', midday: 'midday (12–2pm)', afternoon: 'afternoon (2–4pm)', evening: 'evening (5–7pm)', 'last-out': 'bedtime (8–10pm)' };
 
 // "2026-11-04" -> "Wed, Nov 4", built from the components so there's no
 // timezone day shift.

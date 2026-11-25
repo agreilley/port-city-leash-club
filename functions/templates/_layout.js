@@ -164,7 +164,7 @@ function addOnDropInRows(addOnDropIns) {
 
 // Lowercase visit-slot names for prose — mirrors visit-slots.js's
 // VISIT_SLOT_LABELS (an ES module these CommonJS templates can't import).
-const STAY_SLOT_WORDS = { morning: 'morning', midday: 'midday', afternoon: 'afternoon', evening: 'evening', 'last-out': 'last out' };
+const STAY_SLOT_WORDS = { morning: 'morning', midday: 'midday', afternoon: 'afternoon', evening: 'evening', 'last-out': 'bedtime' };
 
 // An overnight stay's day-by-day plan (buildStayPlan, functions/index.js)
 // as block rows: "Saturday, September 26" -> "Extra drop-in visit (midday),

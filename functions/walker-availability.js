@@ -21,7 +21,7 @@ export const AVAILABILITY_DAY_LABELS = {
   mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday',
 };
 
-// 7am through 10pm — late enough to cover Last Out drop-ins (8–10pm).
+// 7am through 10pm — late enough to cover Bedtime drop-ins (8–10pm).
 export const AVAILABILITY_HOURS = Array.from({ length: 15 }, (_, i) => 7 + i);
 
 // 7 -> "7am", 12 -> "12pm", 21 -> "9pm"

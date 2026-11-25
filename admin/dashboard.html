@@ -602,8 +602,6 @@
            once handled), this week's repeating checklist (adminTodos/week_*),
            one-off items (adminTodos docs with type 'item'), and ad/post ideas
            (type 'idea'). See renderTodos. -->
-      <!-- TEMPORARY: Review visit times, before the drop-in windows change. See renderVisitTimeReview. -->
-      <div class="table-card" id="visitTimeReview" style="display:none;"></div>
       <div class="table-card todo-card">
         <div class="table-header">
           <div class="table-title">To Do</div>
@@ -1589,8 +1587,8 @@ import { giftPackageNoun, giftPackageItemSummary, GIFT_PACKAGE_OPTIONS, SERVICE_
 // those stay separate, see buildApplicationAvailabilityGrid and
 // buildScreeningAvailabilityGrid below.
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
-import { AVAILABILITY_DAYS, AVAILABILITY_HOURS, hourLabel, hourBlockLabel, rangeHours, summarizeHours, visitCoverage, rangeCoverage, availabilityDayKey, normalizeAvailability } from '../walker-availability.js';
-import { VISIT_SLOTS, VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, defaultSlotsForCount, buildStaySchedule, groupStayScheduleByDay, stayRowLabel, stayNightDates, nightWalkerId, nightIsDone, stayReadyToClose, keyInstructionLabel, visitWindow, visitTimeLabel, visitStartMinutes, visitTimeKey, windowLabel, minutesLabel, parseRange, slotForWindow, validVisitWindow, withVisitTime, WINDOW_EARLIEST, WINDOW_LATEST, WINDOW_STEP, WINDOW_MIN_LENGTH, NEXT_VISIT_SLOT_LABELS, NEXT_VISIT_SLOT_RANGES } from '../visit-slots.js';
+import { AVAILABILITY_DAYS, AVAILABILITY_HOURS, hourLabel, hourBlockLabel, rangeHours, summarizeHours, visitCoverage, availabilityDayKey, normalizeAvailability } from '../walker-availability.js';
+import { VISIT_SLOTS, VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, defaultSlotsForCount, buildStaySchedule, groupStayScheduleByDay, stayRowLabel, stayNightDates, nightWalkerId, nightIsDone, stayReadyToClose, keyInstructionLabel, visitWindow, visitTimeLabel, visitStartMinutes, windowLabel, minutesLabel, parseRange, slotForWindow, validVisitWindow, withVisitTime, WINDOW_EARLIEST, WINDOW_LATEST, WINDOW_STEP, WINDOW_MIN_LENGTH } from '../visit-slots.js';
 import { calculateEarnings, isCheckinType, visitWalkerId, overnightWalkerIds, calculateVisitCovers, overnightPayoutShare, overnightTipShare, isOvernightPayee, overnightClaimFor } from '../walker-pricing.js';
 import { showError } from '/js/status.js';
 
@@ -1900,7 +1898,6 @@ function subscribeOvernights() {
     renderCalendarDays();
     renderPayoutsView();
     renderReviewsView();
-    renderVisitTimeReview();
     scheduleTodoRender();
   });
 }
@@ -2206,7 +2203,6 @@ window.voidWalkerPayout = async (paymentId) => {
 function subscribeMembers() {
   onSnapshot(collection(db, 'members'), snap => {
     allMembers = snap.docs.map(d => ({ id: d.id, ...d.data() })); window.allMembers = allMembers;
-    renderVisitTimeReview();
     renderAll();
     renderMembersTable();
     populateMemberSelect();
@@ -2286,7 +2282,6 @@ function subscribeWalkers() {
     // missing walkerId entirely (shouldn't happen going forward, but just
     // in case of older/manual records) are kept rather than dropped.
     allWalkers = all.filter(w => !w.walkerId || w.id === w.walkerId);
-    renderVisitTimeReview();
     renderCalendarDays(); // chip ⚠ warnings read walker timeOff
     renderWalkersTable();
     renderAvailabilityGrid();
@@ -5943,10 +5938,10 @@ window.saveStayVisitWindow = async (overnightId, visitId) => {
 };
 
 // Writes new times for one or more open visits on a stay. pick(o) returns
-// { visitId: { slot, window|null, reviewed? } } from the stay as just read.
+// { visitId: { slot, window|null } } from the stay as just read.
 // Keeps the per-day slot lists in step (see moveDayScheduleVisit); counts,
 // charge and pay are untouched. Returns how many visits were saved.
-async function saveVisitTimes(overnightId, pick, { silent = false } = {}) {
+async function saveVisitTimes(overnightId, pick) {
   let saved = 0;
   await runTransaction(db, async (tx) => {
     const ref = doc(db, 'overnights', overnightId);
@@ -5967,8 +5962,7 @@ async function saveVisitTimes(overnightId, pick, { silent = false } = {}) {
         if (isCheckin) visitSchedule = moveDayScheduleVisit(visitSchedule, v.date, v.slot, c.slot);
         else if (v.addOn) addOnDropIns = moveDayScheduleVisit(addOnDropIns, v.date, v.slot, c.slot);
       }
-      const next = withVisitTime(v, c, { silent });
-      return c.reviewed ? { ...next, timeReviewed: true } : next;
+      return withVisitTime(v, c);
     });
     if (!saved) return;
     const update = { visits, updatedAt: serverTimestamp() };
@@ -5978,146 +5972,6 @@ async function saveVisitTimes(overnightId, pick, { silent = false } = {}) {
   });
   return saved;
 }
-
-// ── Review visit times (TEMPORARY, remove once the new windows are live) ──
-// Every upcoming drop-in on a standard window that's about to change, so
-// admin can pick each one's new time before the hours switch
-// (NEXT_VISIT_SLOT_RANGES). Nothing changes until a stay is saved, and a
-// saved change isn't emailed to walkers (withVisitTime's silent). A visit
-// left on its slot keeps today's hours until the switch. Keeping today's
-// hours for good, or any other time, is stored as a custom window.
-// Picks not saved yet live here, so a live data refresh doesn't lose them.
-const _visitReview = {};          // visitId -> { choice, start, end }
-const _visitReviewOpen = new Set(); // stays showing their unchanged-hours visits
-const reviewNeedsChoice = v => VISIT_SLOT_RANGES[v.slot] !== NEXT_VISIT_SLOT_RANGES[v.slot];
-
-function reviewStays() {
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  return allOvernights
-    .filter(o => o.status !== 'completed' && o.status !== 'cancelled')
-    .map(o => ({ o, visits: (o.visits || [])
-      .filter(v => v.status !== 'completed' && !v.timeReviewed && !visitWindow(v) && v.date >= today)
-      .sort((a, b) => a.date.localeCompare(b.date) || visitStartMinutes(a) - visitStartMinutes(b)) }))
-    .filter(s => s.visits.some(reviewNeedsChoice))
-    .sort((a, b) => a.visits[0].date.localeCompare(b.visits[0].date));
-}
-
-// The { slot, window } a pick stands for, or null for an invalid custom one.
-function reviewChoice(v) {
-  const p = _visitReview[v.id];
-  const choice = p?.choice || v.slot;
-  if (choice === '__keep') return { slot: v.slot, window: parseRange(VISIT_SLOT_RANGES[v.slot]) };
-  if (choice === '__custom') {
-    const w = { start: p.start, end: p.end };
-    return validVisitWindow(w) ? { slot: slotForWindow(w), window: w } : null;
-  }
-  return { slot: choice, window: null };
-}
-
-// Like walkerVisitNote, but against the new hours.
-function reviewWarning(o, v) {
-  const w = allWalkers.find(x => x.id === visitWalkerId(v, o));
-  const c = reviewChoice(v);
-  if (!w || !c) return '';
-  if (walkerOffOn(w, v.date)) return `${w.name.split(' ')[0]} is off this day`;
-  const hourly = w.availabilityConfirmedAt && w.hourlyAvailability;
-  const day = availabilityDayKey(v.date);
-  if (!hourly || !day) return '';
-  const cov = c.window ? visitCoverage(hourly[day], c) : rangeCoverage(hourly[day], rangeHours(NEXT_VISIT_SLOT_RANGES[c.slot]));
-  return cov === 'none' ? `${w.name.split(' ')[0]} isn't available then` : cov === 'partial' ? `${w.name.split(' ')[0]} is only partly available` : '';
-}
-
-// Called from the data listeners, so an error here must never stop the rest
-// of the dashboard from loading.
-function renderVisitTimeReview() {
-  try { drawVisitTimeReview(); } catch (e) { console.error('Review Visit Times failed to load', e); }
-}
-
-function drawVisitTimeReview() {
-  const el = document.getElementById('visitTimeReview');
-  if (!el) return;
-  const stays = reviewStays();
-  if (!stays.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
-  const total = stays.reduce((n, s) => n + s.visits.filter(reviewNeedsChoice).length, 0);
-  const row = (o, v) => {
-    const p = _visitReview[v.id];
-    const choice = p?.choice || v.slot;
-    const walker = allWalkers.find(x => x.id === visitWalkerId(v, o));
-    const warn = reviewWarning(o, v);
-    const opts = VISIT_SLOTS.map(s => `<option value="${s}" ${choice === s ? 'selected' : ''}>${escapeHtml(NEXT_VISIT_SLOT_LABELS[s])} (${escapeHtml(NEXT_VISIT_SLOT_RANGES[s])})</option>`).join('')
-      + (reviewNeedsChoice(v) ? `<option value="__keep" ${choice === '__keep' ? 'selected' : ''}>Keep current hours (${escapeHtml(VISIT_SLOT_RANGES[v.slot])})</option>` : '')
-      + `<option value="__custom" ${choice === '__custom' ? 'selected' : ''}>Custom window…</option>`;
-    return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 0;border-top:1px solid rgba(0,0,0,0.05);font-size:13px;">
-      <span style="flex:1 1 260px;">${escapeHtml(new Date(`${v.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }))} · ${escapeHtml(VISIT_SLOT_LABELS[v.slot] || v.slot)} ${escapeHtml(VISIT_SLOT_RANGES[v.slot] || '')} <span style="color:var(--text-light);">· ${escapeHtml(walker?.name || 'Unassigned')}</span></span>
-      <select aria-label="New time" style="border:1px solid rgba(0,0,0,0.14);border-radius:4px;padding:4px 6px;font-size:12px;" onchange="pickReviewTime('${o.id}', '${v.id}', this.value)">${opts}</select>
-      ${choice === '__custom' ? `<span>${windowPickerHTML(`vr-${v.id}`, p, `pickReviewWindow('${v.id}')`)}</span>` : ''}
-      ${reviewNeedsChoice(v) ? `<button class="btn-secondary" style="padding:3px 8px;font-size:11px;" onclick="applyReviewToSlot('${o.id}', '${v.id}')">Apply to every ${escapeHtml(VISIT_SLOT_LABELS[v.slot])}</button>` : ''}
-      ${warn ? `<span style="flex-basis:100%;font-size:12px;color:var(--rust);">⚠ ${escapeHtml(warn)}</span>` : ''}
-    </div>`;
-  };
-  el.innerHTML = `<div class="table-header"><div class="table-title">Review Visit Times</div></div>
-    <div style="padding:0 20px 16px;">
-      <p style="font-size:13px;color:var(--text-mid);margin:8px 0 12px;">${total} upcoming visit${total === 1 ? '' : 's'} to check before the new time frames go live. Walkers and clients aren't emailed about changes made here.</p>
-      ${stays.map(({ o, visits }) => {
-        const m = allMembers.find(x => x.id === (o.memberId || '').trim());
-        const same = visits.filter(v => !reviewNeedsChoice(v));
-        return `<div style="border:1px solid rgba(0,0,0,0.08);border-radius:6px;padding:12px;margin-bottom:12px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;">
-            <div style="font-weight:600;font-size:14px;color:var(--navy);">${escapeHtml(m?.name || o.memberName || 'Client')} / ${escapeHtml(o.dogName || getMemberDogs(m)[0]?.name || 'Pet')} <span style="font-weight:400;color:var(--text-light);">· ${escapeHtml(fmtDateKeyRanges([dateKey(o.startDate)].filter(Boolean)))} to ${escapeHtml(fmtDateKeyRanges([dateKey(o.endDate)].filter(Boolean)))} · ${isCheckinType(o.serviceType) ? 'Drop-ins' : 'Overnight'}</span></div>
-            <button class="btn-primary" style="padding:5px 14px;font-size:12px;" onclick="saveReviewStay('${o.id}', this)">Save This Stay</button>
-          </div>
-          ${visits.filter(reviewNeedsChoice).map(v => row(o, v)).join('')}
-          ${same.length ? `<details ${_visitReviewOpen.has(o.id) ? 'open' : ''} ontoggle="toggleReviewSame('${o.id}', this.open)"><summary style="font-size:12px;color:var(--text-light);cursor:pointer;padding-top:6px;">${same.length} visit${same.length === 1 ? '' : 's'} with unchanged hours</summary>${same.map(v => row(o, v)).join('')}</details>` : ''}
-        </div>`;
-      }).join('')}
-    </div>`;
-  el.style.display = '';
-}
-
-window.toggleReviewSame = (overnightId, open) => { _visitReviewOpen[open ? 'add' : 'delete'](overnightId); };
-
-window.pickReviewTime = (overnightId, visitId, choice) => {
-  const v = allOvernights.find(o => o.id === overnightId)?.visits?.find(x => x.id === visitId);
-  if (!v) return;
-  _visitReview[visitId] = { choice, ...(choice === '__custom' ? parseRange(NEXT_VISIT_SLOT_RANGES[v.slot]) : {}) };
-  renderVisitTimeReview();
-};
-
-window.pickReviewWindow = (visitId) => {
-  const val = id => Number(document.getElementById(`vr-${visitId}-${id}`).value);
-  _visitReview[visitId] = { choice: '__custom', start: val('start'), end: val('end') };
-  renderVisitTimeReview();
-};
-
-window.applyReviewToSlot = (overnightId, visitId) => {
-  const stay = reviewStays().find(s => s.o.id === overnightId);
-  const v = stay?.visits.find(x => x.id === visitId);
-  if (!v) return;
-  stay.visits.filter(x => x.slot === v.slot).forEach(x => { _visitReview[x.id] = { ...(_visitReview[v.id] || { choice: v.slot }) }; });
-  renderVisitTimeReview();
-};
-
-window.saveReviewStay = async (overnightId, btn) => {
-  const stay = reviewStays().find(s => s.o.id === overnightId);
-  if (!stay) return;
-  // Visits whose hours aren't changing only count if a new time was picked.
-  const rows = stay.visits.filter(v => reviewNeedsChoice(v) || (_visitReview[v.id] && _visitReview[v.id].choice !== v.slot));
-  if (rows.some(v => !reviewChoice(v))) { alert('A custom window needs to be at least one hour long.'); return; }
-  const picks = rows.map(v => ({ id: v.id, was: visitTimeKey(v), to: reviewChoice(v) }));
-  btn.disabled = true;
-  try {
-    const saved = await saveVisitTimes(overnightId, (o) => Object.fromEntries(picks
-      // Skip one changed elsewhere since this list was drawn.
-      .filter(p => { const v = (o.visits || []).find(x => x.id === p.id); return v && visitTimeKey(v) === p.was; })
-      .map(p => [p.id, { ...p.to, reviewed: true }])), { silent: true });
-    picks.forEach(p => { delete _visitReview[p.id]; });
-    if (saved < picks.length) alert(`${picks.length - saved} visit(s) changed or were completed while you were reviewing, so they weren't saved. Check this stay again.`);
-  } catch (e) {
-    alert('Could not save: ' + e.message);
-    btn.disabled = false;
-  }
-};
 
 // Moves one visit off fromSlot on its day's entry in a per-day list
 // ([{ date, visits, slots }] — visitSchedule or addOnDropIns), onto toSlot,

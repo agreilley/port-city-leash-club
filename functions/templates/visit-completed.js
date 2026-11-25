@@ -17,7 +17,7 @@
 //   petNames: string[],
 //   serviceLabel: string,   // 'Overnight Stay' | 'Drop-In Visit'
 //   dateStr: string,        // 'YYYY-MM-DD'
-//   slotLabel: string,      // 'Morning' | 'Midday' | 'Evening' | 'Last Out'
+//   slotLabel: string,      // 'Morning' | 'Midday' | 'Afternoon' | 'Evening' | 'Bedtime'
 //   note: string,           // walker's free-text note, '' if none
 //   photoUrls: string[],    // up to 3, [] if none
 //   portalUrl: string,      // deep link back to this visit's card in the portal
