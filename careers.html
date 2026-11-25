@@ -346,20 +346,24 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         <div class="section-label">Scenarios</div>
         <div class="form-grid">
           <div class="field full">
-            <label>You're walking a dog and it suddenly becomes aggressive toward another dog. What do you do?</label>
+            <label>You're walking a dog and it starts barking and lunging at another dog coming toward you. What do you do?</label>
             <textarea name="scenario-aggressive" required placeholder="Walk us through your steps..."></textarea>
           </div>
           <div class="field full">
-            <label>Your assigned walks and visits fall within a time window (e.g., Morning 8–11am). If something comes up and you might not make it within your window, what do you do?</label>
-            <textarea name="scenario-timewindow" required placeholder="Walk us through your steps..."></textarea>
-          </div>
-          <div class="field full">
-            <label>You arrive for a walk or visit and the key doesn't work, or you can't get into the home. What do you do?</label>
+            <label>You arrive for a visit and the key doesn't work. What do you do?</label>
             <textarea name="scenario-access" required placeholder="Walk us through your steps..."></textarea>
           </div>
           <div class="field full">
-            <label>It's raining outside and the dog you're walking gets wet on the walk. There are no towels left out on the counter from the owners. What do you do?</label>
+            <label>It's raining and the dog you're walking gets soaked. The owners didn't leave any towels out. What do you do when you get back to the house?</label>
             <textarea name="scenario-rain" required placeholder="Walk us through your steps..."></textarea>
+          </div>
+          <div class="field full">
+            <label>You're on day two of caring for a cat while the owners are away. The cat is hiding and hasn't touched the food from yesterday. What do you do?</label>
+            <textarea name="scenario-cat" required placeholder="Walk us through your steps..."></textarea>
+          </div>
+          <div class="field full">
+            <label>You're home for the evening and realize you may not have locked the client's door after your visit. What do you do?</label>
+            <textarea name="scenario-door" required placeholder="Walk us through your steps..."></textarea>
           </div>
         </div>
       </div>
@@ -552,9 +556,10 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         comfortLevels: Object.fromEntries(COMFORT_ITEMS.map(item =>
           [item.key, document.querySelector(`input[name="comfort-${item.key}"]:checked`)?.value || ''])),
         scenarioAggressive: document.querySelector('textarea[name=scenario-aggressive]')?.value || '',
-        scenarioTimeWindow: document.querySelector('textarea[name=scenario-timewindow]')?.value || '',
         scenarioAccess: document.querySelector('textarea[name=scenario-access]')?.value || '',
         scenarioRain: document.querySelector('textarea[name=scenario-rain]')?.value || '',
+        scenarioCat: document.querySelector('textarea[name=scenario-cat]')?.value || '',
+        scenarioDoor: document.querySelector('textarea[name=scenario-door]')?.value || '',
         writingSample: document.querySelector('textarea[name=writing-sample]')?.value || '',
         walksPerWeek: document.querySelector('select[name=walks-per-week]')?.value || '',
         transportation: document.querySelector('select[name=transportation]')?.value || '',

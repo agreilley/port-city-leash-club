@@ -7225,9 +7225,11 @@ window.openRequestItem = async (id) => {
       })() },
       ...('scenarioAggressive' in item ? [
         { label: 'Scenario · Aggressive dog', value: item.scenarioAggressive || '–' },
-        { label: 'Scenario · Running late', value: item.scenarioTimeWindow || '–' },
+        ...('scenarioTimeWindow' in item ? [{ label: 'Scenario · Running late', value: item.scenarioTimeWindow || '–' }] : []),
         { label: 'Scenario · Access problem', value: item.scenarioAccess || '–' },
         ...('scenarioRain' in item ? [{ label: 'Scenario · Rainy walk', value: item.scenarioRain || '–' }] : []),
+        ...('scenarioCat' in item ? [{ label: 'Scenario · Cat not eating', value: item.scenarioCat || '–' }] : []),
+        ...('scenarioDoor' in item ? [{ label: 'Scenario · Unlocked door', value: item.scenarioDoor || '–' }] : []),
         { label: 'Writing Sample', value: item.writingSample || '–' },
       ] : []),
       { label: 'Additional Notes', value: item.additional || '–' },

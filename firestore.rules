@@ -400,7 +400,7 @@ service cloud.firestore {
              'experience', 'availability', 'walksPerWeek', 'transportation',
              'availableForOvernights', 'backgroundCheckConsent', 'additional',
              'comfortLevels', 'scenarioAggressive', 'scenarioTimeWindow',
-             'scenarioAccess', 'scenarioRain', 'writingSample',
+             'scenarioAccess', 'scenarioRain', 'scenarioCat', 'scenarioDoor', 'writingSample',
              'read', 'createdAt', 'resumePath', 'resumeName'])
           // Screening questions, on careers.html since 2026-11-25. Required on
           // the page; OPTIONAL here so a cached old page isn't rejected.
@@ -410,6 +410,8 @@ service cloud.firestore {
           && optionalAnswer('scenarioTimeWindow')
           && optionalAnswer('scenarioAccess')
           && optionalAnswer('scenarioRain')
+          && optionalAnswer('scenarioCat')
+          && optionalAnswer('scenarioDoor')
           && optionalAnswer('writingSample')
           && request.resource.data.name is string && request.resource.data.name.size() <= 200
           && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
