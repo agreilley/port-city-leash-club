@@ -406,12 +406,13 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         </div>
         <div class="field full"><span class="date-error" id="dateError"></span></div>
         <div class="field full" id="visit-schedule-field" style="display:none;">
-          <label>Visits Per Day <span style="font-weight:400;color:var(--text-light);">(set how many visits each day needs — e.g. fewer on the day you're back)</span></label>
+          <label>Visit Times</label>
           <div id="visit-schedule-rows"></div>
+          <span class="date-error" id="visitTimesError"></span>
         </div>
         <div class="field full" id="overnight-included-field" style="display:none;">
           <div style="background:var(--sand-light);border-radius:8px;padding:14px 16px;font-size:14px;line-height:1.55;color:var(--text-mid);">
-            <strong style="color:var(--navy);">What each overnight includes:</strong> 12 hours of overnight care in your home, plus one mid-day drop-in visit.
+            <strong style="color:var(--navy);">What each overnight includes:</strong> 12 hours of overnight care in your home, plus one daytime drop-in visit.
           </div>
         </div>
         <div class="field full" id="overnight-extras-field" style="display:none;">
@@ -773,7 +774,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
 </footer>
 
 <script type="module">
-  import { createOvernightVisitPicker } from '/js/overnight-visit-picker.js';
+  import { createVisitTimePicker } from '/js/visit-time-picker.js';
   import { SERVICE_PRICES as PRICES, calculateServiceTotal, calculateDropInScheduleTotal, calculateAddOnDropInTotal, isTravelDiscountService, calculateHolidaySurcharge, HOLIDAY_RATE_PERCENT, giftPackageVisitValue, giftPackageNoun, giftPackageItemSummary, giftPackageCount } from './pricing.js';
   import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
   import { showSuccess, showError } from '/js/status.js';
@@ -816,60 +817,19 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   const serviceSelect = document.getElementById('service');
   if (requested && PRICES[requested]) serviceSelect.value = requested;
 
-  // Per-day drop-in visit counts — {[dateStr]: count} — this IS the Visits
-  // Per Day control for drop-in-visit service; there's no separate flat
-  // dropdown anymore (removed — showing both a flat default and a per-day
-  // grid that could disagree with it was confusing). Every day in the
-  // selected range gets its own row, defaulting to DEFAULT_VISITS_PER_DAY,
-  // so a customer picks dates first and then sets each day's count directly.
-  // Mirrors admin/dashboard.html's own
-  // syncVisitScheduleRows/updateVisitScheduleCount (the confirmed-schedule
-  // editor) closely, minus slot pickers — those are an admin scheduling
-  // concern, not something set at intake.
-  const DEFAULT_VISITS_PER_DAY = 1;
-  let _reqVisitSchedule = {};
-
-  function syncReqVisitScheduleRows(defaultVisits) {
-    const field = document.getElementById('visit-schedule-field');
-    const container = document.getElementById('visit-schedule-rows');
-    const startStr = startInput.value;
-    const endStr = endInput.value;
-    if (!startStr || !endStr || endStr < startStr) {
-      field.style.display = 'none';
-      _reqVisitSchedule = {};
-      return;
-    }
-
-    const dates = [];
-    const cursor = new Date(`${startStr}T12:00:00`);
-    const end = new Date(`${endStr}T12:00:00`);
-    while (cursor <= end) {
-      dates.push(cursor.toISOString().slice(0, 10));
-      cursor.setDate(cursor.getDate() + 1);
-    }
-
-    const next = {};
-    dates.forEach(d => { next[d] = _reqVisitSchedule[d] !== undefined ? _reqVisitSchedule[d] : defaultVisits; });
-    _reqVisitSchedule = next;
-
-    field.style.display = 'flex';
-    container.innerHTML = dates.map(d => {
-      const label = new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:4px 0;border-bottom:1px solid rgba(0,0,0,0.05);">
-        <span style="font-size:13px;">${label}</span>
-        <input type="number" min="0" max="20" value="${_reqVisitSchedule[d]}" style="width:70px;" onchange="updateReqVisitScheduleCount('${d}', this.value)">
-      </div>`;
-    }).join('');
-  }
-
-  window.updateReqVisitScheduleCount = (dateStr, value) => {
-    _reqVisitSchedule[dateStr] = Math.max(0, parseInt(value, 10) || 0);
-    updateSummary();
-  };
+  // Drop-in visits: the customer taps times of day, and how many they tap is
+  // how many visits that day gets (js/visit-time-picker.js).
+  const dropInPicker = createVisitTimePicker({
+    mode: 'dropin',
+    field: document.getElementById('visit-schedule-field'),
+    container: document.getElementById('visit-schedule-rows'),
+    onChange: () => { document.getElementById('visitTimesError').style.display = 'none'; updateSummary(); },
+  });
 
   // Overnight stay: one picker for all the stay's drop-ins — included
-  // (one per night) and extra, see js/overnight-visit-picker.js.
-  const overnightPicker = createOvernightVisitPicker({
+  // (one per night) and extra.
+  const overnightPicker = createVisitTimePicker({
+    mode: 'overnight',
     field: document.getElementById('overnight-extras-field'),
     container: document.getElementById('overnight-extras-rows'),
     onChange: () => updateSummary(),
@@ -900,31 +860,31 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     const medication = document.getElementById('addon-medication')?.checked || false;
 
     if (isDropIn) {
-      syncReqVisitScheduleRows(DEFAULT_VISITS_PER_DAY);
+      dropInPicker.sync(startInput.value, endInput.value);
     } else {
-      document.getElementById('visit-schedule-field').style.display = 'none';
-      _reqVisitSchedule = {};
+      dropInPicker.reset();
+      document.getElementById('visitTimesError').style.display = 'none';
     }
     if (service === 'overnight-stay') overnightPicker.sync(startInput.value, endInput.value);
     else overnightPicker.reset();
-    // True once a valid drop-in date range exists (syncReqVisitScheduleRows
-    // populated at least one row) — the per-day grid is the only source of
+    // True once a valid drop-in date range exists (the picker
+    // has at least one day) — it's the only source of
     // visit counts now, so this is the sole branch for drop-in-visit; the
     // else branch below only ever runs for non-drop-in services or before
     // both dates are picked.
-    const scheduleActive = isDropIn && Object.keys(_reqVisitSchedule).length > 0;
+    const scheduleActive = isDropIn && dropInPicker.schedule().length > 0;
 
     let grandTotal, breakdown, days, totalVisits;
     if (scheduleActive) {
       ({ total: grandTotal, breakdown, days, totalVisits } = calculateDropInScheduleTotal({
-        schedule: _reqVisitSchedule, extraPet, medication,
+        schedule: dropInPicker.counts(), extraPet, medication,
       }));
     } else {
       ({ total: grandTotal, breakdown, days } = calculateServiceTotal({
         serviceKey: service,
         startDate: startInput.value,
         endDate: endInput.value,
-        visitsPerDay: DEFAULT_VISITS_PER_DAY,
+        visitsPerDay: 1,
         extraPet,
         medication,
       }));
@@ -936,7 +896,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     // discounted, so the Friends & Family preview below leaves it out.
     const holiday = calculateHolidaySurcharge({
       serviceKey: service, startDate: startInput.value, endDate: endInput.value,
-      dropInSchedule: scheduleActive ? _reqVisitSchedule : null, visitsPerDay: DEFAULT_VISITS_PER_DAY,
+      dropInSchedule: scheduleActive ? dropInPicker.counts() : null, visitsPerDay: 1,
       addOnDropIns: service === 'overnight-stay' ? overnightPicker.split().extras : null,
     });
     grandTotal += holiday.total;
@@ -950,7 +910,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     // Build lines
     let lines = '';
 
-    lines += `<div class="order-line"><span>${info.name}</span><strong>$${serviceTotal || info.price}</strong></div>`;
+    lines += `<div class="order-line"><span>${info.name}</span><strong>$${scheduleActive ? serviceTotal : (serviceTotal || info.price)}</strong></div>`;
     if (!isWalk && days > 0) {
       const detail = isDropIn
         ? `${days} day${days !== 1 ? 's' : ''} &middot; ${totalVisits} visit${totalVisits !== 1 ? 's' : ''} total &times; $${info.price}/visit`
@@ -1204,6 +1164,14 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
       return;
     }
 
+    if (serviceSelect.value === 'drop-in-visit' && !dropInPicker.total()) {
+      const err = document.getElementById('visitTimesError');
+      err.textContent = 'Please choose at least one visit time.';
+      err.style.display = 'block';
+      document.getElementById('visit-schedule-field').scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+
     // Pet name and breed are required for every pet card present — same
     // block-and-show-inline-error pattern as the date checks above. A
     // missing name or breed means the sitter/walker can't be briefed on
@@ -1276,24 +1244,23 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         timeSlot: isWalk ? (document.getElementById('time-slot')?.value || null) : null,
         notes: document.getElementById('care-notes')?.value || '',
         // visitsPerDay is no longer a customer-facing input (the per-day
-        // grid below is) — kept as a single representative number (the
+        // picker is) — kept as a single representative number (the
         // schedule's average, rounded) purely for admin's fallback default
         // when extending the date range past what the customer scheduled.
         // Empty schedule (non-drop-in service) falls back to 1.
         visitsPerDay: (() => {
-          const counts = Object.values(_reqVisitSchedule);
+          const counts = dropInPicker.schedule().map(d => d.visits);
           if (!counts.length) return 1;
           return Math.max(1, Math.round(counts.reduce((a, c) => a + c, 0) / counts.length));
         })(),
-        // Per-day overrides from the Visit Schedule grid — empty for a
-        // non-drop-in service. Same {date, visits} shape admin's own
-        // confirmed schedule already uses, so admin's review can seed
-        // directly from this.
-        visitSchedule: Object.entries(_reqVisitSchedule).map(([date, visits]) => ({ date, visits })),
-        // Overnight stay only (js/overnight-visit-picker.js): where the
+        // The visits and times picked for each day — empty for a non-drop-in
+        // service. Same {date, visits, slots} shape admin's own confirmed
+        // schedule uses, so admin's review can seed directly from this.
+        visitSchedule: serviceSelect.value === 'drop-in-visit' ? dropInPicker.schedule() : [],
+        // Overnight stay only (js/visit-time-picker.js): where the
         // customer wants each night's included drop-in, and any paid extras
         // on top — [] otherwise. A request, not a booking; admin's review
-        // screen pre-fills its two grids from these and picks the times.
+        // screen pre-fills its two grids, times included, from these.
         requestedIncludedDropIns: serviceSelect.value === 'overnight-stay' ? overnightPicker.split().included : [],
         requestedAddOnDropIns: serviceSelect.value === 'overnight-stay' ? overnightPicker.split().extras : [],
         extraPet: document.getElementById('addon-extra-pet')?.checked || false,

@@ -28,7 +28,7 @@
 //   chargeDateStr: string,         // 'YYYY-MM-DD' — matches chargeScheduledFor
 //   chargeBeforeStart: boolean,    // charged 48h before the start date instead
 //     // of 24h after confirming (CHARGE_48H_BEFORE_START_EMAILS) — says so
-//   visitSchedule: array<{date: 'YYYY-MM-DD', visits: number}> | null,
+//   visitSchedule: array<{date: 'YYYY-MM-DD', visits: number, slots: string[]}> | null,
 //     // check-in only; null/absent for overnight stays — no per-day block rendered
 //   addOnDropIns: array<{date: 'YYYY-MM-DD', visits: number}> | null,
 //     // overnight stay only — paid drop-ins admin added; each listed as its
@@ -81,14 +81,10 @@ function fmtDollars(n) {
   return `$${(n || 0).toFixed(2)}`;
 }
 
-// formatCalendarDate returns null for anything that isn't a plain
-// 'YYYY-MM-DD' string — degrades to the raw value rather than dropping the
-// row entirely, same defensive posture formatDateRange already uses.
-function visitScheduleRows(visitSchedule) {
-  return (visitSchedule || []).map(d => ({
-    label: formatCalendarDate(d.date) || d.date,
-    value: `${d.visits} ${pluralNoun(d.visits, 'visit', 'visits')}`,
-  }));
+// "Drop-In Visit · 23 visits": the schedule block lists times, not counts.
+function serviceValue(data) {
+  const n = (Array.isArray(data.visitSchedule) ? data.visitSchedule : []).reduce((sum, d) => sum + (Number(d.visits) || 0), 0);
+  return `${data.serviceLabel || ''}${n ? ` \u00b7 ${n} ${pluralNoun(n, 'visit', 'visits')}` : ''}`;
 }
 
 // What the card is (or was) charged: the order's total when there is one
@@ -114,7 +110,7 @@ function reservationRows(data) {
   const head = dropIns.length
     ? [{ label: data.serviceLabel || 'Service', value: formatDateRange(data.startDateStr, data.endDateStr) }, ...dropIns]
     : [
-      { label: 'Service', value: data.serviceLabel || '' },
+      { label: 'Service', value: serviceValue(data) },
       { label: 'Dates', value: formatDateRange(data.startDateStr, data.endDateStr) },
     ];
   const credits = creditRows(data);
@@ -164,7 +160,7 @@ function html(data) {
     });
 
   const scheduleBlock = Array.isArray(data.visitSchedule) && data.visitSchedule.length
-    ? renderBlockHtml({ eyebrow: 'Visit schedule', rows: visitScheduleRows(data.visitSchedule).map(r => ({ label: r.label, value: escapeHtml(r.value) })) })
+    ? renderScheduleHtml({ eyebrow: 'Visit schedule', visitSchedule: data.visitSchedule })
     : '';
 
   const planRows = stayPlanRows(data.stayPlan);
@@ -220,7 +216,7 @@ function text(data) {
 
   if (Array.isArray(data.visitSchedule) && data.visitSchedule.length) {
     lines.push(
-      renderBlockText({ eyebrow: 'Visit schedule', rows: visitScheduleRows(data.visitSchedule) }),
+      renderScheduleText({ eyebrow: 'Visit schedule', visitSchedule: data.visitSchedule }),
       ''
     );
   }

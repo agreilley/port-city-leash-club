@@ -237,31 +237,53 @@ function renderOrderText({ eyebrow, order }) {
 
 // An overnight stay's plan (buildStayPlan) as a schedule: one row per day,
 // short day label on the left, then that day's items stacked one per line
-// on the right: how many drop-in visits, how many extra (paid) ones so they
-// match the order block above, then overnight care. No visit times, by
-// decision: the customer sees counts, and times are coordinated directly.
+// on the right: the drop-ins by time-of-day name (extra, paid ones apart so
+// they match the order block above), then overnight care. Names only, never
+// hours: those are for admin and walkers.
 function stayScheduleDays(stayPlan) {
-  const count = (n, noun) => (n === 1 ? noun.charAt(0).toUpperCase() + noun.slice(1) : `${n} ${noun}s`);
+  const line = (noun, visits) => ({ text: `${noun}${visits.length === 1 ? '' : 's'}: ${slotNames(visits.map((v) => v.slot))}` });
   return (Array.isArray(stayPlan) ? stayPlan : []).map((day) => {
-    const visits = day.visits || [];
-    const included = visits.filter((v) => !v.extra).length;
-    const extra = visits.length - included;
+    const included = (day.visits || []).filter((v) => !v.extra);
+    const extra = (day.visits || []).filter((v) => v.extra);
     const items = [];
-    if (included) items.push({ text: count(included, 'drop-in visit') });
-    if (extra) items.push({ text: count(extra, 'extra drop-in visit') });
+    if (included.length) items.push(line('Drop-in visit', included));
+    if (extra.length) items.push(line('Extra drop-in visit', extra));
     if (day.overnight) items.push({ text: 'Overnight care' });
     if (!items.length) items.push({ text: 'Stay ends', muted: true });
-    let label = day.date;
-    if (typeof day.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day.date)) {
-      const [y, m, d] = day.date.split('-').map(Number);
-      label = new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    }
-    return { label, items };
+    return { label: shortDayLabel(day.date), items };
   });
 }
 
-function renderScheduleHtml({ eyebrow, stayPlan }) {
-  const days = stayScheduleDays(stayPlan);
+// A drop-in reservation's schedule ([{date, visits, slots}]) as the same kind
+// of rows: "Thu, Dec 3" -> "Evening, Bedtime". Falls back to the count for a
+// booking without slots.
+function visitScheduleDays(visitSchedule) {
+  return (Array.isArray(visitSchedule) ? visitSchedule : []).map((d) => {
+    const n = Number(d.visits) || 0;
+    const named = n > 0 && Array.isArray(d.slots) && d.slots.length === n;
+    const item = !n ? { text: 'No visits', muted: true } : { text: named ? slotNames(d.slots) : `${n} ${pluralNoun(n, 'visit', 'visits')}` };
+    return { label: shortDayLabel(d.date), items: [item] };
+  });
+}
+
+// "Morning, Evening" in time-of-day order.
+function slotNames(slots) {
+  const order = Object.keys(STAY_SLOT_WORDS);
+  return [...slots].sort((a, b) => order.indexOf(a) - order.indexOf(b)).map((s) => {
+    const w = STAY_SLOT_WORDS[s] || s || 'Time to be confirmed';
+    return w.charAt(0).toUpperCase() + w.slice(1);
+  }).join(', ');
+}
+
+function shortDayLabel(date) {
+  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+// Pass stayPlan (overnight stay) or visitSchedule (drop-ins).
+function renderScheduleHtml({ eyebrow, stayPlan, visitSchedule }) {
+  const days = visitSchedule ? visitScheduleDays(visitSchedule) : stayScheduleDays(stayPlan);
   const rows = days.map((day, i) => `
             <tr>
               <td width="88" style="padding:${i ? '12px' : '0'} 12px 12px 0;${i ? 'border-top:1px solid rgba(13,27,42,0.12);' : ''}font-family:${BODY_FONT};font-size:14px;font-weight:700;line-height:1.5;color:${NAVY};vertical-align:top;white-space:nowrap;">${escapeHtml(day.label)}</td>
@@ -282,9 +304,9 @@ function renderScheduleHtml({ eyebrow, stayPlan }) {
   `;
 }
 
-function renderScheduleText({ eyebrow, stayPlan }) {
+function renderScheduleText({ eyebrow, stayPlan, visitSchedule }) {
   const lines = [eyebrow.toUpperCase(), ''];
-  stayScheduleDays(stayPlan).forEach((day) => {
+  (visitSchedule ? visitScheduleDays(visitSchedule) : stayScheduleDays(stayPlan)).forEach((day) => {
     lines.push(day.label);
     day.items.forEach((it) => lines.push(`  - ${it.text}`));
   });

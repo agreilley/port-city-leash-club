@@ -7086,6 +7086,8 @@ window.openRequestItem = async (id) => {
       ...(resolveServiceKey(item.service) === 'drop-in-visit'
         ? [{ label: 'Visits/Day', value: srVisitsPerDay || '–' }]
         : []),
+      ...(srSchedule.some(v => Array.isArray(v.slots) && v.slots.length)
+        ? [{ label: 'Visit Times Requested', value: requestedAddOnDropInsSummary(item, 'visitSchedule') }] : []),
       { label: 'Multiple Pets', value: srExtraPet ? 'Yes' : 'No' },
       { label: 'Medication Admin', value: srMedication ? 'Yes' : 'No' },
       ...(requestedAddOnDropInsSummary(item, 'requestedIncludedDropIns') ? [{ label: 'Included Drop-Ins Requested', value: requestedAddOnDropInsSummary(item, 'requestedIncludedDropIns') }] : []),
@@ -7815,8 +7817,7 @@ function syncVisitScheduleRows(defaultVisits) {
   dates.forEach(d => {
     if (_reviewVisitSchedule[d] !== undefined) { nextSchedule[d] = _reviewVisitSchedule[d]; return; }
     const seeded = _reviewItemVisitSchedule[d];
-    const count = seeded !== undefined ? seeded : defaultVisits;
-    nextSchedule[d] = { count, slots: defaultSlotsForCount(count) };
+    nextSchedule[d] = seeded !== undefined ? { ...seeded } : { count: defaultVisits, slots: defaultSlotsForCount(defaultVisits) };
   });
   _reviewVisitSchedule = nextSchedule;
 
@@ -7850,10 +7851,10 @@ let _reviewRecalcFn = null;
 // next default time for the new count that the day isn't already using.
 // The day is then listed in time-of-day order. Used by all three review
 // grids so a count change never wipes a time admin already chose.
-function resizeSlots(slots, count, defaultsFor) {
+function resizeSlots(slots, count, defaultsFor, chosen) {
   const defaults = defaultsFor(count);
-  // Times nobody has changed yet just take the new count's defaults.
-  if ((slots || []).join() === defaultsFor((slots || []).length).join()) return [...defaults];
+  // Times nobody has chosen yet just take the new count's defaults.
+  if (!chosen && (slots || []).join() === defaultsFor((slots || []).length).join()) return [...defaults];
   const kept = (slots || []).slice(0, count);
   const unused = [...defaults];
   kept.forEach(slot => { const i = unused.indexOf(slot); if (i !== -1) unused.splice(i, 1); });
@@ -7863,7 +7864,7 @@ function resizeSlots(slots, count, defaultsFor) {
 
 window.updateVisitScheduleCount = (dateStr, value) => {
   const count = Math.max(0, parseInt(value, 10) || 0);
-  _reviewVisitSchedule[dateStr] = { count, slots: resizeSlots(_reviewVisitSchedule[dateStr]?.slots, count, defaultSlotsForCount) };
+  _reviewVisitSchedule[dateStr] = { count, slots: resizeSlots(_reviewVisitSchedule[dateStr]?.slots, count, defaultSlotsForCount, _reviewVisitSchedule[dateStr]?.chosen), chosen: _reviewVisitSchedule[dateStr]?.chosen };
   _reviewRecalcFn?.();
 };
 
@@ -7871,6 +7872,7 @@ window.updateVisitScheduleSlot = (dateStr, index, slot) => {
   const entry = _reviewVisitSchedule[dateStr];
   if (!entry) return;
   entry.slots[index] = slot;
+  entry.chosen = true;
   // No recalc — slot choice doesn't affect price, only scheduling.
 };
 
@@ -8014,7 +8016,7 @@ function syncOvernightVisitScheduleRows() {
 // price recalculation.
 window.updateOvernightVisitScheduleCount = (dateStr, value) => {
   const count = Math.max(0, parseInt(value, 10) || 0);
-  _reviewOvernightVisitSchedule[dateStr] = { count, slots: resizeSlots(_reviewOvernightVisitSchedule[dateStr]?.slots, count, defaultOvernightSlotsForCount) };
+  _reviewOvernightVisitSchedule[dateStr] = { count, slots: resizeSlots(_reviewOvernightVisitSchedule[dateStr]?.slots, count, defaultOvernightSlotsForCount, _reviewOvernightVisitSchedule[dateStr]?.chosen), chosen: _reviewOvernightVisitSchedule[dateStr]?.chosen };
   syncOvernightVisitScheduleRows();
 };
 
@@ -8022,6 +8024,7 @@ window.updateOvernightVisitScheduleSlot = (dateStr, index, slot) => {
   const entry = _reviewOvernightVisitSchedule[dateStr];
   if (!entry) return;
   entry.slots[index] = slot;
+  entry.chosen = true;
 };
 
 // Each night comes with one included drop-in. More than that here would be a
@@ -8047,7 +8050,7 @@ function renderIncludedVisitCount() {
 
 function overnightVisitScheduleFieldHTML(item) {
   const fromCustomer = Array.isArray(item?.requestedIncludedDropIns) && item.requestedIncludedDropIns.length;
-  return `<div class="form-field" id="rev-overnight-visits-field" style="display:none;grid-column:1 / -1;"><label>Included Drop-In Visits <span style="font-weight:400;color:var(--text-light);">(one per night, place them to fit the trip; no charge)</span></label>${fromCustomer ? `<div style="font-size:12px;color:var(--text-light);margin-bottom:6px;">Pre-filled with the days the customer picked.</div>` : ''}<div id="rev-overnight-visit-schedule"></div><div id="rev-overnight-visits-count" style="font-size:12px;margin-top:6px;"></div></div>`;
+  return `<div class="form-field" id="rev-overnight-visits-field" style="display:none;grid-column:1 / -1;"><label>Included Drop-In Visits <span style="font-weight:400;color:var(--text-light);">(one per night, place them to fit the trip; no charge)</span></label>${fromCustomer ? `<div style="font-size:12px;color:var(--text-light);margin-bottom:6px;">Pre-filled with the days and times the customer picked.</div>` : ''}<div id="rev-overnight-visit-schedule"></div><div id="rev-overnight-visits-count" style="font-size:12px;margin-top:6px;"></div></div>`;
 }
 
 function setOvernightVisitScheduleFieldVisible(visible) {
@@ -8104,37 +8107,45 @@ function syncAddOnDropInRows() {
 
 window.updateAddOnDropInCount = (dateStr, value) => {
   const count = Math.min(10, Math.max(0, parseInt(value, 10) || 0));
-  _reviewAddOnDropIns[dateStr] = { count, slots: resizeSlots(_reviewAddOnDropIns[dateStr]?.slots, count, defaultOvernightSlotsForCount) };
+  _reviewAddOnDropIns[dateStr] = { count, slots: resizeSlots(_reviewAddOnDropIns[dateStr]?.slots, count, defaultOvernightSlotsForCount, _reviewAddOnDropIns[dateStr]?.chosen), chosen: _reviewAddOnDropIns[dateStr]?.chosen };
   _reviewRecalcFn?.(); // priced — re-syncs rows and recomputes the total
 };
 
 window.updateAddOnDropInSlot = (dateStr, index, slot) => {
   const entry = _reviewAddOnDropIns[dateStr];
-  if (entry) entry.slots[index] = slot; // scheduling only, no recalc
+  if (entry) { entry.slots[index] = slot; entry.chosen = true; } // scheduling only, no recalc
 };
 
+// One day of a customer's request as a review-grid entry. Uses the times
+// they picked (js/visit-time-picker.js), or the defaults for a request that
+// only has counts (before 2026-11-24) or whose slots don't check out.
+// `chosen` keeps a later count change from resetting their times.
+function requestedDay(visits, slots, max, defaultsFor) {
+  const count = Math.min(max, Math.max(0, parseInt(visits, 10) || 0));
+  const valid = count > 0 && Array.isArray(slots) && slots.length === count && slots.every(s => VISIT_SLOTS.includes(s));
+  return valid ? { count, slots: [...slots], chosen: true } : { count, slots: defaultsFor(count) };
+}
+
 // The customer's own extra-visit request (service-request.html /
-// portal-request-extras.html send requestedAddOnDropIns: [{date, visits}])
-// seeds this grid on open — times default like any added row, and admin
-// can change or zero anything before confirming. Rows outside the
+// portal-request-extras.html send requestedAddOnDropIns:
+// [{date, visits, slots}]) seeds this grid on open, and admin can change or zero anything before confirming. Rows outside the
 // reviewed date range are dropped by syncAddOnDropInRows.
 function seedAddOnDropInsFromRequest(item) {
   const seeded = {};
-  (Array.isArray(item.requestedAddOnDropIns) ? item.requestedAddOnDropIns : []).forEach(({ date, visits }) => {
-    const count = Math.min(10, Math.max(0, parseInt(visits, 10) || 0));
-    if (date && count) seeded[date] = { count, slots: defaultOvernightSlotsForCount(count) };
+  (Array.isArray(item.requestedAddOnDropIns) ? item.requestedAddOnDropIns : []).forEach(({ date, visits, slots }) => {
+    const day = requestedDay(visits, slots, 10, defaultOvernightSlotsForCount);
+    if (date && day.count) seeded[date] = day;
   });
   return seeded;
 }
 
 // Same idea for the Included Drop-In Visits grid: the customer's picker
-// (js/overnight-visit-picker.js) sends every day of the stay, zeros
+// (js/visit-time-picker.js) sends every day of the stay, zeros
 // included, so a day they cleared isn't refilled by the grid's default.
 function seedIncludedDropInsFromRequest(item) {
   const seeded = {};
-  (Array.isArray(item.requestedIncludedDropIns) ? item.requestedIncludedDropIns : []).forEach(({ date, visits }) => {
-    const count = Math.min(10, Math.max(0, parseInt(visits, 10) || 0));
-    if (date) seeded[date] = { count, slots: defaultOvernightSlotsForCount(count) };
+  (Array.isArray(item.requestedIncludedDropIns) ? item.requestedIncludedDropIns : []).forEach(({ date, visits, slots }) => {
+    if (date) seeded[date] = requestedDay(visits, slots, 10, defaultOvernightSlotsForCount);
   });
   return seeded;
 }
@@ -8142,7 +8153,15 @@ function seedIncludedDropInsFromRequest(item) {
 function requestedAddOnDropInsSummary(item, field = 'requestedAddOnDropIns') {
   const list = Array.isArray(item[field]) ? item[field].filter(d => d && d.visits > 0) : [];
   if (!list.length) return '';
-  return list.map(d => `${new Date(`${d.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}: ${d.visits}`).join(', ');
+  return list.map(d => `${new Date(`${d.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}: ${requestedTimes(d)}`).join(', ');
+}
+
+// "Morning, Evening" for a requested day, or just its count when the request
+// didn't say which times.
+function requestedTimes(d) {
+  return Array.isArray(d.slots) && d.slots.length
+    ? d.slots.map(s => VISIT_SLOT_LABELS[s] || s).join(', ')
+    : `${d.visits}`;
 }
 
 // [{date, visits, slots}] for days with at least one visit, date order —
@@ -8254,8 +8273,8 @@ function renderServiceRequestReview(item) {
   _reviewHolidayEligible = isHolidayRateRequest(item.createdAt);
   _reviewItemVisitsPerDay = parseInt(item.visitsPerDay, 10) || 1;
   _reviewItemVisitSchedule = {};
-  (item.visitSchedule || []).forEach(({ date, visits }) => {
-    if (date) _reviewItemVisitSchedule[date] = Math.max(0, parseInt(visits, 10) || 0);
+  (item.visitSchedule || []).forEach(({ date, visits, slots }) => {
+    if (date) _reviewItemVisitSchedule[date] = requestedDay(visits, slots, 20, defaultSlotsForCount);
   });
   _reviewMemberId = item.memberId || null;
   _reviewRecalcFn = reviewRecalcService;
@@ -8425,8 +8444,8 @@ function renderOvernightReview(item) {
   _reviewHolidayEligible = isHolidayRateRequest(item.createdAt);
   _reviewItemVisitsPerDay = parseInt(item.visitsPerDay, 10) || 1;
   _reviewItemVisitSchedule = {};
-  (item.visitSchedule || []).forEach(({ date, visits }) => {
-    if (date) _reviewItemVisitSchedule[date] = Math.max(0, parseInt(visits, 10) || 0);
+  (item.visitSchedule || []).forEach(({ date, visits, slots }) => {
+    if (date) _reviewItemVisitSchedule[date] = requestedDay(visits, slots, 20, defaultSlotsForCount);
   });
   _reviewRecalcFn = reviewRecalcOvernight;
 
@@ -11452,7 +11471,7 @@ function mgOwnerInfoHTML(req) {
     out.push(row('Dates', start && end && start !== end ? `${start} – ${end}` : start));
     out.push(row('Time slot', req.timeSlot));
     if (Array.isArray(req.visitSchedule) && req.visitSchedule.length) {
-      out.push(row('Visits', req.visitSchedule.map(v => `${v.date}: ${v.visits}`).join(', ')));
+      out.push(row('Visits', req.visitSchedule.map(v => `${v.date}: ${requestedTimes(v)}`).join(', ')));
     }
     out.push(row('Included drop-ins', requestedAddOnDropInsSummary(req, 'requestedIncludedDropIns')));
     out.push(row('Extra drop-ins', requestedAddOnDropInsSummary(req)));

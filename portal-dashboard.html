@@ -923,7 +923,7 @@ import { showError } from '/js/status.js';
 import { requireMemberDoc, showPortalLoadTimeout } from '/js/portal-guard.js';
 import { WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
 import { isCheckinType } from './walker-pricing.js';
-import { buildStaySchedule, groupStayScheduleByDay, stayRowLabel } from './visit-slots.js';
+import { VISIT_SLOTS, VISIT_SLOT_LABELS, buildStaySchedule, groupStayScheduleByDay, stayRowLabel } from './visit-slots.js';
 const firebaseConfig = {
   apiKey: "AIzaSyCMP5mj12VkvaOeJ6CXFujycPjwFrD85RM",
   authDomain: "port-city-leash-club-827ab.firebaseapp.com",
@@ -1656,7 +1656,9 @@ function updateMetrics() {
         document.getElementById('reservationModalSchedule').innerHTML = entry.visitSchedule.map(v => {
           const d = new Date(`${v.date}T12:00:00`);
           const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-          return `<p class="detail-value" style="margin:2px 0;">${label}: ${v.visits} visit${v.visits === 1 ? '' : 's'}</p>`;
+          const times = Array.isArray(v.slots) && v.slots.length === v.visits
+            ? VISIT_SLOTS.flatMap(s => v.slots.filter(x => x === s).map(() => VISIT_SLOT_LABELS[s])).join(', ') : '';
+          return `<p class="detail-value" style="margin:2px 0;">${label}: ${times || `${v.visits} visit${v.visits === 1 ? '' : 's'}`}</p>`;
         }).join('');
         document.getElementById('reservationModalScheduleLabel').textContent = 'Visit schedule';
         scheduleBox.style.display = '';
