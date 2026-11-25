@@ -412,8 +412,11 @@ service cloud.firestore {
           && optionalAnswer('writingSample')
           && request.resource.data.name is string && request.resource.data.name.size() <= 200
           && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
-          && request.resource.data.neighborhood is string && request.resource.data.neighborhood.size() <= 200
-          && request.resource.data.dogExperience is string && request.resource.data.dogExperience.size() <= 10000
+          // neighborhood: question removed 2026-11-25; optional for cached old pages.
+          && (!('neighborhood' in request.resource.data)
+              || (request.resource.data.neighborhood is string && request.resource.data.neighborhood.size() <= 200))
+          // dogExperience: question removed 2026-11-25; optional for cached old pages.
+          && optionalAnswer('dogExperience')
           && request.resource.data.experience is string && request.resource.data.experience.size() <= 500
           && request.resource.data.walksPerWeek is string && request.resource.data.walksPerWeek.size() <= 50
           && request.resource.data.transportation is string && request.resource.data.transportation.size() <= 100

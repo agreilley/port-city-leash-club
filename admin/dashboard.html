@@ -6953,8 +6953,8 @@ window.openRequestItem = async (id) => {
     const LABELS = {
       cats: 'Cats', oralMedication: 'Administering oral medication',
       injections: 'Administering injections', multipleDogs: 'Multiple dogs at once',
-      puppies: 'Puppies (under 1 year)', seniorSpecialNeeds: 'Senior or special-needs dogs',
-      largeHighEnergy: 'Large or high-energy breeds', overnightStays: 'Overnight stays (12+ hours)'
+      puppies: 'Puppies (under 1 year)', seniorSpecialNeeds: 'Senior or special-needs pets',
+      largeHighEnergy: 'Large or high-energy dogs', overnightStays: 'Overnight stays (12+ hours)'
     };
     const order = Object.keys(LABELS);
     const entries = Object.entries(raw).sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
@@ -7200,10 +7200,11 @@ window.openRequestItem = async (id) => {
       { label: 'Name', value: item.name || '–' },
       { label: 'Email', value: item.email || '–' },
       { label: 'Phone', value: item.phone || '–' },
-      { label: 'Neighborhood', value: item.neighborhood || '–' },
-      { label: 'Dog Experience', value: item.dogExperience || '–' },
+      // Neighborhood and dog experience not asked since 2026-11-25; shown for older applications.
+      ...(item.neighborhood ? [{ label: 'Neighborhood', value: item.neighborhood }] : []),
+      ...(item.dogExperience ? [{ label: 'Dog Experience', value: item.dogExperience }] : []),
       { label: 'Experience', value: item.experience || '–' },
-      { label: 'Walks/Week Desired', value: item.walksPerWeek || '–' },
+      { label: 'Walks or Visits per Week', value: item.walksPerWeek || '–' },
       { label: 'Transportation', value: item.transportation || '–' },
       // Asked on careers.html since 2026-10-19; older applications lack it.
       { label: 'Background Check Consent', value: item.backgroundCheckConsent || 'Not asked' },
@@ -7222,7 +7223,7 @@ window.openRequestItem = async (id) => {
         { label: 'Scenario · Aggressive dog', value: item.scenarioAggressive || '–' },
         { label: 'Scenario · Running late', value: item.scenarioTimeWindow || '–' },
         { label: 'Scenario · Access problem', value: item.scenarioAccess || '–' },
-        { label: 'Writing Sample (Bailey walk)', value: item.writingSample || '–' },
+        { label: 'Writing Sample', value: item.writingSample || '–' },
       ] : []),
       { label: 'Additional Notes', value: item.additional || '–' },
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },

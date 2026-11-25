@@ -309,7 +309,7 @@ Every string field is attacker-controlled (anonymous create — same M-2-hardene
 
 **`application`** (walker job application, `careers.html`) —
 ```
-name, email, phone, neighborhood, dogExperience, experience,
+name, email, phone, experience,   // plus neighborhood, dogExperience before 2026-11-25
 availability: object { mon: [...], tue: [...], ... },   // same shape as walkers.availability
 walksPerWeek, transportation, additional,
 // since 2026-11-25 (older applications lack these; same shapes as walker_screening):
