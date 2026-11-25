@@ -42,7 +42,7 @@ function paragraphs(data) {
   const names = joinNames(data.petNames) || 'your pets';
   const walkers = joinNames(data.walkerNames) || 'your walker';
 
-  const opening = `I wanted to take a minute to thank you for letting us take care of ${names} this week. All of the notes and photos from the visits are saved in your portal if you ever want to look back through them.`;
+  const opening = `I wanted to take a minute to thank you for letting us take care of ${names} this week. All of the notes and photos are saved in your portal if you ever want to look back through them.`;
 
   let review;
   if (!data.hasFeedback) {
