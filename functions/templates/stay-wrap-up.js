@@ -10,6 +10,9 @@
 // member emails that sign as the team: this is written in her voice as the
 // owner's own thank-you, by her decision (2026-09-29).
 //
+// The copy never says "stay" (2026-11-25): it doesn't fit drop-in visits,
+// and it sounds like the pet is staying with us rather than at home.
+//
 // The review ask is direct; the tip is only mentioned in passing. Both only
 // mention what's still open: someone who already left a review and/or a
 // tip from the portal is thanked for it instead of being asked again.
@@ -43,7 +46,7 @@ function paragraphs(data) {
 
   let review;
   if (!data.hasFeedback) {
-    review = "If you have a moment, I'd really appreciate it if you'd leave a review of the stay in your portal. Your feedback helps us keep getting better, and it means a lot to me and our walkers.";
+    review = "If you have a moment, I'd really appreciate it if you'd leave a review in your portal. Your feedback helps us keep getting better, and it means a lot to me and our walkers.";
     if (!data.hasTip) review += ` You can also leave a tip for ${walkers} there. Tips are never expected, but always appreciated.`;
     else review += ` Thank you, too, for the tip you left ${walkers}.`;
   } else if (!data.hasTip) {
@@ -53,14 +56,14 @@ function paragraphs(data) {
     review = `Thank you so much for your review and for the tip you left ${walkers}. Both mean a lot to me and our walkers.`;
   }
 
-  const reachOut = "If you have any questions, or anything you'd like to share about the stay, just reply to this email. I'd love to hear from you.";
+  const reachOut = "If you have any questions, or anything you'd like to share, just reply to this email. I'd love to hear from you.";
   const closing = `We hope to see ${names} again soon.`;
 
   return { opening, review, reachOut, closing };
 }
 
 function buttonLabel(data) {
-  return data.hasFeedback ? 'View Your Stay' : 'Leave a Review';
+  return data.hasFeedback ? 'View Notes and Photos' : 'Leave a Review';
 }
 
 function html(data) {
