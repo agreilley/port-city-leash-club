@@ -6028,7 +6028,13 @@ function reviewWarning(o, v) {
   return cov === 'none' ? `${w.name.split(' ')[0]} isn't available then` : cov === 'partial' ? `${w.name.split(' ')[0]} is only partly available` : '';
 }
 
+// Called from the data listeners, so an error here must never stop the rest
+// of the dashboard from loading.
 function renderVisitTimeReview() {
+  try { drawVisitTimeReview(); } catch (e) { console.error('Review Visit Times failed to load', e); }
+}
+
+function drawVisitTimeReview() {
   const el = document.getElementById('visitTimeReview');
   if (!el) return;
   const stays = reviewStays();
@@ -6058,7 +6064,7 @@ function renderVisitTimeReview() {
         const same = visits.filter(v => !reviewNeedsChoice(v));
         return `<div style="border:1px solid rgba(0,0,0,0.08);border-radius:6px;padding:12px;margin-bottom:12px;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;">
-            <div style="font-weight:600;font-size:14px;color:var(--navy);">${escapeHtml(m?.name || o.memberName || 'Client')} / ${escapeHtml(o.dogName || getMemberDogs(m)[0]?.name || 'Pet')} <span style="font-weight:400;color:var(--text-light);">· ${fmtDate(o.startDate)} to ${fmtDate(o.endDate)} · ${isCheckinType(o.serviceType) ? 'Drop-ins' : 'Overnight'}</span></div>
+            <div style="font-weight:600;font-size:14px;color:var(--navy);">${escapeHtml(m?.name || o.memberName || 'Client')} / ${escapeHtml(o.dogName || getMemberDogs(m)[0]?.name || 'Pet')} <span style="font-weight:400;color:var(--text-light);">· ${escapeHtml(fmtDateKeyRanges([dateKey(o.startDate)].filter(Boolean)))} to ${escapeHtml(fmtDateKeyRanges([dateKey(o.endDate)].filter(Boolean)))} · ${isCheckinType(o.serviceType) ? 'Drop-ins' : 'Overnight'}</span></div>
             <button class="btn-primary" style="padding:5px 14px;font-size:12px;" onclick="saveReviewStay('${o.id}', this)">Save This Stay</button>
           </div>
           ${visits.filter(reviewNeedsChoice).map(v => row(o, v)).join('')}
