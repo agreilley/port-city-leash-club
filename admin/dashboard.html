@@ -7193,6 +7193,9 @@ window.openRequestItem = async (id) => {
     // of a field row, so it isn't dumped as a long semicolon string (or
     // "[object Object]").
     availabilityGridHTML = buildApplicationAvailabilityGrid(item.availability);
+    // Comfort table, scenarios and writing sample joined careers.html
+    // 2026-11-25; older applications lack them, so nothing is shown for those.
+    comfortGridHTML = buildScreeningComfortGrid(item.comfortLevels);
     fields = [
       { label: 'Name', value: item.name || '–' },
       { label: 'Email', value: item.email || '–' },
@@ -7215,6 +7218,12 @@ window.openRequestItem = async (id) => {
         if (nights.length) return nights.map(d => names[d]).join(', ');
         return typeof item.availableForOvernights === 'boolean' ? (item.availableForOvernights ? 'Yes' : 'No') : 'Not specified';
       })() },
+      ...('scenarioAggressive' in item ? [
+        { label: 'Scenario · Aggressive dog', value: item.scenarioAggressive || '–' },
+        { label: 'Scenario · Running late', value: item.scenarioTimeWindow || '–' },
+        { label: 'Scenario · Access problem', value: item.scenarioAccess || '–' },
+        { label: 'Writing Sample (Bailey walk)', value: item.writingSample || '–' },
+      ] : []),
       { label: 'Additional Notes', value: item.additional || '–' },
       { label: 'Status', value: item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '–' },
       { label: 'Submitted', value: fmtDate(item.createdAt) },

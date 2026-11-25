@@ -399,7 +399,17 @@ service cloud.firestore {
             ['type', 'name', 'email', 'phone', 'neighborhood', 'dogExperience',
              'experience', 'availability', 'walksPerWeek', 'transportation',
              'availableForOvernights', 'backgroundCheckConsent', 'additional',
+             'comfortLevels', 'scenarioAggressive', 'scenarioTimeWindow',
+             'scenarioAccess', 'writingSample',
              'read', 'createdAt', 'resumePath', 'resumeName'])
+          // Screening questions, on careers.html since 2026-11-25. Required on
+          // the page; OPTIONAL here so a cached old page isn't rejected.
+          && (!('comfortLevels' in request.resource.data)
+              || isValidComfortLevels(request.resource.data.comfortLevels))
+          && optionalAnswer('scenarioAggressive')
+          && optionalAnswer('scenarioTimeWindow')
+          && optionalAnswer('scenarioAccess')
+          && optionalAnswer('writingSample')
           && request.resource.data.name is string && request.resource.data.name.size() <= 200
           && request.resource.data.phone is string && request.resource.data.phone.size() <= 50
           && request.resource.data.neighborhood is string && request.resource.data.neighborhood.size() <= 200
@@ -427,6 +437,30 @@ service cloud.firestore {
       // client `required`. Single source of truth for the allowed values.
       function isComfortLevel(v) {
         return v in ['Not comfortable', 'Comfortable', 'Very experienced'];
+      }
+
+      // Validates VALUES, not just keys: each cell must be a known comfort
+      // level. Accessing a missing key denies, so this also requires all 8.
+      // Shared by validApplication and validWalkerScreening.
+      function isValidComfortLevels(c) {
+        return c is map
+          && c.keys().hasOnly(
+              ['cats', 'oralMedication', 'injections', 'multipleDogs', 'puppies',
+               'seniorSpecialNeeds', 'largeHighEnergy', 'overnightStays'])
+          && isComfortLevel(c.cats)
+          && isComfortLevel(c.oralMedication)
+          && isComfortLevel(c.injections)
+          && isComfortLevel(c.multipleDogs)
+          && isComfortLevel(c.puppies)
+          && isComfortLevel(c.seniorSpecialNeeds)
+          && isComfortLevel(c.largeHighEnergy)
+          && isComfortLevel(c.overnightStays);
+      }
+
+      // Optional long free-text answer: absent, or a string within the cap.
+      function optionalAnswer(key) {
+        return !(key in request.resource.data)
+          || (request.resource.data[key] is string && request.resource.data[key].size() <= 10000);
       }
 
       // Availability cells for the screening grid — its OWN slot set including
@@ -460,20 +494,7 @@ service cloud.firestore {
           && validScreeningAvailDay(request.resource.data.availability.fri)
           && validScreeningAvailDay(request.resource.data.availability.sat)
           && validScreeningAvailDay(request.resource.data.availability.sun)
-          && request.resource.data.comfortLevels is map
-          && request.resource.data.comfortLevels.keys().hasOnly(
-              ['cats', 'oralMedication', 'injections', 'multipleDogs', 'puppies',
-               'seniorSpecialNeeds', 'largeHighEnergy', 'overnightStays'])
-          // Validate VALUES, not just keys: each cell must be a known comfort
-          // level. Accessing a missing key denies, so this also requires all 8.
-          && isComfortLevel(request.resource.data.comfortLevels.cats)
-          && isComfortLevel(request.resource.data.comfortLevels.oralMedication)
-          && isComfortLevel(request.resource.data.comfortLevels.injections)
-          && isComfortLevel(request.resource.data.comfortLevels.multipleDogs)
-          && isComfortLevel(request.resource.data.comfortLevels.puppies)
-          && isComfortLevel(request.resource.data.comfortLevels.seniorSpecialNeeds)
-          && isComfortLevel(request.resource.data.comfortLevels.largeHighEnergy)
-          && isComfortLevel(request.resource.data.comfortLevels.overnightStays)
+          && isValidComfortLevels(request.resource.data.comfortLevels)
           && request.resource.data.scenarioAggressive is string && request.resource.data.scenarioAggressive.size() <= 10000
           && request.resource.data.scenarioTimeWindow is string && request.resource.data.scenarioTimeWindow.size() <= 10000
           && request.resource.data.scenarioAccess is string && request.resource.data.scenarioAccess.size() <= 10000

@@ -311,7 +311,9 @@ Every string field is attacker-controlled (anonymous create — same M-2-hardene
 ```
 name, email, phone, neighborhood, dogExperience, experience,
 availability: object { mon: [...], tue: [...], ... },   // same shape as walkers.availability
-walksPerWeek, transportation, additional
+walksPerWeek, transportation, additional,
+// since 2026-11-25 (older applications lack these; same shapes as walker_screening):
+comfortLevels: object, scenarioAggressive, scenarioTimeWindow, scenarioAccess, writingSample
 ```
 
 **`dog_update`** — `memberName, previousDogs, newDogs, message`
