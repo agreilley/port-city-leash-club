@@ -1610,13 +1610,33 @@ function updateMetrics() {
       };
     }
 
+    // The times a member picked on a request that isn't confirmed yet
+    // (js/visit-time-picker.js), one "Fri, Dec 4: Midday, Evening (extra)"
+    // line per day with a visit. Empty for a request that only has counts
+    // (before 2026-11-24). Only known slot names are ever printed.
+    function requestedTimeRows(entry, isCheckin) {
+      const byDay = {};
+      const add = (list, suffix) => (Array.isArray(list) ? list : []).forEach(day => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day?.date) || !Array.isArray(day.slots)) return;
+        day.slots.filter(slot => VISIT_SLOTS.includes(slot)).forEach(slot => (byDay[day.date] ||= []).push({ slot, suffix }));
+      });
+      if (isCheckin) add(entry.visitSchedule, '');
+      else { add(entry.requestedIncludedDropIns, ''); add(entry.requestedAddOnDropIns, ' (extra)'); }
+      return Object.keys(byDay).sort().map(date => {
+        const label = new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        const times = byDay[date].sort((a, b) => VISIT_SLOTS.indexOf(a.slot) - VISIT_SLOTS.indexOf(b.slot))
+          .map(t => VISIT_SLOT_LABELS[t.slot] + t.suffix).join(', ');
+        return `${label}: ${times}`;
+      });
+    }
+
     // Reservation Detail Modal — for a calendar day whose fill comes from an
     // overnight/drop-in entry with no walk on it (previously not clickable
     // at all; see generateCalendar's day-cell loop). A pending entry has no
     // admin-confirmed total or per-day schedule yet — it's still just the
     // member's own estimate (estimatedTotal, in dollars) — so those sections
-    // degrade gracefully instead of showing confirmed-only data as if it
-    // were final.
+    // degrade gracefully (the estimate, and the requested times) instead of
+    // showing confirmed-only data as if it were final.
     function openReservationModal(entry) {
       const isCheckin = isCheckinType(entry.serviceType);
       const isPending = entry.status === 'pending';
@@ -1676,6 +1696,11 @@ function updateMetrics() {
           return `<p class="detail-value" style="margin:8px 0 2px;font-weight:600;">${label}</p>${items}`;
         }).join('');
         document.getElementById('reservationModalScheduleLabel').textContent = 'Stay schedule';
+        scheduleBox.style.display = '';
+      } else if (isPending && requestedTimeRows(entry, isCheckin).length) {
+        document.getElementById('reservationModalSchedule').innerHTML = requestedTimeRows(entry, isCheckin)
+          .map(r => `<p class="detail-value" style="margin:2px 0;">${r}</p>`).join('');
+        document.getElementById('reservationModalScheduleLabel').textContent = 'Requested times';
         scheduleBox.style.display = '';
       } else {
         scheduleBox.style.display = 'none';
