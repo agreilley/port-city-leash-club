@@ -14,7 +14,7 @@
 // predeploy hook — edit here, never there.
 
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_RANGES } from './time-slots.js';
-import { VISIT_SLOT_RANGES } from './visit-slots.js';
+import { VISIT_SLOT_RANGES, visitWindow } from './visit-slots.js';
 
 export const AVAILABILITY_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 export const AVAILABILITY_DAY_LABELS = {
@@ -65,9 +65,18 @@ export function walkSlotsFromHours(hours) {
 
 // How well a day's hours cover a drop-in visit window: 'full', 'partial'
 // (free for some of it — worth a call) or 'none'.
-export function visitSlotCoverage(hours, slot) {
+// A custom window is checked against its own hours, not its slot's.
+export function visitCoverage(hours, visit) {
+  const w = visitWindow(visit);
+  if (!w) return rangeCoverage(hours, rangeHours(VISIT_SLOT_RANGES[visit?.slot]));
+  const need = [];
+  for (let h = Math.floor(w.start / 60); h * 60 < w.end; h++) need.push(h);
+  return rangeCoverage(hours, need);
+}
+
+// Same, for any list of one-hour blocks (rangeHours).
+export function rangeCoverage(hours, need) {
   const set = new Set(hours || []);
-  const need = rangeHours(VISIT_SLOT_RANGES[slot]);
   if (!need.length) return 'full';
   const have = need.filter(h => set.has(h)).length;
   return have === need.length ? 'full' : have ? 'partial' : 'none';

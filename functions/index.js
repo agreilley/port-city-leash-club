@@ -4369,7 +4369,7 @@ exports.sendMeetGreetReminders = onSchedule({
 //    overnights doc), so each run builds every walker's current upcoming
 //    assignments and compares them with the set they were last told about,
 //    stored at walkerAssignmentDigest/{walkerId}.notified as { key: item }.
-//    A key includes the date and slot, so a rescheduled walk reads as the
+//    A key includes the date and time (slot plus any custom window), so a rescheduled walk reads as the
 //    new date added and the old one taken off.
 //
 //    Removed = in the notified set, dated today or later, no longer on this
@@ -4389,7 +4389,7 @@ exports.sendMeetGreetReminders = onSchedule({
 //    idempotencyKey is per walker per day, so a re-fired run can't double send.
 // ─────────────────────────────────────────────────────────────────────────
 async function buildWalkerAssignments(todayStr, todayTs) {
-  const { stayNightDates, nightWalkerId } = await import('./visit-slots.js');
+  const { stayNightDates, nightWalkerId, visitDigestTime, visitWindow } = await import('./visit-slots.js');
   const { visitWalkerId } = await import('./walker-pricing.js');
   const byWalker = {};
   const doneKeys = new Set();
@@ -4417,9 +4417,9 @@ async function buildWalkerAssignments(todayStr, todayTs) {
     const base = { memberId: o.memberId || null, fallbackName: o.memberName || null, fallbackDog: o.dogName || null };
     (Array.isArray(o.visits) ? o.visits : []).forEach((v) => {
       if (!v || typeof v.date !== 'string' || v.date < todayStr) return;
-      const key = `visit:${d.id}:${v.id}:${v.date}:${v.slot || ''}`;
+      const key = `visit:${d.id}:${v.id}:${v.date}:${visitDigestTime(v)}`;
       if (stayDone || v.status === 'completed') { doneKeys.add(key); return; }
-      add(visitWalkerId(v, o), { ...base, key, dateStr: v.date, kind: 'visit', slot: v.slot || null });
+      add(visitWalkerId(v, o), { ...base, key, dateStr: v.date, kind: 'visit', slot: v.slot || null, window: visitWindow(v) });
     });
     stayNightDates(o).forEach((date) => {
       const night = o.nights?.[date];
@@ -4433,7 +4433,7 @@ async function buildWalkerAssignments(todayStr, todayTs) {
 }
 
 // Same-day order: walks and visits by slot, the night last.
-const DIGEST_ITEM_ORDER = ['morning', 'early-afternoon', 'midday', 'late-afternoon', 'evening', 'last-out'];
+const DIGEST_ITEM_ORDER = ['morning', 'early-afternoon', 'midday', 'afternoon', 'late-afternoon', 'evening', 'last-out'];
 function digestItemRank(a) {
   return a.kind === 'night' ? 99 : DIGEST_ITEM_ORDER.indexOf(a.slot);
 }
@@ -4461,10 +4461,11 @@ async function groupDigestByClient(items) {
         items: [],
       };
     }
-    clients[groupKey].items.push({ dateStr: a.dateStr, kind: a.kind, slot: a.slot });
+    clients[groupKey].items.push({ dateStr: a.dateStr, kind: a.kind, slot: a.slot, window: a.window || null });
   }
   const list = Object.values(clients);
-  list.forEach((c) => c.items.sort((x, y) => x.dateStr.localeCompare(y.dateStr) || digestItemRank(x) - digestItemRank(y)));
+  list.forEach((c) => c.items.sort((x, y) => x.dateStr.localeCompare(y.dateStr) || digestItemRank(x) - digestItemRank(y)
+    || (x.window?.start ?? 0) - (y.window?.start ?? 0)));
   return list.sort((x, y) => x.items[0].dateStr.localeCompare(y.items[0].dateStr));
 }
 
@@ -6821,7 +6822,7 @@ function buildStayPlan(overnight) {
   if (!overnight?.startDate?.toDate || !overnight?.endDate?.toDate) return null;
   const startStr = isoDateStr(overnight.startDate.toDate());
   const endStr = isoDateStr(overnight.endDate.toDate());
-  const slotOrder = ['morning', 'midday', 'evening', 'last-out'];
+  const slotOrder = ['morning', 'midday', 'afternoon', 'evening', 'last-out'];
   const visits = Array.isArray(overnight.visits) ? overnight.visits : [];
   const plan = [];
   const cursor = new Date(`${startStr}T12:00:00Z`);

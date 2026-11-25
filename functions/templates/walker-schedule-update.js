@@ -21,7 +21,8 @@
 // Client: {
 //   clientName: string,
 //   dogNames: string[],
-//   items: [{ dateStr: 'YYYY-MM-DD', kind: 'walk'|'visit'|'night', slot: string|null }], // sorted
+//   items: [{ dateStr: 'YYYY-MM-DD', kind: 'walk'|'visit'|'night', slot: string|null,
+//     window: {start, end}|null }]  // window: a visit's custom time, minutes after midnight, // sorted
 // }                       // clients sorted by first date
 
 const {
@@ -34,7 +35,7 @@ const {
 // labels/ranges (time-slots.js), lowercased for prose. Those are ES modules
 // these CommonJS templates can't require synchronously.
 const WALK_SLOTS = { morning: 'morning (8–11am)', 'early-afternoon': 'early afternoon (11am–2pm)', 'late-afternoon': 'late afternoon (2–5pm)' };
-const VISIT_SLOTS = { morning: 'morning (7–9am)', midday: 'midday (12–3pm)', evening: 'evening (4–7pm)', 'last-out': 'last out (8–10pm)' };
+const VISIT_SLOTS = { morning: 'morning (7–9am)', midday: 'midday (12–3pm)', afternoon: 'afternoon (2–4pm)', evening: 'evening (4–7pm)', 'last-out': 'last out (8–10pm)' };
 
 // "2026-11-04" -> "Wed, Nov 4", built from the components so there's no
 // timezone day shift.
@@ -43,8 +44,19 @@ function shortDate(dateStr) {
   return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+// Mirrors windowLabel (visit-slots.js): { start: 570, end: 630 } -> "9:30–10:30am".
+function windowText({ start, end }) {
+  const at = (min) => {
+    const h = Math.floor(min / 60), m = min % 60;
+    return `${h % 12 === 0 ? 12 : h % 12}${m ? `:${String(m).padStart(2, '0')}` : ''}${h < 12 ? 'am' : 'pm'}`;
+  };
+  const a = at(start), b = at(end);
+  return a.slice(-2) === b.slice(-2) ? `${a.slice(0, -2)}–${b}` : `${a}–${b}`;
+}
+
 function itemText(item) {
   if (item.kind === 'night') return 'Overnight';
+  if (item.kind === 'visit' && item.window) return `Drop-in visit, ${windowText(item.window)} (specific time)`;
   if (item.kind === 'visit') return VISIT_SLOTS[item.slot] ? `Drop-in visit, ${VISIT_SLOTS[item.slot]}` : 'Drop-in visit';
   return WALK_SLOTS[item.slot] ? `Walk, ${WALK_SLOTS[item.slot]}` : 'Walk';
 }

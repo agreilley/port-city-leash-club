@@ -459,7 +459,7 @@ import { calculateEarnings, overnightEarnedSoFar, WALKER_RATES, WALKER_EXTRA_PET
 import { HOLIDAY_RATE_PERCENT } from '../pricing.js';
 import { WALK_TIME_SLOTS, WALK_TIME_SLOT_LABELS, WALK_TIME_SLOT_RANGES } from '../time-slots.js';
 import { AVAILABILITY_DAYS, AVAILABILITY_DAY_LABELS, AVAILABILITY_HOURS, hourLabel, hourBlockLabel, summarizeHours } from '../walker-availability.js';
-import { VISIT_SLOT_LABELS, VISIT_SLOT_RANGES, buildStaySchedule, groupStayScheduleByDay, stayRowLabel, stayNightDates, nightWalkerId, stayReadyToClose, keyInstructionLabel, stayDateKey } from '../visit-slots.js';
+import { VISIT_SLOT_LABELS, visitTimeLabel, visitWindow, visitStartMinutes, buildStaySchedule, groupStayScheduleByDay, stayRowLabel, stayNightDates, nightWalkerId, stayReadyToClose, keyInstructionLabel, stayDateKey } from '../visit-slots.js';
 import { showError } from '/js/status.js';
 
 // ─── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────────────────────
@@ -1021,6 +1021,13 @@ function renderStats() {
   document.getElementById('stat-tips').textContent = money(tips);
 }
 
+// Marks a visit with a custom window (visits[].window, visit-slots.js): the
+// client needs it then, not just sometime in the usual range.
+const SPECIFIC_TIME_TAG = '<span style="display:inline-block;background:#FEF3C7;color:#92400E;font-size:11px;font-weight:600;padding:1px 7px;border-radius:4px;">Specific time</span>';
+function specificTimeHtml(v) {
+  return visitWindow(v) ? ` · <strong style="color:var(--navy);">${escapeHtml(visitTimeLabel(v))}</strong> ${SPECIFIC_TIME_TAG}` : '';
+}
+
 function getDogNames(member) {
   const dogs = (Array.isArray(member?.dogs) && member.dogs.length) ? member.dogs : (member?.dogName ? [{ name: member.dogName }] : []);
   return dogs.map(d => d.name).filter(Boolean).join(' & ') || '–';
@@ -1162,7 +1169,7 @@ function renderTodaysVisits() {
       return `<div class="walk-card" style="align-items:center;">
         <div style="flex:1;">
           <div style="font-size:13px;color:var(--text-mid);">${address}</div>
-          <div style="font-size:13px;color:var(--text-light);">${v.date} · ${slotLabel}${keyInstructionLabel(v) ? ` · <strong style="color:var(--navy);">${keyInstructionLabel(v)}</strong>` : ''}</div>
+          <div style="font-size:13px;color:var(--text-light);">${v.date} · ${slotLabel}${specificTimeHtml(v)}${keyInstructionLabel(v) ? ` · <strong style="color:var(--navy);">${keyInstructionLabel(v)}</strong>` : ''}</div>
         </div>
         <button class="btn-complete" style="width:auto;padding:8px 16px;" onclick="openVisitCompleteForm('${o.id}', '${v.id}')">Mark complete</button>
       </div>`;
@@ -1213,7 +1220,7 @@ window.openVisitCompleteForm = (overnightId, visitId) => {
     <div class="detail-row"><span class="detail-label">Internal Notes</span><span class="detail-value">${escapeHtml(member?.internalNotes) || 'None'}</span></div>
     ${renderEmergencyBlock(member)}
     <div class="detail-row"><span class="detail-label">Date</span><span class="detail-value">${escapeHtml(visit.date)}</span></div>
-    <div class="detail-row"><span class="detail-label">Slot</span><span class="detail-value">${slotLabel}</span></div>
+    <div class="detail-row"><span class="detail-label">Slot</span><span class="detail-value">${slotLabel}${visitTimeLabel(visit) ? ` (${escapeHtml(visitTimeLabel(visit))})` : ''}${visitWindow(visit) ? ` ${SPECIFIC_TIME_TAG}` : ''}</span></div>
     ${keyInstructionLabel(visit) ? `<div class="detail-row"><span class="detail-label">Key</span><span class="detail-value"><strong>${keyInstructionLabel(visit)}</strong> after this visit</span></div>` : ''}
     <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${isCompleted ? '✓ Completed' : isToday ? 'Today' : isPastDay ? 'Past' : 'Scheduled'}</span></div>
     ${isCompleted ? `
@@ -1528,12 +1535,12 @@ function renderOvernights() {
       const label = new Date(`${day.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
       const items = day.rows.map(r => {
         const entry = r.kind === 'night' ? r.night : r.visit;
-        const what = r.kind === 'night' ? 'Overnight' : (VISIT_SLOT_RANGES[r.visit.slot] || VISIT_SLOT_LABELS[r.visit.slot] || r.visit.slot || 'Visit');
+        const what = r.kind === 'night' ? 'Overnight' : (visitTimeLabel(r.visit) || VISIT_SLOT_LABELS[r.visit.slot] || r.visit.slot || 'Visit');
         const done = r.kind === 'night' ? r.night?.status === 'completed' : r.visit.status === 'completed';
         const key = keyInstructionLabel(entry);
-        return `${done ? '✓ ' : ''}${what}${key ? ` (${key})` : ''}`;
+        return `${done ? '✓ ' : ''}${escapeHtml(what)}${r.kind === 'visit' && visitWindow(r.visit) ? ` ${SPECIFIC_TIME_TAG}` : ''}${key ? ` (${escapeHtml(key)})` : ''}`;
       }).join(', ');
-      return `<div style="font-size:13px;color:var(--text-mid);"><span style="font-weight:600;">${escapeHtml(label)}</span> · ${escapeHtml(items)}</div>`;
+      return `<div style="font-size:13px;color:var(--text-mid);"><span style="font-weight:600;">${escapeHtml(label)}</span> · ${items}</div>`;
     }).join('');
     return `<div class="walk-card" style="flex-direction:column;align-items:stretch;cursor:pointer;" onclick="openOvernightDetail('${o.id}')">
       <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -1581,7 +1588,7 @@ window.openOvernightDetail = (overnightId) => {
         const st = row.night?.status;
         return `<div>${label} · ${st === 'completed' || (!st && isCompleted) ? '✓ Done' : st === 'skipped' ? "Didn't happen" : 'Expected'}${keyInstructionLabel(row.night) ? ` · ${keyInstructionLabel(row.night)}` : ''}</div>`;
       }
-      return `<div>${label} · ${row.visit.status === 'completed' ? '✓ Done' : 'Expected'}${keyInstructionLabel(row.visit) ? ` · ${keyInstructionLabel(row.visit)}` : ''}</div>`;
+      return `<div>${label}${specificTimeHtml(row.visit)} · ${row.visit.status === 'completed' ? '✓ Done' : 'Expected'}${keyInstructionLabel(row.visit) ? ` · ${keyInstructionLabel(row.visit)}` : ''}</div>`;
     }).join('');
     return `<div class="detail-row" style="align-items:flex-start;"><span class="detail-label">${escapeHtml(dateLabel)}</span><span class="detail-value">${items}</span></div>`;
   }).join('');
@@ -1625,7 +1632,6 @@ window.nextMonth = () => { calMonth++; if (calMonth > 11) { calMonth = 0; calYea
 
 // Start hour of each time window, only for ordering a day's calendar chips.
 const CAL_SLOT_START = { morning: 8, 'early-afternoon': 11, 'late-afternoon': 14 };
-const CAL_VISIT_START = { morning: 7, midday: 12, evening: 16, 'last-out': 20 };
 const member_ = (id) => allMembers.find(m => m.id === id);
 
 function renderCalendar() {
@@ -1666,8 +1672,8 @@ function renderCalendar() {
       (Array.isArray(o.visits) ? o.visits : [])
         .filter(v => walkDateStr(v.date) === dayStr)
         .forEach(v => items.push({
-          cls: 'dropin', start: CAL_VISIT_START[v.slot] ?? 99,
-          time: VISIT_SLOT_RANGES[v.slot] || VISIT_SLOT_LABELS[v.slot] || '', name: petNames,
+          cls: 'dropin', start: visitStartMinutes(v) / 60,
+          time: visitTimeLabel(v) || VISIT_SLOT_LABELS[v.slot] || '', specific: !!visitWindow(v), name: petNames,
           title: `${v.addOn ? 'Extra drop-in' : isCheckin ? 'Drop-in' : 'Drop-in (overnight stay)'} · ${VISIT_SLOT_LABELS[v.slot] || v.slot || ''}`,
           onclick: `openVisitCompleteForm('${o.id}', '${v.id}')`, key: keyInstructionLabel(v),
         }));
@@ -1676,8 +1682,8 @@ function renderCalendar() {
       }
     });
     const chips = items.sort((a, b) => a.start - b.start).map(it =>
-      `<div class="my-walk-chip ${it.cls}" onclick="${it.onclick}" title="${escapeHtml(`${it.name} · ${it.title}${it.key ? ` · ${it.key}` : ''}`)}">`
-      + (it.time ? `<span class="chip-time">${escapeHtml(it.time)}</span>` : '')
+      `<div class="my-walk-chip ${it.cls}" onclick="${it.onclick}" title="${escapeHtml(`${it.name} · ${it.title}${it.specific ? ' · Specific time' : ''}${it.key ? ` · ${it.key}` : ''}`)}">`
+      + (it.time ? `<span class="chip-time">${escapeHtml(it.time)}${it.specific ? '*' : ''}</span>` : '')
       + `<span class="chip-name">${escapeHtml(it.name)}</span>`
       + (it.key ? ` <span class="chip-key"><span class="chip-key-sep">· </span>${escapeHtml(it.key)}</span>` : '') + '</div>'
     ).join('');

@@ -21,11 +21,12 @@
 // source of truth; functions/visit-slots.js is a generated copy — edit
 // here, never there.
 
-export const VISIT_SLOTS = ['morning', 'midday', 'evening', 'last-out'];
+export const VISIT_SLOTS = ['morning', 'midday', 'afternoon', 'evening', 'last-out'];
 
 export const VISIT_SLOT_LABELS = {
   morning: 'Morning',
   midday: 'Midday',
+  afternoon: 'Afternoon',
   evening: 'Evening',
   'last-out': 'Last Out',
 };
@@ -40,7 +41,23 @@ export const VISIT_SLOT_LABELS = {
 export const VISIT_SLOT_RANGES = {
   morning: '7–9am',
   midday: '12–3pm',
+  afternoon: '2–4pm',
   evening: '4–7pm',
+  'last-out': '8–10pm',
+};
+
+// The windows VISIT_SLOT_RANGES is about to switch to (decided 2026-11-24).
+// TEMPORARY, for the admin "Review visit times" list: it lets upcoming
+// visits be checked against the new hours before they go live. Delete, along
+// with that list, once VISIT_SLOT_RANGES holds these values. Until then
+// 'afternoon' overlaps the old midday window; it exists early so reviewed
+// visits can be moved onto it.
+export const NEXT_VISIT_SLOT_LABELS = { ...VISIT_SLOT_LABELS, 'last-out': 'Bedtime' };
+export const NEXT_VISIT_SLOT_RANGES = {
+  morning: '7–9am',
+  midday: '11am–1pm',
+  afternoon: '2–4pm',
+  evening: '5–7pm',
   'last-out': '8–10pm',
 };
 
@@ -58,20 +75,23 @@ for (const key of VISIT_SLOTS) {
 // makes any manual change, and by the overnight_request "one visit per day"
 // generation path (see runServiceOrOvernightBookingDoc) for its single-visit
 // case. Spreads visits across the day rather than clustering them, and a
-// count beyond the 4 named slots repeats 'last-out' for the overflow rather
-// than throwing — an admin who dials a day up to 5+ visits still gets a
+// count beyond the 5 named slots repeats 'last-out' for the overflow rather
+// than throwing — an admin who dials a day up to 6+ visits still gets a
 // full array back, just with a slot value that no longer maps to a unique
 // window.
+//
+// 'afternoon' is only used for a fifth visit, so 1-4 keep their defaults.
 export function defaultSlotsForCount(count) {
   const progressions = {
     1: ['morning'],
     2: ['morning', 'evening'],
     3: ['morning', 'midday', 'evening'],
     4: ['morning', 'midday', 'evening', 'last-out'],
+    5: [...VISIT_SLOTS],
   };
   if (progressions[count]) return progressions[count];
   if (count <= 0) return [];
-  return [...progressions[4], ...Array(count - 4).fill('last-out')];
+  return [...progressions[5], ...Array(count - 5).fill('last-out')];
 }
 
 // A version marker for cross-context drift checks — see time-slots.js's
@@ -86,6 +106,97 @@ function checksum(str) {
 }
 export const VISIT_SLOTS_VERSION = checksum(JSON.stringify({ VISIT_SLOTS, VISIT_SLOT_LABELS, VISIT_SLOT_RANGES }));
 
+// ── Custom windows ──────────────────────────────────────────────────────
+// A visit that needs a more specific time than its slot's standard window
+// carries visits[].window = { start, end }, minutes after midnight. Set by
+// admin on a confirmed stay; shown to admin and walkers, never to customers
+// (they only see the slot's name, which is why a window also sets `slot`).
+export const WINDOW_EARLIEST = 7 * 60;   // 7am, where walker availability starts
+export const WINDOW_LATEST = 22 * 60;    // 10pm, where it ends
+export const WINDOW_STEP = 30;
+export const WINDOW_MIN_LENGTH = 60;
+
+export function validVisitWindow(w) {
+  return !!w && Number.isInteger(w.start) && Number.isInteger(w.end)
+    && w.start >= WINDOW_EARLIEST && w.end <= WINDOW_LATEST
+    && w.start % WINDOW_STEP === 0 && w.end % WINDOW_STEP === 0
+    && w.end - w.start >= WINDOW_MIN_LENGTH;
+}
+
+// The visit's custom window, or null when it's on its slot's standard one.
+export function visitWindow(visit) {
+  return validVisitWindow(visit?.window) ? { start: visit.window.start, end: visit.window.end } : null;
+}
+
+// 570 -> "9:30am"
+export function minutesLabel(min) {
+  const h = Math.floor(min / 60), m = min % 60;
+  return `${h % 12 === 0 ? 12 : h % 12}${m ? `:${String(m).padStart(2, '0')}` : ''}${h < 12 ? 'am' : 'pm'}`;
+}
+
+// { start: 570, end: 630 } -> "9:30–10:30am"
+export function windowLabel(w) {
+  const a = minutesLabel(w.start), b = minutesLabel(w.end);
+  return a.slice(-2) === b.slice(-2) ? `${a.slice(0, -2)}–${b}` : `${a}–${b}`;
+}
+
+// The hours to show admin and walkers for a visit.
+export function visitTimeLabel(visit) {
+  const w = visitWindow(visit);
+  return w ? windowLabel(w) : (VISIT_SLOT_RANGES[visit?.slot] || '');
+}
+
+// "12–3pm" -> { start: 720, end: 900 }. Every standard range is whole hours.
+export function parseRange(range) {
+  const m = /^(\d{1,2})(am|pm)?–(\d{1,2})(am|pm)$/.exec(range || '');
+  if (!m) return null;
+  const at = (n, ap) => ((Number(n) % 12) + (ap === 'pm' ? 12 : 0)) * 60;
+  return { start: at(m[1], m[2] || m[4]), end: at(m[3], m[4]) };
+}
+
+// Minutes after midnight a visit's window opens, for ordering a day. A visit
+// with an unknown slot sorts first.
+export function visitStartMinutes(visit) {
+  return visitWindow(visit)?.start ?? parseRange(VISIT_SLOT_RANGES[visit?.slot])?.start ?? -1;
+}
+
+// Which slot name a custom window goes by (by its start time).
+export function slotForWindow(w) {
+  if (w.start < 10 * 60 + 30) return 'morning';
+  if (w.start < 13 * 60 + 30) return 'midday';
+  if (w.start < 16 * 60 + 30) return 'afternoon';
+  if (w.start < 19 * 60 + 30) return 'evening';
+  return 'last-out';
+}
+
+// Identifies a visit's time for the walkers' 5pm schedule email, which
+// reports a visit whose key changed. Plain slot when there's no window, so
+// visits that never had one keep the key they've always had.
+export function visitTimeKey(visit) {
+  const w = visitWindow(visit);
+  return `${visit?.slot || ''}${w ? `@${w.start}-${w.end}` : ''}`;
+}
+
+// The time key the 5pm email compares. `notifiedTime` is set on a visit
+// moved by the "Review visit times" list, holding the key its walker already
+// knew, so that change isn't emailed. Any other time change clears it.
+export function visitDigestTime(visit) {
+  return typeof visit?.notifiedTime === 'string' ? visit.notifiedTime : visitTimeKey(visit);
+}
+
+// One visit with a new time. `window` null puts it on the slot's standard
+// hours. silent: the walker isn't emailed about it.
+export function withVisitTime(visit, { slot, window = null }, { silent = false } = {}) {
+  const { window: _w, notifiedTime: _n, ...rest } = visit;
+  const next = { ...rest, slot };
+  if (window) next.window = { start: window.start, end: window.end };
+  if (silent) {
+    const known = visitDigestTime(visit);
+    if (known !== visitTimeKey(next)) next.notifiedTime = known;
+  }
+  return next;
+}
+
 // One overnight stay's day-by-day schedule, for the reservation detail cards
 // (admin, walker, member). o.visits alone is misleading for a true overnight
 // stay: it only holds the midday check-in included with each night (plus any
@@ -97,18 +208,18 @@ export const VISIT_SLOTS_VERSION = checksum(JSON.stringify({ VISIT_SLOTS, VISIT_
 // night hasn't been assigned or completed yet.
 //
 // A drop-in reservation has no nights, so pass isCheckin and it gets its
-// visit rows back unchanged. `startDate`/`endDate` may be Firestore
+// visit rows back, in time order. `startDate`/`endDate` may be Firestore
 // Timestamps, Dates, or 'YYYY-MM-DD' strings; visit dates are 'YYYY-MM-DD'.
 // Pass { nights: false } to leave out the night rows, or { nightsFor:
 // walkerId } to keep only the nights that walker is doing (a walker
 // covering only some of a stay's work).
 export function buildStaySchedule(o, isCheckin, { nights = true, nightsFor = null } = {}) {
   const rows = (Array.isArray(o.visits) ? o.visits : [])
-    .map((visit) => ({ kind: 'visit', date: stayDateKey(visit.date) || '', order: VISIT_SLOTS.indexOf(visit.slot), visit }));
+    .map((visit) => ({ kind: 'visit', date: stayDateKey(visit.date) || '', order: visitStartMinutes(visit), visit }));
   if (!isCheckin && nights) {
     stayNightDates(o)
       .filter((key) => !nightsFor || nightWalkerId(o, key) === nightsFor)
-      .forEach((key) => rows.push({ kind: 'night', date: key, order: VISIT_SLOTS.length, night: o.nights?.[key] || null }));
+      .forEach((key) => rows.push({ kind: 'night', date: key, order: 24 * 60, night: o.nights?.[key] || null }));
   }
   return rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.order - b.order));
 }
