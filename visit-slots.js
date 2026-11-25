@@ -55,7 +55,7 @@ export const VISIT_SLOT_RANGES = {
 export const NEXT_VISIT_SLOT_LABELS = { ...VISIT_SLOT_LABELS, 'last-out': 'Bedtime' };
 export const NEXT_VISIT_SLOT_RANGES = {
   morning: '7–9am',
-  midday: '11am–1pm',
+  midday: '12–2pm',
   afternoon: '2–4pm',
   evening: '5–7pm',
   'last-out': '8–10pm',
@@ -80,12 +80,12 @@ for (const key of VISIT_SLOTS) {
 // full array back, just with a slot value that no longer maps to a unique
 // window.
 //
-// 'afternoon' is only used for a fifth visit, so 1-4 keep their defaults.
 export function defaultSlotsForCount(count) {
   const progressions = {
     1: ['morning'],
     2: ['morning', 'evening'],
-    3: ['morning', 'midday', 'evening'],
+    // Spaced so the dog isn't left from early evening to morning (2026-11-24).
+    3: ['morning', 'afternoon', 'last-out'],
     4: ['morning', 'midday', 'evening', 'last-out'],
     5: [...VISIT_SLOTS],
   };
