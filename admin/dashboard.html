@@ -6864,8 +6864,12 @@ window.openRequestItem = async (id) => {
     const dayLabels = { mon:'Monday', tue:'Tuesday', wed:'Wednesday', thu:'Thursday', fri:'Friday', sat:'Saturday', sun:'Sunday' };
     // evening + overnight added to the careers grid 2026-09-26; older
     // applications simply have neither, and show those columns empty.
-    const slotKeys = ['morning','early-afternoon','late-afternoon','evening','overnight'];
-    const slotLabels = { 'morning':'Morning', 'early-afternoon':'Early Afternoon', 'late-afternoon':'Late Afternoon', 'evening':'Evening', 'overnight':'Overnight' };
+    // 2026-11-25: one 'afternoon' column replaced early/late afternoon; older
+    // applications that used those keep their own columns.
+    const usesOldAfternoons = typeof raw === 'string' || (!!raw && typeof raw === 'object'
+      && dayKeys.some(d => Array.isArray(raw[d]) && (raw[d].includes('early-afternoon') || raw[d].includes('late-afternoon'))));
+    const slotKeys = ['morning', ...(usesOldAfternoons ? ['early-afternoon','late-afternoon'] : ['afternoon']), 'evening', 'overnight'];
+    const slotLabels = { 'morning':'Morning', 'afternoon':'Afternoon', 'early-afternoon':'Early Afternoon', 'late-afternoon':'Late Afternoon', 'evening':'Evening', 'overnight':'Overnight' };
 
     const norm = {};
     dayKeys.forEach(d => norm[d] = []);
@@ -6913,8 +6917,8 @@ window.openRequestItem = async (id) => {
   }
 
   // Walker-screening availability grid. Deliberately SEPARATE from
-  // buildApplicationAvailabilityGrid — the two grids happen to share the same
-  // five slots today (evening added here 2026-09-29 to match careers). Keeping them apart avoids the hardcoded-slot
+  // buildApplicationAvailabilityGrid — the careers grid has had four
+  // slots since 2026-11-25; this one keeps its five. Keeping them apart avoids the hardcoded-slot
   // coupling where adding a slot to one grid silently breaks the other.
   function buildScreeningAvailabilityGrid(raw) {
     const dayKeys = ['mon','tue','wed','thu','fri','sat','sun'];
@@ -7223,6 +7227,7 @@ window.openRequestItem = async (id) => {
         { label: 'Scenario · Aggressive dog', value: item.scenarioAggressive || '–' },
         { label: 'Scenario · Running late', value: item.scenarioTimeWindow || '–' },
         { label: 'Scenario · Access problem', value: item.scenarioAccess || '–' },
+        ...('scenarioRain' in item ? [{ label: 'Scenario · Rainy walk', value: item.scenarioRain || '–' }] : []),
         { label: 'Writing Sample', value: item.writingSample || '–' },
       ] : []),
       { label: 'Additional Notes', value: item.additional || '–' },

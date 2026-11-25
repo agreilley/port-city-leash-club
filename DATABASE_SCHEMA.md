@@ -313,7 +313,7 @@ name, email, phone, experience,   // plus neighborhood, dogExperience before 202
 availability: object { mon: [...], tue: [...], ... },   // same shape as walkers.availability
 walksPerWeek, transportation, additional,
 // since 2026-11-25 (older applications lack these; same shapes as walker_screening):
-comfortLevels: object, scenarioAggressive, scenarioTimeWindow, scenarioAccess, writingSample
+comfortLevels: object, scenarioAggressive, scenarioTimeWindow, scenarioAccess, scenarioRain, writingSample
 ```
 
 **`dog_update`** — `memberName, previousDogs, newDogs, message`

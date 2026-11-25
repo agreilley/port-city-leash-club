@@ -81,6 +81,12 @@
   .checkbox-item input { width: auto; }
   /* Availability grid checkboxes: undo the text-field width:100% + padding
      above, which iOS Safari applies to checkboxes (pushing them left). */
+  #availGrid { display: grid; grid-template-columns: 110px repeat(4, 1fr); gap: 6px; }
+  .avail-head { font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-light); text-align: center; }
+  .avail-head span { text-transform: none; letter-spacing: 0; font-weight: 400; white-space: nowrap; }
+  .avail-day { font-size: 13px; color: var(--navy); display: flex; align-items: center; }
+  .avail-cell { display: flex; justify-content: center; padding: 7px 0; border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; cursor: pointer; background: white; }
+  #availGrid input { accent-color: var(--seafoam); }
   #availGrid input[type=checkbox] { width: auto; padding: 0; }
   .radio-row { display: flex; gap: 10px; flex-wrap: wrap; }
   .radio-pill { display: flex; align-items: center; gap: 8px; border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; padding: 10px 16px; font-size: 13px; color: var(--text-mid); cursor: pointer; transition: border-color 0.15s, background 0.15s; }
@@ -178,6 +184,10 @@
     .checkbox-grid { grid-template-columns: 1fr; }
     * { max-width: 100%; }
     .form-actions { gap: 12px; }
+    #availGrid { grid-template-columns: 68px repeat(4, minmax(0, 1fr)); gap: 5px 4px; }
+    .avail-head { font-size: 10px; letter-spacing: 0; text-transform: none; }
+    .avail-day { font-size: 12px; }
+    .avail-cell { padding: 10px 0; }
     .btn-back { padding: 12.5px 20px; }
     .btn-submit { padding: 14px 20px; }
     /* Fit all three comfort choices on a phone without sideways scrolling */
@@ -220,7 +230,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
   <div class="hero-inner">
     <div>
       <div class="eyebrow">Join Our Team</div>
-      <h1>Care for pets.<br>Build something real.</h1>
+      <h1>Be someone's<br>favorite visitor.</h1>
       <p class="hero-sub">Port City Leash Club is a premium pet sitting and dog walking service built on consistency, trust, and genuine relationships. We're looking for reliable, pet-loving people to join our team in Wilmington, NC.</p>
     </div>
     <div style="background:white;border:1px solid rgba(0,0,0,0.08);border-radius:10px;padding:28px 32px;display:flex;flex-direction:column;gap:16px;">
@@ -267,63 +277,7 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           <div class="field full">
             <label>Which days and times are you available? (select all that apply, including the nights you could stay overnight)</label>
             <div class="h-scroll">
-              <div id="availGrid" style="display:grid;grid-template-columns:110px repeat(5,1fr);gap:6px;min-width:620px;">
-                <div></div>
-                <div style="font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">Morning<br><span style="text-transform:none;letter-spacing:0;font-weight:400;">8–11am</span></div>
-                <div style="font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">Early Afternoon<br><span style="text-transform:none;letter-spacing:0;font-weight:400;">11am–2pm</span></div>
-                <div style="font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">Late Afternoon<br><span style="text-transform:none;letter-spacing:0;font-weight:400;">2–5pm</span></div>
-                <div style="font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">Evening<br><span style="text-transform:none;letter-spacing:0;font-weight:400;">5–10pm</span></div>
-                <div style="font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-light);text-align:center;">Overnight<br><span style="text-transform:none;letter-spacing:0;font-weight:400;">12+ hours</span></div>
-
-                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Monday</div>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-mon-morning" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-mon-early-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-mon-late-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-mon-evening" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-mon-overnight" style="accent-color:var(--seafoam);"></label>
-
-                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Tuesday</div>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-tue-morning" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-tue-early-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-tue-late-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-tue-evening" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-tue-overnight" style="accent-color:var(--seafoam);"></label>
-
-                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Wednesday</div>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-wed-morning" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-wed-early-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-wed-late-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-wed-evening" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-wed-overnight" style="accent-color:var(--seafoam);"></label>
-
-                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Thursday</div>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-thu-morning" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-thu-early-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-thu-late-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-thu-evening" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-thu-overnight" style="accent-color:var(--seafoam);"></label>
-
-                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Friday</div>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-fri-morning" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-fri-early-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-fri-late-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-fri-evening" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-fri-overnight" style="accent-color:var(--seafoam);"></label>
-
-                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Saturday</div>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sat-morning" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sat-early-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sat-late-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sat-evening" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sat-overnight" style="accent-color:var(--seafoam);"></label>
-
-                <div style="font-size:13px;color:var(--navy);display:flex;align-items:center;">Sunday</div>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sun-morning" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sun-early-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sun-late-afternoon" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sun-evening" style="accent-color:var(--seafoam);"></label>
-                <label style="display:flex;justify-content:center;padding:7px 0;border:1px solid rgba(0,0,0,0.1);border-radius:4px;cursor:pointer;background:white;"><input type="checkbox" name="avail-sun-overnight" style="accent-color:var(--seafoam);"></label>
-              </div>
+              <div id="availGrid"><!-- header + rows injected by JS from AVAIL_DAYS / AVAIL_SLOTS --></div>
             </div>
           </div>
           <div class="field" style="justify-content:flex-end;">
@@ -402,6 +356,10 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
           <div class="field full">
             <label>You arrive for a walk or visit and the key doesn't work, or you can't get into the home. What do you do?</label>
             <textarea name="scenario-access" required placeholder="Walk us through your steps..."></textarea>
+          </div>
+          <div class="field full">
+            <label>It's raining outside and the dog you're walking gets wet on the walk. There are no towels left out on the counter from the owners. What do you do?</label>
+            <textarea name="scenario-rain" required placeholder="Walk us through your steps..."></textarea>
           </div>
         </div>
       </div>
@@ -519,6 +477,24 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
     `</tr>`
   ).join('');
 
+  // Availability grid: equal 5-hour blocks plus overnight, just for a rough
+  // idea; a hired walker sets exact hours later (walker-availability.js).
+  // 'morning' was 8–11am, with two afternoon columns, before 2026-11-25. Keys
+  // must match buildApplicationAvailabilityGrid in admin/dashboard.html.
+  const AVAIL_DAYS = [['mon','Monday'],['tue','Tuesday'],['wed','Wednesday'],['thu','Thursday'],['fri','Friday'],['sat','Saturday'],['sun','Sunday']];
+  const AVAIL_SLOTS = [
+    { key: 'morning', label: 'Morning', sub: '7am–12pm' },
+    { key: 'afternoon', label: 'Afternoon', sub: '12–5pm' },
+    { key: 'evening', label: 'Evening', sub: '5–10pm' },
+    { key: 'overnight', label: 'Overnight', sub: '12+ hours' },
+  ];
+  document.getElementById('availGrid').innerHTML =
+    '<div></div>' + AVAIL_SLOTS.map(s => `<div class="avail-head">${s.label}<br><span>${s.sub}</span></div>`).join('') +
+    AVAIL_DAYS.map(([day, label]) =>
+      `<div class="avail-day">${label}</div>` +
+      AVAIL_SLOTS.map(s => `<label class="avail-cell"><input type="checkbox" name="avail-${day}-${s.key}" aria-label="${label} ${s.label}"></label>`).join('')
+    ).join('');
+
   // Steps
   const steps = [...document.querySelectorAll('.form-step')];
   let currentStep = 0;
@@ -569,28 +545,16 @@ src="https://www.facebook.com/tr?id=1024622867154084&ev=PageView&noscript=1"
         email: document.querySelector('input[name=email]')?.value || '',
         phone: document.querySelector('input[name=phone]')?.value || '',
         experience: Array.from(document.querySelectorAll('input[name=experience]:checked')).map(c=>c.value).join(', '),
-        // Same shape as a real walker's availability field ({mon:[...], ...})
-        // so this can eventually seed openAddWalkerModal directly instead of
-        // starting blank when an application is hired.
-        availability: (() => {
-          const days = ['mon','tue','wed','thu','fri','sat','sun'];
-          // evening (5–10pm) and overnight joined the original three walk
-          // slots 2026-09-26 — pet sitting needs evening drop-ins and to know
-          // WHICH nights, not just yes/no. Applications only; a hired
-          // walker's schedule is set separately (walker-availability.js).
-          const slots = ['morning','early-afternoon','late-afternoon','evening','overnight'];
-          const result = {};
-          days.forEach(day => {
-            result[day] = slots.filter(slot => document.querySelector(`input[name="avail-${day}-${slot}"]`)?.checked);
-          });
-          return result;
-        })(),
+        // { mon: ['morning', ...], ... }
+        availability: Object.fromEntries(AVAIL_DAYS.map(([day]) => [day,
+          AVAIL_SLOTS.map(s => s.key).filter(slot => document.querySelector(`input[name="avail-${day}-${slot}"]`)?.checked)])),
         // Comfort table: radios are required, so every key gets a real level.
         comfortLevels: Object.fromEntries(COMFORT_ITEMS.map(item =>
           [item.key, document.querySelector(`input[name="comfort-${item.key}"]:checked`)?.value || ''])),
         scenarioAggressive: document.querySelector('textarea[name=scenario-aggressive]')?.value || '',
         scenarioTimeWindow: document.querySelector('textarea[name=scenario-timewindow]')?.value || '',
         scenarioAccess: document.querySelector('textarea[name=scenario-access]')?.value || '',
+        scenarioRain: document.querySelector('textarea[name=scenario-rain]')?.value || '',
         writingSample: document.querySelector('textarea[name=writing-sample]')?.value || '',
         walksPerWeek: document.querySelector('select[name=walks-per-week]')?.value || '',
         transportation: document.querySelector('select[name=transportation]')?.value || '',
