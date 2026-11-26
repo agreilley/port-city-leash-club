@@ -449,6 +449,15 @@
       align-items: center;
     }
 
+    .tip-btn.selected,
+    .tip-btn.selected:hover:not(:disabled) {
+      background: #F3DED9;
+      border-color: #C17B6F;
+      color: #8E4F45;
+      font-weight: 600;
+      box-shadow: inset 0 0 0 1px #C17B6F;
+    }
+
     .tip-other {
       display: inline-flex;
       gap: 6px;
@@ -686,8 +695,8 @@
       const presets = presetPcts.map(pct => Math.max(1, Math.round((r.tipBase || 0) * pct) / 100));
       return '<div class="care-label">Add a tip</div>' +
         '<div class="tip-options">' +
-        presets.map((amt, i) => '<button class="care-btn tip-btn" onclick="submitCareTip(\'' + r.elementId + '\',' + amt + ')">' + presetPcts[i] + '% · $' + (Number.isInteger(amt) ? amt : amt.toFixed(2)) + '</button>').join('') +
-        '<span class="tip-other"><input type="number" min="1" step="1" id="tip-custom-' + r.elementId + '" placeholder="Other $">' +
+        presets.map((amt, i) => '<button type="button" class="care-btn tip-btn" onclick="selectCareTip(\'' + r.elementId + '\',' + amt + ', this)">' + presetPcts[i] + '% · $' + (Number.isInteger(amt) ? amt : amt.toFixed(2)) + '</button>').join('') +
+        '<span class="tip-other"><input type="number" min="1" step="1" id="tip-custom-' + r.elementId + '" placeholder="Other $" oninput="clearCareTipSelection(\'' + r.elementId + '\')">' +
         '<button class="care-btn care-btn-primary" onclick="submitCareTipCustom(\'' + r.elementId + '\')">Send</button></span>' +
         '</div>' +
         '<div class="care-status" id="tip-status-' + r.elementId + '"></div>';
@@ -947,10 +956,29 @@ async function chargeTip(elementId, amount) {
   }
 }
 
-window.submitCareTip = (elementId, amount) => chargeTip(elementId, amount);
+// Presets only SELECT an amount (highlighted) — nothing is charged until the
+// member presses Send, same as a custom amount. The Other box stays empty
+// so it keeps reading "Other $"; the chosen preset lives on the container.
+window.selectCareTip = (elementId, amount, btn) => {
+  const container = document.getElementById('tip-' + elementId);
+  container?.querySelectorAll('.tip-btn').forEach(b => b.classList.toggle('selected', b === btn));
+  if (container) container.dataset.selectedTip = amount;
+  const input = document.getElementById('tip-custom-' + elementId);
+  if (input) input.value = '';
+  const statusEl = document.getElementById('tip-status-' + elementId);
+  if (statusEl) statusEl.textContent = '';
+};
+// Typing an Other amount drops the preset selection, so Send uses the box.
+window.clearCareTipSelection = (elementId) => {
+  const container = document.getElementById('tip-' + elementId);
+  container?.querySelectorAll('.tip-btn.selected').forEach(b => b.classList.remove('selected'));
+  if (container) delete container.dataset.selectedTip;
+};
 window.submitCareTipCustom = (elementId) => {
   const input = document.getElementById('tip-custom-' + elementId);
-  chargeTip(elementId, Number(input?.value));
+  const typed = input?.value.trim();
+  const selected = document.getElementById('tip-' + elementId)?.dataset.selectedTip;
+  chargeTip(elementId, Number(typed || selected));
 };
 
 // If auth never resolves, OR resolves but the members/{uid} lookup inside
